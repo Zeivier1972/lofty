@@ -79,6 +79,13 @@ model Contact {
   pipelineLeads PipelineLead[]
   enrollments   SmartPlanEnrollment[]
   propertyInterests PropertyInterest[]
+  propertySaves PropertySave[]
+  propertyViews PropertyView[]
+  searchBehaviors SearchBehavior[]
+  aiConversations AIConversation[]
+  aiNotifications AINotification[]
+  dialerCalls   DialerCall[]
+  campaignEnrollments CampaignEnrollment[]
   tags          ContactTag[]
   assignedTo    User?     @relation(fields: [assignedToId], references: [id])
   assignedToId  String?
@@ -172,6 +179,8 @@ model Property {
   latitude      Float?
   longitude     Float?
   interests     PropertyInterest[]
+  saves         PropertySave[]
+  views         PropertyView[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
@@ -397,6 +406,7 @@ model MarketingCampaign {
   recipients  Int       @default(0)
   opened      Int       @default(0)
   clicked     Int       @default(0)
+  enrollments CampaignEnrollment[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 }
@@ -408,4 +418,150 @@ model LeadSource {
   icon      String?
   isActive  Boolean   @default(true)
   createdAt DateTime  @default(now())
+}
+
+// ─── AI Agent ─────────────────────────────────────────────────────────────────
+
+model AIConversation {
+  id          String      @id @default(cuid())
+  contactId   String
+  contact     Contact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  status      String      @default("ACTIVE")
+  channel     String      @default("SMS")
+  lastMessage String?
+  messages    AIMessage[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model AIMessage {
+  id             String         @id @default(cuid())
+  conversation   AIConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversationId String
+  role           String
+  content        String
+  channel        String         @default("INTERNAL")
+  delivered      Boolean        @default(false)
+  deliveredAt    DateTime?
+  createdAt      DateTime       @default(now())
+}
+
+model AINotification {
+  id          String    @id @default(cuid())
+  title       String
+  body        String
+  type        String    @default("ACTION")
+  priority    String    @default("MEDIUM")
+  contactId   String?
+  contact     Contact?  @relation(fields: [contactId], references: [id])
+  isRead      Boolean   @default(false)
+  metadata    String?
+  createdAt   DateTime  @default(now())
+}
+
+model AIConfig {
+  id              String   @id @default(cuid())
+  agentName       String   @default("Alex")
+  agentPersona    String   @default("You are Alex, a professional real estate assistant. You are friendly, knowledgeable, and focused on helping people find their dream home.")
+  autoRespondSMS  Boolean  @default(true)
+  autoRespondEmail Boolean @default(true)
+  autoFollowUp    Boolean  @default(true)
+  leadScoreThreshold Int   @default(50)
+  followUpDelayHours Int   @default(2)
+  realtorName     String   @default("Catherine")
+  realtorPhone    String?
+  realtorEmail    String?
+  updatedAt       DateTime @updatedAt
+}
+
+// ─── IDX / Property Search ────────────────────────────────────────────────────
+
+model PropertySave {
+  id            String    @id @default(cuid())
+  contactId     String
+  contact       Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  propertyId    String
+  property      Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  isActive      Boolean   @default(true)
+  aiTriggered   Boolean   @default(false)
+  aiTriggeredAt DateTime?
+  createdAt     DateTime  @default(now())
+  @@unique([contactId, propertyId])
+}
+
+model PropertyView {
+  id          String    @id @default(cuid())
+  contactId   String?
+  contact     Contact?  @relation(fields: [contactId], references: [id])
+  propertyId  String
+  property    Property  @relation(fields: [propertyId], references: [id])
+  sessionId   String?
+  durationSec Int?
+  createdAt   DateTime  @default(now())
+}
+
+model SearchBehavior {
+  id          String    @id @default(cuid())
+  contactId   String?
+  contact     Contact?  @relation(fields: [contactId], references: [id])
+  sessionId   String?
+  searchQuery String
+  minPrice    Float?
+  maxPrice    Float?
+  bedrooms    Int?
+  bathrooms   Float?
+  propertyType String?
+  location    String?
+  resultCount Int       @default(0)
+  createdAt   DateTime  @default(now())
+}
+
+// ─── Power Dialer ─────────────────────────────────────────────────────────────
+
+model DialerSession {
+  id          String        @id @default(cuid())
+  name        String
+  agentId     String
+  status      String        @default("ACTIVE")
+  calls       DialerCall[]
+  totalCalls  Int           @default(0)
+  answered    Int           @default(0)
+  voicemails  Int           @default(0)
+  noAnswers   Int           @default(0)
+  createdAt   DateTime      @default(now())
+  endedAt     DateTime?
+}
+
+model DialerCall {
+  id           String         @id @default(cuid())
+  session      DialerSession? @relation(fields: [sessionId], references: [id])
+  sessionId    String?
+  contactId    String?
+  contact      Contact?       @relation(fields: [contactId], references: [id])
+  phoneNumber  String
+  status       String         @default("QUEUED")
+  direction    String         @default("OUTBOUND")
+  duration     Int?
+  recordingUrl String?
+  notes        String?
+  disposition  String?
+  twilioSid    String?
+  agentId      String?
+  startedAt    DateTime?
+  endedAt      DateTime?
+  createdAt    DateTime       @default(now())
+}
+
+// ─── Campaign Automation ──────────────────────────────────────────────────────
+
+model CampaignEnrollment {
+  id          String            @id @default(cuid())
+  campaignId  String
+  campaign    MarketingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contactId   String
+  contact     Contact           @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  status      String            @default("ENROLLED")
+  enrolledAt  DateTime          @default(now())
+  completedAt DateTime?
+  @@unique([campaignId, contactId])
 }

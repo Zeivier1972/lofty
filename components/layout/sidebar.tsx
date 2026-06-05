@@ -6,7 +6,7 @@ import {
   Building2, LayoutDashboard, Users, GitBranch, Home,
   CheckSquare, Calendar, Mail, FileText, TrendingUp,
   Zap, Settings, ChevronLeft, ChevronRight, BarChart3,
-  MessageSquare, Bell, Search,
+  MessageSquare, Bell, Search, Bot, Phone,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
@@ -22,6 +22,8 @@ const navItems = [
   { href: "/transactions", icon: FileText, label: "Transactions" },
   { href: "/smart-plans", icon: Zap, label: "Smart Plans" },
   { href: "/reports", icon: BarChart3, label: "Reports" },
+  { href: "/ai-agent", icon: Bot, label: "AI Agent" },
+  { href: "/dialer", icon: Phone, label: "Power Dialer" },
   { href: "/settings", icon: Settings, label: "Settings" },
 ]
 
