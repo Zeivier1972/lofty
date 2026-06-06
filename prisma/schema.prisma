@@ -88,6 +88,8 @@ model Contact {
   campaignEnrollments CampaignEnrollment[]
   whatsappMessages WhatsAppMessage[]
   videoMessages VideoMessage[]
+  portalAccess  ClientPortalAccess?
+  portalMessages PortalMessage[]
   tags          ContactTag[]
   assignedTo    User?     @relation(fields: [assignedToId], references: [id])
   assignedToId  String?
@@ -554,6 +556,29 @@ model DialerCall {
   startedAt    DateTime?
   endedAt      DateTime?
   createdAt    DateTime       @default(now())
+}
+
+// ─── Client Portal ────────────────────────────────────────────────────────────
+
+model ClientPortalAccess {
+  id           String    @id @default(cuid())
+  contactId    String    @unique
+  contact      Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  token        String    @unique @default(cuid())
+  passwordHash String?
+  isActive     Boolean   @default(true)
+  invitedAt    DateTime  @default(now())
+  lastLoginAt  DateTime?
+}
+
+model PortalMessage {
+  id         String   @id @default(cuid())
+  contactId  String
+  contact    Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  fromClient Boolean  @default(true)
+  content    String
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
 }
 
 // ─── WhatsApp ─────────────────────────────────────────────────────────────────

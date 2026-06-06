@@ -6,12 +6,12 @@ import {
   Building2, LayoutDashboard, Users, GitBranch, Home,
   CheckSquare, Calendar, Mail, FileText, TrendingUp,
   Zap, Settings, ChevronLeft, ChevronRight, BarChart3,
-  MessageSquare, Bell, Search, Bot, Phone, Share2, Key,
+  MessageSquare, Bell, Search, Bot, Phone, Share2, Key, Globe,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
 
-const navItems = [
+const navItems: { href: string; icon: React.ElementType; label: string; external?: boolean }[] = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { href: "/contacts", icon: Users, label: "Contacts" },
   { href: "/pipeline", icon: GitBranch, label: "Pipeline" },
@@ -26,6 +26,7 @@ const navItems = [
   { href: "/dialer", icon: Phone, label: "Power Dialer" },
   { href: "/social", icon: Share2, label: "Social Media" },
   { href: "/open-house", icon: Key, label: "Open House" },
+  { href: "/portal", icon: Globe, label: "Client Portal", external: true },
   { href: "/settings", icon: Settings, label: "Settings" },
 ]
 
@@ -56,12 +57,14 @@ export default function Sidebar() {
       {/* Navigation */}
       <nav className="flex-1 py-4 overflow-y-auto">
         <ul className="space-y-1 px-2">
-          {navItems.map(({ href, icon: Icon, label }) => {
-            const isActive = pathname === href || (href !== "/dashboard" && pathname.startsWith(href))
+          {navItems.map(({ href, icon: Icon, label, external }) => {
+            const isActive = !external && (pathname === href || (href !== "/dashboard" && pathname.startsWith(href)))
             return (
               <li key={href}>
                 <Link
                   href={href}
+                  target={external ? "_blank" : undefined}
+                  rel={external ? "noopener noreferrer" : undefined}
                   className={cn(
                     "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-150 group",
                     isActive
