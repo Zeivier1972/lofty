@@ -38,6 +38,23 @@ export async function initiateCall(to: string, callbackUrl: string): Promise<str
   return call.sid
 }
 
+export async function sendWhatsApp(to: string, body: string, mediaUrl?: string): Promise<string | null> {
+  const c = getClient()
+  const toNumber = to.startsWith("whatsapp:") ? to : `whatsapp:${to}`
+  const fromNumber = `whatsapp:${process.env.TWILIO_PHONE_NUMBER}`
+  if (!c) {
+    console.log("[WHATSAPP MOCK] To:", toNumber, "Body:", body)
+    return "mock-wa-sid"
+  }
+  const msg = await c.messages.create({
+    body,
+    from: fromNumber,
+    to: toNumber,
+    ...(mediaUrl ? { mediaUrl: [mediaUrl] } : {}),
+  })
+  return msg.sid
+}
+
 export async function getCallStatus(callSid: string) {
   const c = getClient()
   if (!c) return { status: "mock", duration: 0 }

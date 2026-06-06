@@ -86,6 +86,8 @@ model Contact {
   aiNotifications AINotification[]
   dialerCalls   DialerCall[]
   campaignEnrollments CampaignEnrollment[]
+  whatsappMessages WhatsAppMessage[]
+  videoMessages VideoMessage[]
   tags          ContactTag[]
   assignedTo    User?     @relation(fields: [assignedToId], references: [id])
   assignedToId  String?
@@ -149,6 +151,7 @@ model PipelineLead {
 model Property {
   id            String    @id @default(cuid())
   mlsId         String?
+  title         String?
   address       String
   city          String
   state         String
@@ -181,6 +184,7 @@ model Property {
   interests     PropertyInterest[]
   saves         PropertySave[]
   views         PropertyView[]
+  openHouses    OpenHouse[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
@@ -550,6 +554,107 @@ model DialerCall {
   startedAt    DateTime?
   endedAt      DateTime?
   createdAt    DateTime       @default(now())
+}
+
+// ─── WhatsApp ─────────────────────────────────────────────────────────────────
+
+model WhatsAppMessage {
+  id          String    @id @default(cuid())
+  body        String
+  fromNumber  String
+  toNumber    String
+  direction   String    @default("OUTBOUND")
+  status      String    @default("SENT")
+  messageType String    @default("text")
+  mediaUrl    String?
+  twilioSid   String?
+  contactId   String?
+  contact     Contact?  @relation(fields: [contactId], references: [id])
+  createdAt   DateTime  @default(now())
+}
+
+// ─── Video Messages ───────────────────────────────────────────────────────────
+
+model VideoMessage {
+  id           String    @id @default(cuid())
+  title        String
+  description  String?
+  videoUrl     String
+  thumbnailUrl String?
+  duration     Int?
+  views        Int       @default(0)
+  sentVia      String?
+  contactId    String?
+  contact      Contact?  @relation(fields: [contactId], references: [id])
+  createdAt    DateTime  @default(now())
+}
+
+// ─── Social Media ─────────────────────────────────────────────────────────────
+
+model SocialAccount {
+  id          String       @id @default(cuid())
+  platform    String
+  accountId   String?
+  accountName String?
+  accessToken String?
+  pageId      String?
+  isConnected Boolean      @default(false)
+  posts       SocialPost[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model SocialPost {
+  id          String         @id @default(cuid())
+  platform    String
+  content     String
+  mediaUrl    String?
+  postType    String         @default("POST")
+  status      String         @default("DRAFT")
+  scheduledAt DateTime?
+  publishedAt DateTime?
+  externalId  String?
+  reach       Int?
+  likes       Int?
+  comments    Int?
+  shares      Int?
+  accountId   String?
+  account     SocialAccount? @relation(fields: [accountId], references: [id])
+  aiGenerated Boolean        @default(false)
+  prompt      String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
+// ─── Open House ───────────────────────────────────────────────────────────────
+
+model OpenHouse {
+  id         String             @id @default(cuid())
+  address    String
+  date       DateTime
+  endTime    DateTime?
+  notes      String?
+  status     String             @default("UPCOMING")
+  propertyId String?
+  property   Property?          @relation(fields: [propertyId], references: [id])
+  visitors   OpenHouseVisitor[]
+  agentId    String?
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+}
+
+model OpenHouseVisitor {
+  id          String    @id @default(cuid())
+  openHouseId String
+  openHouse   OpenHouse @relation(fields: [openHouseId], references: [id], onDelete: Cascade)
+  firstName   String
+  lastName    String
+  email       String?
+  phone       String?
+  preApproved Boolean   @default(false)
+  notes       String?
+  contactId   String?
+  createdAt   DateTime  @default(now())
 }
 
 // ─── Campaign Automation ──────────────────────────────────────────────────────

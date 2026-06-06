@@ -13,7 +13,7 @@ interface SearchParams {
 export default async function SearchPage({ searchParams }: { searchParams: SearchParams }) {
   const where: Record<string, unknown> = {}
 
-  if (searchParams.type) where.type = searchParams.type
+  if (searchParams.type) where.propertyType = searchParams.type
   if (searchParams.city) where.city = { contains: searchParams.city }
   if (searchParams.status) where.status = searchParams.status
   else where.status = "ACTIVE"

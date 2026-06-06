@@ -12,7 +12,7 @@ import { cn, formatCurrency } from "@/lib/utils"
 
 interface Property {
   id: string
-  title: string
+  title: string | null
   address: string
   city: string
   state: string
@@ -21,9 +21,9 @@ interface Property {
   bedrooms: number | null
   bathrooms: number | null
   sqft: number | null
-  type: string
+  propertyType: string
   status: string
-  images: string
+  images: string | null
   description: string | null
 }
 
@@ -307,7 +307,7 @@ export default function SearchClient({ properties, filters }: Props) {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {properties.map(property => {
-              const images = getImages(property.images)
+              const images = getImages(property.images || "[]")
               const isSaved = savedIds.includes(property.id)
               return (
                 <div
@@ -320,7 +320,7 @@ export default function SearchClient({ properties, filters }: Props) {
                     {images[0] ? (
                       <img
                         src={images[0]}
-                        alt={property.title}
+                        alt={property.title || property.address}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       />
                     ) : (
@@ -355,7 +355,7 @@ export default function SearchClient({ properties, filters }: Props) {
                   <div className="p-4">
                     <div className="flex items-start justify-between mb-1">
                       <h3 className="font-semibold text-gray-900 text-sm leading-tight line-clamp-2">
-                        {property.title}
+                        {property.title || property.address}
                       </h3>
                     </div>
                     <p className="text-lofty-600 font-bold text-lg">

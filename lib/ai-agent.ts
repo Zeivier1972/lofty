@@ -19,7 +19,7 @@ interface AgentContext {
     buyerLocation?: string | null
     buyerBedroomsMin?: number | null
   }
-  trigger: "PROPERTY_SAVED" | "PROPERTY_VIEWED_3X" | "SEARCH_BEHAVIOR" | "NEW_LEAD" | "FOLLOW_UP"
+  trigger: "PROPERTY_SAVED" | "PROPERTY_VIEWED_3X" | "SEARCH_BEHAVIOR" | "NEW_LEAD" | "FOLLOW_UP" | "open_house_visit"
   property?: {
     id: string
     address: string
@@ -51,6 +51,13 @@ You are working on behalf of ${config.realtorName}, a professional real estate a
 Your job is to engage leads warmly, answer their questions, and schedule property showings.
 Always be helpful, concise (texts under 160 chars), and professional.
 When appropriate, try to get them to schedule a showing or call with ${config.realtorName}.
+
+BILINGUAL REQUIREMENT: You speak both English AND Spanish fluently.
+- Write SMS messages in BOTH English and Spanish (English first, then Spanish translation below, separated by a line break).
+- Write email bodies with an English section and a Spanish section.
+- If the contact's name suggests Spanish heritage, lead with Spanish in SMS.
+- Subject lines should be in both: "English Subject / Asunto en Español"
+- This is non-negotiable — every outbound message must be bilingual.
 
 Contact info:
 - Name: ${contact.firstName} ${contact.lastName}
@@ -90,6 +97,11 @@ Draft a warm welcome SMS (under 160 chars) and a welcome email introducing ${con
 
     case "FOLLOW_UP":
       userMessage = `It's been a while since we contacted ${contact.firstName}. Draft a friendly check-in SMS and create a follow-up task for ${config.realtorName}.`
+      break
+
+    case "open_house_visit":
+      userMessage = `${contact.firstName} ${contact.lastName} just visited our open house${property ? ` at ${property.address}, ${property.city} — $${property.price.toLocaleString()}` : ""}.
+Draft a warm thank-you SMS (bilingual) and a follow-up email. Ask if they'd like to schedule a private tour or have any questions. Create a task for ${config.realtorName} to personally follow up within 24 hours.`
       break
   }
 
@@ -270,7 +282,7 @@ export async function chatWithAI(messages: { role: "user" | "assistant"; content
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 1024,
-    system: `${config.agentPersona}\nYou are working for ${config.realtorName}.${contactContext ? `\n\nContact context:\n${contactContext}` : ""}`,
+    system: `${config.agentPersona}\nYou are working for ${config.realtorName}.\nIMPORTANT: You are bilingual (English/Spanish). Detect the language the contact is using from their most recent message and reply in that language. If unclear, respond in both English and Spanish.${contactContext ? `\n\nContact context:\n${contactContext}` : ""}`,
     messages,
   })
 

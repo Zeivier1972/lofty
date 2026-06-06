@@ -11,7 +11,7 @@ import { cn, formatCurrency } from "@/lib/utils"
 
 interface Property {
   id: string
-  title: string
+  title: string | null
   address: string
   city: string
   state: string
@@ -20,9 +20,9 @@ interface Property {
   bedrooms: number | null
   bathrooms: number | null
   sqft: number | null
-  type: string
+  propertyType: string
   status: string
-  images: string
+  images: string | null
   description: string | null
   yearBuilt: number | null
   lotSize: number | null
@@ -56,7 +56,7 @@ export default function PropertyDetailClient({ property }: { property: Property 
     message: `I'm interested in ${property.address}. Please contact me to schedule a showing.`,
   })
 
-  const images = getImages(property.images)
+  const images = getImages(property.images || "[]")
 
   // Track view on mount
   useEffect(() => {
@@ -120,7 +120,7 @@ export default function PropertyDetailClient({ property }: { property: Property 
     { label: "Year Built", value: property.yearBuilt ? String(property.yearBuilt) : "—", icon: Calendar },
     { label: "Lot Size", value: property.lotSize ? property.lotSize.toLocaleString() + " sqft" : "—", icon: Home },
     { label: "Garage", value: property.garage ? `${property.garage} car` : "—", icon: Building2 },
-    { label: "Type", value: property.type.replace("_", " "), icon: Tag },
+    { label: "Type", value: property.propertyType.replace("_", " "), icon: Tag },
     { label: "Status", value: property.status, icon: CheckCircle2 },
   ]
 
@@ -145,7 +145,7 @@ export default function PropertyDetailClient({ property }: { property: Property 
                 {isSaved ? "Saved" : "Save"}
               </button>
               <button
-                onClick={() => navigator.share?.({ title: property.title, url: window.location.href })}
+                onClick={() => navigator.share?.({ title: property.title || property.address, url: window.location.href })}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-gray-200 text-gray-600 hover:border-lofty-300 hover:text-lofty-700 text-sm font-medium"
               >
                 <Share2 className="w-4 h-4" /> Share
@@ -165,7 +165,7 @@ export default function PropertyDetailClient({ property }: { property: Property 
                 <>
                   <img
                     src={images[currentImage]}
-                    alt={property.title}
+                    alt={property.title || property.address}
                     className="w-full h-full object-cover"
                   />
                   {images.length > 1 && (
@@ -232,7 +232,7 @@ export default function PropertyDetailClient({ property }: { property: Property 
 
             {/* Title + price */}
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">{property.title}</h1>
+              <h1 className="text-2xl font-bold text-gray-900">{property.title || property.address}</h1>
               <div className="flex items-center gap-2 text-gray-500 mt-1">
                 <MapPin className="w-4 h-4 flex-shrink-0" />
                 <span>{property.address}, {property.city}, {property.state} {property.zip}</span>
