@@ -44,7 +44,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
         type: "CONTACT_UPDATED",
         title: "Contact updated",
         contactId: params.id,
-        userId: session.user!.id,
+        userId: session?.user?.id,
       },
     })
 

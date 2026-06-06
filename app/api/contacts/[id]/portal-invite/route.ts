@@ -77,7 +77,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
       title: "Client portal invitation sent",
       description: `Portal invite email sent to ${contact.email}`,
       contactId: params.id,
-      userId: session.user!.id as string,
+      userId: session?.user?.id as string,
     },
   })
 

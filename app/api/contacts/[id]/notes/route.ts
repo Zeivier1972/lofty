@@ -16,7 +16,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         content,
         isPinned: isPinned || false,
         contactId: params.id,
-        authorId: session.user!.id,
+        authorId: session?.user?.id,
       },
       include: { author: { select: { name: true } } },
     })
@@ -26,7 +26,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         type: "NOTE_ADDED",
         title: "Note added",
         contactId: params.id,
-        userId: session.user!.id,
+        userId: session?.user?.id,
       },
     })
 

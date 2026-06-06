@@ -10,7 +10,7 @@ export async function GET() {
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
     const user = await prisma.user.findUnique({
-      where: { id: session.user!.id },
+      where: { id: session?.user?.id },
       select: { id: true, name: true, email: true, phone: true, title: true, bio: true, timezone: true, avatar: true, role: true },
     })
 
@@ -29,7 +29,7 @@ export async function PUT(req: Request) {
     const { id, password, role, createdAt, updatedAt, ...updateData } = data
 
     const user = await prisma.user.update({
-      where: { id: session.user!.id },
+      where: { id: session?.user?.id },
       data: updateData,
       select: { id: true, name: true, email: true, phone: true, title: true, bio: true, timezone: true },
     })

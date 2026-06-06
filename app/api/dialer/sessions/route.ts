@@ -9,7 +9,7 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const sessions = await prisma.dialerSession.findMany({
-    where: { agentId: session.user!.id as string },
+    where: { agentId: session?.user?.id as string },
     include: {
       calls: {
         include: { contact: { select: { id: true, firstName: true, lastName: true } } },
@@ -32,7 +32,7 @@ export async function POST(req: Request) {
   const name: string = body.name || "Dial Session"
 
   const dialerSession = await prisma.dialerSession.create({
-    data: { name, agentId: session.user!.id as string },
+    data: { name, agentId: session?.user?.id as string },
   })
 
   return NextResponse.json(dialerSession, { status: 201 })

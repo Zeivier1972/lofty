@@ -18,7 +18,7 @@ export async function POST(req: Request) {
       sessionId,
       status: "QUEUED",
       direction: "OUTBOUND",
-      agentId: session.user!.id,
+      agentId: session?.user?.id,
     },
   })
 
@@ -39,7 +39,7 @@ export async function POST(req: Request) {
           title: "Outbound call initiated",
           description: `Called ${phoneNumber}`,
           contactId,
-          userId: session.user!.id,
+          userId: session?.user?.id,
         },
       })
     }
