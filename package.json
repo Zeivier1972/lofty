@@ -53,8 +53,12 @@
     "recharts": "^2.13.3",
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
+    "ts-node": "^10.9.2",
     "twilio": "^5.3.7",
     "zod": "^3.23.8"
+  },
+  "prisma": {
+    "seed": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed.ts"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
