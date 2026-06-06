@@ -61,6 +61,14 @@ module.exports = {
           900: "#0c3f6e",
           950: "#082849",
         },
+        gold: {
+          DEFAULT: "#c9a84c",
+          light: "#e8c97a",
+          dark: "#a07c2e",
+        },
+      },
+      fontFamily: {
+        serif: ["Georgia", "Cambria", "Times New Roman", "serif"],
       },
       borderRadius: {
         lg: "var(--radius)",
