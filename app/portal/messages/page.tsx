@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { redirect } from "next/navigation"
 import { getPortalContact } from "@/lib/portal-auth"
 import PortalShell from "../_components/portal-shell"

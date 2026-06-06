@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { chatWithAI } from "@/lib/ai-agent"

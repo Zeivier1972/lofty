@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth"
 import DashboardClient from "./dashboard-client"
