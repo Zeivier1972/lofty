@@ -27,6 +27,7 @@ const navItems: { href: string; icon: React.ElementType; label: string; external
   { href: "/social", icon: Share2, label: "Social Media" },
   { href: "/open-house", icon: Key, label: "Open House" },
   { href: "/portal", icon: Globe, label: "Client Portal", external: true },
+  { href: "/site", icon: Home, label: "My Website", external: true },
   { href: "/settings", icon: Settings, label: "Settings" },
 ]
 
