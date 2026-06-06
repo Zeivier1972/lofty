@@ -46,14 +46,14 @@ export default function Header({ user }: HeaderProps) {
           <DropdownMenuTrigger asChild>
             <button className="flex items-center gap-2 hover:bg-gray-50 rounded-lg px-2 py-1.5 transition-colors">
               <Avatar className="w-8 h-8">
-                <AvatarImage src={user.image || ""} />
+                <AvatarImage src={user?.image || ""} />
                 <AvatarFallback className="bg-lofty-600 text-white text-xs">
-                  {getInitials(user.name || "U")}
+                  {getInitials(user?.name || "U")}
                 </AvatarFallback>
               </Avatar>
               <div className="text-left hidden sm:block">
-                <p className="text-sm font-medium text-gray-900 leading-none">{user.name}</p>
-                <p className="text-xs text-gray-500 mt-0.5">{user.email}</p>
+                <p className="text-sm font-medium text-gray-900 leading-none">{user?.name}</p>
+                <p className="text-xs text-gray-500 mt-0.5">{user?.email}</p>
               </div>
               <ChevronDown className="w-4 h-4 text-gray-400" />
             </button>
