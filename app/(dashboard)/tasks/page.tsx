@@ -5,26 +5,32 @@ import { auth } from "@/lib/auth"
 import TasksClient from "./tasks-client"
 
 export default async function TasksPage({ searchParams }: { searchParams: { status?: string; priority?: string } }) {
-  const session = await auth()
-  const userId = session?.user?.id
+  let tasks: any[] = []
+  let counts: any[] = []
 
-  const where: any = { assignedToId: userId }
-  if (searchParams.status && searchParams.status !== "ALL") where.status = searchParams.status
-  if (searchParams.priority && searchParams.priority !== "ALL") where.priority = searchParams.priority
+  try {
+    const session = await auth()
+    const userId = session?.user?.id
 
-  const tasks = await prisma.task.findMany({
-    where,
-    include: {
-      contact: { select: { id: true, firstName: true, lastName: true, phone: true, email: true } },
-    },
-    orderBy: [{ dueDate: "asc" }, { priority: "desc" }],
-  })
+    const where: any = { ...(userId && { assignedToId: userId }) }
+    if (searchParams.status && searchParams.status !== "ALL") where.status = searchParams.status
+    if (searchParams.priority && searchParams.priority !== "ALL") where.priority = searchParams.priority
 
-  const counts = await prisma.task.groupBy({
-    by: ["status"],
-    where: { assignedToId: userId },
-    _count: true,
-  })
+    ;[tasks, counts] = await Promise.all([
+      prisma.task.findMany({
+        where,
+        include: { contact: { select: { id: true, firstName: true, lastName: true, phone: true, email: true } } },
+        orderBy: [{ dueDate: "asc" }, { priority: "desc" }],
+      }),
+      prisma.task.groupBy({
+        by: ["status"],
+        where: { ...(userId && { assignedToId: userId }) },
+        _count: true,
+      }),
+    ])
+  } catch (e) {
+    console.error("Tasks page error:", e)
+  }
 
   return (
     <TasksClient

@@ -7,6 +7,7 @@ import { z } from "zod"
 import {
   Settings, User, Bell, Shield, Tag, GitBranch, Mail,
   Phone, Globe, Save, Loader2, Plus, Trash2, Edit, Palette,
+  Database, CheckCircle, AlertCircle, ExternalLink,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -41,6 +42,35 @@ export default function SettingsClient({ user, tags: initialTags, pipelines }: S
   const [tags, setTags] = useState(initialTags)
   const [newTagName, setNewTagName] = useState("")
   const [newTagColor, setNewTagColor] = useState("#3B82F6")
+  const [idxConfig, setIdxConfig] = useState({
+    provider: "miami_mls",
+    serverUrl: "",
+    username: "",
+    password: "",
+    loginUrl: "https://rets.miami-mls.com/rets/login",
+    mlsId: "",
+    autoImport: false,
+    autoAssignSearch: true,
+  })
+  const [idxSaving, setIdxSaving] = useState(false)
+  const [idxConnected, setIdxConnected] = useState(false)
+
+  const saveIdx = async () => {
+    setIdxSaving(true)
+    try {
+      await fetch("/api/settings/idx", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(idxConfig),
+      })
+      setIdxConnected(true)
+      toast({ title: "IDX settings saved" })
+    } catch {
+      toast({ title: "Error saving IDX settings", variant: "destructive" })
+    } finally {
+      setIdxSaving(false)
+    }
+  }
 
   const { register, handleSubmit, formState: { isSubmitting, isDirty } } = useForm({
     resolver: zodResolver(profileSchema),
@@ -100,6 +130,7 @@ export default function SettingsClient({ user, tags: initialTags, pipelines }: S
               { value: "notifications", label: "Notifications", icon: Bell },
               { value: "tags", label: "Tags", icon: Tag },
               { value: "pipeline", label: "Pipeline", icon: GitBranch },
+              { value: "idx", label: "IDX / MLS", icon: Database },
               { value: "integrations", label: "Integrations", icon: Globe },
               { value: "security", label: "Security", icon: Shield },
             ].map(({ value, label, icon: Icon }) => (
@@ -268,6 +299,118 @@ export default function SettingsClient({ user, tags: initialTags, pipelines }: S
                     </div>
                   </div>
                 ))}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* IDX / MLS */}
+          <TabsContent value="idx">
+            <Card className="border-0 shadow-sm">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base">IDX / MLS Integration</CardTitle>
+                  {idxConnected && (
+                    <div className="flex items-center gap-1.5 text-green-600 text-sm font-medium">
+                      <CheckCircle className="w-4 h-4" /> Connected
+                    </div>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                {/* Miami MLS highlight */}
+                <div className="bg-lofty-50 border border-lofty-200 rounded-xl p-4 flex items-start gap-3">
+                  <div className="w-8 h-8 bg-lofty-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <Database className="w-4 h-4 text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-semibold text-lofty-900 text-sm">Miami Association of Realtors (MIAMI MLS)</p>
+                    <p className="text-xs text-lofty-600 mt-0.5">Connect to access live MLS listings, import properties, and auto-assign buyer search profiles</p>
+                    <a href="https://www.miamire.com/idx" target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-lofty-600 hover:text-lofty-700 mt-1 font-medium">
+                      Get IDX credentials from MIAMI MLS <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                </div>
+
+                <div>
+                  <Label className="mb-1.5 block">MLS Provider</Label>
+                  <select
+                    value={idxConfig.provider}
+                    onChange={e => setIdxConfig(c => ({ ...c, provider: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-lofty-500 outline-none"
+                  >
+                    <option value="miami_mls">Miami Association of Realtors (MIAMI MLS)</option>
+                    <option value="mls_florida">Florida MLS</option>
+                    <option value="bright_mls">Bright MLS</option>
+                    <option value="custom">Custom RETS / RESO</option>
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="mb-1.5 block">RETS Login URL</Label>
+                    <Input
+                      value={idxConfig.loginUrl}
+                      onChange={e => setIdxConfig(c => ({ ...c, loginUrl: e.target.value }))}
+                      placeholder="https://rets.miami-mls.com/rets/login"
+                    />
+                  </div>
+                  <div>
+                    <Label className="mb-1.5 block">MLS Agent ID</Label>
+                    <Input
+                      value={idxConfig.mlsId}
+                      onChange={e => setIdxConfig(c => ({ ...c, mlsId: e.target.value }))}
+                      placeholder="Your MLS member ID"
+                    />
+                  </div>
+                  <div>
+                    <Label className="mb-1.5 block">RETS Username</Label>
+                    <Input
+                      value={idxConfig.username}
+                      onChange={e => setIdxConfig(c => ({ ...c, username: e.target.value }))}
+                      placeholder="IDX username"
+                    />
+                  </div>
+                  <div>
+                    <Label className="mb-1.5 block">RETS Password</Label>
+                    <Input
+                      type="password"
+                      value={idxConfig.password}
+                      onChange={e => setIdxConfig(c => ({ ...c, password: e.target.value }))}
+                      placeholder="IDX password"
+                    />
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div className="space-y-3">
+                  <p className="text-sm font-medium text-gray-700">Automation Settings</p>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-gray-700">Auto-assign search profile on import</p>
+                      <p className="text-xs text-gray-400">Infer buyer/seller search criteria from imported lead data</p>
+                    </div>
+                    <Switch
+                      checked={idxConfig.autoAssignSearch}
+                      onCheckedChange={v => setIdxConfig(c => ({ ...c, autoAssignSearch: v }))}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-gray-700">Auto-import new MLS leads</p>
+                      <p className="text-xs text-gray-400">Automatically create contacts from IDX lead captures</p>
+                    </div>
+                    <Switch
+                      checked={idxConfig.autoImport}
+                      onCheckedChange={v => setIdxConfig(c => ({ ...c, autoImport: v }))}
+                    />
+                  </div>
+                </div>
+
+                <Button onClick={saveIdx} disabled={idxSaving} className="bg-lofty-600 hover:bg-lofty-700">
+                  {idxSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving...</> : <><Save className="w-4 h-4 mr-2" />Save IDX Settings</>}
+                </Button>
               </CardContent>
             </Card>
           </TabsContent>
