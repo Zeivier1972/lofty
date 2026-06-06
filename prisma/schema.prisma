@@ -1,0 +1,697 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  password     String
+  role         String    @default("AGENT")
+  avatar       String?
+  phone        String?
+  title        String?
+  bio          String?
+  timezone     String    @default("America/New_York")
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  contacts     Contact[]
+  tasks        Task[]
+  activities   Activity[]
+  appointments Appointment[]
+  transactions Transaction[]
+  notes        Note[]
+  emails       Email[]
+  smartPlans   SmartPlan[]
+}
+
+model Contact {
+  id            String    @id @default(cuid())
+  firstName     String
+  lastName      String
+  email         String?
+  phone         String?
+  phone2        String?
+  address       String?
+  city          String?
+  state         String?
+  zip           String?
+  country       String?
+  source        String?
+  status        String    @default("LEAD")
+  leadScore     Int       @default(0)
+  rating        Int       @default(0)
+  birthday      DateTime?
+  anniversary   DateTime?
+  spouse        String?
+  company       String?
+  jobTitle      String?
+  website       String?
+  socialFacebook String?
+  socialInstagram String?
+  socialLinkedin String?
+  socialTwitter  String?
+  doNotCall     Boolean   @default(false)
+  doNotEmail    Boolean   @default(false)
+  doNotText     Boolean   @default(false)
+  isArchived    Boolean   @default(false)
+  lastContacted DateTime?
+  buyerBudgetMin Float?
+  buyerBudgetMax Float?
+  buyerBedroomsMin Int?
+  buyerPropertyType String?
+  buyerLocation String?
+  sellerAddress String?
+  sellerEstimatedValue Float?
+  notes         Note[]
+  tasks         Task[]
+  activities    Activity[]
+  emails        Email[]
+  appointments  Appointment[]
+  transactions  Transaction[]
+  pipelineLeads PipelineLead[]
+  enrollments   SmartPlanEnrollment[]
+  propertyInterests PropertyInterest[]
+  propertySaves PropertySave[]
+  propertyViews PropertyView[]
+  searchBehaviors SearchBehavior[]
+  aiConversations AIConversation[]
+  aiNotifications AINotification[]
+  dialerCalls   DialerCall[]
+  campaignEnrollments CampaignEnrollment[]
+  whatsappMessages WhatsAppMessage[]
+  videoMessages VideoMessage[]
+  portalAccess  ClientPortalAccess?
+  portalMessages PortalMessage[]
+  tags          ContactTag[]
+  assignedTo    User?     @relation(fields: [assignedToId], references: [id])
+  assignedToId  String?
+  customFields  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Tag {
+  id        String       @id @default(cuid())
+  name      String       @unique
+  color     String       @default("#3B82F6")
+  contacts  ContactTag[]
+  createdAt DateTime     @default(now())
+}
+
+model ContactTag {
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  contactId String
+  tag       Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  tagId     String
+  @@id([contactId, tagId])
+}
+
+model Pipeline {
+  id        String          @id @default(cuid())
+  name      String
+  isDefault Boolean         @default(false)
+  color     String          @default("#3B82F6")
+  stages    PipelineStage[]
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+}
+
+model PipelineStage {
+  id         String         @id @default(cuid())
+  name       String
+  order      Int
+  color      String         @default("#3B82F6")
+  rotPercent Float?
+  pipeline   Pipeline       @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  pipelineId String
+  leads      PipelineLead[]
+}
+
+model PipelineLead {
+  id            String        @id @default(cuid())
+  contact       Contact       @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  contactId     String
+  stage         PipelineStage @relation(fields: [stageId], references: [id])
+  stageId       String
+  value         Float?
+  probability   Int?
+  expectedClose DateTime?
+  notes         String?
+  priority      String        @default("MEDIUM")
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+model Property {
+  id            String    @id @default(cuid())
+  mlsId         String?
+  title         String?
+  address       String
+  city          String
+  state         String
+  zip           String
+  price         Float
+  originalPrice Float?
+  bedrooms      Int?
+  bathrooms     Float?
+  sqft          Int?
+  lotSize       Float?
+  yearBuilt     Int?
+  propertyType  String    @default("SINGLE_FAMILY")
+  status        String    @default("ACTIVE")
+  description   String?
+  images        String?
+  features      String?
+  garage        Int?
+  pool          Boolean   @default(false)
+  hoa           Float?
+  taxes         Float?
+  listingDate   DateTime?
+  expiryDate    DateTime?
+  daysOnMarket  Int?
+  agentName     String?
+  agentPhone    String?
+  agentEmail    String?
+  office        String?
+  latitude      Float?
+  longitude     Float?
+  interests     PropertyInterest[]
+  saves         PropertySave[]
+  views         PropertyView[]
+  openHouses    OpenHouse[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model PropertyInterest {
+  id          String    @id @default(cuid())
+  contact     Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  contactId   String
+  property    Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  propertyId  String
+  type        String    @default("VIEWED")
+  notes       String?
+  createdAt   DateTime  @default(now())
+}
+
+model Task {
+  id           String    @id @default(cuid())
+  title        String
+  description  String?
+  dueDate      DateTime?
+  dueTime      String?
+  priority     String    @default("MEDIUM")
+  status       String    @default("PENDING")
+  type         String    @default("FOLLOW_UP")
+  contact      Contact?  @relation(fields: [contactId], references: [id])
+  contactId    String?
+  assignedTo   User?     @relation(fields: [assignedToId], references: [id])
+  assignedToId String?
+  completedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model Activity {
+  id          String    @id @default(cuid())
+  type        String
+  title       String
+  description String?
+  contact     Contact?  @relation(fields: [contactId], references: [id])
+  contactId   String?
+  user        User?     @relation(fields: [userId], references: [id])
+  userId      String?
+  metadata    String?
+  createdAt   DateTime  @default(now())
+}
+
+model Note {
+  id          String    @id @default(cuid())
+  content     String
+  isPinned    Boolean   @default(false)
+  contact     Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  contactId   String
+  author      User?     @relation(fields: [authorId], references: [id])
+  authorId    String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Appointment {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  startTime   DateTime
+  endTime     DateTime
+  location    String?
+  type        String    @default("SHOWING")
+  status      String    @default("SCHEDULED")
+  reminder    Int?
+  virtualLink String?
+  contact     Contact?  @relation(fields: [contactId], references: [id])
+  contactId   String?
+  user        User?     @relation(fields: [userId], references: [id])
+  userId      String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Email {
+  id          String         @id @default(cuid())
+  subject     String
+  body        String
+  fromAddress String
+  toAddress   String
+  status      String         @default("DRAFT")
+  contact     Contact?       @relation(fields: [contactId], references: [id])
+  contactId   String?
+  user        User?          @relation(fields: [userId], references: [id])
+  userId      String?
+  template    EmailTemplate? @relation(fields: [templateId], references: [id])
+  templateId  String?
+  sentAt      DateTime?
+  openedAt    DateTime?
+  clickedAt   DateTime?
+  createdAt   DateTime       @default(now())
+}
+
+model EmailTemplate {
+  id        String   @id @default(cuid())
+  name      String
+  subject   String
+  body      String
+  category  String?
+  isShared  Boolean  @default(false)
+  emails    Email[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SMSMessage {
+  id          String    @id @default(cuid())
+  body        String
+  fromNumber  String
+  toNumber    String
+  direction   String    @default("OUTBOUND")
+  status      String    @default("SENT")
+  contactId   String?
+  userId      String?
+  createdAt   DateTime  @default(now())
+}
+
+model Transaction {
+  id            String    @id @default(cuid())
+  title         String
+  address       String
+  city          String
+  state         String
+  zip           String
+  type          String    @default("BUYER")
+  status        String    @default("ACTIVE_LISTING")
+  salePrice     Float?
+  listPrice     Float?
+  commission    Float?
+  commissionPercent Float?
+  closeDate     DateTime?
+  contractDate  DateTime?
+  listingDate   DateTime?
+  expirationDate DateTime?
+  mlsNumber     String?
+  notes         String?
+  contact       Contact?  @relation(fields: [contactId], references: [id])
+  contactId     String?
+  agent         User?     @relation(fields: [agentId], references: [id])
+  agentId       String?
+  milestones    TransactionMilestone[]
+  documents     TransactionDocument[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model TransactionMilestone {
+  id            String      @id @default(cuid())
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  transactionId String
+  name          String
+  dueDate       DateTime?
+  completedDate DateTime?
+  status        String      @default("PENDING")
+  notes         String?
+  order         Int         @default(0)
+}
+
+model TransactionDocument {
+  id            String      @id @default(cuid())
+  name          String
+  url           String
+  fileType      String?
+  fileSize      Int?
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  transactionId String
+  uploadedAt    DateTime    @default(now())
+}
+
+model SmartPlan {
+  id          String                @id @default(cuid())
+  name        String
+  description String?
+  trigger     String                @default("MANUAL")
+  isActive    Boolean               @default(true)
+  steps       SmartPlanStep[]
+  enrollments SmartPlanEnrollment[]
+  user        User?                 @relation(fields: [userId], references: [id])
+  userId      String?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+}
+
+model SmartPlanStep {
+  id        String    @id @default(cuid())
+  plan      SmartPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  planId    String
+  order     Int
+  type      String    @default("EMAIL")
+  delay     Int       @default(1)
+  subject   String?
+  content   String?
+  taskType  String?
+  taskTitle String?
+  isActive  Boolean   @default(true)
+}
+
+model SmartPlanEnrollment {
+  id          String    @id @default(cuid())
+  plan        SmartPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  planId      String
+  contact     Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  contactId   String
+  currentStep Int       @default(0)
+  status      String    @default("ACTIVE")
+  enrolledAt  DateTime  @default(now())
+  completedAt DateTime?
+  nextStepAt  DateTime?
+}
+
+model MarketingCampaign {
+  id          String    @id @default(cuid())
+  name        String
+  type        String    @default("EMAIL")
+  status      String    @default("DRAFT")
+  subject     String?
+  content     String?
+  scheduledAt DateTime?
+  sentAt      DateTime?
+  recipients  Int       @default(0)
+  opened      Int       @default(0)
+  clicked     Int       @default(0)
+  enrollments CampaignEnrollment[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model LeadSource {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  color     String    @default("#3B82F6")
+  icon      String?
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+}
+
+// ─── AI Agent ─────────────────────────────────────────────────────────────────
+
+model AIConversation {
+  id          String      @id @default(cuid())
+  contactId   String
+  contact     Contact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  status      String      @default("ACTIVE")
+  channel     String      @default("SMS")
+  lastMessage String?
+  messages    AIMessage[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model AIMessage {
+  id             String         @id @default(cuid())
+  conversation   AIConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversationId String
+  role           String
+  content        String
+  channel        String         @default("INTERNAL")
+  delivered      Boolean        @default(false)
+  deliveredAt    DateTime?
+  createdAt      DateTime       @default(now())
+}
+
+model AINotification {
+  id          String    @id @default(cuid())
+  title       String
+  body        String
+  type        String    @default("ACTION")
+  priority    String    @default("MEDIUM")
+  contactId   String?
+  contact     Contact?  @relation(fields: [contactId], references: [id])
+  isRead      Boolean   @default(false)
+  metadata    String?
+  createdAt   DateTime  @default(now())
+}
+
+model AIConfig {
+  id              String   @id @default(cuid())
+  agentName       String   @default("Alex")
+  agentPersona    String   @default("You are Alex, a professional real estate assistant. You are friendly, knowledgeable, and focused on helping people find their dream home.")
+  autoRespondSMS  Boolean  @default(true)
+  autoRespondEmail Boolean @default(true)
+  autoFollowUp    Boolean  @default(true)
+  leadScoreThreshold Int   @default(50)
+  followUpDelayHours Int   @default(2)
+  realtorName     String   @default("Catherine")
+  realtorPhone    String?
+  realtorEmail    String?
+  updatedAt       DateTime @updatedAt
+}
+
+// ─── IDX / Property Search ────────────────────────────────────────────────────
+
+model PropertySave {
+  id            String    @id @default(cuid())
+  contactId     String
+  contact       Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  propertyId    String
+  property      Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  isActive      Boolean   @default(true)
+  aiTriggered   Boolean   @default(false)
+  aiTriggeredAt DateTime?
+  createdAt     DateTime  @default(now())
+  @@unique([contactId, propertyId])
+}
+
+model PropertyView {
+  id          String    @id @default(cuid())
+  contactId   String?
+  contact     Contact?  @relation(fields: [contactId], references: [id])
+  propertyId  String
+  property    Property  @relation(fields: [propertyId], references: [id])
+  sessionId   String?
+  durationSec Int?
+  createdAt   DateTime  @default(now())
+}
+
+model SearchBehavior {
+  id          String    @id @default(cuid())
+  contactId   String?
+  contact     Contact?  @relation(fields: [contactId], references: [id])
+  sessionId   String?
+  searchQuery String
+  minPrice    Float?
+  maxPrice    Float?
+  bedrooms    Int?
+  bathrooms   Float?
+  propertyType String?
+  location    String?
+  resultCount Int       @default(0)
+  createdAt   DateTime  @default(now())
+}
+
+// ─── Power Dialer ─────────────────────────────────────────────────────────────
+
+model DialerSession {
+  id          String        @id @default(cuid())
+  name        String
+  agentId     String
+  status      String        @default("ACTIVE")
+  calls       DialerCall[]
+  totalCalls  Int           @default(0)
+  answered    Int           @default(0)
+  voicemails  Int           @default(0)
+  noAnswers   Int           @default(0)
+  createdAt   DateTime      @default(now())
+  endedAt     DateTime?
+}
+
+model DialerCall {
+  id           String         @id @default(cuid())
+  session      DialerSession? @relation(fields: [sessionId], references: [id])
+  sessionId    String?
+  contactId    String?
+  contact      Contact?       @relation(fields: [contactId], references: [id])
+  phoneNumber  String
+  status       String         @default("QUEUED")
+  direction    String         @default("OUTBOUND")
+  duration     Int?
+  recordingUrl String?
+  notes        String?
+  disposition  String?
+  twilioSid    String?
+  agentId      String?
+  startedAt    DateTime?
+  endedAt      DateTime?
+  createdAt    DateTime       @default(now())
+}
+
+// ─── Client Portal ────────────────────────────────────────────────────────────
+
+model ClientPortalAccess {
+  id           String    @id @default(cuid())
+  contactId    String    @unique
+  contact      Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  token        String    @unique @default(cuid())
+  passwordHash String?
+  isActive     Boolean   @default(true)
+  invitedAt    DateTime  @default(now())
+  lastLoginAt  DateTime?
+}
+
+model PortalMessage {
+  id         String   @id @default(cuid())
+  contactId  String
+  contact    Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  fromClient Boolean  @default(true)
+  content    String
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+}
+
+// ─── WhatsApp ─────────────────────────────────────────────────────────────────
+
+model WhatsAppMessage {
+  id          String    @id @default(cuid())
+  body        String
+  fromNumber  String
+  toNumber    String
+  direction   String    @default("OUTBOUND")
+  status      String    @default("SENT")
+  messageType String    @default("text")
+  mediaUrl    String?
+  twilioSid   String?
+  contactId   String?
+  contact     Contact?  @relation(fields: [contactId], references: [id])
+  createdAt   DateTime  @default(now())
+}
+
+// ─── Video Messages ───────────────────────────────────────────────────────────
+
+model VideoMessage {
+  id           String    @id @default(cuid())
+  title        String
+  description  String?
+  videoUrl     String
+  thumbnailUrl String?
+  duration     Int?
+  views        Int       @default(0)
+  sentVia      String?
+  contactId    String?
+  contact      Contact?  @relation(fields: [contactId], references: [id])
+  createdAt    DateTime  @default(now())
+}
+
+// ─── Social Media ─────────────────────────────────────────────────────────────
+
+model SocialAccount {
+  id          String       @id @default(cuid())
+  platform    String
+  accountId   String?
+  accountName String?
+  accessToken String?
+  pageId      String?
+  isConnected Boolean      @default(false)
+  posts       SocialPost[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model SocialPost {
+  id          String         @id @default(cuid())
+  platform    String
+  content     String
+  mediaUrl    String?
+  postType    String         @default("POST")
+  status      String         @default("DRAFT")
+  scheduledAt DateTime?
+  publishedAt DateTime?
+  externalId  String?
+  reach       Int?
+  likes       Int?
+  comments    Int?
+  shares      Int?
+  accountId   String?
+  account     SocialAccount? @relation(fields: [accountId], references: [id])
+  aiGenerated Boolean        @default(false)
+  prompt      String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
+// ─── Open House ───────────────────────────────────────────────────────────────
+
+model OpenHouse {
+  id         String             @id @default(cuid())
+  address    String
+  date       DateTime
+  endTime    DateTime?
+  notes      String?
+  status     String             @default("UPCOMING")
+  propertyId String?
+  property   Property?          @relation(fields: [propertyId], references: [id])
+  visitors   OpenHouseVisitor[]
+  agentId    String?
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+}
+
+model OpenHouseVisitor {
+  id          String    @id @default(cuid())
+  openHouseId String
+  openHouse   OpenHouse @relation(fields: [openHouseId], references: [id], onDelete: Cascade)
+  firstName   String
+  lastName    String
+  email       String?
+  phone       String?
+  preApproved Boolean   @default(false)
+  notes       String?
+  contactId   String?
+  createdAt   DateTime  @default(now())
+}
+
+// ─── Campaign Automation ──────────────────────────────────────────────────────
+
+model CampaignEnrollment {
+  id          String            @id @default(cuid())
+  campaignId  String
+  campaign    MarketingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contactId   String
+  contact     Contact           @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  status      String            @default("ENROLLED")
+  enrolledAt  DateTime          @default(now())
+  completedAt DateTime?
+  @@unique([campaignId, contactId])
+}
