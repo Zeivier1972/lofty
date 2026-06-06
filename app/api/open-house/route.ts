@@ -29,7 +29,7 @@ export async function POST(req: Request) {
       endTime: endTime ? new Date(endTime) : undefined,
       notes,
       propertyId: propertyId || undefined,
-      agentId: session.user!.id as string,
+      agentId: session?.user?.id as string,
     },
     include: { property: true, visitors: true },
   })

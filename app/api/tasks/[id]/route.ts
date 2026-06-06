@@ -21,7 +21,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           type: "TASK_COMPLETED",
           title: `Task completed: ${task.title}`,
           contactId: task.contactId,
-          userId: session.user!.id,
+          userId: session?.user?.id,
         },
       })
     }

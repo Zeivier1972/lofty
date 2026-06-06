@@ -51,7 +51,7 @@ export async function POST(req: Request) {
         title: "WhatsApp message sent",
         description: body.slice(0, 100),
         contactId,
-        userId: session.user!.id as string,
+        userId: session?.user?.id as string,
       },
     })
   }

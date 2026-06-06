@@ -22,7 +22,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           type: "PIPELINE_MOVED",
           title: `Moved to ${lead.stage.name}`,
           contactId: lead.contactId,
-          userId: session.user!.id,
+          userId: session?.user?.id,
         },
       })
     }

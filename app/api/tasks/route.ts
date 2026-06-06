@@ -11,7 +11,7 @@ export async function POST(req: Request) {
 
     const data = await req.json()
     const task = await prisma.task.create({
-      data: { ...data, assignedToId: session.user!.id },
+      data: { ...data, assignedToId: session?.user?.id },
     })
 
     return NextResponse.json(task, { status: 201 })

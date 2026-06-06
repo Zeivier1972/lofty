@@ -23,7 +23,7 @@ export default async function DialerPage() {
       take: 100,
     }),
     prisma.dialerSession.findMany({
-      where: { agentId: session!.user!.id },
+      where: { agentId: session?.user?.id },
       include: {
         calls: {
           include: {

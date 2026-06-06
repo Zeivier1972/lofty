@@ -50,7 +50,7 @@ export async function POST(req: Request) {
 
     const data = await req.json()
     const contact = await prisma.contact.create({
-      data: { ...data, assignedToId: session.user!.id },
+      data: { ...data, assignedToId: session?.user?.id },
     })
 
     await prisma.activity.create({
@@ -58,7 +58,7 @@ export async function POST(req: Request) {
         type: "CONTACT_CREATED",
         title: "Contact created",
         contactId: contact.id,
-        userId: session.user!.id,
+        userId: session?.user?.id,
       },
     })
 
