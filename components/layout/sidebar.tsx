@@ -7,11 +7,20 @@ import {
   CheckSquare, Calendar, Mail, FileText, TrendingUp,
   Zap, Settings, ChevronLeft, ChevronRight, BarChart3,
   MessageSquare, Bell, Search, Bot, Phone, Share2, Key, Globe,
+  BellRing, UserCheck,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
 
-const navItems: { href: string; icon: React.ElementType; label: string; external?: boolean }[] = [
+interface NavItem {
+  href: string
+  icon: React.ElementType
+  label: string
+  external?: boolean
+  section?: string
+}
+
+const navItems: NavItem[] = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { href: "/contacts", icon: Users, label: "Contacts" },
   { href: "/pipeline", icon: GitBranch, label: "Pipeline" },
@@ -20,7 +29,9 @@ const navItems: { href: string; icon: React.ElementType; label: string; external
   { href: "/calendar", icon: Calendar, label: "Calendar" },
   { href: "/messages", icon: MessageSquare, label: "Messages" },
   { href: "/transactions", icon: FileText, label: "Transactions" },
-  { href: "/smart-plans", icon: Zap, label: "Smart Plans" },
+  { href: "/smart-plans", icon: Zap, label: "Smart Plans", section: "Automation" },
+  { href: "/property-alerts", icon: BellRing, label: "Property Alerts", section: "Automation" },
+  { href: "/homeowner-agent", icon: UserCheck, label: "Homeowner Agent", section: "Automation" },
   { href: "/reports", icon: BarChart3, label: "Reports" },
   { href: "/ai-agent", icon: Bot, label: "AI Agent" },
   { href: "/dialer", icon: Phone, label: "Power Dialer" },
@@ -35,6 +46,19 @@ const navItems: { href: string; icon: React.ElementType; label: string; external
 export default function Sidebar() {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
+
+  // Group items by section, inserting section headers
+  const rendered: Array<{ type: "header"; label: string } | { type: "item"; item: NavItem }> = []
+  let lastSection: string | undefined = undefined
+  for (const item of navItems) {
+    if (item.section && item.section !== lastSection) {
+      rendered.push({ type: "header", label: item.section })
+      lastSection = item.section
+    } else if (!item.section && lastSection) {
+      lastSection = undefined
+    }
+    rendered.push({ type: "item", item })
+  }
 
   return (
     <aside
@@ -58,8 +82,18 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 py-4 overflow-y-auto">
-        <ul className="space-y-1 px-2">
-          {navItems.map(({ href, icon: Icon, label, external }) => {
+        <ul className="space-y-0.5 px-2">
+          {rendered.map((entry, idx) => {
+            if (entry.type === "header") {
+              return collapsed ? null : (
+                <li key={`header-${idx}`} className="px-3 pt-4 pb-1">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-lofty-500">
+                    {entry.label}
+                  </span>
+                </li>
+              )
+            }
+            const { href, icon: Icon, label, external } = entry.item
             const isActive = !external && (pathname === href || (href !== "/dashboard" && pathname.startsWith(href)))
             return (
               <li key={href}>
