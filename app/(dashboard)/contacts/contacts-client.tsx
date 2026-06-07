@@ -7,7 +7,7 @@ import {
   Users, Plus, Search, Download, Upload,
   Phone, Mail, ChevronLeft, ChevronRight, MoreVertical,
   Trash2, Edit, Eye, MessageSquare, X, Send, CheckSquare,
-  FileText, AlertCircle, CheckCircle2, Zap, Tag,
+  FileText, AlertCircle, CheckCircle2, Zap, Settings2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -33,6 +33,13 @@ const SOURCES = [
   "INSTAGRAM", "GOOGLE", "OPEN_HOUSE", "COLD_CALL", "OTHER",
 ]
 
+interface Stage {
+  id: string
+  name: string
+  color: string
+  order: number
+}
+
 interface ContactsClientProps {
   contacts: any[]
   total: number
@@ -41,7 +48,112 @@ interface ContactsClientProps {
   tags: any[]
   filters: { status?: string; search?: string; source?: string }
   activeTab: string
-  tabCounts: Record<string, number>
+  stageCounts: Record<string, number>
+  stages: Stage[]
+  pipelineId: string
+}
+
+function PipelineSettingsModal({
+  stages: initialStages,
+  pipelineId,
+  onClose,
+  onSaved,
+}: {
+  stages: Stage[]
+  pipelineId: string
+  onClose: () => void
+  onSaved: (stages: Stage[]) => void
+}) {
+  const [stages, setStages] = useState<Stage[]>(initialStages)
+  const [newName, setNewName] = useState("")
+  const [saving, setSaving] = useState(false)
+  const { toast } = useToast()
+
+  async function addStage() {
+    if (!newName.trim()) return
+    try {
+      const res = await fetch("/api/pipeline/stages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pipelineId, name: newName.trim(), color: "#3B82F6" }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setStages(s => [...s, data])
+      setNewName("")
+    } catch (e: any) {
+      toast({ title: e.message || "Failed to add stage", variant: "destructive" })
+    }
+  }
+
+  async function deleteStage(id: string) {
+    try {
+      const res = await fetch(`/api/pipeline/stages/${id}`, { method: "DELETE" })
+      if (!res.ok) throw new Error("Failed to delete")
+      setStages(s => s.filter(x => x.id !== id))
+    } catch (e: any) {
+      toast({ title: e.message || "Failed to delete stage", variant: "destructive" })
+    }
+  }
+
+  function handleSave() {
+    onSaved(stages)
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="flex items-center justify-between p-5 border-b">
+          <h2 className="font-bold text-gray-900 uppercase tracking-wide text-sm">Pipeline Settings</h2>
+          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg">
+            <X className="w-4 h-4 text-gray-500" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Add new stage */}
+          <div className="flex gap-2">
+            <input
+              value={newName}
+              onChange={e => setNewName(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && addStage()}
+              placeholder="Add new pipeline stage"
+              className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-lofty-500 outline-none"
+            />
+            <Button onClick={addStage} disabled={!newName.trim()} size="sm" className="bg-lofty-100 text-lofty-700 hover:bg-lofty-200 border-0 font-semibold">
+              OK
+            </Button>
+          </div>
+
+          {/* Stage list */}
+          <div className="max-h-72 overflow-y-auto space-y-1.5 pr-1">
+            {stages.length === 0 && (
+              <p className="text-sm text-gray-400 text-center py-4">No stages yet. Add one above.</p>
+            )}
+            {stages.map(stage => (
+              <div key={stage.id} className="flex items-center gap-3 border border-gray-200 rounded-lg px-3 py-2.5 bg-white hover:bg-gray-50">
+                <div className="flex flex-col gap-0.5 cursor-grab text-gray-300">
+                  <div className="flex gap-0.5"><span className="w-1 h-1 bg-gray-300 rounded-full" /><span className="w-1 h-1 bg-gray-300 rounded-full" /></div>
+                  <div className="flex gap-0.5"><span className="w-1 h-1 bg-gray-300 rounded-full" /><span className="w-1 h-1 bg-gray-300 rounded-full" /></div>
+                  <div className="flex gap-0.5"><span className="w-1 h-1 bg-gray-300 rounded-full" /><span className="w-1 h-1 bg-gray-300 rounded-full" /></div>
+                </div>
+                <span className="flex-1 text-sm font-medium text-gray-800">{stage.name}</span>
+                <button onClick={() => deleteStage(stage.id)} className="p-1 hover:bg-red-50 rounded text-gray-400 hover:text-red-500 transition-colors">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex gap-3 p-5 border-t bg-gray-50 rounded-b-2xl">
+          <Button onClick={handleSave} className="flex-1 bg-lofty-600 hover:bg-lofty-700">Save</Button>
+          <Button onClick={onClose} variant="outline" className="flex-1">Cancel</Button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function ImportModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
@@ -320,17 +432,7 @@ function relativeTime(date: string | null) {
   return `${Math.floor(d / 30)}mo ago`
 }
 
-const TABS = [
-  { id: "all", label: "All Leads" },
-  { id: "new_leads", label: "New Leads" },
-  { id: "do_not_contact", label: "Do Not Contact" },
-  { id: "contacted_1", label: "Contacted 1" },
-  { id: "contacted_2", label: "Contacted 2" },
-  { id: "buyers", label: "Buyers" },
-  { id: "sellers", label: "Homeowners" },
-]
-
-export default function ContactsClient({ contacts, total, page, pageSize, tags, filters, activeTab, tabCounts }: ContactsClientProps) {
+export default function ContactsClient({ contacts, total, page, pageSize, tags, filters, activeTab, stageCounts, stages: initialStages, pipelineId }: ContactsClientProps) {
   const router = useRouter()
   const { toast } = useToast()
   const [search, setSearch] = useState(filters.search || "")
@@ -338,6 +440,9 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
   const [showBulkSMS, setShowBulkSMS] = useState(false)
   const [showBulkEmail, setShowBulkEmail] = useState(false)
   const [showImport, setShowImport] = useState(false)
+  const [showPipelineSettings, setShowPipelineSettings] = useState(false)
+  const [stages, setStages] = useState<Stage[]>(initialStages)
+  const [updatingStage, setUpdatingStage] = useState<string | null>(null)
 
   const totalPages = Math.ceil(total / pageSize)
   const allSelected = contacts.length > 0 && contacts.every(c => selected.has(c.id))
@@ -348,6 +453,23 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
     if (tabId !== "all") params.set("tab", tabId)
     if (filters.search) params.set("search", filters.search)
     router.push(`/contacts?${params.toString()}`)
+  }
+
+  const assignStage = async (contactId: string, stageId: string) => {
+    setUpdatingStage(contactId)
+    try {
+      const res = await fetch("/api/pipeline/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contactId, stageId, pipelineId }),
+      })
+      if (!res.ok) throw new Error("Failed")
+      router.refresh()
+    } catch {
+      toast({ title: "Failed to update stage", variant: "destructive" })
+    } finally {
+      setUpdatingStage(null)
+    }
   }
 
   const toggleSelect = (id: string) => {
@@ -413,31 +535,61 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
         </div>
       </div>
 
-      {/* Filter tabs — like Lofty's lead tabs */}
+      {/* Pipeline filter tabs — dynamic from DB */}
       <div className="border-b border-gray-200 -mx-6 px-6 overflow-x-auto">
-        <div className="flex gap-0 min-w-max">
-          {TABS.map(tab => {
-            const count = tabCounts[tab.id] ?? 0
+        <div className="flex gap-0 items-end min-w-max">
+          {/* All Leads tab */}
+          <button onClick={() => goTab("all")}
+            className={cn(
+              "px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap transition-colors",
+              activeTab === "all" ? "border-lofty-600 text-lofty-600" : "border-transparent text-gray-500 hover:text-gray-700"
+            )}>
+            All Leads
+            <span className={cn("ml-1.5 text-xs px-1.5 py-0.5 rounded-full",
+              activeTab === "all" ? "bg-lofty-100 text-lofty-700" : "bg-gray-100 text-gray-500")}>
+              {total.toLocaleString()}
+            </span>
+          </button>
+
+          {/* Per-stage tabs */}
+          {stages.map(stage => {
+            const count = stageCounts[stage.id] ?? 0
             return (
-              <button key={tab.id} onClick={() => goTab(tab.id)}
+              <button key={stage.id} onClick={() => goTab(stage.id)}
                 className={cn(
                   "px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap transition-colors",
-                  activeTab === tab.id
-                    ? "border-lofty-600 text-lofty-600"
-                    : "border-transparent text-gray-500 hover:text-gray-700"
+                  activeTab === stage.id ? "border-lofty-600 text-lofty-600" : "border-transparent text-gray-500 hover:text-gray-700"
                 )}>
-                {tab.label}
+                {stage.name}
                 {count > 0 && (
                   <span className={cn("ml-1.5 text-xs px-1.5 py-0.5 rounded-full",
-                    activeTab === tab.id ? "bg-lofty-100 text-lofty-700" : "bg-gray-100 text-gray-500")}>
+                    activeTab === stage.id ? "bg-lofty-100 text-lofty-700" : "bg-gray-100 text-gray-500")}>
                     {count.toLocaleString()}
                   </span>
                 )}
               </button>
             )
           })}
+
+          {/* Pipeline settings gear */}
+          <button
+            onClick={() => setShowPipelineSettings(true)}
+            className="ml-2 mb-2 p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            title="Pipeline Settings"
+          >
+            <Settings2 className="w-4 h-4" />
+          </button>
         </div>
       </div>
+
+      {showPipelineSettings && (
+        <PipelineSettingsModal
+          stages={stages}
+          pipelineId={pipelineId}
+          onClose={() => setShowPipelineSettings(false)}
+          onSaved={updated => { setStages(updated); router.refresh() }}
+        />
+      )}
 
       {/* Bulk action bar */}
       {someSelected && (
@@ -591,19 +743,35 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
                     </div>
                   </div>
 
-                  {/* Pipeline */}
+                  {/* Pipeline — inline dropdown */}
                   <div className="min-w-0">
-                    {pipelineStage ? (
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: pipelineStage.color || "#94a3b8" }} />
-                        <span className="text-sm text-gray-700 truncate">{pipelineStage.name}</span>
-                      </div>
-                    ) : (
-                      <span className="text-sm text-gray-400">—</span>
-                    )}
-                    {pipelineStage?.pipeline?.name && (
-                      <p className="text-xs text-gray-400 truncate mt-0.5">{pipelineStage.pipeline.name}</p>
-                    )}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button className={cn(
+                          "flex items-center gap-1.5 text-sm hover:bg-gray-100 rounded-lg px-1.5 py-1 transition-colors w-full text-left",
+                          updatingStage === contact.id && "opacity-50"
+                        )}>
+                          <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: pipelineStage?.color || "#94a3b8" }} />
+                          <span className="truncate">{pipelineStage?.name || "Set stage"}</span>
+                          <svg className="w-3 h-3 text-gray-400 flex-shrink-0 ml-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="w-48">
+                        {stages.map(s => (
+                          <DropdownMenuItem
+                            key={s.id}
+                            onClick={() => assignStage(contact.id, s.id)}
+                            className={cn("flex items-center gap-2", pipelineStage?.id === s.id && "bg-lofty-50")}
+                          >
+                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
+                            {s.name}
+                          </DropdownMenuItem>
+                        ))}
+                        {stages.length === 0 && (
+                          <DropdownMenuItem disabled className="text-gray-400 text-xs">No stages — open Pipeline Settings</DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
 
                   {/* Last Touch */}
