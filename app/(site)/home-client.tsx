@@ -7,6 +7,7 @@ import type { AIConfig, Property } from "@prisma/client"
 
 interface HomeClientProps {
   config: AIConfig | null
+  websiteConfig?: any
   featuredProperties: Property[]
   stats: {
     _count: number
@@ -113,7 +114,7 @@ function PropertyCard({ property }: { property: Property }) {
   )
 }
 
-const testimonials = [
+const DEFAULT_TESTIMONIALS = [
   {
     id: 1,
     name: "Sarah & Michael T.",
@@ -137,11 +138,30 @@ const testimonials = [
   },
 ]
 
-export default function HomeClient({ config, featuredProperties }: HomeClientProps) {
-  const agentName = config?.realtorName || "Lofty Realty"
-  const agentBio = config?.agentPersona || "With years of experience in the luxury real estate market, I am dedicated to helping you find your perfect home or achieve the best value for your property. My commitment to excellence and personalized service sets me apart."
-  const agentPhone = config?.realtorPhone || "(555) 123-4567"
-  const agentEmail = config?.realtorEmail || "contact@loftyrealty.com"
+function parseJSON<T>(json: string | null | undefined, fallback: T): T {
+  if (!json) return fallback
+  try { return JSON.parse(json) } catch { return fallback }
+}
+
+export default function HomeClient({ config, websiteConfig, featuredProperties }: HomeClientProps) {
+  const agentName = websiteConfig?.agentName || config?.realtorName || "Lofty Realty"
+  const agentBio = websiteConfig?.agentBio || config?.agentPersona || "With years of experience in the luxury real estate market, I am dedicated to helping you find your perfect home or achieve the best value for your property. My commitment to excellence and personalized service sets me apart."
+  const agentPhone = websiteConfig?.agentPhone || config?.realtorPhone || "(555) 123-4567"
+  const agentEmail = websiteConfig?.agentEmail || config?.realtorEmail || "contact@loftyrealty.com"
+  const agentPhotoUrl = websiteConfig?.agentPhotoUrl as string | undefined
+  const heroTitle = websiteConfig?.heroTitle || "Your Luxury Real Estate Expert"
+  const heroSubtitle = websiteConfig?.heroSubtitle || `${agentName} — delivering extraordinary results with unparalleled market expertise and white-glove service.`
+  const primaryColor = websiteConfig?.primaryColor || "#c9a84c"
+  const accentColor = websiteConfig?.accentColor || "#e8c97a"
+  const darkBg = websiteConfig?.darkBg || "#0a0e1a"
+  const darkBg2 = websiteConfig?.darkBg2 || "#1a2744"
+  const facebookUrl = websiteConfig?.facebookUrl as string | undefined
+  const instagramUrl = websiteConfig?.instagramUrl as string | undefined
+  const linkedinUrl = websiteConfig?.linkedinUrl as string | undefined
+  const videoUrl = websiteConfig?.videoUrl as string | undefined
+  const serviceAreas = parseJSON<string[]>(websiteConfig?.serviceAreas, [])
+  const testimonials = parseJSON(websiteConfig?.testimonials, DEFAULT_TESTIMONIALS)
+  const customStats = parseJSON<{ value: string; label: string }[] | null>(websiteConfig?.stats, null)
 
   const [contactForm, setContactForm] = useState({
     firstName: "",
@@ -157,7 +177,7 @@ export default function HomeClient({ config, featuredProperties }: HomeClientPro
 
   const initials = agentName
     .split(" ")
-    .map((n) => n[0])
+    .map((n: string) => n[0])
     .join("")
     .slice(0, 2)
     .toUpperCase()
@@ -192,13 +212,20 @@ export default function HomeClient({ config, featuredProperties }: HomeClientPro
       <section
         id="hero"
         className="relative min-h-screen flex items-center justify-center overflow-hidden"
-        style={{ background: "linear-gradient(135deg, #0a0e1a 0%, #1a2744 100%)" }}
+        style={{ background: `linear-gradient(135deg, ${darkBg} 0%, ${darkBg2} 100%)` }}
       >
+        {/* Hero background image */}
+        {websiteConfig?.heroBgUrl && (
+          <div className="absolute inset-0">
+            <img src={websiteConfig.heroBgUrl} alt="" className="w-full h-full object-cover" />
+            <div className="absolute inset-0" style={{ background: "rgba(10,14,26,0.7)" }} />
+          </div>
+        )}
         {/* Animated orbs */}
         <div
           className="absolute w-96 h-96 rounded-full opacity-10 animate-float"
           style={{
-            background: "radial-gradient(circle, #c9a84c 0%, transparent 70%)",
+            background: `radial-gradient(circle, ${primaryColor} 0%, transparent 70%)`,
             top: "10%",
             right: "15%",
           }}
@@ -206,7 +233,7 @@ export default function HomeClient({ config, featuredProperties }: HomeClientPro
         <div
           className="absolute w-64 h-64 rounded-full opacity-10 animate-float-delayed"
           style={{
-            background: "radial-gradient(circle, #e8c97a 0%, transparent 70%)",
+            background: `radial-gradient(circle, ${accentColor} 0%, transparent 70%)`,
             bottom: "20%",
             left: "10%",
           }}
@@ -214,47 +241,56 @@ export default function HomeClient({ config, featuredProperties }: HomeClientPro
         <div
           className="absolute w-80 h-80 rounded-full opacity-5"
           style={{
-            background: "radial-gradient(circle, #c9a84c 0%, transparent 70%)",
+            background: `radial-gradient(circle, ${primaryColor} 0%, transparent 70%)`,
             top: "50%",
             left: "50%",
             transform: "translate(-50%, -50%)",
           }}
         />
 
-        {/* Dark overlay */}
-        <div className="absolute inset-0" style={{ background: "rgba(10,14,26,0.6)" }} />
+        {/* Dark overlay (only when no bg image) */}
+        {!websiteConfig?.heroBgUrl && (
+          <div className="absolute inset-0" style={{ background: "rgba(10,14,26,0.6)" }} />
+        )}
 
         {/* Content */}
         <div className="relative z-10 max-w-4xl mx-auto px-6 text-center">
-          <div className="inline-flex items-center gap-2 mb-6 px-4 py-2 rounded-full border border-[#c9a84c]/30 text-[#c9a84c] text-sm font-medium" style={{ background: "rgba(201,168,76,0.1)" }}>
-            <Star className="w-4 h-4 fill-[#c9a84c]" />
+          <div className="inline-flex items-center gap-2 mb-6 px-4 py-2 rounded-full border text-sm font-medium" style={{ borderColor: `${primaryColor}4d`, color: primaryColor, background: `${primaryColor}1a` }}>
+            <Star className="w-4 h-4" style={{ fill: primaryColor, color: primaryColor }} />
             Trusted Luxury Real Estate Expert
           </div>
 
           <h1 className="font-serif text-5xl md:text-7xl font-bold text-white leading-tight mb-6">
-            Your Luxury
-            <span className="block" style={{ color: "#c9a84c" }}>
-              Real Estate Expert
-            </span>
+            {heroTitle.includes("\n") ? (
+              heroTitle.split("\n").map((line: string, i: number) => (
+                <span key={i} className={i > 0 ? "block" : ""} style={i > 0 ? { color: primaryColor } : {}}>{line}</span>
+              ))
+            ) : (
+              <>
+                {heroTitle}
+                <span className="block" style={{ color: primaryColor }}>&nbsp;</span>
+              </>
+            )}
           </h1>
 
           <p className="text-xl text-gray-300 mb-8 max-w-2xl mx-auto leading-relaxed">
-            {agentName} — delivering extraordinary results with unparalleled market expertise and white-glove service.
+            {heroSubtitle}
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link
               href="/site/listings"
               className="px-8 py-4 rounded-full text-lg font-semibold text-white transition-all duration-200 hover:opacity-90 hover:scale-105 shadow-2xl"
-              style={{ background: "linear-gradient(135deg, #c9a84c, #e8c97a)" }}
+              style={{ background: `linear-gradient(135deg, ${primaryColor}, ${accentColor})` }}
             >
-              View Listings
+              {websiteConfig?.ctaPrimary || "View Listings"}
             </Link>
             <Link
               href="#contact"
-              className="px-8 py-4 rounded-full text-lg font-semibold text-white border-2 border-white hover:bg-white hover:text-[#0a0e1a] transition-all duration-200"
+              className="px-8 py-4 rounded-full text-lg font-semibold text-white border-2 border-white hover:bg-white transition-all duration-200"
+              style={{ "--hover-color": darkBg } as React.CSSProperties}
             >
-              Contact Me
+              {websiteConfig?.ctaSecondary || "Contact Me"}
             </Link>
           </div>
 
@@ -273,18 +309,18 @@ export default function HomeClient({ config, featuredProperties }: HomeClientPro
       ────────────────────────────────────────────── */}
       <section
         className="py-6"
-        style={{ background: "#0a0e1a" }}
+        style={{ background: darkBg }}
       >
         <div className="max-w-6xl mx-auto px-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
-            {[
+            {(customStats || [
               { value: "500+", label: "Homes Sold" },
               { value: "$200M+", label: "In Sales" },
               { value: "15 Years", label: "Experience" },
               { value: "5★", label: "Rated" },
-            ].map((stat) => (
+            ]).map((stat) => (
               <div key={stat.label} className="flex flex-col items-center">
-                <span className="text-2xl md:text-3xl font-bold" style={{ color: "#c9a84c" }}>
+                <span className="text-2xl md:text-3xl font-bold" style={{ color: primaryColor }}>
                   {stat.value}
                 </span>
                 <span className="text-gray-400 text-sm mt-1">{stat.label}</span>
@@ -300,7 +336,7 @@ export default function HomeClient({ config, featuredProperties }: HomeClientPro
       <section id="listings" className="py-20 bg-[#fafaf8]">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-12">
-            <p className="text-sm font-semibold uppercase tracking-widest mb-2" style={{ color: "#c9a84c" }}>
+            <p className="text-sm font-semibold uppercase tracking-widest mb-2" style={{ color: primaryColor }}>
               Exclusive Portfolio
             </p>
             <h2 className="font-serif text-4xl md:text-5xl font-bold text-[#1a1a2e] mb-4">
@@ -331,7 +367,7 @@ export default function HomeClient({ config, featuredProperties }: HomeClientPro
             <Link
               href="/site/listings"
               className="inline-flex items-center gap-2 px-8 py-3.5 rounded-full font-semibold text-white transition-all duration-200 hover:opacity-90 hover:gap-3"
-              style={{ background: "linear-gradient(135deg, #c9a84c, #e8c97a)" }}
+              style={{ background: `linear-gradient(135deg, ${primaryColor}, ${accentColor})` }}
             >
               View All Properties
               <ChevronRight className="w-4 h-4" />
@@ -346,7 +382,7 @@ export default function HomeClient({ config, featuredProperties }: HomeClientPro
       <section className="py-20 bg-white">
         <div className="max-w-6xl mx-auto px-6">
           <div className="text-center mb-14">
-            <p className="text-sm font-semibold uppercase tracking-widest mb-2" style={{ color: "#c9a84c" }}>
+            <p className="text-sm font-semibold uppercase tracking-widest mb-2" style={{ color: primaryColor }}>
               Why Work With Me
             </p>
             <h2 className="font-serif text-4xl md:text-5xl font-bold text-[#1a1a2e] mb-4">
@@ -396,41 +432,45 @@ export default function HomeClient({ config, featuredProperties }: HomeClientPro
       <section id="about" className="py-20 bg-[#fafaf8]">
         <div className="max-w-6xl mx-auto px-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
-            {/* Left: Photo placeholder */}
+            {/* Left: Photo */}
             <div className="relative">
               <div
                 className="aspect-[4/5] rounded-3xl flex items-center justify-center text-white relative overflow-hidden"
-                style={{ background: "linear-gradient(135deg, #0a0e1a 0%, #1a2744 100%)" }}
+                style={{ background: `linear-gradient(135deg, ${darkBg} 0%, ${darkBg2} 100%)` }}
               >
-                <div className="text-center z-10">
-                  <div
-                    className="w-32 h-32 rounded-full mx-auto mb-4 flex items-center justify-center text-4xl font-bold"
-                    style={{ background: "linear-gradient(135deg, #c9a84c, #e8c97a)", color: "#0a0e1a" }}
-                  >
-                    {initials}
+                {agentPhotoUrl ? (
+                  <img src={agentPhotoUrl} alt={agentName} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="text-center z-10">
+                    <div
+                      className="w-32 h-32 rounded-full mx-auto mb-4 flex items-center justify-center text-4xl font-bold"
+                      style={{ background: `linear-gradient(135deg, ${primaryColor}, ${accentColor})`, color: darkBg }}
+                    >
+                      {initials}
+                    </div>
+                    <p className="text-white/60 text-sm">Professional Photo</p>
                   </div>
-                  <p className="text-white/60 text-sm">Professional Photo</p>
-                </div>
+                )}
                 {/* Decorative orb */}
                 <div
                   className="absolute w-64 h-64 rounded-full opacity-10"
                   style={{
-                    background: "radial-gradient(circle, #c9a84c 0%, transparent 70%)",
+                    background: `radial-gradient(circle, ${primaryColor} 0%, transparent 70%)`,
                     bottom: "-20px",
                     right: "-20px",
                   }}
                 />
               </div>
-              {/* Gold accent border */}
+              {/* Accent border */}
               <div
                 className="absolute -bottom-4 -right-4 w-full h-full rounded-3xl -z-10"
-                style={{ border: "2px solid #c9a84c", opacity: 0.3 }}
+                style={{ border: `2px solid ${primaryColor}`, opacity: 0.3 }}
               />
             </div>
 
             {/* Right: Info */}
             <div>
-              <p className="text-sm font-semibold uppercase tracking-widest mb-3" style={{ color: "#c9a84c" }}>
+              <p className="text-sm font-semibold uppercase tracking-widest mb-3" style={{ color: primaryColor }}>
                 About Me
               </p>
               <h2 className="font-serif text-4xl md:text-5xl font-bold text-[#1a1a2e] mb-6">
@@ -442,14 +482,14 @@ export default function HomeClient({ config, featuredProperties }: HomeClientPro
 
               <div className="space-y-3 mb-8">
                 <div className="flex items-center gap-3 text-gray-700">
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "rgba(201,168,76,0.1)" }}>
-                    <Phone className="w-4 h-4" style={{ color: "#c9a84c" }} />
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: `${primaryColor}1a` }}>
+                    <Phone className="w-4 h-4" style={{ color: primaryColor }} />
                   </div>
                   <span>{agentPhone}</span>
                 </div>
                 <div className="flex items-center gap-3 text-gray-700">
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "rgba(201,168,76,0.1)" }}>
-                    <Mail className="w-4 h-4" style={{ color: "#c9a84c" }} />
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: `${primaryColor}1a` }}>
+                    <Mail className="w-4 h-4" style={{ color: primaryColor }} />
                   </div>
                   <span>{agentEmail}</span>
                 </div>
@@ -458,7 +498,7 @@ export default function HomeClient({ config, featuredProperties }: HomeClientPro
               <a
                 href="#contact"
                 className="inline-flex items-center gap-2 px-8 py-4 rounded-full font-semibold text-white transition-all duration-200 hover:opacity-90 hover:gap-3"
-                style={{ background: "linear-gradient(135deg, #c9a84c, #e8c97a)" }}
+                style={{ background: `linear-gradient(135deg, ${primaryColor}, ${accentColor})` }}
               >
                 Schedule a Call
                 <ChevronRight className="w-4 h-4" />
@@ -474,7 +514,7 @@ export default function HomeClient({ config, featuredProperties }: HomeClientPro
       <section className="py-20 bg-white">
         <div className="max-w-6xl mx-auto px-6">
           <div className="text-center mb-14">
-            <p className="text-sm font-semibold uppercase tracking-widest mb-2" style={{ color: "#c9a84c" }}>
+            <p className="text-sm font-semibold uppercase tracking-widest mb-2" style={{ color: primaryColor }}>
               Client Stories
             </p>
             <h2 className="font-serif text-4xl md:text-5xl font-bold text-[#1a1a2e] mb-4">
@@ -483,7 +523,7 @@ export default function HomeClient({ config, featuredProperties }: HomeClientPro
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {testimonials.map((t) => (
+            {testimonials.map((t: { id: number; name: string; role: string; text: string; stars: number }) => (
               <div
                 key={t.id}
                 className="p-8 rounded-2xl border border-gray-100 hover:shadow-xl transition-all duration-300"
@@ -491,7 +531,7 @@ export default function HomeClient({ config, featuredProperties }: HomeClientPro
                 {/* Stars */}
                 <div className="flex gap-1 mb-4">
                   {Array.from({ length: t.stars }).map((_, i) => (
-                    <Star key={i} className="w-4 h-4 fill-[#c9a84c]" style={{ color: "#c9a84c" }} />
+                    <Star key={i} className="w-4 h-4" style={{ fill: primaryColor, color: primaryColor }} />
                   ))}
                 </div>
                 <p className="text-gray-600 leading-relaxed mb-6 italic">
@@ -500,7 +540,7 @@ export default function HomeClient({ config, featuredProperties }: HomeClientPro
                 <div className="flex items-center gap-3">
                   <div
                     className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white"
-                    style={{ background: "linear-gradient(135deg, #c9a84c, #e8c97a)" }}
+                    style={{ background: `linear-gradient(135deg, ${primaryColor}, ${accentColor})` }}
                   >
                     {t.name.charAt(0)}
                   </div>
@@ -516,12 +556,67 @@ export default function HomeClient({ config, featuredProperties }: HomeClientPro
       </section>
 
       {/* ──────────────────────────────────────────────
-          7. CONTACT FORM
+          7. SERVICE AREAS (conditional)
+      ────────────────────────────────────────────── */}
+      {serviceAreas.length > 0 && (
+        <section className="py-16 bg-[#fafaf8]">
+          <div className="max-w-5xl mx-auto px-6 text-center">
+            <p className="text-sm font-semibold uppercase tracking-widest mb-2" style={{ color: primaryColor }}>
+              Where I Work
+            </p>
+            <h2 className="font-serif text-3xl md:text-4xl font-bold text-[#1a1a2e] mb-8">
+              Service Areas
+            </h2>
+            <div className="flex flex-wrap justify-center gap-3">
+              {serviceAreas.map((area: string) => (
+                <span
+                  key={area}
+                  className="px-5 py-2 rounded-full text-sm font-medium text-white"
+                  style={{ background: `linear-gradient(135deg, ${primaryColor}, ${accentColor})` }}
+                >
+                  {area}
+                </span>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ──────────────────────────────────────────────
+          8. VIDEO (conditional)
+      ────────────────────────────────────────────── */}
+      {videoUrl && (
+        <section className="py-20 bg-white">
+          <div className="max-w-4xl mx-auto px-6 text-center">
+            <p className="text-sm font-semibold uppercase tracking-widest mb-2" style={{ color: primaryColor }}>
+              Watch
+            </p>
+            <h2 className="font-serif text-3xl md:text-4xl font-bold text-[#1a1a2e] mb-8">
+              About {agentName}
+            </h2>
+            <div className="aspect-video rounded-2xl overflow-hidden shadow-2xl">
+              {videoUrl.includes("youtube.com") || videoUrl.includes("youtu.be") ? (
+                <iframe
+                  src={videoUrl.replace("watch?v=", "embed/").replace("youtu.be/", "www.youtube.com/embed/")}
+                  className="w-full h-full"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              ) : (
+                <video src={videoUrl} controls className="w-full h-full object-cover" />
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ──────────────────────────────────────────────
+          9. CONTACT FORM
       ────────────────────────────────────────────── */}
       <section
         id="contact"
         className="py-20"
-        style={{ background: "linear-gradient(135deg, #0a0e1a 0%, #1a2744 100%)" }}
+        style={{ background: `linear-gradient(135deg, ${darkBg} 0%, ${darkBg2} 100%)` }}
       >
         <div className="max-w-4xl mx-auto px-6">
           <div className="text-center mb-12">
@@ -622,8 +717,8 @@ export default function HomeClient({ config, featuredProperties }: HomeClientPro
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="w-full py-4 rounded-xl font-semibold text-[#0a0e1a] text-lg transition-all duration-200 hover:opacity-90 disabled:opacity-50"
-                  style={{ background: "linear-gradient(135deg, #c9a84c, #e8c97a)" }}
+                  className="w-full py-4 rounded-xl font-semibold text-lg transition-all duration-200 hover:opacity-90 disabled:opacity-50"
+                  style={{ background: `linear-gradient(135deg, ${primaryColor}, ${accentColor})`, color: darkBg }}
                 >
                   {submitting ? "Sending..." : "Send Message"}
                 </button>
@@ -636,35 +731,40 @@ export default function HomeClient({ config, featuredProperties }: HomeClientPro
       {/* ──────────────────────────────────────────────
           8. FOOTER
       ────────────────────────────────────────────── */}
-      <footer style={{ background: "#0a0e1a" }} className="pt-16 pb-8 border-t border-white/10">
+      <footer style={{ background: darkBg }} className="pt-16 pb-8 border-t border-white/10">
         <div className="max-w-6xl mx-auto px-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-12 mb-12">
             {/* Brand */}
             <div>
               <div className="flex items-center gap-3 mb-4">
                 <div
-                  className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-[#0a0e1a]"
-                  style={{ background: "linear-gradient(135deg, #c9a84c, #e8c97a)" }}
+                  className="w-10 h-10 rounded-full flex items-center justify-center font-bold"
+                  style={{ background: `linear-gradient(135deg, ${primaryColor}, ${accentColor})`, color: darkBg }}
                 >
                   {initials.charAt(0)}
                 </div>
                 <span className="font-serif text-xl font-bold text-white">{agentName}</span>
               </div>
               <p className="text-gray-400 text-sm leading-relaxed">
-                Your trusted luxury real estate expert, dedicated to making your property dreams a reality.
+                {websiteConfig?.footerTagline || "Your trusted luxury real estate expert, dedicated to making your property dreams a reality."}
               </p>
               {/* Social Icons */}
               <div className="flex gap-4 mt-6">
                 {[
-                  { icon: Facebook, label: "Facebook" },
-                  { icon: Instagram, label: "Instagram" },
-                  { icon: Linkedin, label: "LinkedIn" },
-                ].map((s) => (
+                  { icon: Facebook, label: "Facebook", url: facebookUrl },
+                  { icon: Instagram, label: "Instagram", url: instagramUrl },
+                  { icon: Linkedin, label: "LinkedIn", url: linkedinUrl },
+                ].filter(s => s.url || true).map((s) => (
                   <a
                     key={s.label}
-                    href="#"
+                    href={s.url || "#"}
+                    target={s.url ? "_blank" : undefined}
+                    rel={s.url ? "noopener noreferrer" : undefined}
                     aria-label={s.label}
-                    className="w-9 h-9 rounded-full border border-white/20 flex items-center justify-center text-gray-400 hover:text-[#c9a84c] hover:border-[#c9a84c] transition-all duration-200"
+                    className="w-9 h-9 rounded-full border border-white/20 flex items-center justify-center text-gray-400 transition-all duration-200"
+                    style={{ ["--hover-color" as string]: primaryColor }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = primaryColor; (e.currentTarget as HTMLElement).style.borderColor = primaryColor }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = ""; (e.currentTarget as HTMLElement).style.borderColor = "" }}
                   >
                     <s.icon className="w-4 h-4" />
                   </a>
@@ -699,11 +799,11 @@ export default function HomeClient({ config, featuredProperties }: HomeClientPro
               <h3 className="text-white font-semibold mb-4">Contact</h3>
               <div className="space-y-3">
                 <div className="flex items-center gap-3 text-gray-400 text-sm">
-                  <Phone className="w-4 h-4 flex-shrink-0" style={{ color: "#c9a84c" }} />
+                  <Phone className="w-4 h-4 flex-shrink-0" style={{ color: primaryColor }} />
                   {agentPhone}
                 </div>
                 <div className="flex items-center gap-3 text-gray-400 text-sm">
-                  <Mail className="w-4 h-4 flex-shrink-0" style={{ color: "#c9a84c" }} />
+                  <Mail className="w-4 h-4 flex-shrink-0" style={{ color: primaryColor }} />
                   {agentEmail}
                 </div>
               </div>

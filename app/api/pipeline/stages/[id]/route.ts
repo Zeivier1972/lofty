@@ -25,6 +25,8 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   try {
+    // Delete leads in this stage first (no cascade defined on PipelineLead → PipelineStage)
+    await prisma.pipelineLead.deleteMany({ where: { stageId: params.id } })
     await prisma.pipelineStage.delete({ where: { id: params.id } })
     return NextResponse.json({ success: true })
   } catch (e) {

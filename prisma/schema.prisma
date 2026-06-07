@@ -480,6 +480,48 @@ model AIConfig {
   updatedAt       DateTime @updatedAt
 }
 
+model WebsiteConfig {
+  id                String   @id @default(cuid())
+  // Hero
+  heroTitle         String   @default("Your Dream Home Awaits")
+  heroSubtitle      String   @default("Luxury real estate with a personal touch")
+  heroImageUrl      String?
+  heroCta           String   @default("View Listings")
+  heroCta2          String   @default("Contact Me")
+  // Agent
+  agentName         String   @default("Catherine Gomez")
+  agentTitle        String   @default("Luxury Real Estate Specialist")
+  agentPhone        String?
+  agentEmail        String?
+  agentPhotoUrl     String?
+  agentBio          String   @default("With over 15 years of experience in Miami's luxury real estate market, I bring unmatched expertise and dedication to every transaction.")
+  agentLicense      String?
+  agentBrokerage    String?
+  // Stats
+  yearsFounded      Int      @default(2009)
+  homesSold         Int      @default(500)
+  satisfiedClients  Int      @default(98)
+  avgDaysOnMarket   Int      @default(21)
+  // Branding
+  primaryColor      String   @default("#0e8fe9")
+  accentColor       String   @default("#c9a84c")
+  logoUrl           String?
+  // Social
+  facebook          String?
+  instagram         String?
+  linkedin          String?
+  youtube           String?
+  // Content
+  aboutHeading      String   @default("Why Work With Me")
+  testimonials      String   @default("[]")
+  serviceAreas      String   @default("[]")
+  videoUrl          String?
+  // SEO
+  metaTitle         String?
+  metaDescription   String?
+  updatedAt         DateTime @updatedAt
+}
+
 // ─── IDX / Property Search ────────────────────────────────────────────────────
 
 model PropertySave {
