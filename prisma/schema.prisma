@@ -30,6 +30,31 @@ model User {
   notes        Note[]
   emails       Email[]
   smartPlans   SmartPlan[]
+  availability Availability[]
+  availabilityBlocks AvailabilityBlock[]
+}
+
+model Availability {
+  id          String   @id @default(cuid())
+  dayOfWeek   Int      // 0=Sun 1=Mon 2=Tue 3=Wed 4=Thu 5=Fri 6=Sat
+  startTime   String   // "09:00"
+  endTime     String   // "17:00"
+  isAvailable Boolean  @default(true)
+  slotMinutes Int      @default(30)
+  user        User?    @relation(fields: [userId], references: [id])
+  userId      String?
+  createdAt   DateTime @default(now())
+}
+
+model AvailabilityBlock {
+  id        String   @id @default(cuid())
+  date      String   // "YYYY-MM-DD"
+  startTime String?  // null = full day block
+  endTime   String?
+  reason    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  userId    String?
+  createdAt DateTime @default(now())
 }
 
 model Contact {

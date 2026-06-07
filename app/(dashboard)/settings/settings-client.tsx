@@ -8,7 +8,7 @@ import {
   User, Bell, Shield, Tag, GitBranch, Globe, Save, Loader2,
   Plus, Trash2, Edit, Database, CheckCircle, ExternalLink,
   X, Key, MessageSquare, Mail, Calendar, FileSignature, Home,
-  Check,
+  Check, Clock, Copy, Link,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -152,6 +152,148 @@ function IntegrationModal({ integration, onClose }: { integration: typeof INTEGR
         </div>
       </div>
     </div>
+  )
+}
+
+// ─── Availability Settings component ─────────────────────────────────────────
+const DAY_NAMES = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"]
+
+function AvailabilitySettings() {
+  const { toast } = useToast()
+  const [schedule, setSchedule] = useState([
+    { dayOfWeek: 0, startTime: "09:00", endTime: "17:00", isAvailable: false, slotMinutes: 30 },
+    { dayOfWeek: 1, startTime: "09:00", endTime: "17:00", isAvailable: true,  slotMinutes: 30 },
+    { dayOfWeek: 2, startTime: "09:00", endTime: "17:00", isAvailable: true,  slotMinutes: 30 },
+    { dayOfWeek: 3, startTime: "09:00", endTime: "17:00", isAvailable: true,  slotMinutes: 30 },
+    { dayOfWeek: 4, startTime: "09:00", endTime: "17:00", isAvailable: true,  slotMinutes: 30 },
+    { dayOfWeek: 5, startTime: "09:00", endTime: "17:00", isAvailable: true,  slotMinutes: 30 },
+    { dayOfWeek: 6, startTime: "10:00", endTime: "14:00", isAvailable: false, slotMinutes: 30 },
+  ])
+  const [saving, setSaving] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  useState(() => {
+    fetch("/api/appointments/availability")
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data) && data.length === 7) setSchedule(data) })
+      .catch(() => {})
+  })
+
+  const bookingUrl = typeof window !== "undefined" ? `${window.location.origin}/book` : "/book"
+
+  const copyLink = () => {
+    navigator.clipboard.writeText(bookingUrl)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const updateDay = (idx: number, field: string, value: any) => {
+    setSchedule(s => s.map((d, i) => i === idx ? { ...d, [field]: value } : d))
+  }
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      const res = await fetch("/api/appointments/availability", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ schedule }),
+      })
+      if (!res.ok) throw new Error("Failed")
+      toast({ title: "✅ Disponibilidad guardada" })
+    } catch {
+      toast({ title: "Error al guardar", variant: "destructive" })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Card className="border-0 shadow-sm">
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Clock className="w-4 h-4" />Disponibilidad para Citas
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {/* Booking link */}
+        <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
+          <p className="text-sm font-semibold text-indigo-900 mb-1">Tu enlace de reserva</p>
+          <p className="text-xs text-indigo-600 mb-3">Comparte este enlace con clientes para que agenden citas contigo directamente.</p>
+          <div className="flex gap-2">
+            <div className="flex-1 bg-white border border-indigo-200 rounded-lg px-3 py-2 text-sm text-indigo-700 font-mono truncate">
+              {bookingUrl}
+            </div>
+            <Button size="sm" onClick={copyLink} variant="outline" className="border-indigo-300 text-indigo-700 gap-1.5">
+              {copied ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
+              {copied ? "Copiado!" : "Copiar"}
+            </Button>
+            <Button size="sm" asChild className="bg-indigo-600 hover:bg-indigo-700 gap-1.5">
+              <a href="/book" target="_blank"><Link className="w-3.5 h-3.5" />Abrir</a>
+            </Button>
+          </div>
+        </div>
+
+        {/* Slot duration */}
+        <div>
+          <label className="text-sm font-semibold text-gray-700 mb-2 block">Duración de citas</label>
+          <div className="flex gap-2">
+            {[15, 30, 45, 60].map(min => (
+              <button
+                key={min}
+                onClick={() => setSchedule(s => s.map(d => ({ ...d, slotMinutes: min })))}
+                className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                  schedule[1]?.slotMinutes === min
+                    ? "bg-indigo-600 text-white border-indigo-600"
+                    : "border-gray-200 text-gray-700 hover:border-indigo-300"
+                }`}
+              >
+                {min} min
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Weekly schedule */}
+        <div>
+          <label className="text-sm font-semibold text-gray-700 mb-3 block">Horario semanal</label>
+          <div className="space-y-2">
+            {schedule.map((day, idx) => (
+              <div key={idx} className="flex items-center gap-3 p-3 border border-gray-200 rounded-xl">
+                <Switch
+                  checked={day.isAvailable}
+                  onCheckedChange={v => updateDay(idx, "isAvailable", v)}
+                />
+                <span className="w-24 text-sm font-medium text-gray-700">{DAY_NAMES[day.dayOfWeek]}</span>
+                {day.isAvailable ? (
+                  <div className="flex items-center gap-2 flex-1">
+                    <input
+                      type="time"
+                      value={day.startTime}
+                      onChange={e => updateDay(idx, "startTime", e.target.value)}
+                      className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
+                    <span className="text-gray-400 text-sm">—</span>
+                    <input
+                      type="time"
+                      value={day.endTime}
+                      onChange={e => updateDay(idx, "endTime", e.target.value)}
+                      className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
+                  </div>
+                ) : (
+                  <span className="text-sm text-gray-400 flex-1">No disponible</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <Button onClick={save} disabled={saving} className="bg-indigo-600 hover:bg-indigo-700 gap-2">
+          {saving ? <><Loader2 className="w-4 h-4 animate-spin" />Guardando...</> : <><Save className="w-4 h-4" />Guardar Disponibilidad</>}
+        </Button>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -364,6 +506,7 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
             {[
               { value: "profile", label: "Profile", icon: User },
               { value: "notifications", label: "Notifications", icon: Bell },
+              { value: "availability", label: "Availability", icon: Clock },
               { value: "tags", label: "Tags", icon: Tag },
               { value: "pipeline", label: "Pipeline", icon: GitBranch },
               { value: "idx", label: "IDX / MLS", icon: Database },
@@ -722,6 +865,11 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* Availability */}
+          <TabsContent value="availability">
+            <AvailabilitySettings />
           </TabsContent>
 
           {/* Security */}
