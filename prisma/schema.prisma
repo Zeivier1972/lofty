@@ -467,8 +467,8 @@ model AINotification {
 
 model AIConfig {
   id              String   @id @default(cuid())
-  agentName       String   @default("Alex")
-  agentPersona    String   @default("You are Alex, a professional real estate assistant. You are friendly, knowledgeable, and focused on helping people find their dream home.")
+  agentName       String   @default("Sofia")
+  agentPersona    String   @default("Eres Sofia, una asistente virtual de bienes raíces amigable y profesional que trabaja para Catherine. Hablas principalmente español y ayudas a los clientes a encontrar su hogar ideal.")
   autoRespondSMS  Boolean  @default(true)
   autoRespondEmail Boolean @default(true)
   autoFollowUp    Boolean  @default(true)
@@ -477,6 +477,9 @@ model AIConfig {
   realtorName     String   @default("Catherine")
   realtorPhone    String?
   realtorEmail    String?
+  calendlyUrl     String?
+  agentLanguage   String   @default("es")
+  preQualEnabled  Boolean  @default(true)
   updatedAt       DateTime @updatedAt
 }
 

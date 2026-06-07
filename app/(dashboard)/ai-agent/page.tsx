@@ -8,7 +8,7 @@ import { getAIConfig } from "@/lib/ai-agent"
 export default async function AIAgentPage() {
   const session = await auth()
 
-  const [notifications, recentConversations, config, stats] = await Promise.all([
+  const [notifications, recentConversations, config, rawStats, ftboPlan, preQualStats] = await Promise.all([
     prisma.aINotification.findMany({
       include: { contact: { select: { id: true, firstName: true, lastName: true, phone: true } } },
       orderBy: { createdAt: "desc" },
@@ -29,9 +29,32 @@ export default async function AIAgentPage() {
       prisma.sMSMessage.count({ where: { direction: "OUTBOUND" } }),
       prisma.email.count({ where: { status: "SENT" } }),
     ]),
+    prisma.smartPlan.findFirst({
+      where: { name: { contains: "Primera Vez" } },
+      include: {
+        steps: { orderBy: { order: "asc" } },
+        enrollments: { where: { status: "ACTIVE" }, select: { id: true } },
+      },
+    }),
+    Promise.all([
+      prisma.contact.count({ where: { isArchived: false } }),
+      prisma.contact.count({
+        where: {
+          isArchived: false,
+          activities: { some: { type: "AI_TRIGGERED" } },
+        },
+      }),
+      prisma.task.count({
+        where: {
+          title: { contains: "Llamar" },
+          status: { not: "COMPLETED" },
+        },
+      }),
+    ]),
   ])
 
-  const [totalNotifications, unreadCount, smsSent, emailsSent] = stats
+  const [totalNotifications, unreadCount, smsSent, emailsSent] = rawStats
+  const [totalContacts, aiTouched, pendingCalls] = preQualStats
 
   return (
     <AIAgentClient
@@ -39,6 +62,8 @@ export default async function AIAgentPage() {
       conversations={JSON.parse(JSON.stringify(recentConversations))}
       config={JSON.parse(JSON.stringify(config))}
       stats={{ totalNotifications, unreadCount, smsSent, emailsSent }}
+      ftboPlan={ftboPlan ? JSON.parse(JSON.stringify(ftboPlan)) : null}
+      preQualStats={{ totalContacts, aiTouched, pendingCalls }}
     />
   )
 }

@@ -5,18 +5,18 @@ import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth"
 
 export async function GET() {
-  const config = await prisma.aIConfig.findFirst()
+  let config = await prisma.aIConfig.findFirst()
   if (!config) {
-    const created = await prisma.aIConfig.create({
+    config = await prisma.aIConfig.create({
       data: {
-        agentName: "Alex",
+        agentName: "Sofia",
         realtorName: "Catherine",
         autoRespondSMS: true,
         autoRespondEmail: true,
         autoFollowUp: true,
+        agentPersona: "Eres Sofia, una asistente virtual de bienes raíces amigable y profesional que trabaja para Catherine. Hablas principalmente español.",
       },
     })
-    return NextResponse.json(created)
   }
   return NextResponse.json(config)
 }
@@ -26,17 +26,28 @@ export async function PUT(req: Request) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const body = await req.json()
-  const { agentName, realtorName, autoRespondSMS, autoRespondEmail, autoFollowUp } = body
+  const {
+    agentName, realtorName, realtorPhone, realtorEmail,
+    autoRespondSMS, autoRespondEmail, autoFollowUp,
+    calendlyUrl, agentPersona, preQualEnabled,
+    leadScoreThreshold, followUpDelayHours,
+  } = body
 
   const existing = await prisma.aIConfig.findFirst()
+  const data: any = {
+    agentName, realtorName, autoRespondSMS, autoRespondEmail, autoFollowUp,
+    ...(realtorPhone !== undefined && { realtorPhone }),
+    ...(realtorEmail !== undefined && { realtorEmail }),
+    ...(calendlyUrl !== undefined && { calendlyUrl }),
+    ...(agentPersona !== undefined && { agentPersona }),
+    ...(preQualEnabled !== undefined && { preQualEnabled }),
+    ...(leadScoreThreshold !== undefined && { leadScoreThreshold }),
+    ...(followUpDelayHours !== undefined && { followUpDelayHours }),
+  }
+
   const config = existing
-    ? await prisma.aIConfig.update({
-        where: { id: existing.id },
-        data: { agentName, realtorName, autoRespondSMS, autoRespondEmail, autoFollowUp },
-      })
-    : await prisma.aIConfig.create({
-        data: { agentName, realtorName, autoRespondSMS, autoRespondEmail, autoFollowUp },
-      })
+    ? await prisma.aIConfig.update({ where: { id: existing.id }, data })
+    : await prisma.aIConfig.create({ data })
 
   return NextResponse.json(config)
 }
