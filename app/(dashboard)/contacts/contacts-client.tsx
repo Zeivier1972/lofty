@@ -7,19 +7,17 @@ import {
   Users, Plus, Search, Download, Upload,
   Phone, Mail, ChevronLeft, ChevronRight, MoreVertical,
   Trash2, Edit, Eye, MessageSquare, X, Send, CheckSquare,
-  FileText, AlertCircle, CheckCircle2,
+  FileText, AlertCircle, CheckCircle2, Zap, Tag,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Card, CardContent } from "@/components/ui/card"
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuTrigger, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { cn, formatDate, formatPhone, getInitials, getLeadScoreColor, getStatusColor } from "@/lib/utils"
+import { cn, formatPhone, getInitials } from "@/lib/utils"
 import { useToast } from "@/components/ui/use-toast"
 
 const STATUSES = [
@@ -42,6 +40,8 @@ interface ContactsClientProps {
   pageSize: number
   tags: any[]
   filters: { status?: string; search?: string; source?: string }
+  activeTab: string
+  tabCounts: Record<string, number>
 }
 
 function ImportModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
@@ -309,7 +309,28 @@ function BulkEmailModal({ contactIds, onClose }: { contactIds: string[]; onClose
   )
 }
 
-export default function ContactsClient({ contacts, total, page, pageSize, tags, filters }: ContactsClientProps) {
+function relativeTime(date: string | null) {
+  if (!date) return "—"
+  const ms = Date.now() - new Date(date).getTime()
+  const d = Math.floor(ms / 86400000)
+  if (d === 0) return "Today"
+  if (d === 1) return "Yesterday"
+  if (d < 7) return `${d}d ago`
+  if (d < 30) return `${Math.floor(d / 7)}w ago`
+  return `${Math.floor(d / 30)}mo ago`
+}
+
+const TABS = [
+  { id: "all", label: "All Leads" },
+  { id: "new_leads", label: "New Leads" },
+  { id: "do_not_contact", label: "Do Not Contact" },
+  { id: "contacted_1", label: "Contacted 1" },
+  { id: "contacted_2", label: "Contacted 2" },
+  { id: "buyers", label: "Buyers" },
+  { id: "sellers", label: "Homeowners" },
+]
+
+export default function ContactsClient({ contacts, total, page, pageSize, tags, filters, activeTab, tabCounts }: ContactsClientProps) {
   const router = useRouter()
   const { toast } = useToast()
   const [search, setSearch] = useState(filters.search || "")
@@ -321,6 +342,13 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
   const totalPages = Math.ceil(total / pageSize)
   const allSelected = contacts.length > 0 && contacts.every(c => selected.has(c.id))
   const someSelected = selected.size > 0
+
+  const goTab = (tabId: string) => {
+    const params = new URLSearchParams()
+    if (tabId !== "all") params.set("tab", tabId)
+    if (filters.search) params.set("search", filters.search)
+    router.push(`/contacts?${params.toString()}`)
+  }
 
   const toggleSelect = (id: string) => {
     setSelected(prev => {
@@ -382,6 +410,32 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
               <Plus className="w-4 h-4" /> Add Contact
             </Link>
           </Button>
+        </div>
+      </div>
+
+      {/* Filter tabs — like Lofty's lead tabs */}
+      <div className="border-b border-gray-200 -mx-6 px-6 overflow-x-auto">
+        <div className="flex gap-0 min-w-max">
+          {TABS.map(tab => {
+            const count = tabCounts[tab.id] ?? 0
+            return (
+              <button key={tab.id} onClick={() => goTab(tab.id)}
+                className={cn(
+                  "px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap transition-colors",
+                  activeTab === tab.id
+                    ? "border-lofty-600 text-lofty-600"
+                    : "border-transparent text-gray-500 hover:text-gray-700"
+                )}>
+                {tab.label}
+                {count > 0 && (
+                  <span className={cn("ml-1.5 text-xs px-1.5 py-0.5 rounded-full",
+                    activeTab === tab.id ? "bg-lofty-100 text-lofty-700" : "bg-gray-100 text-gray-500")}>
+                    {count.toLocaleString()}
+                  </span>
+                )}
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -457,22 +511,19 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
       </div>
 
       {/* Contact list */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm overflow-x-auto">
         {/* Table header */}
-        <div className="grid grid-cols-[40px_2fr_1.5fr_1fr_1fr_1fr_80px] gap-4 px-5 py-3 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+        <div className="grid grid-cols-[40px_2.5fr_1.5fr_1fr_1fr_1.2fr_1fr_80px] gap-3 px-4 py-3 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide min-w-[900px]">
           <div className="flex items-center justify-center">
-            <input
-              type="checkbox"
-              checked={allSelected}
-              onChange={toggleAll}
-              className="w-4 h-4 rounded border-gray-300 text-lofty-600 focus:ring-lofty-500 cursor-pointer"
-            />
+            <input type="checkbox" checked={allSelected} onChange={toggleAll}
+              className="w-4 h-4 rounded border-gray-300 text-lofty-600 focus:ring-lofty-500 cursor-pointer" />
           </div>
-          <div>Contact</div>
-          <div>Contact Info</div>
-          <div>Status</div>
-          <div>Source</div>
-          <div>Lead Score</div>
+          <div>Name</div>
+          <div>Pipeline</div>
+          <div>Last Touch</div>
+          <div>Communications</div>
+          <div>Smart Plan</div>
+          <div>Tags</div>
           <div></div>
         </div>
 
@@ -487,118 +538,160 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
           </div>
         ) : (
           <div className="divide-y divide-gray-100">
-            {contacts.map((contact) => (
-              <div
-                key={contact.id}
-                className={cn(
-                  "grid grid-cols-[40px_2fr_1.5fr_1fr_1fr_1fr_80px] gap-4 px-5 py-4 hover:bg-gray-50 transition-colors items-center",
-                  selected.has(contact.id) && "bg-lofty-50 hover:bg-lofty-50"
-                )}
-              >
-                {/* Checkbox */}
-                <div className="flex items-center justify-center">
-                  <input
-                    type="checkbox"
-                    checked={selected.has(contact.id)}
-                    onChange={() => toggleSelect(contact.id)}
-                    className="w-4 h-4 rounded border-gray-300 text-lofty-600 focus:ring-lofty-500 cursor-pointer"
-                  />
-                </div>
+            {contacts.map((contact) => {
+              const isBuyer = contact.buyerBudgetMax != null || contact.buyerLocation != null
+              const isSeller = contact.sellerAddress != null || contact.sellerEstimatedValue != null
+              const pipelineStage = contact.pipelineLeads?.[0]?.stage
+              const enrollment = contact.enrollments?.[0]
+              const lastTouch = contact.lastContacted || contact.updatedAt
 
-                {/* Name + Tags */}
-                <div className="flex items-center gap-3 min-w-0">
-                  <Avatar className="w-9 h-9 flex-shrink-0">
-                    <AvatarFallback className="bg-lofty-100 text-lofty-700 text-sm font-medium">
-                      {getInitials(`${contact.firstName} ${contact.lastName}`)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0">
-                    <Link
-                      href={`/contacts/${contact.id}`}
-                      className="font-medium text-gray-900 hover:text-lofty-600 transition-colors truncate block"
-                    >
-                      {contact.firstName} {contact.lastName}
-                    </Link>
-                    <div className="flex flex-wrap gap-1 mt-0.5">
-                      {contact.tags.slice(0, 2).map((ct: any) => (
-                        <span
-                          key={ct.tagId}
-                          className="inline-flex items-center px-1.5 py-0 text-xs rounded-full font-medium"
-                          style={{ backgroundColor: ct.tag.color + "20", color: ct.tag.color }}
-                        >
-                          {ct.tag.name}
-                        </span>
-                      ))}
-                      {contact.tags.length > 2 && (
-                        <span className="text-xs text-gray-400">+{contact.tags.length - 2}</span>
-                      )}
+              return (
+                <div
+                  key={contact.id}
+                  className={cn(
+                    "grid grid-cols-[40px_2.5fr_1.5fr_1fr_1fr_1.2fr_1fr_80px] gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors items-center min-w-[900px]",
+                    selected.has(contact.id) && "bg-lofty-50 hover:bg-lofty-50"
+                  )}
+                >
+                  {/* Checkbox */}
+                  <div className="flex items-center justify-center">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(contact.id)}
+                      onChange={() => toggleSelect(contact.id)}
+                      className="w-4 h-4 rounded border-gray-300 text-lofty-600 focus:ring-lofty-500 cursor-pointer"
+                    />
+                  </div>
+
+                  {/* Name */}
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <Avatar className="w-8 h-8 flex-shrink-0">
+                      <AvatarFallback className="bg-lofty-100 text-lofty-700 text-xs font-semibold">
+                        {getInitials(`${contact.firstName} ${contact.lastName}`)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <Link
+                        href={`/contacts/${contact.id}`}
+                        className="font-medium text-gray-900 hover:text-lofty-600 transition-colors truncate block text-sm"
+                      >
+                        {contact.firstName} {contact.lastName}
+                      </Link>
+                      <div className="flex gap-1 mt-0.5">
+                        {isBuyer && (
+                          <span className="text-[10px] px-1.5 py-0 rounded-full bg-blue-100 text-blue-700 font-medium">Buyer</span>
+                        )}
+                        {isSeller && (
+                          <span className="text-[10px] px-1.5 py-0 rounded-full bg-green-100 text-green-700 font-medium">Seller</span>
+                        )}
+                        {!isBuyer && !isSeller && (
+                          <span className="text-[10px] px-1.5 py-0 rounded-full bg-gray-100 text-gray-500 font-medium">{contact.status?.replace(/_/g, " ")}</span>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Contact Info */}
-                <div className="min-w-0">
-                  {contact.phone && (
-                    <div className="flex items-center gap-1.5 text-sm text-gray-600">
-                      <Phone className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-                      <span className="truncate">{formatPhone(contact.phone)}</span>
+                  {/* Pipeline */}
+                  <div className="min-w-0">
+                    {pipelineStage ? (
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: pipelineStage.color || "#94a3b8" }} />
+                        <span className="text-sm text-gray-700 truncate">{pipelineStage.name}</span>
+                      </div>
+                    ) : (
+                      <span className="text-sm text-gray-400">—</span>
+                    )}
+                    {pipelineStage?.pipeline?.name && (
+                      <p className="text-xs text-gray-400 truncate mt-0.5">{pipelineStage.pipeline.name}</p>
+                    )}
+                  </div>
+
+                  {/* Last Touch */}
+                  <div>
+                    <span className="text-sm text-gray-600">{relativeTime(lastTouch)}</span>
+                  </div>
+
+                  {/* Communications */}
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1 text-xs text-gray-500">
+                      <Phone className="w-3.5 h-3.5 text-gray-400" />
+                      <span>{contact._count?.activities ?? 0}</span>
                     </div>
-                  )}
-                  {contact.email && (
-                    <div className="flex items-center gap-1.5 text-sm text-gray-500 mt-0.5">
-                      <Mail className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-                      <span className="truncate">{contact.email}</span>
-                    </div>
-                  )}
-                </div>
+                    {contact.email && (
+                      <div className="flex items-center gap-1 text-xs text-gray-500">
+                        <Mail className="w-3.5 h-3.5 text-gray-400" />
+                      </div>
+                    )}
+                    {contact.phone && (
+                      <div className="flex items-center gap-1 text-xs text-gray-500">
+                        <MessageSquare className="w-3.5 h-3.5 text-gray-400" />
+                      </div>
+                    )}
+                  </div>
 
-                {/* Status */}
-                <div>
-                  <Badge className={cn("text-xs font-medium", getStatusColor(contact.status))}>
-                    {contact.status.replace(/_/g, " ")}
-                  </Badge>
-                </div>
+                  {/* Smart Plan */}
+                  <div className="min-w-0">
+                    {enrollment ? (
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <Zap className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                          <span className="text-sm text-gray-700 truncate">{enrollment.plan?.name}</span>
+                        </div>
+                        <span className="text-[10px] px-1.5 py-0 rounded-full bg-green-100 text-green-700 font-medium">Running</span>
+                      </div>
+                    ) : (
+                      <span className="text-sm text-gray-400">None</span>
+                    )}
+                  </div>
 
-                {/* Source */}
-                <div className="text-sm text-gray-500">
-                  {contact.source ? contact.source.replace(/_/g, " ") : "—"}
-                </div>
+                  {/* Tags */}
+                  <div className="flex flex-wrap gap-1 items-center">
+                    {contact.tags.slice(0, 2).map((ct: any) => (
+                      <span
+                        key={ct.tagId}
+                        className="inline-flex items-center px-1.5 py-0 text-[10px] rounded-full font-medium"
+                        style={{ backgroundColor: ct.tag.color + "20", color: ct.tag.color }}
+                      >
+                        {ct.tag.name}
+                      </span>
+                    ))}
+                    {contact.tags.length > 2 && (
+                      <span className="text-[10px] text-gray-400">+{contact.tags.length - 2}</span>
+                    )}
+                    {contact.tags.length === 0 && (
+                      <span className="text-xs text-gray-300">—</span>
+                    )}
+                  </div>
 
-                {/* Lead Score */}
-                <div>
-                  <span className={cn("text-sm font-bold px-2.5 py-0.5 rounded-full", getLeadScoreColor(contact.leadScore))}>
-                    {contact.leadScore}
-                  </span>
+                  {/* Actions */}
+                  <div className="flex justify-end">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="w-8 h-8">
+                          <MoreVertical className="w-4 h-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem asChild>
+                          <Link href={`/contacts/${contact.id}`} className="flex items-center gap-2">
+                            <Eye className="w-4 h-4" /> View
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                          <Link href={`/contacts/${contact.id}/edit`} className="flex items-center gap-2">
+                            <Edit className="w-4 h-4" /> Edit
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem className="text-red-600 flex items-center gap-2">
+                          <Trash2 className="w-4 h-4" /> Archive
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </div>
-
-                {/* Actions */}
-                <div className="flex justify-end">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="w-8 h-8">
-                        <MoreVertical className="w-4 h-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem asChild>
-                        <Link href={`/contacts/${contact.id}`} className="flex items-center gap-2">
-                          <Eye className="w-4 h-4" /> View
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href={`/contacts/${contact.id}/edit`} className="flex items-center gap-2">
-                          <Edit className="w-4 h-4" /> Edit
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem className="text-red-600 flex items-center gap-2">
-                        <Trash2 className="w-4 h-4" /> Archive
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
 
