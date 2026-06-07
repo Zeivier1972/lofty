@@ -184,12 +184,15 @@ function StepEditor({ step, onChange, onSave, onCancel }: {
   )
 }
 
-function PlanBuilder({ initial, onSave, onClose }: {
-  initial?: Plan; onSave: (plan: any) => void; onClose: () => void
+function PlanBuilder({ initial, tags, onSave, onClose }: {
+  initial?: Plan; tags: { id: string; name: string; color: string }[]; onSave: (plan: any) => void; onClose: () => void
 }) {
+  // trigger may be "CONTACT_TAGGED:tagId" — split it
+  const [triggerBase, triggerTagId] = (initial?.trigger || "CONTACT_CREATED").split(":")
   const [name, setName] = useState(initial?.name || "")
   const [description, setDescription] = useState(initial?.description || "")
-  const [trigger, setTrigger] = useState(initial?.trigger || "CONTACT_CREATED")
+  const [trigger, setTrigger] = useState(triggerBase)
+  const [selectedTagId, setSelectedTagId] = useState(triggerTagId || "")
   const [steps, setSteps] = useState<Step[]>(initial?.steps || [])
   const [editingStep, setEditingStep] = useState<number | null>(null)
   const [editingStepData, setEditingStepData] = useState<Step | null>(null)
@@ -223,6 +226,9 @@ function PlanBuilder({ initial, onSave, onClose }: {
 
   async function handleSave() {
     if (!name.trim()) { toast({ title: "Plan name is required", variant: "destructive" }); return }
+    const fullTrigger = trigger === "CONTACT_TAGGED" && selectedTagId
+      ? `CONTACT_TAGGED:${selectedTagId}`
+      : trigger
     setSaving(true)
     try {
       const method = initial?.id ? "PATCH" : "POST"
@@ -230,7 +236,7 @@ function PlanBuilder({ initial, onSave, onClose }: {
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, description, trigger, steps }),
+        body: JSON.stringify({ name, description, trigger: fullTrigger, steps }),
       })
       if (!res.ok) throw new Error("Failed to save")
       const plan = await res.json()
@@ -282,12 +288,30 @@ function PlanBuilder({ initial, onSave, onClose }: {
                   <span className="text-xs font-bold uppercase tracking-wide bg-lofty-600 text-white px-2 py-0.5 rounded">WHEN</span>
                   <span className="text-sm font-semibold text-lofty-700">Trigger</span>
                 </div>
-                <select value={trigger} onChange={e => setTrigger(e.target.value)}
+                <select value={trigger} onChange={e => { setTrigger(e.target.value); setSelectedTagId("") }}
                   className="w-full border border-lofty-200 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-lofty-500 outline-none">
                   {TRIGGERS.map(t => (
                     <option key={t.value} value={t.value}>{t.label}</option>
                   ))}
                 </select>
+                {trigger === "CONTACT_TAGGED" && (
+                  <div className="mt-2">
+                    <label className="text-xs text-lofty-600 mb-1 block">Which tag?</label>
+                    {tags.length === 0 ? (
+                      <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                        No tags yet — create tags in Settings → Tags first.
+                      </p>
+                    ) : (
+                      <select value={selectedTagId} onChange={e => setSelectedTagId(e.target.value)}
+                        className="w-full border border-lofty-200 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-lofty-500 outline-none">
+                        <option value="">Any tag</option>
+                        {tags.map(tag => (
+                          <option key={tag.id} value={tag.id}>{tag.name}</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                )}
               </div>
 
               {steps.length > 0 && <><div className="w-0.5 h-6 bg-gray-300" /><div className="w-2 h-2 bg-gray-300 rounded-full" /><div className="w-0.5 h-4 bg-gray-300" /></>}
@@ -341,7 +365,7 @@ function PlanBuilder({ initial, onSave, onClose }: {
   )
 }
 
-export default function SmartPlansClient({ plans: initial }: { plans: Plan[] }) {
+export default function SmartPlansClient({ plans: initial, tags }: { plans: Plan[]; tags: { id: string; name: string; color: string }[] }) {
   const { toast } = useToast()
   const [plans, setPlans] = useState<Plan[]>(initial)
   const [showBuilder, setShowBuilder] = useState(false)
@@ -391,6 +415,7 @@ export default function SmartPlansClient({ plans: initial }: { plans: Plan[] }) 
       {(showBuilder || editingPlan) && (
         <PlanBuilder
           initial={editingPlan}
+          tags={tags}
           onSave={handleSaved}
           onClose={() => { setShowBuilder(false); setEditingPlan(undefined) }}
         />
@@ -450,7 +475,12 @@ export default function SmartPlansClient({ plans: initial }: { plans: Plan[] }) 
                         </Badge>
                       </div>
                       <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-400">
-                        <span>{TRIGGERS.find(t => t.value === plan.trigger)?.label || plan.trigger}</span>
+                        <span>{(() => {
+                          const [base, tagId] = plan.trigger.split(":")
+                          const label = TRIGGERS.find(t => t.value === base)?.label || base
+                          if (tagId) { const tag = tags.find((t: any) => t.id === tagId); return tag ? `${label}: ${tag.name}` : label }
+                          return label
+                        })()}</span>
                         <span>·</span>
                         <span>{plan.steps.length} steps</span>
                         <span>·</span>
@@ -477,7 +507,12 @@ export default function SmartPlansClient({ plans: initial }: { plans: Plan[] }) 
                     <div className="flex items-center gap-2 overflow-x-auto pb-2">
                       {/* WHEN chip */}
                       <div className="flex-shrink-0 bg-lofty-100 text-lofty-700 text-xs font-semibold px-3 py-1.5 rounded-full border border-lofty-200">
-                        WHEN: {TRIGGERS.find(t => t.value === plan.trigger)?.label}
+                        WHEN: {(() => {
+                          const [base, tagId] = plan.trigger.split(":")
+                          const label = TRIGGERS.find(t => t.value === base)?.label || base
+                          if (tagId) { const tag = tags.find((t: any) => t.id === tagId); return tag ? `${label}: ${tag.name}` : label }
+                          return label
+                        })()}
                       </div>
                       {plan.steps.map((step, i) => {
                         const def = STEP_TYPES.find(s => s.type === step.type)!

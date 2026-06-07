@@ -172,6 +172,8 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
   const [newStageName, setNewStageName] = useState<Record<string, string>>({})
   const [newStageColor, setNewStageColor] = useState<Record<string, string>>({})
   const [addingTo, setAddingTo] = useState<string | null>(null)
+  const [newPipelineName, setNewPipelineName] = useState("")
+  const [addingPipeline, setAddingPipeline] = useState(false)
 
   // Integrations
   const [activeIntegration, setActiveIntegration] = useState<typeof INTEGRATIONS[0] | null>(null)
@@ -215,12 +217,17 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
       const res = await fetch("/api/tags", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newTagName, color: newTagColor }),
+        body: JSON.stringify({ name: newTagName.trim(), color: newTagColor }),
       })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        toast({ title: err.error || "Error creating tag", variant: "destructive" })
+        return
+      }
       const tag = await res.json()
       setTags(t => [...t, tag])
       setNewTagName("")
-      toast({ title: "Tag created" })
+      toast({ title: `Tag "${tag.name}" created` })
     } catch {
       toast({ title: "Error creating tag", variant: "destructive" })
     }
@@ -247,11 +254,16 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pipelineId, name, color }),
       })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        toast({ title: err.error || "Error adding stage", variant: "destructive" })
+        return
+      }
       const stage = await res.json()
       setPipelines(ps => ps.map(p => p.id === pipelineId ? { ...p, stages: [...p.stages, stage] } : p))
       setNewStageName(s => ({ ...s, [pipelineId]: "" }))
       setAddingTo(null)
-      toast({ title: "Stage added" })
+      toast({ title: `Stage "${stage.name}" added` })
     } catch {
       toast({ title: "Error adding stage", variant: "destructive" })
     }
@@ -285,6 +297,29 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
       toast({ title: "Stage deleted" })
     } catch {
       toast({ title: "Error deleting stage", variant: "destructive" })
+    }
+  }
+
+  const createPipeline = async () => {
+    const name = newPipelineName.trim()
+    if (!name) return
+    try {
+      const res = await fetch("/api/pipeline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      })
+      if (!res.ok) {
+        toast({ title: "Error creating pipeline", variant: "destructive" })
+        return
+      }
+      const pipeline = await res.json()
+      setPipelines(ps => [...ps, pipeline])
+      setNewPipelineName("")
+      setAddingPipeline(false)
+      toast({ title: `Pipeline "${pipeline.name}" created` })
+    } catch {
+      toast({ title: "Error creating pipeline", variant: "destructive" })
     }
   }
 
@@ -438,6 +473,9 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
           {/* Pipeline */}
           <TabsContent value="pipeline">
             <div className="space-y-4">
+              {pipelines.length === 0 && (
+                <p className="text-sm text-gray-400 text-center py-6">No pipelines yet. Create one below.</p>
+              )}
               {pipelines.map(pipeline => (
                 <Card key={pipeline.id} className="border-0 shadow-sm">
                   <CardHeader className="pb-3">
@@ -517,6 +555,31 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
                   </CardContent>
                 </Card>
               ))}
+
+              {/* Create new pipeline */}
+              {addingPipeline ? (
+                <div className="flex items-center gap-2 p-3 border border-dashed border-lofty-300 rounded-xl bg-lofty-50">
+                  <Input
+                    placeholder="Pipeline name (e.g. Rental Leads)..."
+                    value={newPipelineName}
+                    onChange={e => setNewPipelineName(e.target.value)}
+                    className="flex-1"
+                    autoFocus
+                    onKeyDown={e => { if (e.key === "Enter") createPipeline(); if (e.key === "Escape") setAddingPipeline(false) }}
+                  />
+                  <Button size="sm" onClick={createPipeline} className="bg-lofty-600 hover:bg-lofty-700 gap-1">
+                    <Check className="w-3.5 h-3.5" /> Create
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setAddingPipeline(false)}>
+                    <X className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              ) : (
+                <Button variant="outline" onClick={() => setAddingPipeline(true)}
+                  className="w-full border-dashed gap-2 text-lofty-600 border-lofty-300 hover:bg-lofty-50">
+                  <Plus className="w-4 h-4" /> New Pipeline
+                </Button>
+              )}
             </div>
           </TabsContent>
 
