@@ -115,6 +115,8 @@ function NewCampaignModal({ tags, onClose, onCreated }: { tags: any[]; onClose: 
   const [step, setStep] = useState<"setup" | "audience" | "compose" | "preview">("setup")
   const [name, setName] = useState("")
   const [subject, setSubject] = useState("")
+  const [subjectB, setSubjectB] = useState("")
+  const [abTesting, setAbTesting] = useState(false)
   const [body, setBody] = useState("")
   const [audience, setAudience] = useState("all")
   const [selectedTags, setSelectedTags] = useState<string[]>([])
@@ -154,7 +156,7 @@ function NewCampaignModal({ tags, onClose, onCreated }: { tags: any[]; onClose: 
       const res = await fetch("/api/campaigns", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, subject, body, audience, tagIds: selectedTags, sendNow: true }),
+        body: JSON.stringify({ name, subject, subjectVariantB: abTesting ? subjectB : undefined, body, audience, tagIds: selectedTags, sendNow: true }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
@@ -174,7 +176,7 @@ function NewCampaignModal({ tags, onClose, onCreated }: { tags: any[]; onClose: 
       const res = await fetch("/api/campaigns", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, subject, body, audience, tagIds: selectedTags, sendNow: false }),
+        body: JSON.stringify({ name, subject, subjectVariantB: abTesting ? subjectB : undefined, body, audience, tagIds: selectedTags, sendNow: false }),
       })
       if (!res.ok) throw new Error()
       toast({ title: "Borrador guardado" })
@@ -326,9 +328,23 @@ function NewCampaignModal({ tags, onClose, onCreated }: { tags: any[]; onClose: 
           {step === "compose" && (
             <div className="space-y-4">
               <div>
-                <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Asunto del email *</label>
-                <Input value={subject} onChange={e => setSubject(e.target.value)} placeholder="🏠 Asunto llamativo en español..." />
-                <p className="text-xs text-gray-400 mt-1">Usa {"{first_name}"} para personalizar. Ej: "Hola {"{first_name}"}, tenemos algo para ti"</p>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-sm font-semibold text-gray-700">Asunto del email *</label>
+                  <button
+                    onClick={() => setAbTesting(!abTesting)}
+                    className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors ${abTesting ? "bg-purple-100 text-purple-700" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}
+                  >
+                    {abTesting ? "✓ A/B Test activo" : "+ A/B Test"}
+                  </button>
+                </div>
+                <Input value={subject} onChange={e => setSubject(e.target.value)} placeholder="🏠 Asunto A — llamativo en español..." />
+                {abTesting && (
+                  <Input className="mt-2" value={subjectB} onChange={e => setSubjectB(e.target.value)} placeholder="📊 Asunto B — variante alternativa..." />
+                )}
+                {abTesting && (
+                  <p className="text-xs text-purple-600 mt-1">✓ Se enviará A al 50% y B al 50%. El ganador se selecciona por mayor tasa de apertura.</p>
+                )}
+                <p className="text-xs text-gray-400 mt-1">Usa {"{first_name}"} para personalizar.</p>
               </div>
               <div>
                 <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Cuerpo del email *</label>

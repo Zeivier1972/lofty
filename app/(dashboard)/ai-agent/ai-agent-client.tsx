@@ -54,6 +54,13 @@ interface AIAgentClientProps {
   stats: { totalNotifications: number; unreadCount: number; smsSent: number; emailsSent: number }
   ftboPlan: any
   preQualStats: { totalContacts: number; aiTouched: number; pendingCalls: number }
+  insights?: {
+    hotLeads: any[]
+    needsFollowUp: any[]
+    birthdays: any[]
+    likelySellers: any[]
+    newUncontacted: number
+  }
 }
 
 export default function AIAgentClient({
@@ -63,6 +70,7 @@ export default function AIAgentClient({
   stats,
   ftboPlan: initFtboPlan,
   preQualStats,
+  insights,
 }: AIAgentClientProps) {
   const { toast } = useToast()
   const [notifications, setNotifications] = useState(initNotifs)
@@ -249,6 +257,69 @@ export default function AIAgentClient({
           </div>
         </CardContent>
       </Card>
+
+      {/* Hot Leads Predictive Panel */}
+      {insights && insights.hotLeads.length > 0 && (
+        <Card className="border-0 shadow-sm bg-gradient-to-r from-red-50 to-orange-50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-bold text-red-800 flex items-center gap-2">
+              <TrendingUp className="w-4 h-4" /> Leads Calientes — Actúa Ahora
+              <span className="ml-auto text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-normal">
+                {insights.hotLeads.length} contactos
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+              {insights.hotLeads.slice(0, 4).map((lead: any) => (
+                <Link key={lead.id} href={`/contacts/${lead.id}`}>
+                  <div className="bg-white rounded-xl p-3 border border-red-100 hover:border-red-300 transition-colors cursor-pointer">
+                    <div className="flex items-center justify-between mb-2">
+                      <Avatar className="w-7 h-7">
+                        <AvatarFallback className="bg-red-100 text-red-700 text-xs font-bold">
+                          {getInitials(`${lead.firstName} ${lead.lastName}`)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${lead.leadScore >= 70 ? "bg-red-100 text-red-700" : "bg-orange-100 text-orange-700"}`}>
+                        {lead.leadScore}pts
+                      </span>
+                    </div>
+                    <p className="text-xs font-semibold text-gray-900">{lead.firstName} {lead.lastName}</p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">
+                      {lead.lastContacted
+                        ? `Último contacto: ${Math.round((Date.now() - new Date(lead.lastContacted).getTime()) / (24 * 3600000))}d`
+                        : "Sin contacto previo"}
+                    </p>
+                    {lead.recentViews > 0 && (
+                      <p className="text-[10px] text-blue-500 mt-0.5">👁 {lead.recentViews} vistas recientes</p>
+                    )}
+                  </div>
+                </Link>
+              ))}
+            </div>
+            {insights.birthdays.length > 0 && (
+              <div className="mt-3 p-3 bg-yellow-50 rounded-xl border border-yellow-100">
+                <p className="text-xs font-semibold text-yellow-800 mb-1">🎂 Cumpleaños próximos</p>
+                {insights.birthdays.slice(0, 3).map((c: any) => (
+                  <Link key={c.id} href={`/contacts/${c.id}`}>
+                    <span className="text-xs text-yellow-700 hover:underline mr-3">
+                      {c.firstName} {c.lastName} ({c.daysUntil === 0 ? "hoy" : `en ${c.daysUntil}d`})
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            )}
+            {insights.newUncontacted > 0 && (
+              <div className="mt-2 p-3 bg-blue-50 rounded-xl border border-blue-100">
+                <p className="text-xs text-blue-800">
+                  <span className="font-bold">{insights.newUncontacted}</span> leads nuevos del último mes aún sin contactar
+                  <Link href="/contacts" className="ml-2 text-blue-600 hover:underline font-medium">Ver →</Link>
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
         {/* Left: Activity + Chat + Conversations */}

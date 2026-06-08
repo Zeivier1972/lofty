@@ -4,6 +4,7 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { chatWithAI } from "@/lib/ai-agent"
 import { sendSMS } from "@/lib/sms"
+import { scoreContact } from "@/lib/scoring"
 
 export async function POST(req: Request) {
   const formData = await req.formData()
@@ -95,6 +96,9 @@ export async function POST(req: Request) {
         contactId: contact.id,
       },
     })
+
+    // Update score on inbound SMS reply
+    scoreContact(contact.id).catch(() => {})
 
     // Notify Catherine
     await prisma.aINotification.create({

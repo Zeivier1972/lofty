@@ -56,6 +56,29 @@ export default async function AIAgentPage() {
   const [totalNotifications, unreadCount, smsSent, emailsSent] = rawStats
   const [totalContacts, aiTouched, pendingCalls] = preQualStats
 
+  // Fetch AI insights (hot leads, upcoming birthdays, etc.)
+  let insights: any = null
+  try {
+    const insightsRes = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/ai/insights`, {
+      headers: { cookie: "" },
+      cache: "no-store",
+    })
+    if (insightsRes.ok) insights = await insightsRes.json()
+  } catch {
+    // Insights are non-critical
+  }
+
+  // Fallback: compute hot leads directly
+  if (!insights) {
+    const hotLeads = await prisma.contact.findMany({
+      where: { isArchived: false, leadScore: { gte: 40 } },
+      orderBy: { leadScore: "desc" },
+      take: 8,
+      select: { id: true, firstName: true, lastName: true, phone: true, leadScore: true, status: true, lastContacted: true },
+    })
+    insights = { hotLeads, needsFollowUp: [], birthdays: [], likelySellers: [], newUncontacted: 0 }
+  }
+
   return (
     <AIAgentClient
       notifications={JSON.parse(JSON.stringify(notifications))}
@@ -64,6 +87,7 @@ export default async function AIAgentPage() {
       stats={{ totalNotifications, unreadCount, smsSent, emailsSent }}
       ftboPlan={ftboPlan ? JSON.parse(JSON.stringify(ftboPlan)) : null}
       preQualStats={{ totalContacts, aiTouched, pendingCalls }}
+      insights={JSON.parse(JSON.stringify(insights))}
     />
   )
 }

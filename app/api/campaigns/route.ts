@@ -49,16 +49,19 @@ export async function POST(req: Request) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   try {
-    const { name, subject, body, audience = "all", tagIds = [], sendNow = false } = await req.json()
+    const { name, subject, subjectVariantB, body, audience = "all", tagIds = [], sendNow = false } = await req.json()
     if (!name?.trim()) return NextResponse.json({ error: "Name required" }, { status: 400 })
 
     const campaign = await prisma.marketingCampaign.create({
       data: {
         name,
         subject,
+        subjectVariantB: subjectVariantB || null,
         content: body,
         type: "EMAIL",
         status: sendNow ? "SENDING" : "DRAFT",
+        audience,
+        tagIds: Array.isArray(tagIds) ? tagIds.join(",") : tagIds,
       },
     })
 
@@ -75,13 +78,18 @@ export async function POST(req: Request) {
     const agentName = aiConfig?.realtorName || "Catherine"
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://localhost:3000"
 
-    const recipients = contacts.map(c => ({
+    // A/B split: if subjectVariantB provided, split recipients 50/50
+    const useAB = !!subjectVariantB
+    const midpoint = Math.floor(contacts.length / 2)
+
+    const recipients = contacts.map((c, i) => ({
       to: c.email!,
       vars: {
         first_name: c.firstName,
         last_name: c.lastName,
         full_name: `${c.firstName} ${c.lastName}`,
         unsubscribe_url: `${baseUrl}/api/unsubscribe?id=${c.id}`,
+        _ab_variant: useAB && i >= midpoint ? "B" : "A",
       },
     }))
 
@@ -90,7 +98,23 @@ export async function POST(req: Request) {
       unsubscribeUrl: "{unsubscribe_url}",
     })
 
-    const { sent, failed } = await sendBulkEmail(recipients, { subject, html: wrappedHtml }, 50, 1000)
+    // Send A and B with different subjects
+    let sent = 0
+    let failed = 0
+    if (useAB) {
+      const recipientsA = recipients.filter(r => r.vars._ab_variant === "A")
+      const recipientsB = recipients.filter(r => r.vars._ab_variant === "B")
+      const [resultA, resultB] = await Promise.all([
+        sendBulkEmail(recipientsA, { subject, html: wrappedHtml }, 50, 1000),
+        sendBulkEmail(recipientsB, { subject: subjectVariantB, html: wrappedHtml }, 50, 1000),
+      ])
+      sent = resultA.sent + resultB.sent
+      failed = resultA.failed + resultB.failed
+    } else {
+      const result = await sendBulkEmail(recipients, { subject, html: wrappedHtml }, 50, 1000)
+      sent = result.sent
+      failed = result.failed
+    }
 
     // Update campaign stats
     await prisma.marketingCampaign.update({

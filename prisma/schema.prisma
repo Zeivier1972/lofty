@@ -86,8 +86,15 @@ model Contact {
   doNotCall     Boolean   @default(false)
   doNotEmail    Boolean   @default(false)
   doNotText     Boolean   @default(false)
+  smsTCPAConsent       Boolean   @default(false)
+  smsTCPAConsentDate   DateTime?
+  smsTCPAConsentMethod String?
   isArchived    Boolean   @default(false)
   lastContacted DateTime?
+  homeClosedAt        DateTime?
+  preferredSendHour   Int?
+  facebookLeadId      String?
+  lastScoreCalculatedAt DateTime?
   buyerBudgetMin Float?
   buyerBudgetMax Float?
   buyerBedroomsMin Int?
@@ -171,6 +178,7 @@ model PipelineLead {
   expectedClose DateTime?
   notes         String?
   priority      String        @default("MEDIUM")
+  enteredAt     DateTime      @default(now())
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 }
@@ -351,6 +359,12 @@ model Transaction {
   expirationDate DateTime?
   mlsNumber     String?
   notes         String?
+  earnestMoney        Float?
+  earnestMoneyDueDate DateTime?
+  commissionSplit     String?
+  coAgentName         String?
+  coAgentEmail        String?
+  coAgentCommission   Float?
   contact       Contact?  @relation(fields: [contactId], references: [id])
   contactId     String?
   agent         User?     @relation(fields: [agentId], references: [id])
@@ -434,9 +448,15 @@ model MarketingCampaign {
   content     String?
   scheduledAt DateTime?
   sentAt      DateTime?
-  recipients  Int       @default(0)
-  opened      Int       @default(0)
-  clicked     Int       @default(0)
+  recipients      Int       @default(0)
+  opened          Int       @default(0)
+  clicked         Int       @default(0)
+  subjectVariantB String?
+  openedVariantA  Int       @default(0)
+  openedVariantB  Int       @default(0)
+  winnerVariant   String?
+  audience        String?
+  tagIds          String?
   enrollments CampaignEnrollment[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -618,9 +638,11 @@ model DialerCall {
   status       String         @default("QUEUED")
   direction    String         @default("OUTBOUND")
   duration     Int?
-  recordingUrl String?
-  notes        String?
-  disposition  String?
+  recordingUrl  String?
+  transcription String?
+  aiSummary     String?
+  notes         String?
+  disposition   String?
   twilioSid    String?
   agentId      String?
   startedAt    DateTime?
@@ -764,4 +786,30 @@ model CampaignEnrollment {
   enrolledAt  DateTime          @default(now())
   completedAt DateTime?
   @@unique([campaignId, contactId])
+}
+
+// ─── CMA Report ───────────────────────────────────────────────────────────────
+
+model CMAReport {
+  id             String    @id @default(cuid())
+  title          String
+  address        String
+  bedrooms       Int?
+  bathrooms      Float?
+  sqft           Int?
+  yearBuilt      Int?
+  condition      String    @default("GOOD")
+  notes          String?
+  comps          String    @default("[]")
+  estimatedMin   Float?
+  estimatedMax   Float?
+  estimatedValue Float?
+  shareToken     String    @unique @default(cuid())
+  contactId      String?
+  agentId        String?
+  isPublic       Boolean   @default(true)
+  sentAt         DateTime?
+  viewedAt       DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 }

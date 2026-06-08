@@ -7,7 +7,7 @@ import {
   CheckSquare, Calendar, Mail, FileText, TrendingUp,
   Zap, Settings, ChevronLeft, ChevronRight, BarChart3,
   MessageSquare, Bell, Search, Bot, Phone, Share2, Key, Globe,
-  BellRing, UserCheck, Send,
+  BellRing, UserCheck, Send, Inbox, ClipboardList,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
@@ -27,8 +27,10 @@ const navItems: NavItem[] = [
   { href: "/properties", icon: Home, label: "Properties" },
   { href: "/tasks", icon: CheckSquare, label: "Tasks" },
   { href: "/calendar", icon: Calendar, label: "Calendar" },
+  { href: "/inbox", icon: Inbox, label: "Bandeja SMS/WA" },
   { href: "/messages", icon: MessageSquare, label: "Messages" },
   { href: "/campaigns", icon: Send, label: "Email Campaigns" },
+  { href: "/cma", icon: ClipboardList, label: "CMA Reports" },
   { href: "/transactions", icon: FileText, label: "Transactions" },
   { href: "/smart-plans", icon: Zap, label: "Smart Plans", section: "Automation" },
   { href: "/property-alerts", icon: BellRing, label: "Property Alerts", section: "Automation" },

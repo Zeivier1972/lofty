@@ -5,8 +5,9 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area,
 } from "recharts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { BarChart3, TrendingUp, Users, DollarSign, CheckSquare, Target } from "lucide-react"
+import { BarChart3, TrendingUp, Users, DollarSign, CheckSquare, Target, AlertTriangle, Clock } from "lucide-react"
 import { formatCurrency } from "@/lib/utils"
+import { useState, useEffect } from "react"
 
 interface ReportsClientProps {
   contactsByMonth: { month: string; count: number }[]
@@ -29,6 +30,15 @@ const TASK_STATUS_COLORS: Record<string, string> = {
 export default function ReportsClient({
   contactsByMonth, tasksByStatus, transactionsByStatus, topLeadSources, revenueByMonth, pipelineByStage,
 }: ReportsClientProps) {
+  const [velocity, setVelocity] = useState<any>(null)
+
+  useEffect(() => {
+    fetch("/api/reports/pipeline-velocity")
+      .then(r => r.json())
+      .then(d => setVelocity(d))
+      .catch(() => {})
+  }, [])
+
   const totalContacts = contactsByMonth.reduce((s, m) => s + m.count, 0)
   const totalRevenue = revenueByMonth.reduce((s, m) => s + m.revenue, 0)
   const completedTasks = tasksByStatus.find((t) => t.status === "COMPLETED")?._count || 0
@@ -126,6 +136,53 @@ export default function ReportsClient({
           </CardContent>
         </Card>
       </div>
+
+      {/* Pipeline Velocity */}
+      {velocity?.funnel && velocity.funnel.length > 0 && (
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-lofty-600" /> Pipeline Velocity — Días Promedio por Etapa
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+              {velocity.funnel.map((stage: any) => (
+                <div key={stage.stageId} className="bg-gray-50 rounded-xl p-3 text-center border border-gray-100">
+                  <div className="w-3 h-3 rounded-full mx-auto mb-2" style={{ backgroundColor: stage.stageColor }} />
+                  <p className="text-xs font-medium text-gray-700 truncate">{stage.stageName}</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">{stage.totalLeads}</p>
+                  <p className="text-[10px] text-gray-400">leads</p>
+                  <p className="text-sm font-semibold text-lofty-600 mt-1">{stage.avgDaysInStage}d</p>
+                  <p className="text-[10px] text-gray-400">promedio</p>
+                  {stage.staleLeads > 0 && (
+                    <div className="flex items-center justify-center gap-1 mt-1.5">
+                      <AlertTriangle className="w-2.5 h-2.5 text-orange-400" />
+                      <span className="text-[10px] text-orange-500">{stage.staleLeads} estancados</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+            {/* Conversion funnel bar */}
+            <div className="space-y-2">
+              {velocity.funnel.map((stage: any, i: number) => (
+                <div key={stage.stageId} className="flex items-center gap-3">
+                  <span className="text-xs text-gray-500 w-28 truncate">{stage.stageName}</span>
+                  <div className="flex-1 bg-gray-100 rounded-full h-5 relative overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{ width: `${stage.conversionRate}%`, backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }}
+                    />
+                  </div>
+                  <span className="text-xs font-medium text-gray-700 w-10 text-right">{stage.conversionRate}%</span>
+                  <span className="text-xs text-gray-400 w-16 text-right">{formatCurrency(stage.totalValue)}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Charts row 2 */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
