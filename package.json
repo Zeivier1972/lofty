@@ -52,6 +52,7 @@
     "react-hook-form": "^7.54.0",
     "recharts": "^2.13.3",
     "resend": "^6.12.4",
+    "rets-client": "^5.2.4",
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
     "ts-node": "^10.9.2",

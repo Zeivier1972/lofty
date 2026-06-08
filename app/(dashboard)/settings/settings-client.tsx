@@ -329,6 +329,20 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
   })
   const [idxSaving, setIdxSaving] = useState(false)
   const [idxConnected, setIdxConnected] = useState(false)
+  const [idxTesting, setIdxTesting] = useState(false)
+  const [idxSyncing, setIdxSyncing] = useState(false)
+  const [idxSyncResult, setIdxSyncResult] = useState<{ imported: number; updated: number; errors: string[] } | null>(null)
+  const [idxPropertyCount, setIdxPropertyCount] = useState<number | null>(null)
+
+  // Load IDX config + property count on mount
+  useState(() => {
+    fetch("/api/settings/idx").then(r => r.json()).then(d => {
+      if (d) setIdxConfig(prev => ({ ...prev, ...d }))
+    }).catch(() => {})
+    fetch("/api/mls/sync").then(r => r.json()).then(d => {
+      setIdxPropertyCount(d.totalProperties)
+    }).catch(() => {})
+  })
 
   const { register, handleSubmit, formState: { isSubmitting } } = useForm({
     resolver: zodResolver(profileSchema),
@@ -474,12 +488,64 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(idxConfig),
       })
-      setIdxConnected(true)
       toast({ title: "IDX settings saved" })
     } catch {
       toast({ title: "Error saving IDX settings", variant: "destructive" })
     } finally {
       setIdxSaving(false)
+    }
+  }
+
+  const testIdxConnection = async () => {
+    setIdxTesting(true)
+    setIdxConnected(false)
+    try {
+      const res = await fetch("/api/mls/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(idxConfig),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setIdxConnected(true)
+        toast({ title: "✅ Conexión exitosa", description: data.message })
+      } else {
+        toast({ title: "❌ " + data.message, variant: "destructive" })
+      }
+    } catch {
+      toast({ title: "Error de conexión", variant: "destructive" })
+    } finally {
+      setIdxTesting(false)
+    }
+  }
+
+  const syncMLSNow = async () => {
+    setIdxSyncing(true)
+    setIdxSyncResult(null)
+    try {
+      // Save config first
+      await fetch("/api/settings/idx", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(idxConfig),
+      })
+      const res = await fetch("/api/mls/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(idxConfig),
+      })
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      setIdxSyncResult(data)
+      setIdxPropertyCount((data.imported || 0) + (data.updated || 0))
+      toast({
+        title: `✅ Sincronización completada`,
+        description: `${data.imported} nuevas · ${data.updated} actualizadas`,
+      })
+    } catch (e: any) {
+      toast({ title: "Error al sincronizar: " + (e.message || "Unknown"), variant: "destructive" })
+    } finally {
+      setIdxSyncing(false)
     }
   }
 
@@ -808,9 +874,56 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
                   ))}
                 </div>
 
-                <Button onClick={saveIdx} disabled={idxSaving} className="bg-lofty-600 hover:bg-lofty-700">
-                  {idxSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving...</> : <><Save className="w-4 h-4 mr-2" />Save IDX Settings</>}
-                </Button>
+                {/* Connection status */}
+                {idxConnected && (
+                  <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-xl">
+                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                    <p className="text-sm font-medium text-green-700">Conectado al MLS correctamente</p>
+                  </div>
+                )}
+
+                {/* Property count */}
+                {idxPropertyCount !== null && (
+                  <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl text-sm text-blue-800">
+                    <span className="font-bold">{idxPropertyCount}</span> propiedades en tu sitio web
+                  </div>
+                )}
+
+                {/* Sync result */}
+                {idxSyncResult && (
+                  <div className="p-4 bg-green-50 border border-green-200 rounded-xl space-y-1">
+                    <p className="text-sm font-semibold text-green-800">✅ Última sincronización:</p>
+                    <p className="text-sm text-green-700">{idxSyncResult.imported} propiedades nuevas importadas</p>
+                    <p className="text-sm text-green-700">{idxSyncResult.updated} propiedades actualizadas</p>
+                    {idxSyncResult.errors.length > 0 && (
+                      <p className="text-xs text-orange-600">{idxSyncResult.errors.length} errores menores (filas omitidas)</p>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex flex-wrap gap-2">
+                  <Button onClick={saveIdx} disabled={idxSaving} variant="outline">
+                    {idxSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Guardando...</> : <><Save className="w-4 h-4 mr-2" />Guardar</>}
+                  </Button>
+                  <Button onClick={testIdxConnection} disabled={idxTesting || !idxConfig.username || !idxConfig.password} variant="outline"
+                    className="border-blue-200 text-blue-700 hover:bg-blue-50">
+                    {idxTesting ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Probando...</> : "🔌 Probar Conexión"}
+                  </Button>
+                  <Button onClick={syncMLSNow} disabled={idxSyncing || !idxConfig.username || !idxConfig.password}
+                    className="bg-lofty-600 hover:bg-lofty-700">
+                    {idxSyncing ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Sincronizando propiedades...</> : "🔄 Sincronizar Propiedades Ahora"}
+                  </Button>
+                </div>
+
+                <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
+                  <p className="text-xs font-medium text-gray-600 mb-1">¿Cómo funciona?</p>
+                  <ol className="text-xs text-gray-500 space-y-1 list-decimal list-inside">
+                    <li>Ingresa tus credenciales RETS del Miami MLS</li>
+                    <li>Haz clic en <strong>Probar Conexión</strong> para verificar</li>
+                    <li>Haz clic en <strong>Sincronizar</strong> para importar tus listings activos</li>
+                    <li>Tus propiedades aparecerán automáticamente en <strong>/site</strong> y <strong>/site/listings</strong></li>
+                  </ol>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
