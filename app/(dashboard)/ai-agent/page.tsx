@@ -56,27 +56,66 @@ export default async function AIAgentPage() {
   const [totalNotifications, unreadCount, smsSent, emailsSent] = rawStats
   const [totalContacts, aiTouched, pendingCalls] = preQualStats
 
-  // Fetch AI insights (hot leads, upcoming birthdays, etc.)
-  let insights: any = null
-  try {
-    const insightsRes = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/ai/insights`, {
-      headers: { cookie: "" },
-      cache: "no-store",
-    })
-    if (insightsRes.ok) insights = await insightsRes.json()
-  } catch {
-    // Insights are non-critical
-  }
+  const now = new Date()
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 3600000)
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 3600000)
 
-  // Fallback: compute hot leads directly
-  if (!insights) {
-    const hotLeads = await prisma.contact.findMany({
+  // Hot leads and insights — query DB directly (no self-fetch)
+  const [hotLeads, needsFollowUp, allWithBirthday, newUncontacted] = await Promise.all([
+    prisma.contact.findMany({
       where: { isArchived: false, leadScore: { gte: 40 } },
       orderBy: { leadScore: "desc" },
       take: 8,
-      select: { id: true, firstName: true, lastName: true, phone: true, leadScore: true, status: true, lastContacted: true },
+      select: {
+        id: true, firstName: true, lastName: true, phone: true,
+        leadScore: true, status: true, lastContacted: true,
+        propertyViews: { where: { createdAt: { gte: sevenDaysAgo } }, select: { id: true } },
+      },
+    }),
+    prisma.contact.findMany({
+      where: {
+        isArchived: false,
+        leadScore: { gte: 20 },
+        OR: [
+          { lastContacted: null },
+          { lastContacted: { lte: new Date(now.getTime() - 14 * 24 * 3600000) } },
+        ],
+        propertyViews: { some: { createdAt: { gte: sevenDaysAgo } } },
+      },
+      orderBy: { leadScore: "desc" },
+      take: 5,
+      select: {
+        id: true, firstName: true, lastName: true, phone: true,
+        leadScore: true, lastContacted: true,
+        propertyViews: { where: { createdAt: { gte: sevenDaysAgo } }, select: { id: true } },
+      },
+    }),
+    prisma.contact.findMany({
+      where: { birthday: { not: null }, isArchived: false },
+      select: { id: true, firstName: true, lastName: true, birthday: true },
+    }),
+    prisma.contact.count({
+      where: { isArchived: false, createdAt: { gte: thirtyDaysAgo }, lastContacted: null, status: "LEAD" },
+    }),
+  ])
+
+  // Filter upcoming birthdays (next 7 days)
+  const birthdays = allWithBirthday
+    .map(c => {
+      const b = c.birthday!
+      const thisYear = new Date(now.getFullYear(), b.getMonth(), b.getDate())
+      const daysUntil = Math.round((thisYear.getTime() - now.getTime()) / (24 * 3600000))
+      return { ...c, daysUntil }
     })
-    insights = { hotLeads, needsFollowUp: [], birthdays: [], likelySellers: [], newUncontacted: 0 }
+    .filter(c => c.daysUntil >= 0 && c.daysUntil <= 7)
+    .sort((a, b) => a.daysUntil - b.daysUntil)
+
+  const insights = {
+    hotLeads: hotLeads.map(c => ({ ...c, recentViews: c.propertyViews.length, propertyViews: undefined })),
+    needsFollowUp: needsFollowUp.map(c => ({ ...c, recentViews: c.propertyViews.length, propertyViews: undefined })),
+    birthdays,
+    likelySellers: [],
+    newUncontacted,
   }
 
   return (
