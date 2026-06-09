@@ -11,14 +11,16 @@ export interface LeadData {
   campaign?: string       // ad campaign name if available
   budget?: number | null
   location?: string
+  bedroomsMin?: number | null
   propertyType?: string
   message?: string
+  notes?: string          // extra context from form answers
   smsConsent?: boolean
   facebookLeadId?: string
 }
 
 export async function ingestLead(data: LeadData): Promise<{ contactId: string; isNew: boolean }> {
-  const { firstName, lastName, email, phone, source, campaign, budget, location, propertyType, message, smsConsent, facebookLeadId } = data
+  const { firstName, lastName, email, phone, source, campaign, budget, location, bedroomsMin, propertyType, message, notes, smsConsent, facebookLeadId } = data
 
   const phoneDigits = phone ? phone.replace(/\D/g, "").slice(-10) : null
 
@@ -38,6 +40,8 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
         ...(facebookLeadId && { facebookLeadId }),
         ...(budget && { buyerBudgetMax: budget }),
         ...(location && { buyerLocation: location }),
+        ...(bedroomsMin && { buyerBedroomsMin: bedroomsMin }),
+        ...(propertyType && { buyerPropertyType: propertyType }),
       },
     })
     if (message) {
@@ -61,18 +65,19 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
       facebookLeadId: facebookLeadId || undefined,
       buyerBudgetMax: budget || undefined,
       buyerLocation: location || undefined,
+      buyerBedroomsMin: bedroomsMin || undefined,
       buyerPropertyType: propertyType || undefined,
     },
   })
 
-  // Note with campaign info
-  if (message || campaign) {
-    await prisma.note.create({
-      data: {
-        content: [campaign ? `[Campaña: ${campaign}]` : "", message || ""].filter(Boolean).join(" "),
-        contactId: contact.id,
-      },
-    })
+  // Note with campaign info and form answers
+  const noteContent = [
+    campaign ? `[Campaña: ${campaign}]` : "",
+    message || "",
+    notes || "",
+  ].filter(Boolean).join(" | ")
+  if (noteContent) {
+    await prisma.note.create({ data: { content: noteContent, contactId: contact.id } })
   }
 
   // AI notification
@@ -108,6 +113,9 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
         contactName: `${firstName} ${lastName || ""}`.trim(),
         budgetMax: budget ?? null,
         location: location ?? null,
+        bedrooms: bedroomsMin ?? null,
+        campaign: campaign ?? null,
+        propertyType: propertyType ?? null,
       }).catch(() => {})
     }, 30_000)
   }

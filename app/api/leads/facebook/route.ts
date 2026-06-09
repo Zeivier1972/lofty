@@ -45,8 +45,33 @@ export async function POST(req: Request) {
         const lastName = fieldData.last_name || fieldData.full_name?.split(" ").slice(1).join(" ")
         const email = fieldData.email || undefined
         const phone = fieldData.phone_number || undefined
-        const budget = fieldData.budget ? parseInt(fieldData.budget.replace(/\D/g, "")) : undefined
-        const location = fieldData.city || fieldData.zip_code || fieldData.location
+
+        // Budget — handle range strings like "$300k-$500k" or raw numbers
+        const budgetRaw = fieldData.budget || fieldData.budget_range || fieldData.max_budget || fieldData.price_range
+        const budget = budgetRaw ? parseInt(budgetRaw.replace(/\D/g, "")) || undefined : undefined
+
+        // Location — check all common question names
+        const location =
+          fieldData.city || fieldData.zip_code || fieldData.location ||
+          fieldData.area_of_interest || fieldData.interested_area ||
+          fieldData.neighborhood || fieldData.area || fieldData.zone ||
+          // Fall back to campaign name stripped of year/quarter
+          (!fieldData.city && campaign ? campaign.replace(/\b(20\d\d|Q[1-4]|H[12])\b/gi, "").trim() : undefined)
+
+        // Bedrooms
+        const bedroomsRaw = fieldData.bedrooms || fieldData.num_bedrooms || fieldData.bedroom_count || fieldData.cuartos
+        const bedroomsMin = bedroomsRaw ? parseInt(bedroomsRaw) || undefined : undefined
+
+        // Property type
+        const propertyType = fieldData.property_type || fieldData.home_type || fieldData.type_of_property || fieldData.tipo
+
+        // Extra context from custom form questions
+        const notes = [
+          fieldData.timeline ? `Timeline: ${fieldData.timeline}` : "",
+          fieldData.when_to_buy ? `Cuándo comprar: ${fieldData.when_to_buy}` : "",
+          fieldData.pre_approved ? `Pre-aprobado: ${fieldData.pre_approved}` : "",
+          fieldData.message || fieldData.comments || fieldData.notes || "",
+        ].filter(Boolean).join(" | ") || undefined
 
         await ingestLead({
           firstName,
@@ -57,6 +82,9 @@ export async function POST(req: Request) {
           campaign,
           budget,
           location,
+          bedroomsMin,
+          propertyType,
+          notes,
           facebookLeadId: leadId,
           smsConsent: !!phone,
         })

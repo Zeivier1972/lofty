@@ -41,6 +41,8 @@ export interface VAPICallOptions {
   budgetMax?: number | null
   location?: string | null
   bedrooms?: number | null
+  campaign?: string | null
+  propertyType?: string | null
 }
 
 function isBusinessHours(): boolean {
@@ -71,10 +73,18 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
 
   // Build context summary for the assistant
   const ctx: string[] = [`Nombre del lead: ${opts.contactName}`]
+  if (opts.campaign) ctx.push(`Campaña de origen: ${opts.campaign}`)
   if (opts.budgetMin || opts.budgetMax)
     ctx.push(`Presupuesto conocido: $${(opts.budgetMin || 0).toLocaleString()} – $${(opts.budgetMax || 0).toLocaleString()}`)
   if (opts.location) ctx.push(`Área de interés: ${opts.location}`)
   if (opts.bedrooms) ctx.push(`Cuartos mínimos: ${opts.bedrooms}`)
+  if (opts.propertyType) ctx.push(`Tipo de propiedad: ${opts.propertyType}`)
+
+  // Personalize first message if we know what they clicked on
+  const propertyHint = opts.location || (opts.campaign ? opts.campaign.replace(/\b(20\d\d|Q[1-4]|H[12])\b/gi, "").trim() : null)
+  const firstMessage = propertyHint
+    ? `¡Hola! Soy Sofía, asistente de Catherine Gomez Realtor en Miami. Te llamo porque mostraste interés en ${propertyHint}. ¿Tienes un momentito para hablar?`
+    : FIRST_MESSAGE
 
   const body = {
     phoneNumberId,
@@ -82,7 +92,7 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
     metadata: { contactId: opts.contactId },
     assistant: {
       name: "Sofia",
-      firstMessage: FIRST_MESSAGE,
+      firstMessage,
       model: {
         provider: "openai",
         model: "gpt-4o-mini",
