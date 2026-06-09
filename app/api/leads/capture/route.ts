@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { scoreContact } from "@/lib/scoring"
+import { triggerOutboundCall } from "@/lib/vapi"
 
 // Public endpoint — no auth required
 export async function POST(req: Request) {
@@ -78,6 +79,20 @@ export async function POST(req: Request) {
 
     // Trigger AI score
     scoreContact(contact.id).catch(() => {})
+
+    // Trigger AI outbound call if phone provided (30s delay so DB commits first)
+    if (phone) {
+      const toPhone = phone.startsWith("+") ? phone : `+1${phone.replace(/\D/g, "").slice(-10)}`
+      setTimeout(() => {
+        triggerOutboundCall({
+          toPhone,
+          contactId: contact.id,
+          contactName: `${firstName} ${lastName || ""}`.trim(),
+          budgetMax: budgetNum,
+          location: isSeller ? undefined : (area || undefined),
+        }).catch(() => {})
+      }, 30_000)
+    }
 
     // Trigger AI follow-up
     fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/ai/trigger`, {
