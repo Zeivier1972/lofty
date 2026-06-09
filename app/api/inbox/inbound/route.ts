@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import { prisma } from "@/lib/prisma"
-import { sendSMS } from "@/lib/sms"
+import { sendSMS, sendWhatsApp } from "@/lib/sms"
 import Anthropic from "@anthropic-ai/sdk"
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -175,7 +175,8 @@ export async function POST(req: Request) {
       return new Response(`<Response></Response>`, { headers: { "Content-Type": "text/xml" } })
     }
 
-    const phone = from.replace("whatsapp:", "").trim()
+    const isWhatsApp = from.toLowerCase().startsWith("whatsapp:")
+    const phone = from.replace(/^whatsapp:/i, "").trim()
     const digits = phone.replace(/\D/g, "")
 
     // Find or create contact
@@ -198,7 +199,7 @@ export async function POST(req: Request) {
 
     if (!contact) {
       contact = await prisma.contact.create({
-        data: { firstName: "Lead", lastName: phone, phone, status: "LEAD", source: "SMS" },
+        data: { firstName: "Lead", lastName: phone, phone, status: "LEAD", source: isWhatsApp ? "WhatsApp" : "SMS" },
         select: {
           id: true, firstName: true, lastName: true, phone: true, status: true,
           buyerBudgetMin: true, buyerBudgetMax: true, buyerBedroomsMin: true,
@@ -220,17 +221,21 @@ export async function POST(req: Request) {
       return new Response(`<Response></Response>`, { headers: { "Content-Type": "text/xml" } })
     }
 
-    // Get history before logging new message
-    const history = await prisma.sMSMessage.findMany({
-      where: { contactId: contact.id },
-      orderBy: { createdAt: "desc" },
-      take: 10,
-    })
-    history.reverse()
+    // Get history before logging new message (use correct table per channel)
+    const historyRaw = isWhatsApp
+      ? await prisma.whatsAppMessage.findMany({ where: { contactId: contact.id }, orderBy: { createdAt: "desc" }, take: 10 })
+      : await prisma.sMSMessage.findMany({ where: { contactId: contact.id }, orderBy: { createdAt: "desc" }, take: 10 })
+    historyRaw.reverse()
 
-    await prisma.sMSMessage.create({
-      data: { body, fromNumber: phone, toNumber: to, direction: "INBOUND", status: "RECEIVED", contactId: contact.id },
-    })
+    if (isWhatsApp) {
+      await prisma.whatsAppMessage.create({
+        data: { body, fromNumber: phone, toNumber: to, direction: "INBOUND", status: "RECEIVED", contactId: contact.id },
+      })
+    } else {
+      await prisma.sMSMessage.create({
+        data: { body, fromNumber: phone, toNumber: to, direction: "INBOUND", status: "RECEIVED", contactId: contact.id },
+      })
+    }
 
     // Build contact context for Claude
     const isNew = contact.firstName === "Lead"
@@ -245,7 +250,7 @@ export async function POST(req: Request) {
 
     // Build message history
     let msgs: Anthropic.MessageParam[] = [
-      ...history.map(m => ({
+      ...historyRaw.map(m => ({
         role: (m.direction === "INBOUND" ? "user" : "assistant") as "user" | "assistant",
         content: m.body,
       })),
@@ -292,18 +297,25 @@ export async function POST(req: Request) {
       break
     }
 
-    // Send reply
+    // Send reply on the same channel it came from
     const toNum = phone.startsWith("+") ? phone : `+1${digits.slice(-10)}`
-    await sendSMS(toNum, reply)
+    if (isWhatsApp) {
+      await sendWhatsApp(toNum, reply)
+      await prisma.whatsAppMessage.create({
+        data: { body: reply, fromNumber: to, toNumber: phone, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
+      })
+    } else {
+      await sendSMS(toNum, reply)
+      await prisma.sMSMessage.create({
+        data: { body: reply, fromNumber: to, toNumber: phone, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
+      })
+    }
 
-    await prisma.sMSMessage.create({
-      data: { body: reply, fromNumber: to, toNumber: phone, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
-    })
-
+    const channel = isWhatsApp ? "WhatsApp" : "SMS"
     await Promise.all([
       prisma.contact.update({ where: { id: contact.id }, data: { lastContacted: new Date() } }),
       prisma.activity.create({
-        data: { type: "SMS", title: "SMS recibido — Sofía respondió", description: body.slice(0, 120), contactId: contact.id },
+        data: { type: channel, title: `${channel} recibido — Sofía respondió`, description: body.slice(0, 120), contactId: contact.id },
       }),
     ])
 
