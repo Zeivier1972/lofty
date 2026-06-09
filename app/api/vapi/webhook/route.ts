@@ -107,6 +107,7 @@ export async function POST(req: Request) {
         await prisma.dialerCall.create({
           data: {
             contactId,
+            phoneNumber: payload.call?.customer?.number || "unknown",
             direction: "OUTBOUND",
             status: endedReason === "customer-ended-call" || endedReason === "assistant-ended-call" ? "COMPLETED" : "NO_ANSWER",
             duration: payload.call?.endedAt && payload.call?.startedAt
