@@ -189,11 +189,7 @@ export default function ContactDetailClient({ contact }: { contact: any }) {
                 contact.phone ? "bg-green-500 hover:bg-green-600" : "bg-gray-200 cursor-not-allowed text-gray-400")}>
               <Phone className="w-4 h-4" />
             </a>
-            <a href={`sms:${contact.phone}`}
-              className={cn("flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-white text-sm font-medium transition-colors",
-                contact.phone ? "bg-blue-500 hover:bg-blue-600" : "bg-gray-200 cursor-not-allowed text-gray-400")}>
-              <MessageSquare className="w-4 h-4" />
-            </a>
+            <SmsButton contactId={contact.id} phone={contact.phone} name={`${contact.firstName} ${contact.lastName || ""}`.trim()} />
             <a href={`mailto:${contact.email}`}
               className={cn("flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-white text-sm font-medium transition-colors",
                 contact.email ? "bg-purple-500 hover:bg-purple-600" : "bg-gray-200 cursor-not-allowed text-gray-400")}>
@@ -681,6 +677,83 @@ export default function ContactDetailClient({ contact }: { contact: any }) {
         </div>
       </div>
     </div>
+  )
+}
+
+function SmsButton({ contactId, phone, name }: { contactId: string; phone?: string; name: string }) {
+  const [open, setOpen] = useState(false)
+  const [message, setMessage] = useState("")
+  const [sending, setSending] = useState(false)
+  const { toast } = useToast()
+
+  if (!phone) return null
+
+  async function handleSend() {
+    if (!message.trim()) return
+    setSending(true)
+    try {
+      const res = await fetch("/api/sms/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contactId, message }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        toast({ title: "✅ Mensaje enviado", description: `SMS enviado a ${name}` })
+        setMessage("")
+        setOpen(false)
+      } else {
+        toast({ title: "Error", description: data.error || "No se pudo enviar", variant: "destructive" })
+      }
+    } catch {
+      toast({ title: "Error", description: "No se pudo conectar", variant: "destructive" })
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        title="Enviar SMS"
+        className={cn("flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-white text-sm font-medium transition-colors",
+          "bg-blue-500 hover:bg-blue-600")}>
+        <MessageSquare className="w-4 h-4" />
+      </button>
+
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 px-4" onClick={() => setOpen(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-semibold text-gray-900">Enviar SMS</p>
+                <p className="text-sm text-gray-400">{phone}</p>
+              </div>
+              <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600 text-xl font-light">×</button>
+            </div>
+            <textarea
+              autoFocus
+              rows={4}
+              value={message}
+              onChange={e => setMessage(e.target.value)}
+              placeholder={`Escribe tu mensaje para ${name}...`}
+              className="w-full border border-gray-200 rounded-xl p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-300"
+            />
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-gray-400">{message.length}/160 caracteres</p>
+              <button
+                onClick={handleSend}
+                disabled={sending || !message.trim()}
+                className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition-colors">
+                <Send className="w-4 h-4" />
+                {sending ? "Enviando..." : "Enviar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 
