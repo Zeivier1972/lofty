@@ -197,6 +197,7 @@ export default function ContactDetailClient({ contact }: { contact: any }) {
                 contact.email ? "bg-purple-500 hover:bg-purple-600" : "bg-gray-200 cursor-not-allowed text-gray-400")}>
               <Mail className="w-4 h-4" />
             </a>
+            <SofiaCallButton contactId={contact.id} phone={contact.phone} name={`${contact.firstName} ${contact.lastName || ""}`.trim()} />
           </div>
 
           {/* Insight metrics */}
@@ -678,5 +679,43 @@ export default function ContactDetailClient({ contact }: { contact: any }) {
         </div>
       </div>
     </div>
+  )
+}
+
+function SofiaCallButton({ contactId, phone, name }: { contactId: string; phone?: string; name: string }) {
+  const [calling, setCalling] = useState(false)
+  const { toast } = useToast()
+
+  if (!phone) return null
+
+  async function handleCall() {
+    setCalling(true)
+    try {
+      const res = await fetch("/api/vapi/call", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contactId, phone, name }),
+      })
+      const data = await res.json()
+      if (data.callId) {
+        toast({ title: "📞 Sofía está llamando...", description: `Llamada iniciada a ${name}` })
+      } else {
+        toast({ title: "Error", description: data.error || "No se pudo iniciar la llamada", variant: "destructive" })
+      }
+    } catch {
+      toast({ title: "Error", description: "No se pudo conectar", variant: "destructive" })
+    } finally {
+      setCalling(false)
+    }
+  }
+
+  return (
+    <button
+      onClick={handleCall}
+      disabled={calling}
+      title="Llamar con Sofía (AI)"
+      className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-violet-500 hover:bg-violet-600 disabled:opacity-50 text-white text-sm font-medium transition-colors">
+      <Bot className="w-4 h-4" />
+    </button>
   )
 }
