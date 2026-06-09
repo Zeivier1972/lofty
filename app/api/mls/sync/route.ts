@@ -1,46 +1,50 @@
 export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
-import { syncMLSListings } from "@/lib/rets"
 import { prisma } from "@/lib/prisma"
-import fs from "fs"
-import path from "path"
-
-const CONFIG_PATH = path.join(process.cwd(), ".idx-config.json")
+import { fetchListings, bridgeToProperty } from "@/lib/bridge"
 
 export async function POST(req: Request) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-
-  try {
-    const body = await req.json().catch(() => ({}))
-    const config = Object.keys(body).length > 2 ? body : JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8"))
-
-    if (!config?.loginUrl || !config?.username || !config?.password) {
-      return NextResponse.json({ error: "IDX credentials not configured" }, { status: 400 })
-    }
-
-    const limit = body.limit || 500
-    const statusFilter = body.statusFilter || "A"
-
-    const result = await syncMLSListings(config, prisma, { limit, statusFilter })
-    return NextResponse.json(result)
-  } catch (e: any) {
-    console.error("MLS sync error:", e)
-    return NextResponse.json({ error: e.message || "Sync failed" }, { status: 500 })
+  const secret = req.headers.get("x-sync-secret")
+  if (process.env.MLS_SYNC_SECRET && secret !== process.env.MLS_SYNC_SECRET) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
+
+  const cities = ["Miami", "Miami Beach", "Doral", "Kendall", "Coral Gables", "Aventura", "Sunny Isles Beach", "Hialeah", "Homestead"]
+  let created = 0, updated = 0, errors = 0
+
+  for (const city of cities) {
+    try {
+      const listings = await fetchListings({ city, limit: 50 })
+      for (const listing of listings) {
+        const data = bridgeToProperty(listing)
+        if (!data.mlsId) continue
+        try {
+          const existing = await prisma.property.findFirst({ where: { mlsId: data.mlsId } })
+          if (existing) {
+            await prisma.property.update({ where: { id: existing.id }, data })
+            updated++
+          } else {
+            await prisma.property.create({ data })
+            created++
+          }
+        } catch { errors++ }
+      }
+    } catch (e) {
+      console.error(`[MLS sync] Error fetching ${city}:`, e)
+      errors++
+    }
+  }
+
+  await prisma.property.updateMany({
+    where: { status: "ACTIVE", updatedAt: { lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
+    data: { status: "INACTIVE" },
+  })
+
+  return NextResponse.json({ success: true, created, updated, errors })
 }
 
 export async function GET() {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-
-  const count = await prisma.property.count()
-  const last = await prisma.property.findFirst({ orderBy: { updatedAt: "desc" }, select: { updatedAt: true } })
-
-  return NextResponse.json({
-    totalProperties: count,
-    lastSyncedAt: last?.updatedAt || null,
-  })
+  const count = await prisma.property.count({ where: { status: "ACTIVE" } })
+  return NextResponse.json({ activeListings: count })
 }
