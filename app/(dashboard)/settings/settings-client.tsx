@@ -342,7 +342,7 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
   const [idxConnected, setIdxConnected] = useState(false)
   const [idxTesting, setIdxTesting] = useState(false)
   const [idxSyncing, setIdxSyncing] = useState(false)
-  const [idxSyncResult, setIdxSyncResult] = useState<{ imported: number; updated: number; errors: string[] } | null>(null)
+  const [idxSyncResult, setIdxSyncResult] = useState<{ created: number; updated: number; errors: number } | null>(null)
   const [idxPropertyCount, setIdxPropertyCount] = useState<number | null>(null)
 
   // Load IDX config + property count on mount
@@ -351,7 +351,7 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
       if (d) setIdxConfig(prev => ({ ...prev, ...d }))
     }).catch(() => {})
     fetch("/api/mls/sync").then(r => r.json()).then(d => {
-      setIdxPropertyCount(d.totalProperties)
+      if (d.activeListings !== undefined) setIdxPropertyCount(d.activeListings)
     }).catch(() => {})
   })
 
@@ -534,24 +534,17 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
     setIdxSyncing(true)
     setIdxSyncResult(null)
     try {
-      // Save config first
-      await fetch("/api/settings/idx", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(idxConfig),
-      })
       const res = await fetch("/api/mls/sync", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(idxConfig),
+        headers: { "x-sync-secret": "lofty-mls-sync-2026" },
       })
       const data = await res.json()
       if (data.error) throw new Error(data.error)
       setIdxSyncResult(data)
-      setIdxPropertyCount((data.imported || 0) + (data.updated || 0))
+      setIdxPropertyCount((data.created || 0) + (data.updated || 0))
       toast({
         title: `✅ Sincronización completada`,
-        description: `${data.imported} nuevas · ${data.updated} actualizadas`,
+        description: `${data.created} nuevas · ${data.updated} actualizadas`,
       })
     } catch (e: any) {
       toast({ title: "Error al sincronizar: " + (e.message || "Unknown"), variant: "destructive" })
@@ -817,52 +810,15 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
                 </div>
               </CardHeader>
               <CardContent className="space-y-5">
-                <div className="bg-lofty-50 border border-lofty-200 rounded-xl p-4 flex items-start gap-3">
-                  <div className="w-8 h-8 bg-lofty-600 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <Database className="w-4 h-4 text-white" />
+                {/* Bridge API connected status */}
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-start gap-3">
+                  <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <CheckCircle className="w-4 h-4 text-white" />
                   </div>
                   <div>
-                    <p className="font-semibold text-lofty-900 text-sm">Miami Association of Realtors (MIAMI MLS)</p>
-                    <p className="text-xs text-lofty-600 mt-0.5">Connect to access live MLS listings and auto-assign buyer search profiles</p>
-                    <a href="https://www.miamire.com/idx" target="_blank" rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-xs text-lofty-600 hover:text-lofty-700 mt-1 font-medium">
-                      Get IDX credentials from MIAMI MLS <ExternalLink className="w-3 h-3" />
-                    </a>
-                  </div>
-                </div>
-
-                <div>
-                  <Label className="mb-1.5 block">MLS Provider</Label>
-                  <select value={idxConfig.provider} onChange={e => setIdxConfig(c => ({ ...c, provider: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-lofty-500 outline-none">
-                    <option value="miami_mls">Miami Association of Realtors (MIAMI MLS)</option>
-                    <option value="mls_florida">Florida MLS</option>
-                    <option value="bright_mls">Bright MLS</option>
-                    <option value="custom">Custom RETS / RESO</option>
-                  </select>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="mb-1.5 block">RETS Login URL</Label>
-                    <Input value={idxConfig.loginUrl} onChange={e => setIdxConfig(c => ({ ...c, loginUrl: e.target.value }))}
-                      placeholder="https://rets.miami-mls.com/rets/login" />
-                  </div>
-                  <div>
-                    <Label className="mb-1.5 block">MLS Agent ID</Label>
-                    <Input value={idxConfig.mlsId} onChange={e => setIdxConfig(c => ({ ...c, mlsId: e.target.value }))}
-                      placeholder="Your MLS member ID" />
-                  </div>
-                  <div>
-                    <Label className="mb-1.5 block">RETS Username</Label>
-                    <Input value={idxConfig.username} onChange={e => setIdxConfig(c => ({ ...c, username: e.target.value }))}
-                      placeholder="IDX username" />
-                  </div>
-                  <div>
-                    <Label className="mb-1.5 block">RETS Password</Label>
-                    <Input type="password" value={idxConfig.password}
-                      onChange={e => setIdxConfig(c => ({ ...c, password: e.target.value }))}
-                      placeholder="IDX password" />
+                    <p className="font-semibold text-green-900 text-sm">Bridge Interactive API — Conectado</p>
+                    <p className="text-xs text-green-700 mt-0.5">Miami MLS via Bridge Interactive RESO Web API. Credenciales configuradas en Railway.</p>
+                    <p className="text-xs text-green-600 mt-1 font-medium">9 ciudades: Miami · Miami Beach · Doral · Kendall · Coral Gables · Aventura · Sunny Isles · Hialeah · Homestead</p>
                   </div>
                 </div>
 
@@ -896,7 +852,7 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
                 {/* Property count */}
                 {idxPropertyCount !== null && (
                   <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl text-sm text-blue-800">
-                    <span className="font-bold">{idxPropertyCount}</span> propiedades en tu sitio web
+                    <span className="font-bold">{idxPropertyCount.toLocaleString()}</span> propiedades activas en tu base de datos
                   </div>
                 )}
 
@@ -904,35 +860,30 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
                 {idxSyncResult && (
                   <div className="p-4 bg-green-50 border border-green-200 rounded-xl space-y-1">
                     <p className="text-sm font-semibold text-green-800">✅ Última sincronización:</p>
-                    <p className="text-sm text-green-700">{idxSyncResult.imported} propiedades nuevas importadas</p>
+                    <p className="text-sm text-green-700">{idxSyncResult.created} propiedades nuevas importadas</p>
                     <p className="text-sm text-green-700">{idxSyncResult.updated} propiedades actualizadas</p>
-                    {idxSyncResult.errors.length > 0 && (
-                      <p className="text-xs text-orange-600">{idxSyncResult.errors.length} errores menores (filas omitidas)</p>
+                    {idxSyncResult.errors > 0 && (
+                      <p className="text-xs text-orange-600">{idxSyncResult.errors} errores menores (filas omitidas)</p>
                     )}
                   </div>
                 )}
 
                 <div className="flex flex-wrap gap-2">
-                  <Button onClick={saveIdx} disabled={idxSaving} variant="outline">
-                    {idxSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Guardando...</> : <><Save className="w-4 h-4 mr-2" />Guardar</>}
-                  </Button>
-                  <Button onClick={testIdxConnection} disabled={idxTesting || !idxConfig.username || !idxConfig.password} variant="outline"
-                    className="border-blue-200 text-blue-700 hover:bg-blue-50">
-                    {idxTesting ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Probando...</> : "🔌 Probar Conexión"}
-                  </Button>
-                  <Button onClick={syncMLSNow} disabled={idxSyncing || !idxConfig.username || !idxConfig.password}
-                    className="bg-lofty-600 hover:bg-lofty-700">
-                    {idxSyncing ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Sincronizando propiedades...</> : "🔄 Sincronizar Propiedades Ahora"}
+                  <Button onClick={syncMLSNow} disabled={idxSyncing}
+                    className="bg-lofty-600 hover:bg-lofty-700 gap-2">
+                    {idxSyncing
+                      ? <><Loader2 className="w-4 h-4 animate-spin" />Sincronizando propiedades...</>
+                      : <><Database className="w-4 h-4" />Sincronizar Propiedades Ahora</>}
                   </Button>
                 </div>
 
                 <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
                   <p className="text-xs font-medium text-gray-600 mb-1">¿Cómo funciona?</p>
                   <ol className="text-xs text-gray-500 space-y-1 list-decimal list-inside">
-                    <li>Ingresa tus credenciales RETS del Miami MLS</li>
-                    <li>Haz clic en <strong>Probar Conexión</strong> para verificar</li>
-                    <li>Haz clic en <strong>Sincronizar</strong> para importar tus listings activos</li>
-                    <li>Tus propiedades aparecerán automáticamente en <strong>/site</strong> y <strong>/site/listings</strong></li>
+                    <li>Haz clic en <strong>Sincronizar</strong> para importar listings activos del Miami MLS</li>
+                    <li>Se sincronizan hasta 50 propiedades por ciudad en 9 ciudades de Miami</li>
+                    <li>Las propiedades aparecen en la sección <strong>Properties</strong> del CRM</li>
+                    <li>Los listings vencidos (+24h sin actualizar) se marcan como inactivos automáticamente</li>
                   </ol>
                 </div>
               </CardContent>
