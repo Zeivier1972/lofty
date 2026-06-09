@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -320,6 +320,17 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
   // Integrations
   const [activeIntegration, setActiveIntegration] = useState<typeof INTEGRATIONS[0] | null>(null)
   const [connectedIntegrations, setConnectedIntegrations] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    fetch("/api/settings/integrations")
+      .then(r => r.json())
+      .then(data => {
+        if (data && typeof data === "object") {
+          setConnectedIntegrations(new Set(Object.keys(data)))
+        }
+      })
+      .catch(() => {})
+  }, [])
 
   // IDX
   const [idxConfig, setIdxConfig] = useState({

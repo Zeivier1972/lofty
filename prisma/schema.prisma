@@ -788,6 +788,14 @@ model CampaignEnrollment {
   @@unique([campaignId, contactId])
 }
 
+// ─── Key-value settings store ────────────────────────────────────────────────
+
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
 // ─── CMA Report ───────────────────────────────────────────────────────────────
 
 model CMAReport {

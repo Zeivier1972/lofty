@@ -2,17 +2,23 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import fs from "fs"
-import path from "path"
+import { prisma } from "@/lib/prisma"
 
-const CONFIG_PATH = path.join(process.cwd(), ".integrations-config.json")
+const SETTING_KEY = "integrations_config"
 
-function readConfig() {
-  try { return JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8")) } catch { return {} }
+async function readConfig(): Promise<Record<string, any>> {
+  try {
+    const row = await prisma.setting.findUnique({ where: { key: SETTING_KEY } })
+    return row ? JSON.parse(row.value) : {}
+  } catch {
+    return {}
+  }
 }
 
 export async function GET() {
-  return NextResponse.json(readConfig())
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  return NextResponse.json(await readConfig())
 }
 
 export async function POST(req: Request) {
@@ -21,8 +27,13 @@ export async function POST(req: Request) {
 
   try {
     const { id, config } = await req.json()
-    const existing = readConfig()
-    fs.writeFileSync(CONFIG_PATH, JSON.stringify({ ...existing, [id]: config }, null, 2))
+    const existing = await readConfig()
+    const updated = { ...existing, [id]: config }
+    await prisma.setting.upsert({
+      where: { key: SETTING_KEY },
+      update: { value: JSON.stringify(updated) },
+      create: { key: SETTING_KEY, value: JSON.stringify(updated) },
+    })
     return NextResponse.json({ success: true })
   } catch (e) {
     return NextResponse.json({ error: "Failed to save" }, { status: 500 })
