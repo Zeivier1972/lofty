@@ -103,19 +103,25 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
     fetch("/api/blog?public=1").then(r => r.json()).then(d => { if (Array.isArray(d)) setBlogPosts(d) }).catch(() => {})
   })
 
-  const agentName   = websiteConfig?.agentName  || config?.realtorName  || "Catherine Gomez"
-  const agentBio    = websiteConfig?.agentBio   || config?.agentPersona || "Soy Catherine Gomez, Realtor y Educadora con más de 20 años de experiencia en el mercado inmobiliario de Miami. Mi misión es ayudar a familias latinas a comprar inteligente en Florida. No solo vendo casas — te enseño cómo comprar con confianza."
-  const agentPhone  = websiteConfig?.agentPhone || config?.realtorPhone || "(305) 000-0000"
-  const agentEmail  = websiteConfig?.agentEmail || config?.realtorEmail || "catherine@catherinegomezpa.com"
+  const agentName    = websiteConfig?.agentName    || config?.realtorName  || "Catherine Gomez"
+  const agentTitle   = websiteConfig?.agentTitle   || "CEO / AGENT  |  License ID: 3320405"
+  const agentBio     = websiteConfig?.agentBio     || config?.agentPersona ||
+    "Catherine Gomez es una agente de bienes raíces con licencia en Florida y una carrera que comenzó en 2004. Está dedicada a ayudar a sus clientes a encontrar la casa de sus sueños, vender propiedades y navegar el mercado inmobiliario.\n\nCon más de dos décadas de experiencia en el mercado de bienes raíces de Florida, Catherine Gomez se compromete a guiar a sus clientes en cada paso de su camino inmobiliario. Su dedicación y profesionalismo le han valido altas recomendaciones de clientes satisfechos."
+  const agentPhone   = websiteConfig?.agentPhone   || config?.realtorPhone || "+1(305) 283-0872"
+  const agentEmail   = websiteConfig?.agentEmail   || config?.realtorEmail || "info@catherinegomezrealtor.com"
+  const agentAddress = websiteConfig?.agentAddress || "14335 SW 120th St. Suite 101, Miami, Florida 33186, USA"
+  const agentWebsite = websiteConfig?.agentWebsite || "https://catherinegomezrealtor.com"
   const agentPhotoUrl = websiteConfig?.agentPhotoUrl as string | undefined
-  const heroTitle   = websiteConfig?.heroTitle  || "Catherine Gomez — Realtor AND Educator\nwho helps Latino families buy smart in Florida."
+  const heroTitle    = websiteConfig?.heroTitle    || "Catherine Gomez — Realtor AND Educator\nwho helps Latino families buy smart in Florida."
   const heroSubtitle = websiteConfig?.heroSubtitle || "\"I don't just sell homes—I teach you how to buy smart.\""
-  const heroBgUrl   = websiteConfig?.heroBgUrl  || "https://images.unsplash.com/photo-1613490493576-7fde63acd811?auto=format&fit=crop&w=1920&q=80"
+  const heroBgUrl    = websiteConfig?.heroBgUrl    || "https://images.unsplash.com/photo-1613490493576-7fde63acd811?auto=format&fit=crop&w=1920&q=80"
   const testimonials = parseJSON(websiteConfig?.testimonials, DEFAULT_TESTIMONIALS)
   const customStats  = parseJSON<{ value: string; label: string }[] | null>(websiteConfig?.stats, null)
-  const facebookUrl  = websiteConfig?.facebookUrl as string | undefined
-  const instagramUrl = websiteConfig?.instagramUrl as string | undefined
-  const linkedinUrl  = websiteConfig?.linkedinUrl as string | undefined
+  const facebookUrl  = websiteConfig?.facebookUrl  || "https://facebook.com/catherinegomezrealtor"
+  const instagramUrl = websiteConfig?.instagramUrl || "https://instagram.com/catherinegomezrealtor"
+  const linkedinUrl  = websiteConfig?.linkedinUrl  || "https://linkedin.com/in/catherinegomez"
+  const youtubeUrl   = websiteConfig?.youtubeUrl   as string | undefined
+  const whatsappUrl  = `https://wa.me/13052830872`
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault()
@@ -359,11 +365,12 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
       {/* ── ABOUT ──────────────────────────────────────────────────────────── */}
       <section id="about" className="py-16 bg-gray-50">
         <div className="max-w-screen-xl mx-auto px-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
-            <div className="relative">
-              <div className="aspect-[4/5] rounded-3xl overflow-hidden bg-gradient-to-br from-[#1a3a5c] to-[#0a1f35]">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+            {/* Photo */}
+            <div className="max-w-md mx-auto lg:mx-0">
+              <div className="rounded-2xl overflow-hidden bg-gradient-to-br from-[#1a3a5c] to-[#0a1f35] aspect-[3/4]">
                 {agentPhotoUrl
-                  ? <img src={agentPhotoUrl} alt={agentName} className="w-full h-full object-cover" />
+                  ? <img src={agentPhotoUrl} alt={agentName} className="w-full h-full object-cover object-top" />
                   : <div className="w-full h-full flex items-center justify-center">
                       <div className="w-32 h-32 rounded-full bg-[#c9a84c] flex items-center justify-center text-4xl font-bold text-[#1a3a5c]">
                         {initials}
@@ -371,23 +378,51 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
                     </div>
                 }
               </div>
-              <div className="absolute -bottom-3 -right-3 w-full h-full rounded-3xl border-2 border-[#c9a84c]/30 -z-10" />
             </div>
-            <div>
-              <p className="text-xs font-bold uppercase tracking-widest text-[#c9a84c] mb-3">About Me</p>
-              <h2 className="font-serif text-4xl font-bold text-gray-900 mb-6">{agentName}</h2>
-              <p className="text-gray-600 leading-relaxed text-lg mb-6">{agentBio}</p>
-              <div className="space-y-3 mb-8">
-                <div className="flex items-center gap-3 text-gray-700">
-                  <Phone className="w-4 h-4 text-[#c9a84c] flex-shrink-0" />{agentPhone}
-                </div>
-                <div className="flex items-center gap-3 text-gray-700">
-                  <Mail className="w-4 h-4 text-[#c9a84c] flex-shrink-0" />{agentEmail}
-                </div>
+            {/* Dark info card */}
+            <div className="bg-[#1a1a1a] rounded-2xl p-8 text-white">
+              <p className="text-xs font-semibold tracking-widest text-gray-400 mb-1 uppercase">{agentTitle}</p>
+              <h2 className="font-serif text-3xl font-bold text-white mb-5">{agentName}</h2>
+              <div className="space-y-3 mb-6">
+                {agentBio.split("\n\n").filter(Boolean).map((para: string, i: number) => (
+                  <p key={i} className="text-gray-300 leading-relaxed text-sm">{para}</p>
+                ))}
               </div>
-              <a href="#contact"
-                className="inline-flex items-center gap-2 px-8 py-4 rounded-full font-semibold text-white bg-[#c9a84c] hover:bg-[#b8963e] transition-colors">
-                Schedule a Consultation <ChevronRight className="w-4 h-4" />
+              <div className="space-y-2.5 mb-6 pt-5 border-t border-white/10">
+                {[
+                  { icon: Phone,         text: agentPhone,   href: `tel:${agentPhone.replace(/\D/g,"")}` },
+                  { icon: Mail,          text: agentEmail,   href: `mailto:${agentEmail}` },
+                  { icon: MapPin,        text: agentAddress, href: undefined },
+                  { icon: ChevronRight,  text: agentWebsite, href: agentWebsite, external: true },
+                ].map(({ icon: Icon, text, href, external }) => (
+                  <div key={text} className="flex items-start gap-3 text-sm text-gray-300">
+                    <Icon className="w-4 h-4 text-[#c9a84c] flex-shrink-0 mt-0.5" />
+                    {href
+                      ? <a href={href} target={external ? "_blank" : undefined} rel="noopener noreferrer"
+                          className="hover:text-[#c9a84c] transition-colors break-all">{text}</a>
+                      : <span>{text}</span>
+                    }
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-2 mb-6">
+                {[
+                  { label: "Facebook",  href: facebookUrl,  color: "#1877F2", el: <Facebook  className="w-4 h-4" /> },
+                  { label: "LinkedIn",  href: linkedinUrl,  color: "#0A66C2", el: <Linkedin  className="w-4 h-4" /> },
+                  { label: "Instagram", href: instagramUrl, color: "#E1306C", el: <Instagram className="w-4 h-4" /> },
+                  { label: "YouTube",   href: youtubeUrl,   color: "#FF0000", el: <span className="text-xs font-bold">YT</span> },
+                  { label: "WhatsApp",  href: whatsappUrl,  color: "#25D366", el: <Phone     className="w-4 h-4" /> },
+                ].filter(s => s.href).map(s => (
+                  <a key={s.label} href={s.href} target="_blank" rel="noopener noreferrer" aria-label={s.label}
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-white transition-opacity hover:opacity-80"
+                    style={{ backgroundColor: s.color }}>
+                    {s.el}
+                  </a>
+                ))}
+              </div>
+              <a href="/book" target="_blank"
+                className="inline-flex items-center gap-2 px-8 py-3 bg-[#c9a84c] hover:bg-[#b8963e] text-white font-bold rounded transition-colors tracking-wide text-sm">
+                BOOK APPOINTMENT
               </a>
             </div>
           </div>
@@ -650,8 +685,9 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
             <div>
               <h3 className="text-white font-semibold mb-4">Contact</h3>
               <div className="space-y-3 text-sm text-gray-400">
-                <div className="flex items-center gap-2"><Phone className="w-4 h-4 text-[#c9a84c]"/>{agentPhone}</div>
-                <div className="flex items-center gap-2"><Mail className="w-4 h-4 text-[#c9a84c]"/>{agentEmail}</div>
+                <div className="flex items-center gap-2"><Phone className="w-4 h-4 text-[#c9a84c] flex-shrink-0"/>{agentPhone}</div>
+                <div className="flex items-center gap-2"><Mail className="w-4 h-4 text-[#c9a84c] flex-shrink-0"/>{agentEmail}</div>
+                <div className="flex items-start gap-2"><MapPin className="w-4 h-4 text-[#c9a84c] flex-shrink-0 mt-0.5"/><span>{agentAddress}</span></div>
               </div>
             </div>
           </div>

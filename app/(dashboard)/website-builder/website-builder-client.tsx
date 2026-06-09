@@ -23,21 +23,31 @@ interface WebsiteConfig {
   agentName: string; agentTitle: string; agentPhone?: string
   agentEmail?: string; agentPhotoUrl?: string; agentBio: string
   agentLicense?: string; agentBrokerage?: string
+  agentAddress?: string; agentWebsite?: string
   yearsFounded: number; homesSold: number; satisfiedClients: number; avgDaysOnMarket: number
   primaryColor: string; accentColor: string; logoUrl?: string
-  facebook?: string; instagram?: string; linkedin?: string; youtube?: string
+  facebook?: string; instagram?: string; linkedin?: string; youtube?: string; whatsapp?: string
   aboutHeading: string
   testimonials: string; serviceAreas: string; videoUrl?: string
   metaTitle?: string; metaDescription?: string
 }
 
 const DEFAULT_CONFIG: WebsiteConfig = {
-  heroTitle: "Your Dream Home Awaits", heroSubtitle: "Luxury real estate with a personal touch",
+  heroTitle: "Catherine Gomez — Realtor AND Educator\nwho helps Latino families buy smart in Florida.",
+  heroSubtitle: "\"I don't just sell homes—I teach you how to buy smart.\"",
   heroCta: "View Listings", heroCta2: "Contact Me",
-  agentName: "Catherine Gomez", agentTitle: "Luxury Real Estate Specialist",
-  agentBio: "With over 15 years of experience in Miami's luxury real estate market, I bring unmatched expertise and dedication to every transaction.",
-  yearsFounded: 2009, homesSold: 500, satisfiedClients: 98, avgDaysOnMarket: 21,
-  primaryColor: "#0e8fe9", accentColor: "#c9a84c",
+  agentName: "Catherine Gomez", agentTitle: "CEO / AGENT  |  License ID: 3320405",
+  agentBio: "Catherine Gomez es una agente de bienes raíces con licencia en Florida y una carrera que comenzó en 2004. Está dedicada a ayudar a sus clientes a encontrar la casa de sus sueños, vender propiedades y navegar el mercado inmobiliario.\n\nCon más de dos décadas de experiencia en el mercado de bienes raíces de Florida, Catherine Gomez se compromete a guiar a sus clientes en cada paso de su camino inmobiliario.",
+  agentPhone: "+1(305) 283-0872",
+  agentEmail: "info@catherinegomezrealtor.com",
+  agentAddress: "14335 SW 120th St. Suite 101, Miami, Florida 33186, USA",
+  agentWebsite: "https://catherinegomezrealtor.com",
+  yearsFounded: 2004, homesSold: 500, satisfiedClients: 98, avgDaysOnMarket: 21,
+  primaryColor: "#1a3a5c", accentColor: "#c9a84c",
+  facebook: "https://facebook.com/catherinegomezrealtor",
+  instagram: "https://instagram.com/catherinegomezrealtor",
+  linkedin: "https://linkedin.com/in/catherinegomez",
+  whatsapp: "https://wa.me/13052830872",
   aboutHeading: "Why Work With Me", testimonials: "[]", serviceAreas: "[]",
 }
 
@@ -446,21 +456,32 @@ export default function WebsiteBuilderClient({ config: initialConfig }: { config
                     <div>
                       <Label className="mb-1.5 block">Phone</Label>
                       <Input value={config.agentPhone || ""} onChange={e => set("agentPhone", e.target.value)}
-                        placeholder="(305) 555-0100" />
+                        placeholder="+1(305) 283-0872" />
                     </div>
                     <div>
                       <Label className="mb-1.5 block">Email</Label>
                       <Input value={config.agentEmail || ""} onChange={e => set("agentEmail", e.target.value)}
-                        placeholder="hello@yourdomain.com" />
+                        placeholder="info@catherinegomezrealtor.com" />
                     </div>
+                  </div>
+                  <div>
+                    <Label className="mb-1.5 block">Office Address</Label>
+                    <Input value={config.agentAddress || ""} onChange={e => set("agentAddress", e.target.value)}
+                      placeholder="14335 SW 120th St. Suite 101, Miami, FL 33186" />
+                  </div>
+                  <div>
+                    <Label className="mb-1.5 block">Website URL</Label>
+                    <Input value={config.agentWebsite || ""} onChange={e => set("agentWebsite", e.target.value)}
+                      placeholder="https://catherinegomezrealtor.com" />
                   </div>
                   <div className="space-y-3">
                     <p className="text-sm font-medium text-gray-700">Social Media</p>
                     {[
-                      { key: "facebook", icon: Facebook, placeholder: "https://facebook.com/yourpage", label: "Facebook" },
-                      { key: "instagram", icon: Instagram, placeholder: "https://instagram.com/yourhandle", label: "Instagram" },
-                      { key: "linkedin", icon: Linkedin, placeholder: "https://linkedin.com/in/yourprofile", label: "LinkedIn" },
-                      { key: "youtube", icon: Youtube, placeholder: "https://youtube.com/@yourchannel", label: "YouTube" },
+                      { key: "facebook",  icon: Facebook,  placeholder: "https://facebook.com/yourpage",     label: "Facebook" },
+                      { key: "instagram", icon: Instagram, placeholder: "https://instagram.com/yourhandle",  label: "Instagram" },
+                      { key: "linkedin",  icon: Linkedin,  placeholder: "https://linkedin.com/in/yourprofile", label: "LinkedIn" },
+                      { key: "youtube",   icon: Youtube,   placeholder: "https://youtube.com/@yourchannel",  label: "YouTube" },
+                      { key: "whatsapp",  icon: Phone,     placeholder: "https://wa.me/13055550100",         label: "WhatsApp" },
                     ].map(({ key, icon: Icon, placeholder, label }) => (
                       <div key={key} className="flex items-center gap-3">
                         <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
