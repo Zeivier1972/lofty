@@ -2,423 +2,353 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { TrendingUp, Award, Shield, Phone, Mail, Star, Facebook, Instagram, Linkedin, ChevronRight, MapPin, Bed, Bath, Maximize2 } from "lucide-react"
+import { useRouter } from "next/navigation"
+import {
+  Search, Phone, Mail, Star, Facebook, Instagram, Linkedin,
+  ChevronRight, MapPin, Bed, Bath, Maximize2, TrendingUp, Award, Shield, Menu, X,
+  BarChart2, Calendar, User, ArrowRight, TrendingDown, Home,
+} from "lucide-react"
 import type { AIConfig, Property } from "@prisma/client"
 
-interface HomeClientProps {
-  config: AIConfig | null
-  websiteConfig?: any
-  featuredProperties: Property[]
-  stats: {
-    _count: number
-    _avg: { price: number | null }
-  }
+// ─── Featured Areas ───────────────────────────────────────────────────────────
+const FEATURED_AREAS = [
+  { name: "Miami",             img: "https://images.unsplash.com/photo-1533106497176-45ae19e68ba2?auto=format&fit=crop&w=800&q=80" },
+  { name: "Homestead",        img: "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?auto=format&fit=crop&w=800&q=80" },
+  { name: "Brickell",         img: "https://images.unsplash.com/photo-1486325212027-8081e485255e?auto=format&fit=crop&w=800&q=80" },
+  { name: "Pinecrest",        img: "https://images.unsplash.com/photo-1570129477492-45c003edd2be?auto=format&fit=crop&w=800&q=80" },
+  { name: "Doral",            img: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&w=800&q=80" },
+  { name: "Kendall",          img: "https://images.unsplash.com/photo-1449844908441-8829872d2607?auto=format&fit=crop&w=800&q=80" },
+  { name: "Cutler Bay",       img: "https://images.unsplash.com/photo-1546877625-cb8c71916608?auto=format&fit=crop&w=800&q=80" },
+  { name: "Coral Gables",     img: "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=800&q=80" },
+  { name: "Sunny Isles Beach",img: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=800&q=80" },
+]
+
+// ─── Nav links ────────────────────────────────────────────────────────────────
+const NAV_LINKS = [
+  { label: "HOME",             href: "/site" },
+  { label: "BUY",              href: "/search" },
+  { label: "SELL",             href: "/site#contact" },
+  { label: "PRE-CONSTRUCTION", href: "/search" },
+  { label: "ABOUT",            href: "/site#about" },
+  { label: "MARKET SNAPSHOT",  href: "/site#market" },
+]
+
+function formatPrice(price: number) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(price)
 }
 
 function parseImages(images: string | null | undefined): string[] {
   if (!images) return []
-  try {
-    return JSON.parse(images)
-  } catch {
-    return []
-  }
+  try { return JSON.parse(images) } catch { return [] }
 }
-
-function formatPrice(price: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(price)
-}
-
-function PropertyCard({ property }: { property: Property }) {
-  const images = parseImages(property.images)
-  const imageUrl = images[0] || null
-
-  return (
-    <div className="bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden group cursor-pointer">
-      {/* Image */}
-      <div className="aspect-[4/3] overflow-hidden rounded-t-2xl relative">
-        {imageUrl ? (
-          <img
-            src={imageUrl}
-            alt={property.address}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-          />
-        ) : (
-          <div
-            className="w-full h-full flex items-center justify-center"
-            style={{ background: "linear-gradient(135deg, #0a0e1a 0%, #1a2744 100%)" }}
-          >
-            <div className="text-center">
-              <div className="w-16 h-16 rounded-full mx-auto mb-2 flex items-center justify-center" style={{ background: "rgba(201,168,76,0.2)" }}>
-                <MapPin className="w-8 h-8" style={{ color: "#c9a84c" }} />
-              </div>
-              <span className="text-white text-sm opacity-70">No Image Available</span>
-            </div>
-          </div>
-        )}
-        {/* Status badge */}
-        <div className="absolute top-3 left-3">
-          <span
-            className="px-3 py-1 rounded-full text-xs font-semibold text-white"
-            style={{ background: "linear-gradient(135deg, #c9a84c, #e8c97a)" }}
-          >
-            {property.status === "ACTIVE" ? "For Sale" : property.status}
-          </span>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="p-5">
-        <p className="text-2xl font-bold mb-1" style={{ color: "#c9a84c" }}>
-          {formatPrice(property.price)}
-        </p>
-        <p className="text-gray-700 text-sm mb-3 font-medium">
-          {property.address}, {property.city}, {property.state} {property.zip}
-        </p>
-
-        {/* Pills */}
-        <div className="flex flex-wrap gap-2 mb-4">
-          {property.bedrooms != null && (
-            <span className="bg-gray-100 text-gray-600 rounded-full px-3 py-1 text-xs flex items-center gap-1">
-              <Bed className="w-3 h-3" />
-              {property.bedrooms} bd
-            </span>
-          )}
-          {property.bathrooms != null && (
-            <span className="bg-gray-100 text-gray-600 rounded-full px-3 py-1 text-xs flex items-center gap-1">
-              <Bath className="w-3 h-3" />
-              {property.bathrooms} ba
-            </span>
-          )}
-          {property.sqft != null && (
-            <span className="bg-gray-100 text-gray-600 rounded-full px-3 py-1 text-xs flex items-center gap-1">
-              <Maximize2 className="w-3 h-3" />
-              {property.sqft.toLocaleString()} sqft
-            </span>
-          )}
-        </div>
-
-        <Link
-          href={`/site/listing/${property.id}`}
-          className="w-full block text-center py-2.5 rounded-xl text-sm font-semibold text-white transition-all duration-200 hover:opacity-90"
-          style={{ background: "linear-gradient(135deg, #c9a84c, #e8c97a)" }}
-        >
-          View Details
-        </Link>
-      </div>
-    </div>
-  )
-}
-
-const DEFAULT_TESTIMONIALS = [
-  {
-    id: 1,
-    name: "Sarah & Michael T.",
-    role: "Home Buyers",
-    text: "Working with this team was an absolute dream. They found us our perfect home within 3 weeks and negotiated an incredible deal. We couldn't be happier!",
-    stars: 5,
-  },
-  {
-    id: 2,
-    name: "Jennifer R.",
-    role: "Home Seller",
-    text: "Sold my property for 12% above asking price in just 5 days! The marketing strategy and professional photography made all the difference. Truly exceptional service.",
-    stars: 5,
-  },
-  {
-    id: 3,
-    name: "David & Lisa K.",
-    role: "Luxury Buyers",
-    text: "The white-glove service exceeded every expectation. From private showings to the seamless closing process, every detail was handled with precision and care.",
-    stars: 5,
-  },
-]
 
 function parseJSON<T>(json: string | null | undefined, fallback: T): T {
   if (!json) return fallback
   try { return JSON.parse(json) } catch { return fallback }
 }
 
-export default function HomeClient({ config, websiteConfig, featuredProperties }: HomeClientProps) {
-  const agentName = websiteConfig?.agentName || config?.realtorName || "Lofty Realty"
-  const agentBio = websiteConfig?.agentBio || config?.agentPersona || "With years of experience in the luxury real estate market, I am dedicated to helping you find your perfect home or achieve the best value for your property. My commitment to excellence and personalized service sets me apart."
-  const agentPhone = websiteConfig?.agentPhone || config?.realtorPhone || "(555) 123-4567"
-  const agentEmail = websiteConfig?.agentEmail || config?.realtorEmail || "contact@loftyrealty.com"
-  const agentPhotoUrl = websiteConfig?.agentPhotoUrl as string | undefined
-  const heroTitle = websiteConfig?.heroTitle || "Your Luxury Real Estate Expert"
-  const heroSubtitle = websiteConfig?.heroSubtitle || `${agentName} — delivering extraordinary results with unparalleled market expertise and white-glove service.`
-  const primaryColor = websiteConfig?.primaryColor || "#c9a84c"
-  const accentColor = websiteConfig?.accentColor || "#e8c97a"
-  const darkBg = websiteConfig?.darkBg || "#0a0e1a"
-  const darkBg2 = websiteConfig?.darkBg2 || "#1a2744"
-  const facebookUrl = websiteConfig?.facebookUrl as string | undefined
-  const instagramUrl = websiteConfig?.instagramUrl as string | undefined
-  const linkedinUrl = websiteConfig?.linkedinUrl as string | undefined
-  const videoUrl = websiteConfig?.videoUrl as string | undefined
-  const serviceAreas = parseJSON<string[]>(websiteConfig?.serviceAreas, [])
-  const testimonials = parseJSON(websiteConfig?.testimonials, DEFAULT_TESTIMONIALS)
-  const customStats = parseJSON<{ value: string; label: string }[] | null>(websiteConfig?.stats, null)
+function PropertyCard({ property }: { property: Property }) {
+  const images = parseImages(property.images)
+  return (
+    <Link href={`/site/listing/${property.id}`}
+      className="bg-white rounded-2xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden group">
+      <div className="aspect-[4/3] overflow-hidden relative bg-gray-200">
+        {images[0]
+          ? <img src={images[0]} alt={property.address} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+          : <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-700 to-gray-900">
+              <MapPin className="w-10 h-10 text-gray-400" />
+            </div>
+        }
+        <span className="absolute top-3 left-3 bg-[#c9a84c] text-white text-xs font-bold px-3 py-1 rounded-full">For Sale</span>
+      </div>
+      <div className="p-5">
+        <p className="text-2xl font-bold text-[#c9a84c] mb-1">{formatPrice(property.price)}</p>
+        <p className="text-gray-600 text-sm mb-3">{property.address}, {property.city}</p>
+        <div className="flex gap-3 text-xs text-gray-500 border-t pt-3">
+          {property.bedrooms  && <span className="flex items-center gap-1"><Bed className="w-3 h-3"/>{property.bedrooms} bd</span>}
+          {property.bathrooms && <span className="flex items-center gap-1"><Bath className="w-3 h-3"/>{property.bathrooms} ba</span>}
+          {property.sqft      && <span className="flex items-center gap-1"><Maximize2 className="w-3 h-3"/>{property.sqft.toLocaleString()} sqft</span>}
+        </div>
+      </div>
+    </Link>
+  )
+}
 
-  const [contactForm, setContactForm] = useState({
-    firstName: "",
-    lastName: "",
-    email: "",
-    phone: "",
-    message: "",
-    interest: "BUYING",
-  })
+const DEFAULT_TESTIMONIALS = [
+  { id: 1, name: "Maria & Carlos R.", role: "Home Buyers", text: "Catherine nos ayudó a encontrar nuestra casa perfecta en Doral. Su conocimiento del mercado es increíble y siempre estuvo disponible para responder nuestras preguntas.", stars: 5 },
+  { id: 2, name: "Jennifer M.", role: "Home Seller", text: "Vendí mi propiedad en Coral Gables por encima del precio de venta en solo 10 días. El marketing de Catherine es de primer nivel.", stars: 5 },
+  { id: 3, name: "Roberto & Ana L.", role: "First-Time Buyers", text: "Como compradores por primera vez, Catherine nos educó en cada paso del proceso. Cumplió su promesa: nos enseñó a comprar inteligente.", stars: 5 },
+]
+
+interface HomeClientProps {
+  config: AIConfig | null
+  websiteConfig?: any
+  featuredProperties: Property[]
+  stats: { _count: number; _avg: { price: number | null } }
+}
+
+export default function HomeClient({ config, websiteConfig, featuredProperties }: HomeClientProps) {
+  const router = useRouter()
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [contactForm, setContactForm] = useState({ firstName: "", lastName: "", email: "", phone: "", message: "", interest: "BUYING" })
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
-  const [submitError, setSubmitError] = useState("")
+  const [snapshot, setSnapshot] = useState<any>(null)
+  const [blogPosts, setBlogPosts] = useState<any[]>([])
 
-  const initials = agentName
-    .split(" ")
-    .map((n: string) => n[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase()
+  // Load market snapshot + blog posts
+  useState(() => {
+    fetch("/api/site/market-snapshot").then(r => r.json()).then(setSnapshot).catch(() => {})
+    fetch("/api/blog?public=1").then(r => r.json()).then(d => { if (Array.isArray(d)) setBlogPosts(d) }).catch(() => {})
+  })
+
+  const agentName   = websiteConfig?.agentName  || config?.realtorName  || "Catherine Gomez"
+  const agentBio    = websiteConfig?.agentBio   || config?.agentPersona || "Soy Catherine Gomez, Realtor y Educadora con más de 20 años de experiencia en el mercado inmobiliario de Miami. Mi misión es ayudar a familias latinas a comprar inteligente en Florida. No solo vendo casas — te enseño cómo comprar con confianza."
+  const agentPhone  = websiteConfig?.agentPhone || config?.realtorPhone || "(305) 000-0000"
+  const agentEmail  = websiteConfig?.agentEmail || config?.realtorEmail || "catherine@catherinegomezpa.com"
+  const agentPhotoUrl = websiteConfig?.agentPhotoUrl as string | undefined
+  const heroTitle   = websiteConfig?.heroTitle  || "Catherine Gomez — Realtor AND Educator\nwho helps Latino families buy smart in Florida."
+  const heroSubtitle = websiteConfig?.heroSubtitle || "\"I don't just sell homes—I teach you how to buy smart.\""
+  const heroBgUrl   = websiteConfig?.heroBgUrl  || "https://images.unsplash.com/photo-1613490493576-7fde63acd811?auto=format&fit=crop&w=1920&q=80"
+  const testimonials = parseJSON(websiteConfig?.testimonials, DEFAULT_TESTIMONIALS)
+  const customStats  = parseJSON<{ value: string; label: string }[] | null>(websiteConfig?.stats, null)
+  const facebookUrl  = websiteConfig?.facebookUrl as string | undefined
+  const instagramUrl = websiteConfig?.instagramUrl as string | undefined
+  const linkedinUrl  = websiteConfig?.linkedinUrl as string | undefined
+
+  function handleSearch(e: React.FormEvent) {
+    e.preventDefault()
+    const params = searchQuery ? `?city=${encodeURIComponent(searchQuery)}` : ""
+    router.push(`/search${params}`)
+  }
 
   async function handleContactSubmit(e: React.FormEvent) {
     e.preventDefault()
     setSubmitting(true)
-    setSubmitError("")
     try {
-      const res = await fetch("/api/site/contact", {
+      await fetch("/api/site/contact", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(contactForm),
       })
-      if (res.ok) {
-        setSubmitted(true)
-      } else {
-        setSubmitError("Something went wrong. Please try again.")
-      }
-    } catch {
-      setSubmitError("Something went wrong. Please try again.")
+      setSubmitted(true)
     } finally {
       setSubmitting(false)
     }
   }
 
+  const initials = agentName.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()
+
   return (
-    <div className="font-sans">
-      {/* ──────────────────────────────────────────────
-          1. HERO SECTION
-      ────────────────────────────────────────────── */}
-      <section
-        id="hero"
-        className="relative min-h-screen flex items-center justify-center overflow-hidden"
-        style={{ background: `linear-gradient(135deg, ${darkBg} 0%, ${darkBg2} 100%)` }}
-      >
-        {/* Hero background image */}
-        {websiteConfig?.heroBgUrl && (
-          <div className="absolute inset-0">
-            <img src={websiteConfig.heroBgUrl} alt="" className="w-full h-full object-cover" />
-            <div className="absolute inset-0" style={{ background: "rgba(10,14,26,0.7)" }} />
+    <div className="font-sans bg-white">
+
+      {/* ── HEADER ─────────────────────────────────────────────────────────── */}
+      <header className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+        <div className="max-w-screen-xl mx-auto px-4 flex items-center justify-between h-16">
+          {/* Logo */}
+          <Link href="/site" className="flex items-center gap-2 flex-shrink-0">
+            {agentPhotoUrl
+              ? <img src={agentPhotoUrl} alt={agentName} className="h-10 w-auto" />
+              : (
+                <div className="flex items-center gap-2">
+                  <div className="w-9 h-9 rounded bg-[#1a3a5c] flex items-center justify-center">
+                    <span className="text-[#c9a84c] text-xs font-bold">CG</span>
+                  </div>
+                  <div className="leading-tight">
+                    <p className="text-[#1a3a5c] font-bold text-sm leading-tight">Catherine</p>
+                    <p className="text-[#1a3a5c] font-bold text-sm leading-tight">Gomez P.A.</p>
+                  </div>
+                </div>
+              )
+            }
+          </Link>
+
+          {/* Desktop nav */}
+          <nav className="hidden lg:flex items-center gap-6 text-xs font-bold tracking-wide">
+            {NAV_LINKS.map(l => (
+              <Link key={l.label} href={l.href}
+                className="text-gray-700 hover:text-[#c9a84c] transition-colors pb-0.5 border-b-2 border-transparent hover:border-[#c9a84c]">
+                {l.label}
+              </Link>
+            ))}
+          </nav>
+
+          {/* Right: auth links */}
+          <div className="hidden lg:flex items-center gap-4 text-xs font-semibold text-gray-600">
+            <Link href="/login" className="hover:text-[#c9a84c] transition-colors">SIGN IN</Link>
+            <Link href="/login" className="px-4 py-1.5 border border-[#c9a84c] text-[#c9a84c] rounded hover:bg-[#c9a84c] hover:text-white transition-colors">
+              REGISTER
+            </Link>
+          </div>
+
+          {/* Mobile menu toggle */}
+          <button className="lg:hidden p-2" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
+            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+        </div>
+
+        {/* Mobile menu */}
+        {mobileMenuOpen && (
+          <div className="lg:hidden bg-white border-t border-gray-100 py-2">
+            {NAV_LINKS.map(l => (
+              <Link key={l.label} href={l.href} onClick={() => setMobileMenuOpen(false)}
+                className="block px-4 py-3 text-sm font-semibold text-gray-700 hover:text-[#c9a84c] hover:bg-gray-50">
+                {l.label}
+              </Link>
+            ))}
           </div>
         )}
-        {/* Animated orbs */}
-        <div
-          className="absolute w-96 h-96 rounded-full opacity-10 animate-float"
-          style={{
-            background: `radial-gradient(circle, ${primaryColor} 0%, transparent 70%)`,
-            top: "10%",
-            right: "15%",
-          }}
-        />
-        <div
-          className="absolute w-64 h-64 rounded-full opacity-10 animate-float-delayed"
-          style={{
-            background: `radial-gradient(circle, ${accentColor} 0%, transparent 70%)`,
-            bottom: "20%",
-            left: "10%",
-          }}
-        />
-        <div
-          className="absolute w-80 h-80 rounded-full opacity-5"
-          style={{
-            background: `radial-gradient(circle, ${primaryColor} 0%, transparent 70%)`,
-            top: "50%",
-            left: "50%",
-            transform: "translate(-50%, -50%)",
-          }}
-        />
+      </header>
 
-        {/* Dark overlay (only when no bg image) */}
-        {!websiteConfig?.heroBgUrl && (
-          <div className="absolute inset-0" style={{ background: "rgba(10,14,26,0.6)" }} />
-        )}
+      {/* ── HERO ───────────────────────────────────────────────────────────── */}
+      <section className="relative min-h-[75vh] flex flex-col items-center justify-center overflow-hidden">
+        {/* Background */}
+        <div className="absolute inset-0">
+          <img src={heroBgUrl} alt="" className="w-full h-full object-cover" />
+          <div className="absolute inset-0 bg-black/55" />
+        </div>
 
         {/* Content */}
-        <div className="relative z-10 max-w-4xl mx-auto px-6 text-center">
-          <div className="inline-flex items-center gap-2 mb-6 px-4 py-2 rounded-full border text-sm font-medium" style={{ borderColor: `${primaryColor}4d`, color: primaryColor, background: `${primaryColor}1a` }}>
-            <Star className="w-4 h-4" style={{ fill: primaryColor, color: primaryColor }} />
-            Trusted Luxury Real Estate Expert
-          </div>
-
-          <h1 className="font-serif text-5xl md:text-7xl font-bold text-white leading-tight mb-6">
-            {heroTitle.includes("\n") ? (
-              heroTitle.split("\n").map((line: string, i: number) => (
-                <span key={i} className={i > 0 ? "block" : ""} style={i > 0 ? { color: primaryColor } : {}}>{line}</span>
-              ))
-            ) : (
-              <>
-                {heroTitle}
-                <span className="block" style={{ color: primaryColor }}>&nbsp;</span>
-              </>
-            )}
+        <div className="relative z-10 text-center px-4 max-w-4xl mx-auto pt-16 pb-24">
+          <h1 className="font-serif text-4xl md:text-6xl font-bold text-white leading-tight mb-4">
+            {heroTitle.includes("\n")
+              ? heroTitle.split("\n").map((line: string, i: number) => <span key={i} className={i > 0 ? "block" : ""}>{line}</span>)
+              : heroTitle
+            }
           </h1>
+          <p className="text-gray-200 text-lg md:text-xl italic">{heroSubtitle}</p>
+        </div>
 
-          <p className="text-xl text-gray-300 mb-8 max-w-2xl mx-auto leading-relaxed">
-            {heroSubtitle}
-          </p>
+        {/* Search bar — overlapping hero bottom */}
+        <div className="relative z-10 w-full max-w-4xl px-4 -mb-8">
+          <form onSubmit={handleSearch}
+            className="bg-white rounded-xl shadow-2xl border border-gray-200 flex flex-wrap items-center gap-0 overflow-hidden">
+            <input
+              type="text"
+              placeholder="City, County, Subdivision, etc"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="flex-1 min-w-0 px-5 py-4 text-sm text-gray-700 outline-none placeholder-gray-400"
+            />
+            <button type="submit"
+              className="px-5 py-4 bg-[#c9a84c] hover:bg-[#b8963e] text-white transition-colors flex-shrink-0">
+              <Search className="w-5 h-5" />
+            </button>
+            <div className="w-px h-8 bg-gray-200 hidden sm:block" />
+            <Link href="/search" className="hidden sm:flex items-center gap-1.5 px-4 py-4 text-sm text-gray-600 hover:text-[#c9a84c] border-l border-gray-200 whitespace-nowrap">
+              Search <ChevronRight className="w-3.5 h-3.5" />
+            </Link>
+            {["Price", "Beds", "Baths", "Property Type"].map(f => (
+              <button key={f} type="button" onClick={() => router.push("/search")}
+                className="hidden md:flex items-center gap-1 px-4 py-4 text-sm text-gray-600 hover:text-[#c9a84c] border-l border-gray-200 whitespace-nowrap">
+                {f}
+              </button>
+            ))}
+            <button type="button" onClick={() => router.push("/search")}
+              className="hidden md:flex items-center gap-1 px-4 py-4 text-sm font-semibold text-gray-700 hover:text-[#c9a84c] border-l border-gray-200">
+              Filters
+            </button>
+          </form>
+        </div>
+      </section>
 
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link
-              href="/site/listings"
-              className="px-8 py-4 rounded-full text-lg font-semibold text-white transition-all duration-200 hover:opacity-90 hover:scale-105 shadow-2xl"
-              style={{ background: `linear-gradient(135deg, ${primaryColor}, ${accentColor})` }}
-            >
-              {websiteConfig?.ctaPrimary || "View Listings"}
-            </Link>
-            <Link
-              href="#contact"
-              className="px-8 py-4 rounded-full text-lg font-semibold text-white border-2 border-white hover:bg-white transition-all duration-200"
-              style={{ "--hover-color": darkBg } as React.CSSProperties}
-            >
-              {websiteConfig?.ctaSecondary || "Contact Me"}
-            </Link>
+      {/* Spacer for search bar overlap */}
+      <div className="h-12 bg-white" />
+
+      {/* ── FEATURED AREAS ─────────────────────────────────────────────────── */}
+      <section className="py-16 bg-white">
+        <div className="max-w-screen-xl mx-auto px-4">
+          <h2 className="text-2xl font-light tracking-widest text-gray-700 uppercase mb-10">
+            FEATURED AREAS
+          </h2>
+          <div className="columns-1 sm:columns-2 lg:columns-3 gap-4 space-y-4">
+            {FEATURED_AREAS.map((area, idx) => (
+              <Link key={area.name} href={`/search?city=${encodeURIComponent(area.name)}`}
+                className={`relative overflow-hidden rounded-lg block group ${
+                  idx === 0 || idx === 4 ? "break-inside-avoid" : "break-inside-avoid"
+                }`}
+                style={{ height: idx % 3 === 1 ? "280px" : "220px" }}>
+                <img
+                  src={area.img}
+                  alt={area.name}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
+                <div className="absolute bottom-0 left-0 right-0 p-4">
+                  <p className="text-white font-semibold text-lg drop-shadow">{area.name}</p>
+                  <div className="w-8 h-0.5 bg-[#c9a84c] mt-1 group-hover:w-16 transition-all duration-300" />
+                </div>
+              </Link>
+            ))}
           </div>
-
-          {/* Scroll indicator */}
-          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 text-white/50">
-            <span className="text-xs">Scroll to explore</span>
-            <div className="w-6 h-10 border-2 border-white/20 rounded-full flex items-start justify-center p-1">
-              <div className="w-1.5 h-3 bg-white/40 rounded-full animate-bounce" />
-            </div>
+          <div className="text-center mt-10">
+            <Link href="/search"
+              className="inline-flex items-center gap-2 px-8 py-3 border-2 border-[#c9a84c] text-[#c9a84c] rounded-full font-semibold hover:bg-[#c9a84c] hover:text-white transition-colors">
+              View All Listings <ChevronRight className="w-4 h-4" />
+            </Link>
           </div>
         </div>
       </section>
 
-      {/* ──────────────────────────────────────────────
-          2. STATS BAR
-      ────────────────────────────────────────────── */}
-      <section
-        className="py-6"
-        style={{ background: darkBg }}
-      >
-        <div className="max-w-6xl mx-auto px-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
+      {/* ── FEATURED PROPERTIES ────────────────────────────────────────────── */}
+      {featuredProperties.length > 0 && (
+        <section className="py-16 bg-gray-50">
+          <div className="max-w-screen-xl mx-auto px-4">
+            <div className="text-center mb-10">
+              <p className="text-xs font-bold uppercase tracking-widest text-[#c9a84c] mb-2">Active Listings</p>
+              <h2 className="font-serif text-4xl font-bold text-gray-900">Featured Properties</h2>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {featuredProperties.map(p => <PropertyCard key={p.id} property={p} />)}
+            </div>
+            <div className="text-center mt-10">
+              <Link href="/search"
+                className="inline-flex items-center gap-2 px-8 py-3 bg-[#c9a84c] text-white rounded-full font-semibold hover:bg-[#b8963e] transition-colors">
+                View All Properties <ChevronRight className="w-4 h-4" />
+              </Link>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ── STATS ──────────────────────────────────────────────────────────── */}
+      <section className="py-12 bg-[#1a3a5c] text-white">
+        <div className="max-w-screen-xl mx-auto px-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
             {(customStats || [
               { value: "500+", label: "Homes Sold" },
               { value: "$200M+", label: "In Sales" },
-              { value: "15 Years", label: "Experience" },
+              { value: "20+ Years", label: "Experience" },
               { value: "5★", label: "Rated" },
-            ]).map((stat) => (
-              <div key={stat.label} className="flex flex-col items-center">
-                <span className="text-2xl md:text-3xl font-bold" style={{ color: primaryColor }}>
-                  {stat.value}
-                </span>
-                <span className="text-gray-400 text-sm mt-1">{stat.label}</span>
+            ]).map(s => (
+              <div key={s.label}>
+                <p className="text-3xl font-bold text-[#c9a84c]">{s.value}</p>
+                <p className="text-gray-300 text-sm mt-1">{s.label}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ──────────────────────────────────────────────
-          3. FEATURED LISTINGS
-      ────────────────────────────────────────────── */}
-      <section id="listings" className="py-20 bg-[#fafaf8]">
-        <div className="max-w-7xl mx-auto px-6">
+      {/* ── WHY ME ─────────────────────────────────────────────────────────── */}
+      <section className="py-16 bg-white">
+        <div className="max-w-screen-xl mx-auto px-4">
           <div className="text-center mb-12">
-            <p className="text-sm font-semibold uppercase tracking-widest mb-2" style={{ color: primaryColor }}>
-              Exclusive Portfolio
-            </p>
-            <h2 className="font-serif text-4xl md:text-5xl font-bold text-[#1a1a2e] mb-4">
-              Featured Properties
-            </h2>
-            <p className="text-gray-500 text-lg max-w-2xl mx-auto">
-              Handpicked luxury homes curated especially for discerning buyers
-            </p>
+            <p className="text-xs font-bold uppercase tracking-widest text-[#c9a84c] mb-2">Why Work With Me</p>
+            <h2 className="font-serif text-4xl font-bold text-gray-900">The Catherine Gomez Difference</h2>
           </div>
-
-          {featuredProperties.length === 0 ? (
-            <div className="text-center py-16">
-              <div className="w-20 h-20 rounded-full mx-auto mb-4 flex items-center justify-center bg-gray-100">
-                <MapPin className="w-10 h-10 text-gray-400" />
-              </div>
-              <p className="text-gray-500 text-lg">No listings available at this time.</p>
-              <p className="text-gray-400 mt-2">Check back soon for new properties.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {featuredProperties.map((property) => (
-                <PropertyCard key={property.id} property={property} />
-              ))}
-            </div>
-          )}
-
-          <div className="text-center mt-12">
-            <Link
-              href="/site/listings"
-              className="inline-flex items-center gap-2 px-8 py-3.5 rounded-full font-semibold text-white transition-all duration-200 hover:opacity-90 hover:gap-3"
-              style={{ background: `linear-gradient(135deg, ${primaryColor}, ${accentColor})` }}
-            >
-              View All Properties
-              <ChevronRight className="w-4 h-4" />
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* ──────────────────────────────────────────────
-          4. WHY CHOOSE ME
-      ────────────────────────────────────────────── */}
-      <section className="py-20 bg-white">
-        <div className="max-w-6xl mx-auto px-6">
-          <div className="text-center mb-14">
-            <p className="text-sm font-semibold uppercase tracking-widest mb-2" style={{ color: primaryColor }}>
-              Why Work With Me
-            </p>
-            <h2 className="font-serif text-4xl md:text-5xl font-bold text-[#1a1a2e] mb-4">
-              The {agentName} Difference
-            </h2>
-          </div>
-
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
-              {
-                icon: TrendingUp,
-                title: "Market Expertise",
-                desc: "Deep knowledge of local market trends, pricing strategies, and neighborhood insights to give you a decisive competitive advantage.",
-              },
-              {
-                icon: Award,
-                title: "White-Glove Service",
-                desc: "Personalized attention from first consultation to closing day. Every detail is handled with the utmost care and professionalism.",
-              },
-              {
-                icon: Shield,
-                title: "Results-Driven",
-                desc: "Proven track record of achieving top dollar for sellers and securing the best deals for buyers — consistently exceeding expectations.",
-              },
-            ].map((item) => (
-              <div
-                key={item.title}
-                className="p-8 rounded-2xl border border-gray-100 hover:shadow-xl transition-all duration-300 group"
-              >
-                <div
-                  className="w-14 h-14 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300"
-                  style={{ background: "linear-gradient(135deg, #c9a84c20, #e8c97a30)" }}
-                >
-                  <item.icon className="w-7 h-7" style={{ color: "#c9a84c" }} />
+              { icon: TrendingUp, title: "Miami Market Expert", desc: "20+ years specializing in Miami-Dade. I know every neighborhood, price trend, and hidden opportunity in this market." },
+              { icon: Award,      title: "Educator First",      desc: "I teach you how to buy smart — from pre-approval to closing, you'll understand every step before you sign anything." },
+              { icon: Shield,     title: "Bilingual Service",   desc: "Fluent in English and Spanish. I bridge cultural and language barriers so Latino families feel confident and informed." },
+            ].map(item => (
+              <div key={item.title} className="p-8 rounded-2xl border border-gray-100 hover:shadow-xl transition-all duration-300 group">
+                <div className="w-14 h-14 rounded-2xl bg-[#c9a84c]/10 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
+                  <item.icon className="w-7 h-7 text-[#c9a84c]" />
                 </div>
-                <h3 className="font-serif text-xl font-bold text-[#1a1a2e] mb-3">{item.title}</h3>
+                <h3 className="font-serif text-xl font-bold text-gray-900 mb-3">{item.title}</h3>
                 <p className="text-gray-600 leading-relaxed">{item.desc}</p>
               </div>
             ))}
@@ -426,126 +356,66 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
         </div>
       </section>
 
-      {/* ──────────────────────────────────────────────
-          5. ABOUT
-      ────────────────────────────────────────────── */}
-      <section id="about" className="py-20 bg-[#fafaf8]">
-        <div className="max-w-6xl mx-auto px-6">
+      {/* ── ABOUT ──────────────────────────────────────────────────────────── */}
+      <section id="about" className="py-16 bg-gray-50">
+        <div className="max-w-screen-xl mx-auto px-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
-            {/* Left: Photo */}
             <div className="relative">
-              <div
-                className="aspect-[4/5] rounded-3xl flex items-center justify-center text-white relative overflow-hidden"
-                style={{ background: `linear-gradient(135deg, ${darkBg} 0%, ${darkBg2} 100%)` }}
-              >
-                {agentPhotoUrl ? (
-                  <img src={agentPhotoUrl} alt={agentName} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="text-center z-10">
-                    <div
-                      className="w-32 h-32 rounded-full mx-auto mb-4 flex items-center justify-center text-4xl font-bold"
-                      style={{ background: `linear-gradient(135deg, ${primaryColor}, ${accentColor})`, color: darkBg }}
-                    >
-                      {initials}
+              <div className="aspect-[4/5] rounded-3xl overflow-hidden bg-gradient-to-br from-[#1a3a5c] to-[#0a1f35]">
+                {agentPhotoUrl
+                  ? <img src={agentPhotoUrl} alt={agentName} className="w-full h-full object-cover" />
+                  : <div className="w-full h-full flex items-center justify-center">
+                      <div className="w-32 h-32 rounded-full bg-[#c9a84c] flex items-center justify-center text-4xl font-bold text-[#1a3a5c]">
+                        {initials}
+                      </div>
                     </div>
-                    <p className="text-white/60 text-sm">Professional Photo</p>
-                  </div>
-                )}
-                {/* Decorative orb */}
-                <div
-                  className="absolute w-64 h-64 rounded-full opacity-10"
-                  style={{
-                    background: `radial-gradient(circle, ${primaryColor} 0%, transparent 70%)`,
-                    bottom: "-20px",
-                    right: "-20px",
-                  }}
-                />
+                }
               </div>
-              {/* Accent border */}
-              <div
-                className="absolute -bottom-4 -right-4 w-full h-full rounded-3xl -z-10"
-                style={{ border: `2px solid ${primaryColor}`, opacity: 0.3 }}
-              />
+              <div className="absolute -bottom-3 -right-3 w-full h-full rounded-3xl border-2 border-[#c9a84c]/30 -z-10" />
             </div>
-
-            {/* Right: Info */}
             <div>
-              <p className="text-sm font-semibold uppercase tracking-widest mb-3" style={{ color: primaryColor }}>
-                About Me
-              </p>
-              <h2 className="font-serif text-4xl md:text-5xl font-bold text-[#1a1a2e] mb-6">
-                {agentName}
-              </h2>
-              <p className="text-gray-600 leading-relaxed text-lg mb-6">
-                {agentBio}
-              </p>
-
+              <p className="text-xs font-bold uppercase tracking-widest text-[#c9a84c] mb-3">About Me</p>
+              <h2 className="font-serif text-4xl font-bold text-gray-900 mb-6">{agentName}</h2>
+              <p className="text-gray-600 leading-relaxed text-lg mb-6">{agentBio}</p>
               <div className="space-y-3 mb-8">
                 <div className="flex items-center gap-3 text-gray-700">
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: `${primaryColor}1a` }}>
-                    <Phone className="w-4 h-4" style={{ color: primaryColor }} />
-                  </div>
-                  <span>{agentPhone}</span>
+                  <Phone className="w-4 h-4 text-[#c9a84c] flex-shrink-0" />{agentPhone}
                 </div>
                 <div className="flex items-center gap-3 text-gray-700">
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: `${primaryColor}1a` }}>
-                    <Mail className="w-4 h-4" style={{ color: primaryColor }} />
-                  </div>
-                  <span>{agentEmail}</span>
+                  <Mail className="w-4 h-4 text-[#c9a84c] flex-shrink-0" />{agentEmail}
                 </div>
               </div>
-
-              <a
-                href="#contact"
-                className="inline-flex items-center gap-2 px-8 py-4 rounded-full font-semibold text-white transition-all duration-200 hover:opacity-90 hover:gap-3"
-                style={{ background: `linear-gradient(135deg, ${primaryColor}, ${accentColor})` }}
-              >
-                Schedule a Call
-                <ChevronRight className="w-4 h-4" />
+              <a href="#contact"
+                className="inline-flex items-center gap-2 px-8 py-4 rounded-full font-semibold text-white bg-[#c9a84c] hover:bg-[#b8963e] transition-colors">
+                Schedule a Consultation <ChevronRight className="w-4 h-4" />
               </a>
             </div>
           </div>
         </div>
       </section>
 
-      {/* ──────────────────────────────────────────────
-          6. TESTIMONIALS
-      ────────────────────────────────────────────── */}
-      <section className="py-20 bg-white">
-        <div className="max-w-6xl mx-auto px-6">
-          <div className="text-center mb-14">
-            <p className="text-sm font-semibold uppercase tracking-widest mb-2" style={{ color: primaryColor }}>
-              Client Stories
-            </p>
-            <h2 className="font-serif text-4xl md:text-5xl font-bold text-[#1a1a2e] mb-4">
-              What Clients Say
-            </h2>
+      {/* ── TESTIMONIALS ───────────────────────────────────────────────────── */}
+      <section className="py-16 bg-white">
+        <div className="max-w-screen-xl mx-auto px-4">
+          <div className="text-center mb-12">
+            <p className="text-xs font-bold uppercase tracking-widest text-[#c9a84c] mb-2">Client Stories</p>
+            <h2 className="font-serif text-4xl font-bold text-gray-900">What Clients Say</h2>
           </div>
-
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {testimonials.map((t: { id: number; name: string; role: string; text: string; stars: number }) => (
-              <div
-                key={t.id}
-                className="p-8 rounded-2xl border border-gray-100 hover:shadow-xl transition-all duration-300"
-              >
-                {/* Stars */}
+            {testimonials.map((t: any) => (
+              <div key={t.id} className="p-8 rounded-2xl border border-gray-100 hover:shadow-xl transition-all duration-300">
                 <div className="flex gap-1 mb-4">
-                  {Array.from({ length: t.stars }).map((_, i) => (
-                    <Star key={i} className="w-4 h-4" style={{ fill: primaryColor, color: primaryColor }} />
+                  {Array.from({ length: t.stars }).map((_,i) => (
+                    <Star key={i} className="w-4 h-4 fill-[#c9a84c] text-[#c9a84c]" />
                   ))}
                 </div>
-                <p className="text-gray-600 leading-relaxed mb-6 italic">
-                  &ldquo;{t.text}&rdquo;
-                </p>
+                <p className="text-gray-600 leading-relaxed mb-6 italic">&ldquo;{t.text}&rdquo;</p>
                 <div className="flex items-center gap-3">
-                  <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white"
-                    style={{ background: `linear-gradient(135deg, ${primaryColor}, ${accentColor})` }}
-                  >
+                  <div className="w-10 h-10 rounded-full bg-[#c9a84c] flex items-center justify-center text-sm font-bold text-white">
                     {t.name.charAt(0)}
                   </div>
                   <div>
-                    <p className="font-semibold text-[#1a1a2e] text-sm">{t.name}</p>
+                    <p className="font-semibold text-gray-900 text-sm">{t.name}</p>
                     <p className="text-gray-400 text-xs">{t.role}</p>
                   </div>
                 </div>
@@ -555,171 +425,194 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
         </div>
       </section>
 
-      {/* ──────────────────────────────────────────────
-          7. SERVICE AREAS (conditional)
-      ────────────────────────────────────────────── */}
-      {serviceAreas.length > 0 && (
-        <section className="py-16 bg-[#fafaf8]">
-          <div className="max-w-5xl mx-auto px-6 text-center">
-            <p className="text-sm font-semibold uppercase tracking-widest mb-2" style={{ color: primaryColor }}>
-              Where I Work
+      {/* ── MARKET SNAPSHOT ────────────────────────────────────────────────── */}
+      <section id="market" className="py-16 bg-white border-t border-gray-100">
+        <div className="max-w-screen-xl mx-auto px-4">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-2xl font-light tracking-widest text-gray-700 uppercase">MARKET SNAPSHOT</h2>
+            <Link href="/search" className="text-sm text-[#c9a84c] font-semibold hover:underline flex items-center gap-1">
+              View All Listings <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+          {snapshot?.dateRange && (
+            <p className="text-sm text-gray-500 mb-8">({snapshot.dateRange})</p>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-0 border border-gray-200 rounded-xl overflow-hidden">
+            {[
+              {
+                label: "Active Listings",
+                value: snapshot?.activeListings ?? "—",
+                sub: snapshot?.newListings30d ? `${snapshot.newListings30d} new this month` : "Miami Market",
+                icon: Home,
+                trend: null,
+              },
+              {
+                label: "Average List Price",
+                value: snapshot?.avgPrice
+                  ? `$${snapshot.avgPrice >= 1_000_000
+                      ? (snapshot.avgPrice / 1_000_000).toFixed(1) + "M"
+                      : Math.round(snapshot.avgPrice / 1000) + "K"}`
+                  : "$843K",
+                sub: snapshot?.avgPrice ? "Active listings" : "Miami avg (est.)",
+                icon: BarChart2,
+                trend: "down",
+              },
+              {
+                label: "Avg Days on Market",
+                value: snapshot?.avgDaysOnMarket ?? "79",
+                sub: "Active listings",
+                icon: Calendar,
+                trend: "up",
+              },
+            ].map((stat, i) => (
+              <div key={stat.label}
+                className={`p-8 bg-white ${i > 0 ? "border-l border-gray-200" : ""}`}>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-5xl font-bold text-gray-900 mb-1">{stat.value}</p>
+                    <p className="text-sm text-gray-500">{stat.label}</p>
+                    <p className="text-xs text-gray-400 mt-1">{stat.sub}</p>
+                  </div>
+                  <div className="w-12 h-12 rounded-xl bg-[#c9a84c]/10 flex items-center justify-center flex-shrink-0">
+                    <stat.icon className="w-6 h-6 text-[#c9a84c]" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-6 p-4 bg-[#1a3a5c]/5 rounded-xl border border-[#1a3a5c]/10 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p className="text-sm text-gray-600 text-center sm:text-left">
+              <strong>Want a personalized market analysis?</strong> Catherine will review your specific neighborhood and give you a free Comparative Market Analysis.
             </p>
-            <h2 className="font-serif text-3xl md:text-4xl font-bold text-[#1a1a2e] mb-8">
-              Service Areas
-            </h2>
-            <div className="flex flex-wrap justify-center gap-3">
-              {serviceAreas.map((area: string) => (
-                <span
-                  key={area}
-                  className="px-5 py-2 rounded-full text-sm font-medium text-white"
-                  style={{ background: `linear-gradient(135deg, ${primaryColor}, ${accentColor})` }}
-                >
-                  {area}
-                </span>
+            <a href="#contact"
+              className="flex-shrink-0 px-6 py-2.5 bg-[#c9a84c] text-white rounded-full text-sm font-semibold hover:bg-[#b8963e] transition-colors whitespace-nowrap">
+              Get Free CMA
+            </a>
+          </div>
+        </div>
+      </section>
+
+      {/* ── BLOG ───────────────────────────────────────────────────────────── */}
+      <section className="py-16 bg-gray-50">
+        <div className="max-w-screen-xl mx-auto px-4">
+          <div className="flex items-center justify-between mb-10">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-widest text-[#c9a84c] mb-1">Real Estate Education</p>
+              <h2 className="font-serif text-3xl font-bold text-gray-900">Latest from the Blog</h2>
+            </div>
+            <Link href="/site/blog"
+              className="hidden sm:flex items-center gap-1.5 text-sm font-semibold text-[#c9a84c] hover:underline">
+              View All Posts <ChevronRight className="w-4 h-4" />
+            </Link>
+          </div>
+
+          {blogPosts.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {blogPosts.slice(0, 3).map((post: any) => {
+                const tags = Array.isArray(post.tags) ? post.tags : (() => { try { return JSON.parse(post.tags || "[]") } catch { return [] } })()
+                return (
+                  <Link key={post.id} href={`/site/blog/${post.slug}`}
+                    className="group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden">
+                    {post.coverImage && (
+                      <div className="aspect-video overflow-hidden">
+                        <img src={post.coverImage} alt={post.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                      </div>
+                    )}
+                    <div className="p-5">
+                      {tags.slice(0, 1).map((tag: string) => (
+                        <span key={tag} className="text-xs font-semibold text-[#c9a84c] bg-[#c9a84c]/10 px-2 py-0.5 rounded-full mr-1">{tag}</span>
+                      ))}
+                      <h3 className="font-serif text-lg font-bold text-gray-900 mt-2 mb-2 group-hover:text-[#c9a84c] transition-colors leading-snug">
+                        {post.title}
+                      </h3>
+                      {post.excerpt && <p className="text-gray-500 text-sm line-clamp-2 mb-3">{post.excerpt}</p>}
+                      <div className="flex items-center gap-2 text-xs text-gray-400 pt-3 border-t">
+                        <User className="w-3 h-3" />{post.author}
+                        {post.publishedAt && <><Calendar className="w-3 h-3 ml-2" />{new Date(post.publishedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</>}
+                      </div>
+                    </div>
+                  </Link>
+                )
+              })}
+            </div>
+          ) : (
+            /* Placeholder posts until blog is populated */
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {[
+                { title: "5 Things Every First-Time Buyer in Miami Must Know", tag: "Education", img: "https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=800&q=80", excerpt: "Before you start your home search, there are five things I teach every client to set them up for success." },
+                { title: "Miami Market Snapshot: What's Happening in June 2026", tag: "Market Snapshot", img: "https://images.unsplash.com/photo-1533106497176-45ae19e68ba2?auto=format&fit=crop&w=800&q=80", excerpt: "The Miami market is showing signs of stabilization. Here's what the numbers say right now." },
+                { title: "Doral vs. Kendall: Which Neighborhood Is Right for Your Family?", tag: "Neighborhoods", img: "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?auto=format&fit=crop&w=800&q=80", excerpt: "Two of Miami's most popular family neighborhoods — but they're very different. Here's the breakdown." },
+              ].map((post, i) => (
+                <Link key={i} href="/site/blog"
+                  className="group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden">
+                  <div className="aspect-video overflow-hidden">
+                    <img src={post.img} alt={post.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                  </div>
+                  <div className="p-5">
+                    <span className="text-xs font-semibold text-[#c9a84c] bg-[#c9a84c]/10 px-2 py-0.5 rounded-full">{post.tag}</span>
+                    <h3 className="font-serif text-lg font-bold text-gray-900 mt-2 mb-2 group-hover:text-[#c9a84c] transition-colors leading-snug">{post.title}</h3>
+                    <p className="text-gray-500 text-sm line-clamp-2">{post.excerpt}</p>
+                  </div>
+                </Link>
               ))}
             </div>
-          </div>
-        </section>
-      )}
+          )}
 
-      {/* ──────────────────────────────────────────────
-          8. VIDEO (conditional)
-      ────────────────────────────────────────────── */}
-      {videoUrl && (
-        <section className="py-20 bg-white">
-          <div className="max-w-4xl mx-auto px-6 text-center">
-            <p className="text-sm font-semibold uppercase tracking-widest mb-2" style={{ color: primaryColor }}>
-              Watch
-            </p>
-            <h2 className="font-serif text-3xl md:text-4xl font-bold text-[#1a1a2e] mb-8">
-              About {agentName}
-            </h2>
-            <div className="aspect-video rounded-2xl overflow-hidden shadow-2xl">
-              {videoUrl.includes("youtube.com") || videoUrl.includes("youtu.be") ? (
-                <iframe
-                  src={videoUrl.replace("watch?v=", "embed/").replace("youtu.be/", "www.youtube.com/embed/")}
-                  className="w-full h-full"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                />
-              ) : (
-                <video src={videoUrl} controls className="w-full h-full object-cover" />
-              )}
-            </div>
+          <div className="text-center mt-8">
+            <Link href="/site/blog"
+              className="inline-flex items-center gap-2 px-8 py-3 border-2 border-[#c9a84c] text-[#c9a84c] rounded-full font-semibold hover:bg-[#c9a84c] hover:text-white transition-colors">
+              Read All Posts <ChevronRight className="w-4 h-4" />
+            </Link>
           </div>
-        </section>
-      )}
+        </div>
+      </section>
 
-      {/* ──────────────────────────────────────────────
-          9. CONTACT FORM
-      ────────────────────────────────────────────── */}
-      <section
-        id="contact"
-        className="py-20"
-        style={{ background: `linear-gradient(135deg, ${darkBg} 0%, ${darkBg2} 100%)` }}
-      >
-        <div className="max-w-4xl mx-auto px-6">
+      {/* ── CONTACT ────────────────────────────────────────────────────────── */}
+      <section id="contact" className="py-20 bg-[#1a3a5c]">
+        <div className="max-w-3xl mx-auto px-4">
           <div className="text-center mb-12">
-            <p className="text-sm font-semibold uppercase tracking-widest mb-2" style={{ color: "#c9a84c" }}>
-              Get In Touch
-            </p>
-            <h2 className="font-serif text-4xl md:text-5xl font-bold text-white mb-4">
-              Let&apos;s Find Your Dream Home
-            </h2>
-            <p className="text-gray-400 text-lg">
-              Ready to take the next step? I&apos;d love to hear from you.
-            </p>
+            <p className="text-xs font-bold uppercase tracking-widest text-[#c9a84c] mb-2">Get In Touch</p>
+            <h2 className="font-serif text-4xl font-bold text-white mb-3">Let&apos;s Find Your Dream Home</h2>
+            <p className="text-gray-400">Ready to take the next step? I&apos;d love to hear from you.</p>
           </div>
 
           {submitted ? (
-            <div className="text-center py-16 px-8 rounded-3xl" style={{ background: "rgba(201,168,76,0.1)", border: "1px solid rgba(201,168,76,0.3)" }}>
-              <div className="w-20 h-20 rounded-full mx-auto mb-6 flex items-center justify-center" style={{ background: "linear-gradient(135deg, #c9a84c, #e8c97a)" }}>
-                <Star className="w-10 h-10 text-white" />
-              </div>
-              <h3 className="font-serif text-3xl font-bold text-white mb-3">Message Received!</h3>
-              <p className="text-gray-300 text-lg">Thank you for reaching out. I&apos;ll be in touch within 24 hours.</p>
+            <div className="text-center py-16 rounded-3xl bg-white/10 border border-[#c9a84c]/30">
+              <p className="text-3xl font-serif font-bold text-white mb-3">¡Message Received!</p>
+              <p className="text-gray-300">Catherine will be in touch within 24 hours.</p>
             </div>
           ) : (
-            <form onSubmit={handleContactSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">First Name *</label>
-                <input
-                  required
-                  type="text"
-                  value={contactForm.firstName}
-                  onChange={(e) => setContactForm({ ...contactForm, firstName: e.target.value })}
-                  className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:border-[#c9a84c] transition-colors"
-                  placeholder="John"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Last Name *</label>
-                <input
-                  required
-                  type="text"
-                  value={contactForm.lastName}
-                  onChange={(e) => setContactForm({ ...contactForm, lastName: e.target.value })}
-                  className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:border-[#c9a84c] transition-colors"
-                  placeholder="Smith"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Email *</label>
-                <input
-                  required
-                  type="email"
-                  value={contactForm.email}
-                  onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
-                  className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:border-[#c9a84c] transition-colors"
-                  placeholder="john@example.com"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Phone</label>
-                <input
-                  type="tel"
-                  value={contactForm.phone}
-                  onChange={(e) => setContactForm({ ...contactForm, phone: e.target.value })}
-                  className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:border-[#c9a84c] transition-colors"
-                  placeholder="(555) 123-4567"
-                />
-              </div>
+            <form onSubmit={handleContactSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {[
+                { key: "firstName", label: "First Name", required: true, type: "text" },
+                { key: "lastName",  label: "Last Name",  required: true, type: "text" },
+                { key: "email",     label: "Email",      required: true, type: "email" },
+                { key: "phone",     label: "Phone",      required: false, type: "tel" },
+              ].map(f => (
+                <div key={f.key}>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">{f.label}{f.required && " *"}</label>
+                  <input required={f.required} type={f.type}
+                    value={(contactForm as any)[f.key]}
+                    onChange={e => setContactForm({ ...contactForm, [f.key]: e.target.value })}
+                    className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:border-[#c9a84c] transition-colors"
+                  />
+                </div>
+              ))}
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-300 mb-2">I&apos;m Interested In</label>
-                <select
-                  value={contactForm.interest}
-                  onChange={(e) => setContactForm({ ...contactForm, interest: e.target.value })}
-                  className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white focus:outline-none focus:border-[#c9a84c] transition-colors"
-                  style={{ colorScheme: "dark" }}
-                >
-                  <option value="BUYING">Buying a Home</option>
-                  <option value="SELLING">Selling a Home</option>
-                  <option value="BOTH">Buying & Selling</option>
-                  <option value="JUST_BROWSING">Just Browsing</option>
-                </select>
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-300 mb-2">Message</label>
-                <textarea
-                  rows={4}
-                  value={contactForm.message}
-                  onChange={(e) => setContactForm({ ...contactForm, message: e.target.value })}
-                  className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:border-[#c9a84c] transition-colors resize-none"
+                <label className="block text-sm font-medium text-gray-300 mb-1">Message</label>
+                <textarea rows={4} value={contactForm.message}
+                  onChange={e => setContactForm({ ...contactForm, message: e.target.value })}
                   placeholder="Tell me about your real estate goals..."
+                  className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:border-[#c9a84c] transition-colors resize-none"
                 />
               </div>
-
-              {submitError && (
-                <div className="md:col-span-2 text-red-400 text-sm text-center">{submitError}</div>
-              )}
-
               <div className="md:col-span-2">
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="w-full py-4 rounded-xl font-semibold text-lg transition-all duration-200 hover:opacity-90 disabled:opacity-50"
-                  style={{ background: `linear-gradient(135deg, ${primaryColor}, ${accentColor})`, color: darkBg }}
-                >
+                <button type="submit" disabled={submitting}
+                  className="w-full py-4 rounded-xl font-semibold text-lg text-[#1a3a5c] bg-[#c9a84c] hover:bg-[#e8c97a] transition-colors disabled:opacity-50">
                   {submitting ? "Sending..." : "Send Message"}
                 </button>
               </div>
@@ -728,91 +621,42 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
         </div>
       </section>
 
-      {/* ──────────────────────────────────────────────
-          8. FOOTER
-      ────────────────────────────────────────────── */}
-      <footer style={{ background: darkBg }} className="pt-16 pb-8 border-t border-white/10">
-        <div className="max-w-6xl mx-auto px-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-12 mb-12">
-            {/* Brand */}
+      {/* ── FOOTER ─────────────────────────────────────────────────────────── */}
+      <footer className="bg-[#0f2236] py-12 border-t border-white/10">
+        <div className="max-w-screen-xl mx-auto px-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mb-10">
             <div>
-              <div className="flex items-center gap-3 mb-4">
-                <div
-                  className="w-10 h-10 rounded-full flex items-center justify-center font-bold"
-                  style={{ background: `linear-gradient(135deg, ${primaryColor}, ${accentColor})`, color: darkBg }}
-                >
-                  {initials.charAt(0)}
-                </div>
-                <span className="font-serif text-xl font-bold text-white">{agentName}</span>
-              </div>
-              <p className="text-gray-400 text-sm leading-relaxed">
-                {websiteConfig?.footerTagline || "Your trusted luxury real estate expert, dedicated to making your property dreams a reality."}
-              </p>
-              {/* Social Icons */}
-              <div className="flex gap-4 mt-6">
-                {[
-                  { icon: Facebook, label: "Facebook", url: facebookUrl },
-                  { icon: Instagram, label: "Instagram", url: instagramUrl },
-                  { icon: Linkedin, label: "LinkedIn", url: linkedinUrl },
-                ].filter(s => s.url || true).map((s) => (
-                  <a
-                    key={s.label}
-                    href={s.url || "#"}
-                    target={s.url ? "_blank" : undefined}
-                    rel={s.url ? "noopener noreferrer" : undefined}
-                    aria-label={s.label}
-                    className="w-9 h-9 rounded-full border border-white/20 flex items-center justify-center text-gray-400 transition-all duration-200"
-                    style={{ ["--hover-color" as string]: primaryColor }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = primaryColor; (e.currentTarget as HTMLElement).style.borderColor = primaryColor }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = ""; (e.currentTarget as HTMLElement).style.borderColor = "" }}
-                  >
-                    <s.icon className="w-4 h-4" />
+              <p className="font-serif text-xl font-bold text-white mb-3">{agentName}</p>
+              <p className="text-gray-400 text-sm leading-relaxed">Miami Real Estate · Realtor & Educator · Helping Latino families buy smart in Florida.</p>
+              <div className="flex gap-3 mt-5">
+                {[{ icon: Facebook, url: facebookUrl }, { icon: Instagram, url: instagramUrl }, { icon: Linkedin, url: linkedinUrl }].map(({ icon: Icon, url }, i) => (
+                  <a key={i} href={url || "#"} target={url ? "_blank" : undefined} rel="noopener noreferrer"
+                    className="w-9 h-9 rounded-full border border-white/20 flex items-center justify-center text-gray-400 hover:text-[#c9a84c] hover:border-[#c9a84c] transition-colors">
+                    <Icon className="w-4 h-4" />
                   </a>
                 ))}
               </div>
             </div>
-
-            {/* Navigation */}
             <div>
               <h3 className="text-white font-semibold mb-4">Quick Links</h3>
               <ul className="space-y-2">
-                {[
-                  { href: "/site", label: "Home" },
-                  { href: "/site/listings", label: "Listings" },
-                  { href: "/site#about", label: "About" },
-                  { href: "/site#contact", label: "Contact" },
-                ].map((link) => (
-                  <li key={link.href}>
-                    <Link
-                      href={link.href}
-                      className="text-gray-400 hover:text-[#c9a84c] transition-colors text-sm"
-                    >
-                      {link.label}
-                    </Link>
+                {NAV_LINKS.map(l => (
+                  <li key={l.label}>
+                    <Link href={l.href} className="text-gray-400 hover:text-[#c9a84c] transition-colors text-sm">{l.label}</Link>
                   </li>
                 ))}
               </ul>
             </div>
-
-            {/* Contact */}
             <div>
               <h3 className="text-white font-semibold mb-4">Contact</h3>
-              <div className="space-y-3">
-                <div className="flex items-center gap-3 text-gray-400 text-sm">
-                  <Phone className="w-4 h-4 flex-shrink-0" style={{ color: primaryColor }} />
-                  {agentPhone}
-                </div>
-                <div className="flex items-center gap-3 text-gray-400 text-sm">
-                  <Mail className="w-4 h-4 flex-shrink-0" style={{ color: primaryColor }} />
-                  {agentEmail}
-                </div>
+              <div className="space-y-3 text-sm text-gray-400">
+                <div className="flex items-center gap-2"><Phone className="w-4 h-4 text-[#c9a84c]"/>{agentPhone}</div>
+                <div className="flex items-center gap-2"><Mail className="w-4 h-4 text-[#c9a84c]"/>{agentEmail}</div>
               </div>
             </div>
           </div>
-
-          {/* Bottom bar */}
-          <div className="border-t border-white/10 pt-8 text-center text-gray-500 text-sm">
-            &copy; 2026 {agentName}. All rights reserved.
+          <div className="border-t border-white/10 pt-6 text-center text-gray-500 text-xs">
+            &copy; 2026 {agentName}. All rights reserved. · <Link href="/privacy" className="hover:text-[#c9a84c]">Privacy Policy</Link>
           </div>
         </div>
       </footer>
