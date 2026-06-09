@@ -189,9 +189,11 @@ export default function ContactDetailClient({ contact }: { contact: any }) {
                 contact.phone ? "bg-green-500 hover:bg-green-600" : "bg-gray-200 cursor-not-allowed text-gray-400")}>
               <Phone className="w-4 h-4" />
             </a>
-            <button className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium transition-colors">
+            <a href={`sms:${contact.phone}`}
+              className={cn("flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-white text-sm font-medium transition-colors",
+                contact.phone ? "bg-blue-500 hover:bg-blue-600" : "bg-gray-200 cursor-not-allowed text-gray-400")}>
               <MessageSquare className="w-4 h-4" />
-            </button>
+            </a>
             <a href={`mailto:${contact.email}`}
               className={cn("flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-white text-sm font-medium transition-colors",
                 contact.email ? "bg-purple-500 hover:bg-purple-600" : "bg-gray-200 cursor-not-allowed text-gray-400")}>
