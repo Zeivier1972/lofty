@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import {
   Search, Phone, Mail, Star, Facebook, Instagram, Linkedin,
   ChevronRight, MapPin, Bed, Bath, Maximize2, TrendingUp, Award, Shield, Menu, X,
+  BarChart2, Calendar, User, ArrowRight, TrendingDown, Home,
 } from "lucide-react"
 import type { AIConfig, Property } from "@prisma/client"
 
@@ -93,6 +94,14 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
   const [contactForm, setContactForm] = useState({ firstName: "", lastName: "", email: "", phone: "", message: "", interest: "BUYING" })
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const [snapshot, setSnapshot] = useState<any>(null)
+  const [blogPosts, setBlogPosts] = useState<any[]>([])
+
+  // Load market snapshot + blog posts
+  useState(() => {
+    fetch("/api/site/market-snapshot").then(r => r.json()).then(setSnapshot).catch(() => {})
+    fetch("/api/blog?public=1").then(r => r.json()).then(d => { if (Array.isArray(d)) setBlogPosts(d) }).catch(() => {})
+  })
 
   const agentName   = websiteConfig?.agentName  || config?.realtorName  || "Catherine Gomez"
   const agentBio    = websiteConfig?.agentBio   || config?.agentPersona || "Soy Catherine Gomez, Realtor y Educadora con más de 20 años de experiencia en el mercado inmobiliario de Miami. Mi misión es ayudar a familias latinas a comprar inteligente en Florida. No solo vendo casas — te enseño cómo comprar con confianza."
@@ -412,6 +421,152 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── MARKET SNAPSHOT ────────────────────────────────────────────────── */}
+      <section id="market" className="py-16 bg-white border-t border-gray-100">
+        <div className="max-w-screen-xl mx-auto px-4">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-2xl font-light tracking-widest text-gray-700 uppercase">MARKET SNAPSHOT</h2>
+            <Link href="/search" className="text-sm text-[#c9a84c] font-semibold hover:underline flex items-center gap-1">
+              View All Listings <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+          {snapshot?.dateRange && (
+            <p className="text-sm text-gray-500 mb-8">({snapshot.dateRange})</p>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-0 border border-gray-200 rounded-xl overflow-hidden">
+            {[
+              {
+                label: "Active Listings",
+                value: snapshot?.activeListings ?? "—",
+                sub: snapshot?.newListings30d ? `${snapshot.newListings30d} new this month` : "Miami Market",
+                icon: Home,
+                trend: null,
+              },
+              {
+                label: "Average List Price",
+                value: snapshot?.avgPrice
+                  ? `$${snapshot.avgPrice >= 1_000_000
+                      ? (snapshot.avgPrice / 1_000_000).toFixed(1) + "M"
+                      : Math.round(snapshot.avgPrice / 1000) + "K"}`
+                  : "$843K",
+                sub: snapshot?.avgPrice ? "Active listings" : "Miami avg (est.)",
+                icon: BarChart2,
+                trend: "down",
+              },
+              {
+                label: "Avg Days on Market",
+                value: snapshot?.avgDaysOnMarket ?? "79",
+                sub: "Active listings",
+                icon: Calendar,
+                trend: "up",
+              },
+            ].map((stat, i) => (
+              <div key={stat.label}
+                className={`p-8 bg-white ${i > 0 ? "border-l border-gray-200" : ""}`}>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-5xl font-bold text-gray-900 mb-1">{stat.value}</p>
+                    <p className="text-sm text-gray-500">{stat.label}</p>
+                    <p className="text-xs text-gray-400 mt-1">{stat.sub}</p>
+                  </div>
+                  <div className="w-12 h-12 rounded-xl bg-[#c9a84c]/10 flex items-center justify-center flex-shrink-0">
+                    <stat.icon className="w-6 h-6 text-[#c9a84c]" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-6 p-4 bg-[#1a3a5c]/5 rounded-xl border border-[#1a3a5c]/10 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p className="text-sm text-gray-600 text-center sm:text-left">
+              <strong>Want a personalized market analysis?</strong> Catherine will review your specific neighborhood and give you a free Comparative Market Analysis.
+            </p>
+            <a href="#contact"
+              className="flex-shrink-0 px-6 py-2.5 bg-[#c9a84c] text-white rounded-full text-sm font-semibold hover:bg-[#b8963e] transition-colors whitespace-nowrap">
+              Get Free CMA
+            </a>
+          </div>
+        </div>
+      </section>
+
+      {/* ── BLOG ───────────────────────────────────────────────────────────── */}
+      <section className="py-16 bg-gray-50">
+        <div className="max-w-screen-xl mx-auto px-4">
+          <div className="flex items-center justify-between mb-10">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-widest text-[#c9a84c] mb-1">Real Estate Education</p>
+              <h2 className="font-serif text-3xl font-bold text-gray-900">Latest from the Blog</h2>
+            </div>
+            <Link href="/site/blog"
+              className="hidden sm:flex items-center gap-1.5 text-sm font-semibold text-[#c9a84c] hover:underline">
+              View All Posts <ChevronRight className="w-4 h-4" />
+            </Link>
+          </div>
+
+          {blogPosts.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {blogPosts.slice(0, 3).map((post: any) => {
+                const tags = Array.isArray(post.tags) ? post.tags : (() => { try { return JSON.parse(post.tags || "[]") } catch { return [] } })()
+                return (
+                  <Link key={post.id} href={`/site/blog/${post.slug}`}
+                    className="group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden">
+                    {post.coverImage && (
+                      <div className="aspect-video overflow-hidden">
+                        <img src={post.coverImage} alt={post.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                      </div>
+                    )}
+                    <div className="p-5">
+                      {tags.slice(0, 1).map((tag: string) => (
+                        <span key={tag} className="text-xs font-semibold text-[#c9a84c] bg-[#c9a84c]/10 px-2 py-0.5 rounded-full mr-1">{tag}</span>
+                      ))}
+                      <h3 className="font-serif text-lg font-bold text-gray-900 mt-2 mb-2 group-hover:text-[#c9a84c] transition-colors leading-snug">
+                        {post.title}
+                      </h3>
+                      {post.excerpt && <p className="text-gray-500 text-sm line-clamp-2 mb-3">{post.excerpt}</p>}
+                      <div className="flex items-center gap-2 text-xs text-gray-400 pt-3 border-t">
+                        <User className="w-3 h-3" />{post.author}
+                        {post.publishedAt && <><Calendar className="w-3 h-3 ml-2" />{new Date(post.publishedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</>}
+                      </div>
+                    </div>
+                  </Link>
+                )
+              })}
+            </div>
+          ) : (
+            /* Placeholder posts until blog is populated */
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {[
+                { title: "5 Things Every First-Time Buyer in Miami Must Know", tag: "Education", img: "https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=800&q=80", excerpt: "Before you start your home search, there are five things I teach every client to set them up for success." },
+                { title: "Miami Market Snapshot: What's Happening in June 2026", tag: "Market Snapshot", img: "https://images.unsplash.com/photo-1533106497176-45ae19e68ba2?auto=format&fit=crop&w=800&q=80", excerpt: "The Miami market is showing signs of stabilization. Here's what the numbers say right now." },
+                { title: "Doral vs. Kendall: Which Neighborhood Is Right for Your Family?", tag: "Neighborhoods", img: "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?auto=format&fit=crop&w=800&q=80", excerpt: "Two of Miami's most popular family neighborhoods — but they're very different. Here's the breakdown." },
+              ].map((post, i) => (
+                <Link key={i} href="/site/blog"
+                  className="group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden">
+                  <div className="aspect-video overflow-hidden">
+                    <img src={post.img} alt={post.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                  </div>
+                  <div className="p-5">
+                    <span className="text-xs font-semibold text-[#c9a84c] bg-[#c9a84c]/10 px-2 py-0.5 rounded-full">{post.tag}</span>
+                    <h3 className="font-serif text-lg font-bold text-gray-900 mt-2 mb-2 group-hover:text-[#c9a84c] transition-colors leading-snug">{post.title}</h3>
+                    <p className="text-gray-500 text-sm line-clamp-2">{post.excerpt}</p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+
+          <div className="text-center mt-8">
+            <Link href="/site/blog"
+              className="inline-flex items-center gap-2 px-8 py-3 border-2 border-[#c9a84c] text-[#c9a84c] rounded-full font-semibold hover:bg-[#c9a84c] hover:text-white transition-colors">
+              Read All Posts <ChevronRight className="w-4 h-4" />
+            </Link>
           </div>
         </div>
       </section>
