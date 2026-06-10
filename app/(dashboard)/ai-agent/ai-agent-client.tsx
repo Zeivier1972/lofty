@@ -503,7 +503,8 @@ export default function AIAgentClient({
             </CardHeader>
             <CardContent className="space-y-3">
               {[
-                { key: "autoRespondSMS", label: "Auto-enviar SMS", desc: "Sofia responde por texto automáticamente" },
+                { key: "autoCallEnabled", label: "Auto-llamar leads nuevos", desc: "Sofia llama automáticamente 30s después de recibir un nuevo lead (Vapi)" },
+                { key: "autoRespondSMS", label: "Auto-responder SMS", desc: "Sofia responde por texto automáticamente" },
                 { key: "autoRespondEmail", label: "Auto-enviar Email", desc: "Envía seguimientos por correo" },
                 { key: "autoFollowUp", label: "Crear tareas automáticas", desc: "Tareas de seguimiento para Catherine" },
                 { key: "preQualEnabled", label: "Pre-calificación automática", desc: "Sofia pre-califica leads nuevos" },

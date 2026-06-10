@@ -28,7 +28,7 @@ export async function PUT(req: Request) {
   const body = await req.json()
   const {
     agentName, realtorName, realtorPhone, realtorEmail,
-    autoRespondSMS, autoRespondEmail, autoFollowUp,
+    autoRespondSMS, autoRespondEmail, autoFollowUp, autoCallEnabled,
     calendlyUrl, agentPersona, preQualEnabled,
     leadScoreThreshold, followUpDelayHours,
   } = body
@@ -36,6 +36,7 @@ export async function PUT(req: Request) {
   const existing = await prisma.aIConfig.findFirst()
   const data: any = {
     agentName, realtorName, autoRespondSMS, autoRespondEmail, autoFollowUp,
+    ...(autoCallEnabled !== undefined && { autoCallEnabled }),
     ...(realtorPhone !== undefined && { realtorPhone }),
     ...(realtorEmail !== undefined && { realtorEmail }),
     ...(calendlyUrl !== undefined && { calendlyUrl }),
