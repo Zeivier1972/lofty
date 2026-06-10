@@ -1,7 +1,23 @@
 export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
+import { prisma } from "@/lib/prisma"
 import { ingestLead } from "@/lib/lead-ingest"
+
+async function getPageAccessToken(pageId?: string): Promise<string | null> {
+  if (pageId) {
+    const account = await prisma.socialAccount.findFirst({
+      where: { platform: "FACEBOOK", pageId, isConnected: true },
+      select: { accessToken: true },
+    })
+    if (account?.accessToken) return account.accessToken
+  }
+  const any = await prisma.socialAccount.findFirst({
+    where: { platform: "FACEBOOK", isConnected: true },
+    select: { accessToken: true },
+  })
+  return any?.accessToken || process.env.FB_PAGE_ACCESS_TOKEN || null
+}
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
@@ -30,9 +46,10 @@ export async function POST(req: Request) {
         // Fetch lead from Facebook Graph API
         let fieldData: Record<string, string> = {}
         let campaign = undefined
-        if (process.env.FB_PAGE_ACCESS_TOKEN) {
+        const pageToken = await getPageAccessToken(pageId)
+        if (pageToken) {
           const fbRes = await fetch(
-            `https://graph.facebook.com/v18.0/${leadId}?fields=field_data,ad_name,campaign_name&access_token=${process.env.FB_PAGE_ACCESS_TOKEN}`
+            `https://graph.facebook.com/v18.0/${leadId}?fields=field_data,ad_name,campaign_name&access_token=${pageToken}`
           )
           const fbData = await fbRes.json()
           for (const f of fbData?.field_data || []) {
