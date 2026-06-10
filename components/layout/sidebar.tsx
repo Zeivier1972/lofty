@@ -7,7 +7,7 @@ import {
   CheckSquare, Calendar, Mail, FileText, TrendingUp,
   Zap, Settings, ChevronLeft, ChevronRight, BarChart3,
   MessageSquare, Bell, Search, Bot, Phone, Share2, Key, Globe,
-  BellRing, UserCheck, Send, Inbox, ClipboardList,
+  BellRing, UserCheck, Send, Inbox, ClipboardList, Plug,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
@@ -41,6 +41,7 @@ const navItems: NavItem[] = [
   { href: "/social", icon: Share2, label: "Social Media" },
   { href: "/open-house", icon: Key, label: "Open House" },
   { href: "/website-builder", icon: Globe, label: "Website Builder" },
+  { href: "/integrations", icon: Plug, label: "Integrations" },
   { href: "/portal", icon: Globe, label: "Client Portal", external: true },
   { href: "/site", icon: Home, label: "My Website", external: true },
   { href: "/settings", icon: Settings, label: "Settings" },
