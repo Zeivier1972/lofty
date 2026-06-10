@@ -24,7 +24,7 @@ function renderMarkdown(text: string) {
   let html = text.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
   // Bullet lists
   html = html.replace(/^[•·]\s(.+)$/gm, "<li>$1</li>")
-  html = html.replace(/(<li>.*<\/li>)/s, "<ul>$1</ul>")
+  html = html.replace(/(<li>[\s\S]*<\/li>)/, "<ul>$1</ul>")
   // Line breaks
   html = html.replace(/\n\n/g, "</p><p>").replace(/\n/g, "<br/>")
   return `<p>${html}</p>`
