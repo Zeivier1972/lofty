@@ -18,8 +18,9 @@ export async function GET() {
   const params = new URLSearchParams({
     client_id: appId,
     redirect_uri: redirectUri,
-    scope: "pages_manage_ads,pages_read_engagement,leads_retrieval,pages_show_list",
+    scope: "pages_show_list,leads_retrieval,pages_read_engagement",
     response_type: "code",
+    auth_type: "rerequest",
   })
 
   return NextResponse.redirect(
