@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/components/ui/use-toast"
+import { Input } from "@/components/ui/input"
 
 interface LeadForm {
   id: string
@@ -39,6 +40,11 @@ export default function IntegrationsClient() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [disconnecting, setDisconnecting] = useState<string | null>(null)
+  const [showManual, setShowManual] = useState(false)
+  const [manualToken, setManualToken] = useState("")
+  const [manualPageId, setManualPageId] = useState("")
+  const [manualPageName, setManualPageName] = useState("")
+  const [savingManual, setSavingManual] = useState(false)
   const { toast } = useToast()
   const searchParams = useSearchParams()
 
@@ -61,6 +67,23 @@ export default function IntegrationsClient() {
     } catch {}
     setLoading(false)
     setRefreshing(false)
+  }
+
+  async function saveManualToken() {
+    if (!manualToken || !manualPageId || !manualPageName) {
+      toast({ title: "Completa todos los campos", variant: "destructive" })
+      return
+    }
+    setSavingManual(true)
+    await fetch("/api/integrations/facebook/manual", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pageId: manualPageId, pageName: manualPageName, accessToken: manualToken }),
+    })
+    await loadStatus()
+    setShowManual(false)
+    setSavingManual(false)
+    toast({ title: "¡Conectado!", description: "Página de Facebook guardada manualmente." })
   }
 
   async function disconnect(pageId: string) {
@@ -123,13 +146,34 @@ export default function IntegrationsClient() {
                 </ol>
               </div>
 
-              <Button
-                onClick={() => { window.location.href = "/api/auth/facebook" }}
-                className="bg-[#1877F2] hover:bg-[#1464d8] text-white"
-              >
-                <Plug className="w-4 h-4 mr-2" />
-                Conectar Facebook
-              </Button>
+              <div className="flex items-center gap-3 flex-wrap">
+                <Button
+                  onClick={() => { window.location.href = "/api/auth/facebook" }}
+                  className="bg-[#1877F2] hover:bg-[#1464d8] text-white"
+                >
+                  <Plug className="w-4 h-4 mr-2" />
+                  Conectar Facebook
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setShowManual(!showManual)} className="text-gray-600 text-xs">
+                  Conectar manualmente
+                </Button>
+              </div>
+
+              {showManual && (
+                <div className="border border-gray-200 rounded-xl p-4 space-y-3">
+                  <p className="text-sm font-semibold text-gray-700">Conexión manual con Page Access Token</p>
+                  <p className="text-xs text-gray-500">
+                    Obtén tu token en <a href="https://developers.facebook.com/tools/explorer" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">Graph API Explorer</a> → selecciona tu página → copia el Access Token.
+                  </p>
+                  <Input placeholder="Nombre de la página (ej: Catherine Gomez Realtor)" value={manualPageName} onChange={e => setManualPageName(e.target.value)} className="text-sm" />
+                  <Input placeholder="Page ID (número, ej: 123456789)" value={manualPageId} onChange={e => setManualPageId(e.target.value)} className="text-sm" />
+                  <Input placeholder="Page Access Token (EAAxxxx...)" value={manualToken} onChange={e => setManualToken(e.target.value)} className="text-sm font-mono text-xs" />
+                  <Button onClick={saveManualToken} disabled={savingManual} size="sm" className="w-full">
+                    {savingManual ? <RefreshCw className="w-3 h-3 animate-spin mr-1" /> : null}
+                    Guardar
+                  </Button>
+                </div>
+              )}
 
               <div className="border border-amber-200 bg-amber-50 rounded-xl p-4 space-y-3">
                 <p className="text-sm font-semibold text-amber-800 flex items-center gap-2">

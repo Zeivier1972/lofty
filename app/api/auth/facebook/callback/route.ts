@@ -47,9 +47,26 @@ export async function GET(req: Request) {
       `https://graph.facebook.com/v18.0/me/accounts?fields=id,name,access_token,category&access_token=${userToken}`
     )
     const pagesData = await pagesRes.json()
-    const pages: any[] = pagesData.data || []
+    let pages: any[] = pagesData.data || []
+
+    // Fallback: try Business Manager owned pages (when page is managed via Meta Business Suite)
+    if (pages.length === 0) {
+      console.log("[FB OAuth] No pages from /me/accounts, trying Business Manager...")
+      const bizRes = await fetch(
+        `https://graph.facebook.com/v18.0/me/businesses?fields=id,name&access_token=${userToken}`
+      )
+      const bizData = await bizRes.json()
+      for (const biz of bizData.data || []) {
+        const bizPagesRes = await fetch(
+          `https://graph.facebook.com/v18.0/${biz.id}/owned_pages?fields=id,name,access_token&access_token=${userToken}`
+        )
+        const bizPagesData = await bizPagesRes.json()
+        pages = [...pages, ...(bizPagesData.data || [])]
+      }
+    }
 
     if (pages.length === 0) {
+      console.log("[FB OAuth] No pages found via any method")
       return NextResponse.redirect(`${base}/integrations?error=no_pages`)
     }
 
