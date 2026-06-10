@@ -1,3 +1,5 @@
+import { prisma } from "@/lib/prisma"
+
 const VAPI_BASE = "https://api.vapi.ai"
 
 const FIRST_MESSAGE =
@@ -74,6 +76,12 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
 
   if (!apiKey || !phoneNumberId) {
     console.log("[VAPI] Missing VAPI_API_KEY or VAPI_PHONE_NUMBER_ID — skipping call")
+    return null
+  }
+
+  const aiConfig = await prisma.aIConfig.findFirst({ select: { autoCallEnabled: true } })
+  if (aiConfig && aiConfig.autoCallEnabled === false) {
+    console.log("[VAPI] Auto-calling disabled by user setting — skipping call")
     return null
   }
 

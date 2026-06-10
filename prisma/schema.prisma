@@ -517,6 +517,7 @@ model AIConfig {
   autoRespondSMS  Boolean  @default(true)
   autoRespondEmail Boolean @default(true)
   autoFollowUp    Boolean  @default(true)
+  autoCallEnabled Boolean  @default(true)
   leadScoreThreshold Int   @default(50)
   followUpDelayHours Int   @default(2)
   realtorName     String   @default("Catherine")
