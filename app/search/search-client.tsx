@@ -74,7 +74,7 @@ export default function SearchClient() {
       {/* MLS iframe — takes all remaining height */}
       <div className="flex-1 min-h-0">
         <iframe
-          src="https://sef.mlsmatrix.com/Matrix/public/IDX.aspx?idx=a9c45d3"
+          src="https://sef.mlsmatrix.com/Matrix/public/IDX.aspx?idx=ed2f1f14"
           width="100%"
           height="100%"
           frameBorder="0"
