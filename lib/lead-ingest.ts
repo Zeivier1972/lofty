@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma"
 import { scoreContact } from "@/lib/scoring"
 import { triggerOutboundCall } from "@/lib/vapi"
+import { sendEmail } from "@/lib/email"
+import { sendSMS } from "@/lib/sms"
 
 export interface LeadData {
   firstName: string
@@ -94,6 +96,32 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
       contactId: contact.id,
     },
   })
+
+  // Alert Catherine (fire and forget)
+  prisma.aIConfig.findFirst({ select: { realtorEmail: true, realtorPhone: true, realtorName: true } }).then(cfg => {
+    const lines = [
+      `Nombre: ${firstName} ${lastName || ""}`.trim(),
+      phone ? `Tel: ${phone}` : "",
+      email ? `Email: ${email}` : "",
+      campaign ? `Campaña: ${campaign}` : "",
+      location ? `Área: ${location}` : "",
+    ].filter(Boolean)
+
+    if (cfg?.realtorEmail) {
+      sendEmail({
+        to: cfg.realtorEmail,
+        subject: `🆕 Nuevo lead: ${firstName} ${lastName || ""} — ${source}`,
+        html: `<p>Hola ${cfg.realtorName || "Catherine"},</p><p>Acaba de llegar un nuevo lead desde <strong>${source}</strong>:</p><ul>${lines.map(l => `<li>${l}</li>`).join("")}</ul><p><a href="${process.env.NEXT_PUBLIC_APP_URL}/contacts/${contact.id}">Ver en el CRM →</a></p>`,
+        text: `Nuevo lead (${source}):\n${lines.join("\n")}\n\nVer en CRM: ${process.env.NEXT_PUBLIC_APP_URL}/contacts/${contact.id}`,
+      }).catch(() => {})
+    }
+    if (cfg?.realtorPhone && phone) {
+      sendSMS(
+        cfg.realtorPhone.startsWith("+") ? cfg.realtorPhone : `+1${cfg.realtorPhone.replace(/\D/g, "")}`,
+        `🆕 Nuevo lead (${source}): ${firstName} ${lastName || ""} ${phone ? `· ${phone}` : ""} ${campaign ? `· ${campaign}` : ""}`.trim()
+      ).catch(() => {})
+    }
+  }).catch(() => {})
 
   // Score + AI follow-up (fire and forget)
   scoreContact(contact.id).catch(() => {})

@@ -531,8 +531,12 @@ export default function AIAgentClient({
                   <Input value={config.realtorName} onChange={e => setConfig((c: any) => ({ ...c, realtorName: e.target.value }))} className="mt-1 h-8 text-sm" />
                 </div>
                 <div>
-                  <Label className="text-xs text-gray-500">Teléfono de Catherine</Label>
-                  <Input value={config.realtorPhone || ""} onChange={e => setConfig((c: any) => ({ ...c, realtorPhone: e.target.value }))} placeholder="+1 305-555-0100" className="mt-1 h-8 text-sm" />
+                  <Label className="text-xs text-gray-500">Teléfono de Catherine (recibe alertas SMS)</Label>
+                  <Input value={config.realtorPhone || ""} onChange={e => setConfig((c: any) => ({ ...c, realtorPhone: e.target.value }))} placeholder="+1 305-283-0872" className="mt-1 h-8 text-sm" />
+                </div>
+                <div>
+                  <Label className="text-xs text-gray-500">Email de Catherine (recibe alertas de nuevos leads)</Label>
+                  <Input value={config.realtorEmail || ""} onChange={e => setConfig((c: any) => ({ ...c, realtorEmail: e.target.value }))} placeholder="info@catherinegomezrealtor.com" className="mt-1 h-8 text-sm" />
                 </div>
                 <div>
                   <Label className="text-xs text-gray-500">Enlace Calendly (para agendar citas)</Label>
