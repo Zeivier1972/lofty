@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { chatWithAI } from "@/lib/ai-agent"
 import { sendSMS } from "@/lib/sms"
 import { scoreContact } from "@/lib/scoring"
+import { handleLeadEngaged } from "@/lib/lead-flow"
 
 export async function POST(req: Request) {
   const formData = await req.formData()
@@ -99,6 +100,9 @@ export async function POST(req: Request) {
 
     // Update score on inbound SMS reply
     scoreContact(contact.id).catch(() => {})
+
+    // Lead replied → move to Warm pipeline automatically
+    handleLeadEngaged(contact.id, "SMS").catch(() => {})
 
     // Notify Catherine
     await prisma.aINotification.create({
