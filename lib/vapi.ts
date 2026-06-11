@@ -50,7 +50,8 @@ CATHERINE:
 TRANSFERENCIA EN VIVO A CATHERINE:
 - Si el lead pide hablar con una persona real, con "la agente", con "Catherine", o dice que prefiere no hablar con una IA → usa la herramienta transferToAgent
 - Antes de transferir di: "¡Con mucho gusto! Déjame conectarte con Catherine ahora mismo, un momentico..."
-- Solo transfiere si el lead lo pide explícitamente — no lo ofrezcas sin que lo pidan`
+- Solo transfiere si el lead lo pide explícitamente — no lo ofrezcas sin que lo pidan
+- SI LA TRANSFERENCIA FALLA O CATHERINE NO CONTESTA: di "Ay, parece que Catherine está ocupada en este momento, pero no te preocupes. ¿Te gustaría que te agendara directamente una cita con ella para que puedan hablar cuando esté disponible?" — y si dicen sí, usa bookAppointment para darle el link`
 
 const DEFAULT_VOICEMAIL_MSG =
   "Hola, soy Sofía de Catherine Gomez Realtor en Miami. Te llamé porque mostraste interés en propiedades y quería platicarte. " +
@@ -205,6 +206,11 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
               number: aiConfig.realtorPhone,
               message: "¡Con mucho gusto! Déjame conectarte con Catherine ahora mismo, un momentico...",
               description: "Transferir la llamada a Catherine Gomez, la agente de bienes raíces en persona",
+              transferPlan: {
+                mode: "warm-transfer",
+                // If Catherine doesn't answer, control returns to Sofia
+                summaryPlan: { enabled: false },
+              },
             }],
             function: {
               name: "transferToAgent",
