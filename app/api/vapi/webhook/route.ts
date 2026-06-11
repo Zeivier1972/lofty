@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { handleCallOutcome } from "@/lib/lead-flow"
 
 async function searchProperties(input: any): Promise<string> {
   try {
@@ -133,6 +134,14 @@ export async function POST(req: Request) {
           where: { id: contactId },
           data: { lastContacted: new Date() },
         })
+
+        // Trigger automated lead flow based on call outcome
+        const duration = payload.call?.endedAt && payload.call?.startedAt
+          ? Math.round((new Date(payload.call.endedAt).getTime() - new Date(payload.call.startedAt).getTime()) / 1000)
+          : 0
+        handleCallOutcome(contactId, endedReason || "", duration).catch(e =>
+          console.error("[lead-flow] handleCallOutcome error:", e)
+        )
       } catch (e) {
         console.error("[VAPI webhook] Error saving call report:", e)
       }
