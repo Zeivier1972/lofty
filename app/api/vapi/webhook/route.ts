@@ -101,7 +101,20 @@ export async function POST(req: Request) {
 
     // ── End of call report ────────────────────────────────────────────────────
     if (type === "end-of-call-report" && contactId) {
-      const { transcript, summary, endedReason } = payload
+      const endedReason: string = payload.endedReason || payload.call?.endedReason || ""
+      // VAPI puts transcript/summary at top level or inside artifact depending on version
+      const transcript: string =
+        payload.transcript || payload.artifact?.transcript || ""
+      const summary: string =
+        payload.summary || payload.analysis?.summary || payload.artifact?.summary || ""
+      const recordingUrl: string =
+        payload.artifact?.recordingUrl || payload.recordingUrl || payload.call?.recordingUrl || ""
+
+      console.log(`[VAPI webhook] end-of-call contactId=${contactId} reason=${endedReason} duration=${
+        payload.call?.endedAt && payload.call?.startedAt
+          ? Math.round((new Date(payload.call.endedAt).getTime() - new Date(payload.call.startedAt).getTime()) / 1000)
+          : 0
+      }s transcript=${transcript.length}ch`)
 
       try {
         // Save to DialerCall table
@@ -114,7 +127,7 @@ export async function POST(req: Request) {
             duration: payload.call?.endedAt && payload.call?.startedAt
               ? Math.round((new Date(payload.call.endedAt).getTime() - new Date(payload.call.startedAt).getTime()) / 1000)
               : 0,
-            recordingUrl: payload.artifact?.recordingUrl || payload.recordingUrl || null,
+            recordingUrl: recordingUrl || null,
             transcription: transcript || null,
             aiSummary: summary || null,
           },
