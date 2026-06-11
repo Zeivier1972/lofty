@@ -10,11 +10,13 @@ export async function GET() {
     config = await prisma.aIConfig.create({
       data: {
         agentName: "Sofia",
-        realtorName: "Catherine",
+        realtorName: "Catherine Gomez",
+        realtorEmail: "info@catherinegomezrealtor.com",
+        realtorPhone: "+13052830872",
         autoRespondSMS: true,
         autoRespondEmail: true,
         autoFollowUp: true,
-        agentPersona: "Eres Sofia, una asistente virtual de bienes raíces amigable y profesional que trabaja para Catherine. Hablas principalmente español.",
+        agentPersona: "Eres Sofia, una asistente virtual de bienes raíces amigable y profesional que trabaja para Catherine Gomez Realtor en Miami. Hablas principalmente español.",
       },
     })
   }
