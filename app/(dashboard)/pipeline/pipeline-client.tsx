@@ -5,7 +5,7 @@ import Link from "next/link"
 import {
   Plus, GitBranch, DollarSign, Settings,
   MoreVertical, Phone, Mail, Calendar, ChevronDown,
-  X, Pencil, Trash2, Check, Loader2,
+  Pencil, Trash2, Check, Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -23,7 +23,6 @@ interface PipelineClientProps {
   allPipelines: any[]
 }
 
-// ── Manage Stages Dialog ───────────────────────────────────────────────────────
 function ManageStagesDialog({
   open,
   pipelineId,
@@ -46,10 +45,7 @@ function ManageStagesDialog({
   const [deleting, setDeleting] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
 
-  const startEdit = (stage: any) => {
-    setEditingId(stage.id)
-    setEditName(stage.name)
-  }
+  const startEdit = (stage: any) => { setEditingId(stage.id); setEditName(stage.name) }
 
   const saveRename = async (id: string) => {
     if (!editName.trim()) return
@@ -66,9 +62,7 @@ function ManageStagesDialog({
       toast({ title: "Stage renamed" })
     } catch {
       toast({ title: "Failed to rename stage", variant: "destructive" })
-    } finally {
-      setSaving(null)
-    }
+    } finally { setSaving(null) }
   }
 
   const deleteStage = async (id: string) => {
@@ -81,9 +75,7 @@ function ManageStagesDialog({
       toast({ title: "Stage deleted" })
     } catch {
       toast({ title: "Failed to delete stage", variant: "destructive" })
-    } finally {
-      setDeleting(null)
-    }
+    } finally { setDeleting(null) }
   }
 
   const addStage = async () => {
@@ -102,9 +94,7 @@ function ManageStagesDialog({
       toast({ title: "Stage added" })
     } catch {
       toast({ title: "Failed to add stage", variant: "destructive" })
-    } finally {
-      setAdding(false)
-    }
+    } finally { setAdding(false) }
   }
 
   return (
@@ -131,23 +121,15 @@ function ManageStagesDialog({
               )}
               <span className="text-xs text-gray-400 flex-shrink-0">{stage.leads?.length ?? 0} leads</span>
               {editingId === stage.id ? (
-                <button
-                  onClick={() => saveRename(stage.id)}
-                  disabled={!!saving}
-                  className="p-1 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                >
+                <button onClick={() => saveRename(stage.id)} disabled={!!saving} className="p-1 text-green-600 hover:bg-green-50 rounded-lg">
                   {saving === stage.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                 </button>
               ) : (
-                <button onClick={() => startEdit(stage)} className="p-1 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
+                <button onClick={() => startEdit(stage)} className="p-1 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg">
                   <Pencil className="w-3.5 h-3.5" />
                 </button>
               )}
-              <button
-                onClick={() => deleteStage(stage.id)}
-                disabled={deleting === stage.id}
-                className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-              >
+              <button onClick={() => deleteStage(stage.id)} disabled={deleting === stage.id} className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
                 {deleting === stage.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
               </button>
             </div>
@@ -203,26 +185,16 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
 
     let leadToMove: any = null
     let sourceStageId: string | null = null
-
     for (const stage of stages) {
       const lead = stage.leads.find((l: any) => l.id === dragging)
-      if (lead) {
-        leadToMove = lead
-        sourceStageId = stage.id
-        break
-      }
+      if (lead) { leadToMove = lead; sourceStageId = stage.id; break }
     }
-
     if (!leadToMove || sourceStageId === targetStageId) return
 
     setStages((prev: any[]) =>
       prev.map((stage: any) => {
-        if (stage.id === sourceStageId) {
-          return { ...stage, leads: stage.leads.filter((l: any) => l.id !== dragging) }
-        }
-        if (stage.id === targetStageId) {
-          return { ...stage, leads: [...stage.leads, { ...leadToMove, stageId: targetStageId }] }
-        }
+        if (stage.id === sourceStageId) return { ...stage, leads: stage.leads.filter((l: any) => l.id !== dragging) }
+        if (stage.id === targetStageId) return { ...stage, leads: [...stage.leads, { ...leadToMove, stageId: targetStageId }] }
         return stage
       })
     )
@@ -253,17 +225,14 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
 
   return (
     <div className="p-6 animate-fade-in">
-      {pipeline && (
-        <ManageStagesDialog
-          open={showManageStages}
-          pipelineId={pipeline.id}
-          initialStages={stages}
-          onClose={() => setShowManageStages(false)}
-          onSaved={(updated) => setStages(updated)}
-        />
-      )}
+      <ManageStagesDialog
+        open={showManageStages}
+        pipelineId={pipeline.id}
+        initialStages={stages}
+        onClose={() => setShowManageStages(false)}
+        onSaved={(updated) => setStages(updated)}
+      />
 
-      {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <div>
           <div className="flex items-center gap-2">
@@ -286,7 +255,6 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
         </div>
       </div>
 
-      {/* Pipeline summary */}
       <div className="flex gap-3 mb-5 overflow-x-auto pb-2">
         {stages.map((stage: any) => {
           const stageValue = stage.leads.reduce((s: number, l: any) => s + (l.value || 0), 0)
@@ -302,7 +270,6 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
         })}
       </div>
 
-      {/* Kanban board */}
       <div className="flex gap-4 overflow-x-auto pb-4">
         {stages.map((stage: any) => (
           <div
@@ -372,11 +339,7 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
                   {lead.contact.tags.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-2">
                       {lead.contact.tags.slice(0, 2).map((ct: any) => (
-                        <span
-                          key={ct.tagId}
-                          className="text-xs px-1.5 py-0 rounded-full"
-                          style={{ backgroundColor: ct.tag.color + "20", color: ct.tag.color }}
-                        >
+                        <span key={ct.tagId} className="text-xs px-1.5 py-0 rounded-full" style={{ backgroundColor: ct.tag.color + "20", color: ct.tag.color }}>
                           {ct.tag.name}
                         </span>
                       ))}
@@ -393,14 +356,10 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
                   {lead.probability != null && (
                     <div className="mt-1.5">
                       <div className="flex items-center justify-between text-xs text-gray-400 mb-0.5">
-                        <span>Probability</span>
-                        <span>{lead.probability}%</span>
+                        <span>Probability</span><span>{lead.probability}%</span>
                       </div>
                       <div className="w-full bg-gray-100 rounded-full h-1">
-                        <div
-                          className="h-1 rounded-full bg-lofty-500 transition-all"
-                          style={{ width: `${lead.probability}%` }}
-                        />
+                        <div className="h-1 rounded-full bg-lofty-500 transition-all" style={{ width: `${lead.probability}%` }} />
                       </div>
                     </div>
                   )}
