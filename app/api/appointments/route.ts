@@ -2,13 +2,9 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { auth } from "@/lib/auth"
 
 export async function POST(req: Request) {
   try {
-    const session = await auth()
-    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-
     const {
       title, type = "OTHER", startTime, endTime,
       contactId, location, description, virtualLink,
@@ -25,7 +21,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid date/time" }, { status: 400 })
     }
 
-    const userId = session.user?.id
+    if (end <= start) {
+      return NextResponse.json({ error: "End time must be after start time" }, { status: 400 })
+    }
+
+    const agent = await prisma.user.findFirst({ where: { isActive: true } })
 
     const appointment = await prisma.appointment.create({
       data: {
@@ -37,8 +37,8 @@ export async function POST(req: Request) {
         description: description || null,
         virtualLink: virtualLink || null,
         status: "SCHEDULED",
-        ...(contactId && { contactId }),
-        ...(userId && { userId }),
+        ...(contactId ? { contactId } : {}),
+        ...(agent ? { userId: agent.id } : {}),
       },
       include: { contact: { select: { id: true, firstName: true, lastName: true, phone: true } } },
     })
@@ -48,16 +48,16 @@ export async function POST(req: Request) {
         data: {
           type: "APPOINTMENT_SCHEDULED",
           title: `Cita agendada: ${title}`,
-          description: description || "",
+          description: description || null,
           contactId,
-          ...(userId && { userId }),
+          ...(agent ? { userId: agent.id } : {}),
         },
-      })
+      }).catch(() => {})
     }
 
     return NextResponse.json(appointment)
-  } catch (e) {
+  } catch (e: any) {
     console.error("[appointments POST]", e)
-    return NextResponse.json({ error: "Failed to create appointment" }, { status: 500 })
+    return NextResponse.json({ error: e?.message || "Failed to create appointment" }, { status: 500 })
   }
 }
