@@ -34,11 +34,13 @@ export async function GET(req: Request) {
     const DEFAULT_END = "18:00"
     const isWeekend = dayOfWeek === 0 // Sunday closed by default
 
-    if (isWeekend && !avail) {
+    // If a record exists and is explicitly marked unavailable, block the day
+    if (avail && avail.isAvailable === false) {
       return NextResponse.json({ slots: [], message: "No disponible este día" })
     }
 
-    if (!avail?.isAvailable) {
+    // If no record exists, use defaults (Mon–Sat 9am–6pm). Sunday closed.
+    if (!avail && isWeekend) {
       return NextResponse.json({ slots: [], message: "No disponible este día" })
     }
 
