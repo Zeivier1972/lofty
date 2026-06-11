@@ -7,7 +7,8 @@ import {
   Users, Plus, Search, Download, Upload,
   Phone, Mail, ChevronLeft, ChevronRight, MoreVertical,
   Trash2, Edit, Eye, MessageSquare, X, Send, CheckSquare,
-  FileText, AlertCircle, CheckCircle2, Zap, Settings2,
+  FileText, AlertCircle, CheckCircle2, Zap, Settings2, MoveRight, Loader2,
+  PhoneCall, PhoneOff, SkipForward, CheckCircle, Clock,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -421,6 +422,169 @@ function BulkEmailModal({ contactIds, onClose }: { contactIds: string[]; onClose
   )
 }
 
+// ── Power Dialer ─────────────────────────────────────────────────────────────
+function PowerDialerModal({ contacts, onClose }: { contacts: any[]; onClose: () => void }) {
+  const { toast } = useToast()
+  const [index, setIndex] = useState(0)
+  const [note, setNote] = useState("")
+  const [callStatus, setCallStatus] = useState<"pending" | "called" | "no_answer" | "skip">("pending")
+  const [savingNote, setSavingNote] = useState(false)
+  const [log, setLog] = useState<{ name: string; status: string }[]>([])
+
+  const current = contacts[index]
+  const isLast = index === contacts.length - 1
+
+  const markAndAdvance = async (status: "called" | "no_answer" | "skip") => {
+    if (status !== "skip" && note.trim()) {
+      setSavingNote(true)
+      try {
+        await fetch(`/api/contacts/${current.id}/notes`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: `[Power Dialer – ${status === "called" ? "Contactado" : "Sin respuesta"}] ${note.trim()}` }),
+        })
+      } catch { /* ignore */ }
+      finally { setSavingNote(false) }
+    }
+
+    setLog(prev => [...prev, {
+      name: `${current.firstName} ${current.lastName}`,
+      status,
+    }])
+
+    if (isLast) {
+      toast({ title: `Sesión terminada — ${log.length + 1} contacto${log.length !== 0 ? "s" : ""} procesado${log.length !== 0 ? "s" : ""}` })
+      onClose()
+    } else {
+      setIndex(i => i + 1)
+      setNote("")
+      setCallStatus("pending")
+    }
+  }
+
+  if (!current) return null
+
+  const progress = Math.round(((index) / contacts.length) * 100)
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+        {/* Header */}
+        <div className="flex items-center justify-between p-5 border-b bg-gray-900 rounded-t-2xl">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-green-500 rounded-xl flex items-center justify-center">
+              <PhoneCall className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h2 className="font-bold text-white text-sm">Power Dialer</h2>
+              <p className="text-gray-400 text-xs">{index + 1} de {contacts.length} contactos</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Progress bar */}
+        <div className="h-1 bg-gray-200">
+          <div className="h-1 bg-green-500 transition-all" style={{ width: `${progress}%` }} />
+        </div>
+
+        {/* Current contact */}
+        <div className="p-6 space-y-5">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
+              {current.firstName?.[0]}{current.lastName?.[0]}
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-xl font-bold text-gray-900">{current.firstName} {current.lastName}</h3>
+              {current.phone && (
+                <a
+                  href={`tel:${current.phone}`}
+                  className="text-lg font-semibold text-green-600 hover:text-green-700 flex items-center gap-1.5 mt-0.5"
+                >
+                  <Phone className="w-4 h-4" />
+                  {current.phone}
+                </a>
+              )}
+              {!current.phone && (
+                <p className="text-sm text-red-500 flex items-center gap-1 mt-0.5">
+                  <PhoneOff className="w-4 h-4" /> Sin número de teléfono
+                </p>
+              )}
+              {current.email && (
+                <p className="text-xs text-gray-400 mt-0.5">{current.email}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mb-1.5 block">Notas de la llamada (opcional)</label>
+            <textarea
+              value={note}
+              onChange={e => setNote(e.target.value)}
+              rows={3}
+              placeholder="Interesado en... llama de vuelta el... etc."
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
+            />
+          </div>
+
+          {/* Action buttons */}
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              onClick={() => markAndAdvance("called")}
+              disabled={savingNote}
+              className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-green-50 hover:bg-green-100 border border-green-200 text-green-700 transition-colors"
+            >
+              <CheckCircle className="w-5 h-5" />
+              <span className="text-xs font-semibold">Contactado</span>
+            </button>
+            <button
+              onClick={() => markAndAdvance("no_answer")}
+              disabled={savingNote}
+              className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 transition-colors"
+            >
+              <Clock className="w-5 h-5" />
+              <span className="text-xs font-semibold">Sin respuesta</span>
+            </button>
+            <button
+              onClick={() => markAndAdvance("skip")}
+              className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-600 transition-colors"
+            >
+              <SkipForward className="w-5 h-5" />
+              <span className="text-xs font-semibold">Omitir</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Queue preview */}
+        {contacts.length > 1 && (
+          <div className="border-t border-gray-100 px-5 py-3">
+            <p className="text-xs text-gray-400 mb-2">En cola:</p>
+            <div className="flex gap-1.5 overflow-x-auto pb-1">
+              {contacts.map((c, i) => (
+                <div
+                  key={c.id}
+                  className={cn(
+                    "flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold",
+                    i < index ? "bg-gray-200 text-gray-400" :
+                    i === index ? "bg-indigo-600 text-white ring-2 ring-indigo-300" :
+                    "bg-gray-100 text-gray-500"
+                  )}
+                  title={`${c.firstName} ${c.lastName}`}
+                >
+                  {c.firstName?.[0]}{c.lastName?.[0]}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function relativeTime(date: string | null) {
   if (!date) return "—"
   const ms = Date.now() - new Date(date).getTime()
@@ -444,6 +608,9 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
   const [stages, setStages] = useState<Stage[]>(initialStages)
   const [updatingStage, setUpdatingStage] = useState<string | null>(null)
   const [deletingContact, setDeletingContact] = useState<string | null>(null)
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+  const [bulkMoving, setBulkMoving] = useState(false)
+  const [showPowerDialer, setShowPowerDialer] = useState(false)
 
   const totalPages = Math.ceil(total / pageSize)
   const allSelected = contacts.length > 0 && contacts.every(c => selected.has(c.id))
@@ -501,6 +668,44 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
     else setSelected(new Set(contacts.map(c => c.id)))
   }
 
+  const bulkDeleteContacts = async () => {
+    if (!selected.size) return
+    if (!confirm(`Permanently delete ${selected.size} contact${selected.size !== 1 ? "s" : ""}? This cannot be undone.`)) return
+    setBulkDeleting(true)
+    try {
+      const res = await fetch("/api/contacts/bulk", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: Array.from(selected) }),
+      })
+      if (!res.ok) throw new Error()
+      toast({ title: `${selected.size} contacts deleted` })
+      setSelected(new Set())
+      router.refresh()
+    } catch {
+      toast({ title: "Failed to delete contacts", variant: "destructive" })
+    } finally { setBulkDeleting(false) }
+  }
+
+  const bulkMoveToStage = async (stageId: string, stageName: string) => {
+    if (!selected.size) return
+    setBulkMoving(true)
+    try {
+      const res = await fetch("/api/pipeline/leads/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contactIds: Array.from(selected), stageId }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      toast({ title: `${data.added} contact${data.added !== 1 ? "s" : ""} moved to ${stageName}` })
+      setSelected(new Set())
+      router.refresh()
+    } catch {
+      toast({ title: "Failed to move contacts", variant: "destructive" })
+    } finally { setBulkMoving(false) }
+  }
+
   const updateFilter = (key: string, value: string) => {
     const params = new URLSearchParams()
     if (filters.search) params.set("search", filters.search)
@@ -528,6 +733,12 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
       {showImport && <ImportModal onClose={() => setShowImport(false)} onImported={() => router.refresh()} />}
       {showBulkSMS && <BulkSMSModal contactIds={selectedIds} onClose={() => setShowBulkSMS(false)} />}
       {showBulkEmail && <BulkEmailModal contactIds={selectedIds} onClose={() => setShowBulkEmail(false)} />}
+      {showPowerDialer && (
+        <PowerDialerModal
+          contacts={contacts.filter(c => selected.has(c.id))}
+          onClose={() => { setShowPowerDialer(false); setSelected(new Set()); router.refresh() }}
+        />
+      )}
 
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -608,31 +819,69 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
 
       {/* Bulk action bar */}
       {someSelected && (
-        <div className="bg-lofty-600 text-white rounded-xl px-5 py-3 flex items-center gap-4 shadow-lg">
+        <div className="bg-gray-900 text-white rounded-xl px-5 py-3 flex flex-wrap items-center gap-3 shadow-lg">
           <div className="flex items-center gap-2">
             <CheckSquare className="w-4 h-4" />
             <span className="font-semibold text-sm">{selected.size} selected</span>
           </div>
-          <div className="flex gap-2 ml-auto">
+          <div className="w-px h-5 bg-white/20 hidden sm:block" />
+          <div className="flex flex-wrap gap-2 ml-auto">
+            {/* Move to stage */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" className="bg-white/10 hover:bg-white/20 text-white border-white/20 gap-1.5" disabled={bulkMoving}>
+                  {bulkMoving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MoveRight className="w-3.5 h-3.5" />}
+                  Move to Stage
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-48">
+                {stages.map(s => (
+                  <DropdownMenuItem key={s.id} onClick={() => bulkMoveToStage(s.id, s.name)} className="gap-2">
+                    <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
+                    {s.name}
+                  </DropdownMenuItem>
+                ))}
+                {stages.length === 0 && (
+                  <DropdownMenuItem disabled className="text-gray-400 text-xs">No stages configured</DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <Button
+              size="sm"
+              onClick={() => setShowPowerDialer(true)}
+              className="bg-green-500 hover:bg-green-600 text-white gap-1.5"
+            >
+              <PhoneCall className="w-3.5 h-3.5" /> Power Dial
+            </Button>
             <Button
               size="sm"
               onClick={() => setShowBulkSMS(true)}
-              className="bg-white text-green-700 hover:bg-green-50 gap-1.5 font-semibold"
+              className="bg-white/10 hover:bg-white/20 text-white border-white/20 gap-1.5"
             >
               <MessageSquare className="w-3.5 h-3.5" /> Bulk Text
             </Button>
             <Button
               size="sm"
               onClick={() => setShowBulkEmail(true)}
-              className="bg-white text-blue-700 hover:bg-blue-50 gap-1.5 font-semibold"
+              className="bg-white/10 hover:bg-white/20 text-white border-white/20 gap-1.5"
             >
               <Mail className="w-3.5 h-3.5" /> Bulk Email
             </Button>
             <Button
               size="sm"
+              onClick={bulkDeleteContacts}
+              disabled={bulkDeleting}
+              className="bg-red-500 hover:bg-red-600 text-white gap-1.5"
+            >
+              {bulkDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+              Delete
+            </Button>
+            <Button
+              size="sm"
               variant="ghost"
               onClick={() => setSelected(new Set())}
-              className="text-white hover:bg-lofty-700"
+              className="text-white/60 hover:text-white hover:bg-white/10"
             >
               <X className="w-4 h-4" />
             </Button>
