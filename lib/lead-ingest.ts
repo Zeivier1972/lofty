@@ -72,6 +72,16 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
     },
   })
 
+  // Auto-assign to "New" stage in default pipeline
+  const pipeline = await prisma.pipeline.findFirst({
+    where: { isDefault: true },
+    include: { stages: { orderBy: { order: "asc" } } },
+  })
+  const newStage = pipeline?.stages.find(s => s.name === "New") ?? pipeline?.stages[0]
+  if (newStage) {
+    await prisma.pipelineLead.create({ data: { contactId: contact.id, stageId: newStage.id } })
+  }
+
   // Note with campaign info and form answers
   const noteContent = [
     campaign ? `[Campaña: ${campaign}]` : "",
