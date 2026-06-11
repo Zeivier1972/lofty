@@ -5,7 +5,7 @@ import Link from "next/link"
 import {
   Plus, GitBranch, DollarSign, Settings,
   MoreVertical, Phone, Mail, Calendar, ChevronDown,
-  X, Pencil, Trash2, Check, Loader2, GripVertical,
+  X, Pencil, Trash2, Check, Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
