@@ -280,6 +280,23 @@ function NewAppointmentModal({
 
 export default function CalendarClient({ appointments: initialAppointments }: CalendarClientProps) {
   const [appointments, setAppointments] = useState(initialAppointments)
+  const [cancelling, setCancelling] = useState<string | null>(null)
+
+  const cancelAppointment = async (id: string, title: string) => {
+    if (!confirm(`Cancel "${title}"?`)) return
+    setCancelling(id)
+    try {
+      const res = await fetch(`/api/appointments/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "CANCELLED" }),
+      })
+      if (!res.ok) throw new Error()
+      setAppointments(prev => prev.filter(a => a.id !== id))
+    } catch {
+      alert("Failed to cancel appointment.")
+    } finally { setCancelling(null) }
+  }
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [selectedDay, setSelectedDay] = useState<Date | null>(new Date())
   const [showModal, setShowModal] = useState(false)
@@ -430,8 +447,19 @@ export default function CalendarClient({ appointments: initialAppointments }: Ca
                 ) : (
                   <div className="space-y-2">
                     {selectedDayAppointments.map((apt) => (
-                      <div key={apt.id} className={cn("p-3 rounded-lg border", TYPE_COLORS[apt.type] || "bg-gray-50 border-gray-200")}>
-                        <p className="text-sm font-medium">{apt.title}</p>
+                      <div key={apt.id} className={cn("p-3 rounded-lg border relative", TYPE_COLORS[apt.type] || "bg-gray-50 border-gray-200")}>
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-sm font-medium leading-snug">{apt.title}</p>
+                          <button
+                            type="button"
+                            onClick={() => cancelAppointment(apt.id, apt.title)}
+                            disabled={cancelling === apt.id}
+                            className="flex-shrink-0 opacity-50 hover:opacity-100 hover:text-red-600 transition-all p-0.5 rounded"
+                            title="Cancel appointment"
+                          >
+                            {cancelling === apt.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
                         <div className="flex items-center gap-1 text-xs mt-1 opacity-70">
                           <Clock className="w-3 h-3" />
                           {format(new Date(apt.startTime), "h:mm a")} – {format(new Date(apt.endTime), "h:mm a")}
@@ -469,13 +497,22 @@ export default function CalendarClient({ appointments: initialAppointments }: Ca
                         <span className="text-xs font-bold text-lofty-700 leading-none">{format(new Date(apt.startTime), "d")}</span>
                         <span className="text-xs text-lofty-500 leading-none">{format(new Date(apt.startTime), "MMM")}</span>
                       </div>
-                      <div>
+                      <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-800 leading-snug">{apt.title}</p>
                         <p className="text-xs text-gray-400">{format(new Date(apt.startTime), "h:mm a")}</p>
                         {apt.contact && (
                           <p className="text-xs text-lofty-600">{apt.contact.firstName} {apt.contact.lastName}</p>
                         )}
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => cancelAppointment(apt.id, apt.title)}
+                        disabled={cancelling === apt.id}
+                        className="flex-shrink-0 text-gray-300 hover:text-red-500 transition-colors p-1 rounded"
+                        title="Cancel"
+                      >
+                        {cancelling === apt.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
+                      </button>
                     </div>
                   ))}
                 {appointments.filter((a) => new Date(a.startTime) >= new Date()).length === 0 && (
