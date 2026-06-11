@@ -169,11 +169,10 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
     console.log(`[INGEST] Email skipped — email=${!!email} autoEmail=${autoEmail}`)
   }
 
-  // VAPI outbound call — immediate (Sofia calls the lead right away)
+  // VAPI outbound call — immediate, or schedule for next business hours
   if (phone && autoCall) {
     const toPhone = phone.startsWith("+") ? phone : `+1${phoneDigits}`
-    console.log(`[INGEST] Triggering VAPI call to ${toPhone}`)
-    triggerOutboundCall({
+    const callOpts = {
       toPhone,
       contactId: contact.id,
       contactName: `${firstName} ${lastName || ""}`.trim(),
@@ -182,8 +181,30 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
       bedrooms: bedroomsMin ?? null,
       campaign: campaign ?? null,
       propertyType: propertyType ?? null,
-    }).then(callId => console.log(`[INGEST] VAPI call initiated: ${callId}`))
-      .catch(e => console.error("[INGEST] VAPI call failed:", e))
+    }
+
+    // Check if we're in business hours (8am–9pm ET, Mon–Sat)
+    const nowET = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }))
+    const hour = nowET.getHours()
+    const day = nowET.getDay() // 0=Sun
+    const inHours = day !== 0 && hour >= 8 && hour < 21
+
+    if (inHours) {
+      console.log(`[INGEST] Triggering VAPI call to ${toPhone}`)
+      triggerOutboundCall(callOpts)
+        .then(callId => console.log(`[INGEST] VAPI call initiated: ${callId}`))
+        .catch(e => console.error("[INGEST] VAPI call failed:", e))
+    } else {
+      // Schedule for 8am ET next business day
+      const next8am = new Date(nowET)
+      next8am.setHours(8, 0, 0, 0)
+      if (hour >= 21 || day === 0) next8am.setDate(next8am.getDate() + (day === 6 ? 2 : day === 0 ? 1 : 1))
+      // Convert back to UTC offset (ET is UTC-4 or UTC-5; use getTimezoneOffset approach)
+      const utcOffset = new Date().getTime() - new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" })).getTime()
+      const scheduledAt = new Date(next8am.getTime() + utcOffset)
+      console.log(`[INGEST] Outside business hours — scheduling call for ${next8am.toISOString()} ET`)
+      prisma.scheduledCall.create({ data: { contactId: contact.id, scheduledAt, attempt: 1, status: "PENDING" } }).catch(() => {})
+    }
   } else {
     console.log(`[INGEST] VAPI call skipped — phone=${!!phone} autoCall=${autoCall}`)
   }
