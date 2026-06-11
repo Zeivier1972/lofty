@@ -7,7 +7,7 @@ import {
   Users, Plus, Search, Download, Upload,
   Phone, Mail, ChevronLeft, ChevronRight, MoreVertical,
   Trash2, Edit, Eye, MessageSquare, X, Send, CheckSquare,
-  FileText, AlertCircle, CheckCircle2, Zap, Settings2,
+  FileText, AlertCircle, CheckCircle2, Zap, Settings2, MoveRight, Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -444,6 +444,8 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
   const [stages, setStages] = useState<Stage[]>(initialStages)
   const [updatingStage, setUpdatingStage] = useState<string | null>(null)
   const [deletingContact, setDeletingContact] = useState<string | null>(null)
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+  const [bulkMoving, setBulkMoving] = useState(false)
 
   const totalPages = Math.ceil(total / pageSize)
   const allSelected = contacts.length > 0 && contacts.every(c => selected.has(c.id))
@@ -499,6 +501,44 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
   const toggleAll = () => {
     if (allSelected) setSelected(new Set())
     else setSelected(new Set(contacts.map(c => c.id)))
+  }
+
+  const bulkDeleteContacts = async () => {
+    if (!selected.size) return
+    if (!confirm(`Permanently delete ${selected.size} contact${selected.size !== 1 ? "s" : ""}? This cannot be undone.`)) return
+    setBulkDeleting(true)
+    try {
+      const res = await fetch("/api/contacts/bulk", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: Array.from(selected) }),
+      })
+      if (!res.ok) throw new Error()
+      toast({ title: `${selected.size} contacts deleted` })
+      setSelected(new Set())
+      router.refresh()
+    } catch {
+      toast({ title: "Failed to delete contacts", variant: "destructive" })
+    } finally { setBulkDeleting(false) }
+  }
+
+  const bulkMoveToStage = async (stageId: string, stageName: string) => {
+    if (!selected.size) return
+    setBulkMoving(true)
+    try {
+      const res = await fetch("/api/pipeline/leads/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contactIds: Array.from(selected), stageId }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      toast({ title: `${data.added} contact${data.added !== 1 ? "s" : ""} moved to ${stageName}` })
+      setSelected(new Set())
+      router.refresh()
+    } catch {
+      toast({ title: "Failed to move contacts", variant: "destructive" })
+    } finally { setBulkMoving(false) }
   }
 
   const updateFilter = (key: string, value: string) => {
@@ -608,31 +648,62 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
 
       {/* Bulk action bar */}
       {someSelected && (
-        <div className="bg-lofty-600 text-white rounded-xl px-5 py-3 flex items-center gap-4 shadow-lg">
+        <div className="bg-gray-900 text-white rounded-xl px-5 py-3 flex flex-wrap items-center gap-3 shadow-lg">
           <div className="flex items-center gap-2">
             <CheckSquare className="w-4 h-4" />
             <span className="font-semibold text-sm">{selected.size} selected</span>
           </div>
-          <div className="flex gap-2 ml-auto">
+          <div className="w-px h-5 bg-white/20 hidden sm:block" />
+          <div className="flex flex-wrap gap-2 ml-auto">
+            {/* Move to stage */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" className="bg-white/10 hover:bg-white/20 text-white border-white/20 gap-1.5" disabled={bulkMoving}>
+                  {bulkMoving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MoveRight className="w-3.5 h-3.5" />}
+                  Move to Stage
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-48">
+                {stages.map(s => (
+                  <DropdownMenuItem key={s.id} onClick={() => bulkMoveToStage(s.id, s.name)} className="gap-2">
+                    <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
+                    {s.name}
+                  </DropdownMenuItem>
+                ))}
+                {stages.length === 0 && (
+                  <DropdownMenuItem disabled className="text-gray-400 text-xs">No stages configured</DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             <Button
               size="sm"
               onClick={() => setShowBulkSMS(true)}
-              className="bg-white text-green-700 hover:bg-green-50 gap-1.5 font-semibold"
+              className="bg-white/10 hover:bg-white/20 text-white border-white/20 gap-1.5"
             >
               <MessageSquare className="w-3.5 h-3.5" /> Bulk Text
             </Button>
             <Button
               size="sm"
               onClick={() => setShowBulkEmail(true)}
-              className="bg-white text-blue-700 hover:bg-blue-50 gap-1.5 font-semibold"
+              className="bg-white/10 hover:bg-white/20 text-white border-white/20 gap-1.5"
             >
               <Mail className="w-3.5 h-3.5" /> Bulk Email
             </Button>
             <Button
               size="sm"
+              onClick={bulkDeleteContacts}
+              disabled={bulkDeleting}
+              className="bg-red-500 hover:bg-red-600 text-white gap-1.5"
+            >
+              {bulkDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+              Delete
+            </Button>
+            <Button
+              size="sm"
               variant="ghost"
               onClick={() => setSelected(new Set())}
-              className="text-white hover:bg-lofty-700"
+              className="text-white/60 hover:text-white hover:bg-white/10"
             >
               <X className="w-4 h-4" />
             </Button>
