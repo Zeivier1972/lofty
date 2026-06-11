@@ -1045,7 +1045,7 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
   const selectedIds = Array.from(selected)
 
   return (
-    <div className="p-6 space-y-5 animate-fade-in">
+    <div className="p-4 md:p-6 space-y-4 md:space-y-5 animate-fade-in">
       {showImport && <ImportModal onClose={() => setShowImport(false)} onImported={() => router.refresh()} />}
       {showBulkSMS && <BulkSMSModal contactIds={selectedIds} onClose={() => setShowBulkSMS(false)} />}
       {showBulkEmail && <BulkEmailModal contactIds={selectedIds} onClose={() => setShowBulkEmail(false)} />}
@@ -1208,8 +1208,8 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
       )}
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3">
-        <form onSubmit={handleSearch} className="relative flex-1 min-w-60">
+      <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-3">
+        <form onSubmit={handleSearch} className="relative flex-1 min-w-0 sm:min-w-60">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <Input
             placeholder="Search by name, email, phone..."
@@ -1245,21 +1245,7 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
       </div>
 
       {/* Contact list */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm overflow-x-auto">
-        {/* Table header */}
-        <div className="grid grid-cols-[40px_2.5fr_1.5fr_1fr_1fr_1.2fr_1fr_80px] gap-3 px-4 py-3 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide min-w-[900px]">
-          <div className="flex items-center justify-center">
-            <input type="checkbox" checked={allSelected} onChange={toggleAll}
-              className="w-4 h-4 rounded border-gray-300 text-lofty-600 focus:ring-lofty-500 cursor-pointer" />
-          </div>
-          <div>Name</div>
-          <div>Pipeline</div>
-          <div>Last Touch</div>
-          <div>Communications</div>
-          <div>Smart Plan</div>
-          <div>Tags</div>
-          <div></div>
-        </div>
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
 
         {contacts.length === 0 ? (
           <div className="py-16 text-center">
@@ -1271,153 +1257,63 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
             </Button>
           </div>
         ) : (
-          <div className="divide-y divide-gray-100">
-            {contacts.map((contact) => {
-              const isBuyer = contact.buyerBudgetMax != null || contact.buyerLocation != null
-              const isSeller = contact.sellerAddress != null || contact.sellerEstimatedValue != null
-              const pipelineStage = contact.pipelineLeads?.[0]?.stage
-              const enrollment = contact.enrollments?.[0]
-              const lastTouch = contact.lastContacted || contact.updatedAt
-
-              return (
-                <div
-                  key={contact.id}
-                  className={cn(
-                    "grid grid-cols-[40px_2.5fr_1.5fr_1fr_1fr_1.2fr_1fr_80px] gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors items-center min-w-[900px]",
-                    selected.has(contact.id) && "bg-lofty-50 hover:bg-lofty-50"
-                  )}
-                >
-                  {/* Checkbox */}
-                  <div className="flex items-center justify-center">
+          <>
+            {/* ── Mobile card view ──────────────────────────────────────── */}
+            <div className="md:hidden divide-y divide-gray-100">
+              {contacts.map((contact) => {
+                const pipelineStage = contact.pipelineLeads?.[0]?.stage
+                const lastTouch = contact.lastContacted || contact.updatedAt
+                const isBuyer = contact.buyerBudgetMax != null || contact.buyerLocation != null
+                const isSeller = contact.sellerAddress != null || contact.sellerEstimatedValue != null
+                return (
+                  <div
+                    key={contact.id}
+                    className={cn(
+                      "flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors",
+                      selected.has(contact.id) && "bg-lofty-50"
+                    )}
+                  >
                     <input
                       type="checkbox"
                       checked={selected.has(contact.id)}
                       onChange={() => toggleSelect(contact.id)}
-                      className="w-4 h-4 rounded border-gray-300 text-lofty-600 focus:ring-lofty-500 cursor-pointer"
+                      className="w-4 h-4 rounded border-gray-300 text-lofty-600 focus:ring-lofty-500 cursor-pointer flex-shrink-0"
                     />
-                  </div>
-
-                  {/* Name */}
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <Avatar className="w-8 h-8 flex-shrink-0">
-                      <AvatarFallback className="bg-lofty-100 text-lofty-700 text-xs font-semibold">
-                        {getInitials(`${contact.firstName} ${contact.lastName}`)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0">
-                      <Link
-                        href={`/contacts/${contact.id}`}
-                        className="font-medium text-gray-900 hover:text-lofty-600 transition-colors truncate block text-sm"
-                      >
-                        {contact.firstName} {contact.lastName}
-                      </Link>
-                      <div className="flex gap-1 mt-0.5">
-                        {isBuyer && (
-                          <span className="text-[10px] px-1.5 py-0 rounded-full bg-blue-100 text-blue-700 font-medium">Buyer</span>
-                        )}
-                        {isSeller && (
-                          <span className="text-[10px] px-1.5 py-0 rounded-full bg-green-100 text-green-700 font-medium">Seller</span>
-                        )}
-                        {!isBuyer && !isSeller && (
-                          <span className="text-[10px] px-1.5 py-0 rounded-full bg-gray-100 text-gray-500 font-medium">{contact.status?.replace(/_/g, " ")}</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Pipeline — inline dropdown */}
-                  <div className="min-w-0">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button className={cn(
-                          "flex items-center gap-1.5 text-sm hover:bg-gray-100 rounded-lg px-1.5 py-1 transition-colors w-full text-left",
-                          updatingStage === contact.id && "opacity-50"
-                        )}>
-                          <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: pipelineStage?.color || "#94a3b8" }} />
-                          <span className="truncate">{pipelineStage?.name || "Set stage"}</span>
-                          <svg className="w-3 h-3 text-gray-400 flex-shrink-0 ml-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start" className="w-48">
-                        {stages.map(s => (
-                          <DropdownMenuItem
-                            key={s.id}
-                            onClick={() => assignStage(contact.id, s.id)}
-                            className={cn("flex items-center gap-2", pipelineStage?.id === s.id && "bg-lofty-50")}
-                          >
-                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
-                            {s.name}
-                          </DropdownMenuItem>
-                        ))}
-                        {stages.length === 0 && (
-                          <DropdownMenuItem disabled className="text-gray-400 text-xs">No stages — open Pipeline Settings</DropdownMenuItem>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-
-                  {/* Last Touch */}
-                  <div>
-                    <span className="text-sm text-gray-600">{relativeTime(lastTouch)}</span>
-                  </div>
-
-                  {/* Communications */}
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1 text-xs text-gray-500">
-                      <Phone className="w-3.5 h-3.5 text-gray-400" />
-                      <span>{contact._count?.activities ?? 0}</span>
-                    </div>
-                    {contact.email && (
-                      <div className="flex items-center gap-1 text-xs text-gray-500">
-                        <Mail className="w-3.5 h-3.5 text-gray-400" />
-                      </div>
-                    )}
-                    {contact.phone && (
-                      <div className="flex items-center gap-1 text-xs text-gray-500">
-                        <MessageSquare className="w-3.5 h-3.5 text-gray-400" />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Smart Plan */}
-                  <div className="min-w-0">
-                    {enrollment ? (
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <Zap className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-                          <span className="text-sm text-gray-700 truncate">{enrollment.plan?.name}</span>
+                    <Link href={`/contacts/${contact.id}`} className="flex items-center gap-3 flex-1 min-w-0">
+                      <Avatar className="w-10 h-10 flex-shrink-0">
+                        <AvatarFallback className="bg-lofty-100 text-lofty-700 text-sm font-semibold">
+                          {getInitials(`${contact.firstName} ${contact.lastName}`)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-gray-900 truncate text-sm">
+                          {contact.firstName} {contact.lastName}
+                        </p>
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          {pipelineStage && (
+                            <span className="flex items-center gap-1 text-xs text-gray-500">
+                              <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: pipelineStage.color }} />
+                              {pipelineStage.name}
+                            </span>
+                          )}
+                          <span className="text-xs text-gray-400">{relativeTime(lastTouch)}</span>
+                          {isBuyer && <span className="text-[10px] px-1.5 py-0 rounded-full bg-blue-100 text-blue-700 font-medium">Buyer</span>}
+                          {isSeller && <span className="text-[10px] px-1.5 py-0 rounded-full bg-green-100 text-green-700 font-medium">Seller</span>}
                         </div>
-                        <span className="text-[10px] px-1.5 py-0 rounded-full bg-green-100 text-green-700 font-medium">Running</span>
+                        {contact.phone && (
+                          <a
+                            href={`tel:${contact.phone}`}
+                            onClick={e => e.stopPropagation()}
+                            className="text-xs text-green-600 mt-0.5 block"
+                          >
+                            {contact.phone}
+                          </a>
+                        )}
                       </div>
-                    ) : (
-                      <span className="text-sm text-gray-400">None</span>
-                    )}
-                  </div>
-
-                  {/* Tags */}
-                  <div className="flex flex-wrap gap-1 items-center">
-                    {contact.tags.slice(0, 2).map((ct: any) => (
-                      <span
-                        key={ct.tagId}
-                        className="inline-flex items-center px-1.5 py-0 text-[10px] rounded-full font-medium"
-                        style={{ backgroundColor: ct.tag.color + "20", color: ct.tag.color }}
-                      >
-                        {ct.tag.name}
-                      </span>
-                    ))}
-                    {contact.tags.length > 2 && (
-                      <span className="text-[10px] text-gray-400">+{contact.tags.length - 2}</span>
-                    )}
-                    {contact.tags.length === 0 && (
-                      <span className="text-xs text-gray-300">—</span>
-                    )}
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex justify-end">
+                    </Link>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="w-8 h-8">
+                        <Button variant="ghost" size="icon" className="w-8 h-8 flex-shrink-0">
                           <MoreVertical className="w-4 h-4" />
                         </Button>
                       </DropdownMenuTrigger>
@@ -1435,7 +1331,6 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           className="text-red-600 flex items-center gap-2"
-                          disabled={deletingContact === contact.id}
                           onClick={() => deleteContact(contact.id, `${contact.firstName} ${contact.lastName || ""}`.trim())}
                         >
                           <Trash2 className="w-4 h-4" /> Delete
@@ -1443,10 +1338,171 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
+                )
+              })}
+            </div>
+
+            {/* ── Desktop table view ────────────────────────────────────── */}
+            <div className="hidden md:block overflow-x-auto">
+              {/* Table header */}
+              <div className="grid grid-cols-[40px_2.5fr_1.5fr_1fr_1fr_1.2fr_1fr_80px] gap-3 px-4 py-3 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide min-w-[900px]">
+                <div className="flex items-center justify-center">
+                  <input type="checkbox" checked={allSelected} onChange={toggleAll}
+                    className="w-4 h-4 rounded border-gray-300 text-lofty-600 focus:ring-lofty-500 cursor-pointer" />
                 </div>
-              )
-            })}
-          </div>
+                <div>Name</div>
+                <div>Pipeline</div>
+                <div>Last Touch</div>
+                <div>Communications</div>
+                <div>Smart Plan</div>
+                <div>Tags</div>
+                <div></div>
+              </div>
+              <div className="divide-y divide-gray-100">
+                {contacts.map((contact) => {
+                  const isBuyer = contact.buyerBudgetMax != null || contact.buyerLocation != null
+                  const isSeller = contact.sellerAddress != null || contact.sellerEstimatedValue != null
+                  const pipelineStage = contact.pipelineLeads?.[0]?.stage
+                  const enrollment = contact.enrollments?.[0]
+                  const lastTouch = contact.lastContacted || contact.updatedAt
+
+                  return (
+                    <div
+                      key={contact.id}
+                      className={cn(
+                        "grid grid-cols-[40px_2.5fr_1.5fr_1fr_1fr_1.2fr_1fr_80px] gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors items-center min-w-[900px]",
+                        selected.has(contact.id) && "bg-lofty-50 hover:bg-lofty-50"
+                      )}
+                    >
+                      {/* Checkbox */}
+                      <div className="flex items-center justify-center">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(contact.id)}
+                          onChange={() => toggleSelect(contact.id)}
+                          className="w-4 h-4 rounded border-gray-300 text-lofty-600 focus:ring-lofty-500 cursor-pointer"
+                        />
+                      </div>
+
+                      {/* Name */}
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <Avatar className="w-8 h-8 flex-shrink-0">
+                          <AvatarFallback className="bg-lofty-100 text-lofty-700 text-xs font-semibold">
+                            {getInitials(`${contact.firstName} ${contact.lastName}`)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0">
+                          <Link
+                            href={`/contacts/${contact.id}`}
+                            className="font-medium text-gray-900 hover:text-lofty-600 transition-colors truncate block text-sm"
+                          >
+                            {contact.firstName} {contact.lastName}
+                          </Link>
+                          <div className="flex gap-1 mt-0.5">
+                            {isBuyer && <span className="text-[10px] px-1.5 py-0 rounded-full bg-blue-100 text-blue-700 font-medium">Buyer</span>}
+                            {isSeller && <span className="text-[10px] px-1.5 py-0 rounded-full bg-green-100 text-green-700 font-medium">Seller</span>}
+                            {!isBuyer && !isSeller && <span className="text-[10px] px-1.5 py-0 rounded-full bg-gray-100 text-gray-500 font-medium">{contact.status?.replace(/_/g, " ")}</span>}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Pipeline */}
+                      <div className="min-w-0">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button className={cn(
+                              "flex items-center gap-1.5 text-sm hover:bg-gray-100 rounded-lg px-1.5 py-1 transition-colors w-full text-left",
+                              updatingStage === contact.id && "opacity-50"
+                            )}>
+                              <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: pipelineStage?.color || "#94a3b8" }} />
+                              <span className="truncate">{pipelineStage?.name || "Set stage"}</span>
+                              <svg className="w-3 h-3 text-gray-400 flex-shrink-0 ml-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start" className="w-48">
+                            {stages.map(s => (
+                              <DropdownMenuItem key={s.id} onClick={() => assignStage(contact.id, s.id)} className={cn("flex items-center gap-2", pipelineStage?.id === s.id && "bg-lofty-50")}>
+                                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
+                                {s.name}
+                              </DropdownMenuItem>
+                            ))}
+                            {stages.length === 0 && <DropdownMenuItem disabled className="text-gray-400 text-xs">No stages — open Pipeline Settings</DropdownMenuItem>}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+
+                      {/* Last Touch */}
+                      <div><span className="text-sm text-gray-600">{relativeTime(lastTouch)}</span></div>
+
+                      {/* Communications */}
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1 text-xs text-gray-500">
+                          <Phone className="w-3.5 h-3.5 text-gray-400" />
+                          <span>{contact._count?.activities ?? 0}</span>
+                        </div>
+                        {contact.email && <div className="flex items-center gap-1 text-xs text-gray-500"><Mail className="w-3.5 h-3.5 text-gray-400" /></div>}
+                        {contact.phone && <div className="flex items-center gap-1 text-xs text-gray-500"><MessageSquare className="w-3.5 h-3.5 text-gray-400" /></div>}
+                      </div>
+
+                      {/* Smart Plan */}
+                      <div className="min-w-0">
+                        {enrollment ? (
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <Zap className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                              <span className="text-sm text-gray-700 truncate">{enrollment.plan?.name}</span>
+                            </div>
+                            <span className="text-[10px] px-1.5 py-0 rounded-full bg-green-100 text-green-700 font-medium">Running</span>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-400">None</span>
+                        )}
+                      </div>
+
+                      {/* Tags */}
+                      <div className="flex flex-wrap gap-1 items-center">
+                        {contact.tags.slice(0, 2).map((ct: any) => (
+                          <span key={ct.tagId} className="inline-flex items-center px-1.5 py-0 text-[10px] rounded-full font-medium"
+                            style={{ backgroundColor: ct.tag.color + "20", color: ct.tag.color }}>
+                            {ct.tag.name}
+                          </span>
+                        ))}
+                        {contact.tags.length > 2 && <span className="text-[10px] text-gray-400">+{contact.tags.length - 2}</span>}
+                        {contact.tags.length === 0 && <span className="text-xs text-gray-300">—</span>}
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex justify-end">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="w-8 h-8">
+                              <MoreVertical className="w-4 h-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem asChild>
+                              <Link href={`/contacts/${contact.id}`} className="flex items-center gap-2"><Eye className="w-4 h-4" /> View</Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem asChild>
+                              <Link href={`/contacts/${contact.id}/edit`} className="flex items-center gap-2"><Edit className="w-4 h-4" /> Edit</Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-red-600 flex items-center gap-2"
+                              disabled={deletingContact === contact.id}
+                              onClick={() => deleteContact(contact.id, `${contact.firstName} ${contact.lastName || ""}`.trim())}
+                            >
+                              <Trash2 className="w-4 h-4" /> Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </>
         )}
 
         {/* Pagination */}
