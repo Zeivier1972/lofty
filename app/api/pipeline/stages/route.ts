@@ -2,12 +2,8 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { auth } from "@/lib/auth"
 
 export async function POST(req: Request) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-
   try {
     const { pipelineId, name, color } = await req.json()
     if (!pipelineId || !name?.trim()) return NextResponse.json({ error: "pipelineId and name required" }, { status: 400 })
