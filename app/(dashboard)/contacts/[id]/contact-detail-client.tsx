@@ -196,9 +196,25 @@ export default function ContactDetailClient({ contact, stages = [], pipelineId =
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1">
                 <h2 className="font-bold text-gray-900 text-base truncate">{fullName}</h2>
-                <button className="p-0.5 hover:bg-gray-100 rounded flex-shrink-0">
-                  <MoreVertical className="w-3.5 h-3.5 text-gray-400" />
-                </button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="p-0.5 hover:bg-gray-100 rounded flex-shrink-0">
+                      <MoreVertical className="w-3.5 h-3.5 text-gray-400" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      className="text-red-600 flex items-center gap-2"
+                      onClick={async () => {
+                        if (!confirm(`Delete ${fullName}? This cannot be undone.`)) return
+                        await fetch(`/api/contacts/${contact.id}`, { method: "DELETE" })
+                        router.push("/contacts")
+                      }}
+                    >
+                      <Trash2 className="w-4 h-4" /> Delete contact
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
               <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                 <Badge className={cn("text-xs px-2", getStatusColor(contact.status))}>

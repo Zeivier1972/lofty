@@ -443,6 +443,7 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
   const [showPipelineSettings, setShowPipelineSettings] = useState(false)
   const [stages, setStages] = useState<Stage[]>(initialStages)
   const [updatingStage, setUpdatingStage] = useState<string | null>(null)
+  const [deletingContact, setDeletingContact] = useState<string | null>(null)
 
   const totalPages = Math.ceil(total / pageSize)
   const allSelected = contacts.length > 0 && contacts.every(c => selected.has(c.id))
@@ -469,6 +470,20 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
       toast({ title: "Failed to update stage", variant: "destructive" })
     } finally {
       setUpdatingStage(null)
+    }
+  }
+
+  const deleteContact = async (id: string, name: string) => {
+    if (!confirm(`Delete ${name}? This cannot be undone.`)) return
+    setDeletingContact(id)
+    try {
+      await fetch(`/api/contacts/${id}`, { method: "DELETE" })
+      toast({ title: "Contact deleted" })
+      router.refresh()
+    } catch {
+      toast({ title: "Failed to delete", variant: "destructive" })
+    } finally {
+      setDeletingContact(null)
     }
   }
 
@@ -851,8 +866,12 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
                           </Link>
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem className="text-red-600 flex items-center gap-2">
-                          <Trash2 className="w-4 h-4" /> Archive
+                        <DropdownMenuItem
+                          className="text-red-600 flex items-center gap-2"
+                          disabled={deletingContact === contact.id}
+                          onClick={() => deleteContact(contact.id, `${contact.firstName} ${contact.lastName || ""}`.trim())}
+                        >
+                          <Trash2 className="w-4 h-4" /> Delete
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>

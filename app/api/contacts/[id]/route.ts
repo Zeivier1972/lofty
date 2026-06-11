@@ -59,13 +59,10 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
     const session = await auth()
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-    await prisma.contact.update({
-      where: { id: params.id },
-      data: { isArchived: true },
-    })
+    await prisma.contact.delete({ where: { id: params.id } })
 
     return NextResponse.json({ success: true })
   } catch {
-    return NextResponse.json({ error: "Failed to archive contact" }, { status: 500 })
+    return NextResponse.json({ error: "Failed to delete contact" }, { status: 500 })
   }
 }
