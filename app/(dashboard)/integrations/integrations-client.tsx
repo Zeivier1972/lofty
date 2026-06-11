@@ -42,9 +42,8 @@ export default function IntegrationsClient() {
   const [disconnecting, setDisconnecting] = useState<string | null>(null)
   const [showManual, setShowManual] = useState(false)
   const [manualToken, setManualToken] = useState("")
-  const [manualPageId, setManualPageId] = useState("")
-  const [manualPageName, setManualPageName] = useState("")
   const [savingManual, setSavingManual] = useState(false)
+  const [manualError, setManualError] = useState("")
   const { toast } = useToast()
   const searchParams = useSearchParams()
 
@@ -70,20 +69,32 @@ export default function IntegrationsClient() {
   }
 
   async function saveManualToken() {
-    if (!manualToken || !manualPageId || !manualPageName) {
-      toast({ title: "Completa todos los campos", variant: "destructive" })
+    if (!manualToken.trim()) {
+      toast({ title: "Pega tu User Token", variant: "destructive" })
       return
     }
     setSavingManual(true)
-    await fetch("/api/integrations/facebook/manual", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pageId: manualPageId, pageName: manualPageName, accessToken: manualToken }),
-    })
-    await loadStatus()
-    setShowManual(false)
+    setManualError("")
+    try {
+      const res = await fetch("/api/integrations/facebook/manual", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userToken: manualToken.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setManualError(data.error || "Error desconocido")
+        setSavingManual(false)
+        return
+      }
+      await loadStatus()
+      setShowManual(false)
+      setManualToken("")
+      toast({ title: "¡Conectado!", description: `${data.pages?.length || 1} página(s) de Facebook conectada(s) con token permanente.` })
+    } catch {
+      setManualError("Error de red. Intenta de nuevo.")
+    }
     setSavingManual(false)
-    toast({ title: "¡Conectado!", description: "Página de Facebook guardada manualmente." })
   }
 
   async function disconnect(pageId: string) {
@@ -161,16 +172,27 @@ export default function IntegrationsClient() {
 
               {showManual && (
                 <div className="border border-gray-200 rounded-xl p-4 space-y-3">
-                  <p className="text-sm font-semibold text-gray-700">Conexión manual con Page Access Token</p>
-                  <p className="text-xs text-gray-500">
-                    Obtén tu token en <a href="https://developers.facebook.com/tools/explorer" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">Graph API Explorer</a> → selecciona tu página → copia el Access Token.
+                  <p className="text-sm font-semibold text-gray-700">Conexión manual con User Token</p>
+                  <ol className="text-xs text-gray-500 space-y-1 pl-2">
+                    <li className="flex gap-2"><span className="font-bold">1.</span>Ve a <a href="https://developers.facebook.com/tools/explorer" target="_blank" rel="noopener noreferrer" className="underline text-blue-600">Graph API Explorer</a></li>
+                    <li className="flex gap-2"><span className="font-bold">2.</span>Selecciona tu app en el menú superior derecho</li>
+                    <li className="flex gap-2"><span className="font-bold">3.</span>En "User or Page" selecciona <strong>User Token</strong></li>
+                    <li className="flex gap-2"><span className="font-bold">4.</span>Haz clic en "Generate Access Token" y acepta los permisos</li>
+                    <li className="flex gap-2"><span className="font-bold">5.</span>Copia el token y pégalo aquí</li>
+                  </ol>
+                  <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    El sistema automáticamente lo convierte en un token permanente — no expira.
                   </p>
-                  <Input placeholder="Nombre de la página (ej: Catherine Gomez Realtor)" value={manualPageName} onChange={e => setManualPageName(e.target.value)} className="text-sm" />
-                  <Input placeholder="Page ID (número, ej: 123456789)" value={manualPageId} onChange={e => setManualPageId(e.target.value)} className="text-sm" />
-                  <Input placeholder="Page Access Token (EAAxxxx...)" value={manualToken} onChange={e => setManualToken(e.target.value)} className="text-sm font-mono text-xs" />
+                  <Input
+                    placeholder="Pega tu User Token aquí (EAAxxxx...)"
+                    value={manualToken}
+                    onChange={e => { setManualToken(e.target.value); setManualError("") }}
+                    className="text-xs font-mono"
+                  />
+                  {manualError && <p className="text-xs text-red-600">{manualError}</p>}
                   <Button onClick={saveManualToken} disabled={savingManual} size="sm" className="w-full">
                     {savingManual ? <RefreshCw className="w-3 h-3 animate-spin mr-1" /> : null}
-                    Guardar
+                    {savingManual ? "Conectando..." : "Guardar y conectar"}
                   </Button>
                 </div>
               )}
