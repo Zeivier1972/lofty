@@ -45,7 +45,12 @@ REGLAS IMPORTANTES:
 CATHERINE:
 - Colombiana, experta en Miami con más de veinte años de experiencia
 - Especialista en Brickell, Miami Beach, Doral, Kendall, Coral Gables, Aventura y Sunny Isles
-- Habla español e inglés, disponible los siete días`
+- Habla español e inglés, disponible los siete días
+
+TRANSFERENCIA EN VIVO A CATHERINE:
+- Si el lead pide hablar con una persona real, con "la agente", con "Catherine", o dice que prefiere no hablar con una IA → usa la herramienta transferToAgent
+- Antes de transferir di: "¡Con mucho gusto! Déjame conectarte con Catherine ahora mismo, un momentico..."
+- Solo transfiere si el lead lo pide explícitamente — no lo ofrezcas sin que lo pidan`
 
 const DEFAULT_VOICEMAIL_MSG =
   "Hola, soy Sofía de Catherine Gomez Realtor en Miami. Te llamé porque mostraste interés en propiedades y quería platicarte. " +
@@ -88,7 +93,9 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
     return null
   }
 
-  const aiConfig = await prisma.aIConfig.findFirst({ select: { autoCallEnabled: true } })
+  const aiConfig = await prisma.aIConfig.findFirst({
+    select: { autoCallEnabled: true, realtorPhone: true },
+  })
   if (aiConfig && aiConfig.autoCallEnabled === false) {
     console.log("[VAPI] Auto-calling disabled by user setting — skipping call")
     return null
@@ -190,6 +197,20 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
             server: { url: webhookUrl },
           },
           { type: "endCall" },
+          // Live warm transfer to Catherine when lead explicitly asks for a human
+          ...(aiConfig?.realtorPhone ? [{
+            type: "transferCall",
+            destinations: [{
+              type: "phoneNumber",
+              number: aiConfig.realtorPhone,
+              message: "¡Con mucho gusto! Déjame conectarte con Catherine ahora mismo, un momentico...",
+              description: "Transferir la llamada a Catherine Gomez, la agente de bienes raíces en persona",
+            }],
+            function: {
+              name: "transferToAgent",
+              description: "Transfiere la llamada en vivo a Catherine Gomez cuando el lead pide explícitamente hablar con una persona real o con la agente",
+            },
+          }] : []),
         ],
       },
       voice: {

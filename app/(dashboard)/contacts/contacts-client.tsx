@@ -443,7 +443,66 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
   const [manualNote, setManualNote] = useState("")
   const [manualLog, setManualLog] = useState<{ name: string; outcome: string }[]>([])
   const [loggingCall, setLoggingCall] = useState(false)
-  const manualContacts = contactList.filter(c => c.phone) // only contacts with phones
+  const manualContacts = contactList.filter(c => c.phone)
+
+  // Twilio browser softphone state
+  const [twilioDevice, setTwilioDevice] = useState<any>(null)
+  const [activeCall, setActiveCall] = useState<any>(null)
+  const [callStatus, setCallStatus] = useState<"idle" | "connecting" | "connected">("idle")
+  const [callSeconds, setCallSeconds] = useState(0)
+  const [deviceReady, setDeviceReady] = useState(false)
+  const [browserCallFailed, setBrowserCallFailed] = useState(false)
+
+  // Initialize Twilio Device when Catherine mode starts
+  useEffect(() => {
+    if (phase !== "running" || callerType !== "catherine") return
+    let device: any = null
+    ;(async () => {
+      try {
+        const tokenRes = await fetch("/api/twilio/token")
+        const { token, error } = await tokenRes.json()
+        if (error) { setBrowserCallFailed(true); return }
+        const { Device } = await import("@twilio/voice-sdk")
+        device = new Device(token, { codecPreferences: ["opus", "pcmu"] as any })
+        device.on("error", () => { setCallStatus("idle"); setActiveCall(null) })
+        setTwilioDevice(device)
+        setDeviceReady(true)
+      } catch { setBrowserCallFailed(true) }
+    })()
+    return () => { device?.destroy(); setTwilioDevice(null); setDeviceReady(false) }
+  }, [phase, callerType])
+
+  // Timer while on a call
+  useEffect(() => {
+    if (callStatus !== "connected") { setCallSeconds(0); return }
+    const t = setInterval(() => setCallSeconds(s => s + 1), 1000)
+    return () => clearInterval(t)
+  }, [callStatus])
+
+  // Reset call state when advancing to next contact
+  useEffect(() => { setCallStatus("idle"); setActiveCall(null) }, [manualIndex])
+
+  const startBrowserCall = async (phone: string) => {
+    if (!twilioDevice) return
+    setCallStatus("connecting")
+    try {
+      const digits = phone.replace(/\D/g, "")
+      const e164 = digits.length === 10 ? `+1${digits}` : `+${digits}`
+      const call = await twilioDevice.connect({ params: { To: e164 } })
+      setActiveCall(call)
+      call.on("accept", () => setCallStatus("connected"))
+      call.on("disconnect", () => { setCallStatus("idle"); setActiveCall(null) })
+      call.on("cancel", () => { setCallStatus("idle"); setActiveCall(null) })
+      call.on("error", () => { setCallStatus("idle"); setActiveCall(null) })
+    } catch {
+      setCallStatus("idle")
+      toast({ title: "No se pudo conectar la llamada", variant: "destructive" })
+    }
+  }
+
+  const hangUp = () => { activeCall?.disconnect(); setCallStatus("idle"); setActiveCall(null) }
+
+  const fmtTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`
 
   // Poll session status every 3s while running
   useEffect(() => {
@@ -661,13 +720,13 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
             </div>
           )}
 
-          {/* Catherine manual dialer running */}
+          {/* Catherine browser softphone running */}
           {phase === "running" && callerType === "catherine" && (() => {
             const contact = manualContacts[manualIndex]
             if (!contact) return null
-            const progress = Math.round((manualIndex / manualContacts.length) * 100)
             return (
-              <div className="p-6 space-y-5">
+              <div className="p-6 space-y-4">
+                {/* Contact card */}
                 <div className="flex items-center gap-4 p-4 bg-gray-50 border border-gray-200 rounded-xl">
                   <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
                     {contact.firstName?.[0]}{contact.lastName?.[0]}
@@ -675,11 +734,55 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
                   <div className="flex-1 min-w-0">
                     <p className="text-xs text-gray-500 font-semibold mb-0.5">{manualIndex + 1} de {manualContacts.length}</p>
                     <h3 className="font-bold text-gray-900">{contact.firstName} {contact.lastName}</h3>
-                    <a href={`tel:${contact.phone}`} className="text-green-600 font-semibold text-lg flex items-center gap-1 mt-0.5 hover:text-green-700">
-                      <Phone className="w-4 h-4" />{contact.phone}
-                    </a>
+                    <p className="text-sm text-gray-500 mt-0.5">{contact.phone}</p>
                   </div>
                 </div>
+
+                {/* Softphone call control */}
+                {browserCallFailed ? (
+                  /* Fallback: show tel: link when browser calling isn't configured */
+                  <div className="space-y-2">
+                    <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                      Llamada por navegador no configurada — usa tu teléfono.
+                    </p>
+                    <a href={`tel:${contact.phone}`}
+                      className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-green-500 hover:bg-green-600 text-white font-semibold transition-colors">
+                      <Phone className="w-5 h-5" /> Llamar {contact.phone}
+                    </a>
+                  </div>
+                ) : callStatus === "idle" ? (
+                  <button
+                    onClick={() => startBrowserCall(contact.phone)}
+                    disabled={!deviceReady}
+                    className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white font-semibold transition-colors"
+                  >
+                    {!deviceReady ? <Loader2 className="w-5 h-5 animate-spin" /> : <Phone className="w-5 h-5" />}
+                    {deviceReady ? `Llamar a ${contact.firstName}` : "Iniciando teléfono…"}
+                  </button>
+                ) : callStatus === "connecting" ? (
+                  <div className="flex items-center justify-between gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <Loader2 className="w-5 h-5 text-amber-600 animate-spin" />
+                      <span className="font-semibold text-amber-700 text-sm">Marcando…</span>
+                    </div>
+                    <button onClick={hangUp} className="text-red-600 hover:text-red-700 p-1.5 rounded-lg hover:bg-red-50">
+                      <PhoneOff className="w-5 h-5" />
+                    </button>
+                  </div>
+                ) : (
+                  /* connected */
+                  <div className="flex items-center justify-between gap-3 p-4 bg-green-50 border border-green-200 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <div className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse" />
+                      <span className="font-semibold text-green-700 text-sm">En llamada — {fmtTime(callSeconds)}</span>
+                    </div>
+                    <button onClick={hangUp} className="flex items-center gap-1.5 bg-red-500 hover:bg-red-600 text-white text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors">
+                      <PhoneOff className="w-4 h-4" /> Colgar
+                    </button>
+                  </div>
+                )}
+
+                {/* Notes */}
                 <div>
                   <label className="text-xs font-semibold text-gray-500 mb-1.5 block">Notas (opcional)</label>
                   <textarea
@@ -690,17 +793,19 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
                     className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
                   />
                 </div>
+
+                {/* Outcome buttons (always visible so Catherine can log even if call was via phone) */}
                 <div className="grid grid-cols-2 gap-2">
                   <button onClick={() => logManualCall("connected")} disabled={loggingCall}
-                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-green-50 hover:bg-green-100 border border-green-200 text-green-700 transition-colors">
+                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-green-50 hover:bg-green-100 border border-green-200 text-green-700 transition-colors disabled:opacity-50">
                     <CheckCircle className="w-5 h-5" /><span className="text-xs font-semibold">Contestó</span>
                   </button>
                   <button onClick={() => logManualCall("voicemail")} disabled={loggingCall}
-                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 transition-colors">
+                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 transition-colors disabled:opacity-50">
                     <MessageSquare className="w-5 h-5" /><span className="text-xs font-semibold">Buzón de voz</span>
                   </button>
                   <button onClick={() => logManualCall("no_answer")} disabled={loggingCall}
-                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 transition-colors">
+                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 transition-colors disabled:opacity-50">
                     <Clock className="w-5 h-5" /><span className="text-xs font-semibold">No contestó</span>
                   </button>
                   <button onClick={() => logManualCall("skip")} disabled={loggingCall}
@@ -708,8 +813,9 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
                     <SkipForward className="w-5 h-5" /><span className="text-xs font-semibold">Omitir</span>
                   </button>
                 </div>
+
                 {/* Queue dots */}
-                <div className="flex gap-1.5 justify-center pt-1">
+                <div className="flex gap-1.5 justify-center">
                   {manualContacts.map((_, i) => (
                     <div key={i} className={cn("w-2 h-2 rounded-full transition-colors",
                       i < manualIndex ? "bg-gray-300" : i === manualIndex ? "bg-indigo-600" : "bg-gray-200")} />
