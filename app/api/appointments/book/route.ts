@@ -86,7 +86,7 @@ export async function POST(req: Request) {
         type: "APPOINTMENT",
         contactId: contact.id,
         dueDate: startTime,
-        ...(agent && { userId: agent.id }),
+        ...(agent && { assignedToId: agent.id }),
       },
     })
 
