@@ -70,7 +70,7 @@ const ACTIVITY_ICONS: Record<string, { icon: string; color: string }> = {
 
 type TabId = "overview" | "properties" | "searches" | "transactions" | "documents" | "automations"
 
-export default function ContactDetailClient({ contact, stages = [], pipelineId = "" }: { contact: any; stages?: any[]; pipelineId?: string }) {
+export default function ContactDetailClient({ contact, smsMessages = [], stages = [], pipelineId = "" }: { contact: any; smsMessages?: any[]; stages?: any[]; pipelineId?: string }) {
   const { toast } = useToast()
   const router = useRouter()
   const [newNote, setNewNote] = useState("")
@@ -81,6 +81,9 @@ export default function ContactDetailClient({ contact, stages = [], pipelineId =
   const [updatingStage, setUpdatingStage] = useState(false)
   const [currentPipeline, setCurrentPipeline] = useState(contact.pipelineLeads?.[0])
   const [sofiaLoading, setSofiaLoading] = useState(false)
+  const [activityFilter, setActivityFilter] = useState("All")
+  const [expandedEmail, setExpandedEmail] = useState<string | null>(null)
+  const [expandedCall, setExpandedCall] = useState<string | null>(null)
 
   const triggerSofiaCall = async () => {
     if (!contact.phone) return
@@ -452,7 +455,7 @@ export default function ContactDetailClient({ contact, stages = [], pipelineId =
                   {/* Activity filter */}
                   <div className="flex items-center gap-1 flex-wrap">
                     {["All", "Notes", "Calls", "Emails", "Texts", "Tasks", "Appointments"].map(f => (
-                      <button key={f} className="text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors first:bg-blue-600 first:text-white first:border-blue-600">
+                      <button key={f} onClick={() => setActivityFilter(f)} className={cn("text-xs px-3 py-1.5 rounded-full border transition-colors", activityFilter === f ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-500 hover:bg-gray-50")}>
                         {f}
                       </button>
                     ))}
@@ -461,7 +464,7 @@ export default function ContactDetailClient({ contact, stages = [], pipelineId =
                   {/* Timeline events */}
                   <div className="space-y-2">
                     {/* Notes */}
-                    {notes.map((note: any) => (
+                    {(activityFilter === "All" || activityFilter === "Notes") && notes.map((note: any) => (
                       <div key={note.id} className={cn("bg-white rounded-xl border shadow-sm p-4", note.isPinned && "border-l-4 border-l-yellow-400")}>
                         <div className="flex items-start gap-3">
                           <div className="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm">📝</div>
@@ -478,8 +481,86 @@ export default function ContactDetailClient({ contact, stages = [], pipelineId =
                       </div>
                     ))}
 
+                    {/* SMS Messages */}
+                    {(activityFilter === "All" || activityFilter === "Texts") && smsMessages.map((sms: any) => (
+                      <div key={sms.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                        <div className="flex items-start gap-3">
+                          <div className={cn("w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-sm", sms.direction === "INBOUND" ? "bg-green-100" : "bg-blue-100")}>
+                            💬
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-xs font-semibold text-gray-500 uppercase">{sms.direction === "INBOUND" ? "SMS recibido" : "SMS enviado"}</span>
+                              <Badge className={cn("text-xs", sms.status === "SENT" || sms.status === "DELIVERED" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500")}>{sms.status}</Badge>
+                            </div>
+                            <p className="text-sm text-gray-700 whitespace-pre-wrap">{sms.body}</p>
+                            <p className="text-xs text-gray-400 mt-1">{formatRelativeTime(sms.createdAt)}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* Emails */}
+                    {(activityFilter === "All" || activityFilter === "Emails") && contact.emails.map((email: any) => (
+                      <div key={email.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                        <div className="flex items-start gap-3">
+                          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm">✉️</div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <button onClick={() => setExpandedEmail(expandedEmail === email.id ? null : email.id)} className="text-sm font-medium text-blue-700 hover:underline text-left">
+                                {email.subject}
+                              </button>
+                              <Badge className={cn("text-xs flex-shrink-0", email.status === "SENT" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500")}>{email.status}</Badge>
+                            </div>
+                            <p className="text-xs text-gray-400">{formatRelativeTime(email.createdAt)}</p>
+                            {expandedEmail === email.id && email.body && (
+                              <div className="mt-3 p-3 bg-gray-50 rounded-lg text-sm text-gray-700 border border-gray-100" dangerouslySetInnerHTML={{ __html: email.body }} />
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* Calls */}
+                    {(activityFilter === "All" || activityFilter === "Calls") && contact.dialerCalls?.map((call: any) => (
+                      <div key={call.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                        <div className="flex items-start gap-3">
+                          <div className={cn("w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-sm", call.status === "COMPLETED" ? "bg-purple-100" : "bg-gray-100")}>
+                            📞
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-xs font-semibold text-gray-500 uppercase">Llamada Sofía</span>
+                              <Badge className={cn("text-xs", call.status === "COMPLETED" ? "bg-purple-100 text-purple-700" : "bg-gray-100 text-gray-500")}>{call.status === "COMPLETED" ? `${call.duration}s` : call.status}</Badge>
+                            </div>
+                            {call.aiSummary && <p className="text-sm text-gray-700 mb-1">{call.aiSummary}</p>}
+                            <p className="text-xs text-gray-400">{formatRelativeTime(call.createdAt)}</p>
+                            {(call.recordingUrl || call.transcription) && (
+                              <div className="mt-2 flex gap-2">
+                                {call.recordingUrl && (
+                                  <a href={call.recordingUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-purple-600 hover:underline flex items-center gap-1">
+                                    🎙 Escuchar grabación
+                                  </a>
+                                )}
+                                {call.transcription && (
+                                  <button onClick={() => setExpandedCall(expandedCall === call.id ? null : call.id)} className="text-xs text-blue-600 hover:underline">
+                                    {expandedCall === call.id ? "Ocultar transcripción" : "Ver transcripción"}
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                            {expandedCall === call.id && call.transcription && (
+                              <div className="mt-2 p-3 bg-gray-50 rounded-lg text-xs text-gray-600 whitespace-pre-wrap max-h-48 overflow-y-auto border border-gray-100">
+                                {call.transcription}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
                     {/* Activities */}
-                    {contact.activities.map((activity: any) => {
+                    {(activityFilter === "All") && contact.activities.map((activity: any) => {
                       const def = ACTIVITY_ICONS[activity.type] || { icon: "📌", color: "bg-gray-100" }
                       return (
                         <div key={activity.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
@@ -499,21 +580,7 @@ export default function ContactDetailClient({ contact, stages = [], pipelineId =
                       )
                     })}
 
-                    {/* Emails */}
-                    {contact.emails.map((email: any) => (
-                      <div key={email.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-                        <div className="flex items-start gap-3">
-                          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm">✉️</div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-blue-700 hover:underline cursor-pointer">{email.subject}</p>
-                            <p className="text-xs text-gray-400 mt-1">{formatDate(email.createdAt)}</p>
-                          </div>
-                          <Badge className={cn("text-xs flex-shrink-0", getStatusColor(email.status))}>{email.status}</Badge>
-                        </div>
-                      </div>
-                    ))}
-
-                    {notes.length === 0 && contact.activities.length === 0 && contact.emails.length === 0 && (
+                    {notes.length === 0 && contact.activities.length === 0 && contact.emails.length === 0 && smsMessages.length === 0 && !contact.dialerCalls?.length && (
                       <div className="text-center py-12">
                         <Activity className="w-10 h-10 text-gray-200 mx-auto mb-3" />
                         <p className="text-gray-400 text-sm">No activity yet — add a note or log a call</p>

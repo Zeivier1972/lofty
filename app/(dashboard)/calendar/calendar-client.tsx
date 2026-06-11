@@ -1,12 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay, isToday, addMonths, subMonths } from "date-fns"
-import { ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, Clock, MapPin } from "lucide-react"
+import { ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, Clock, MapPin, X, Search, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
-import { cn, getStatusColor, APPOINTMENT_TYPES } from "@/lib/utils"
+import { cn, APPOINTMENT_TYPES } from "@/lib/utils"
 
 interface CalendarClientProps {
   appointments: any[]
@@ -21,9 +20,270 @@ const TYPE_COLORS: Record<string, string> = {
   OTHER: "bg-gray-100 text-gray-700 border-gray-200",
 }
 
-export default function CalendarClient({ appointments }: CalendarClientProps) {
+const TYPES = [
+  { value: "BUYER_CONSULTATION", label: "Buyer Consultation" },
+  { value: "SHOWING", label: "Showing" },
+  { value: "LISTING_APPOINTMENT", label: "Listing Appointment" },
+  { value: "CLOSING", label: "Closing" },
+  { value: "OPEN_HOUSE", label: "Open House" },
+  { value: "OTHER", label: "Other" },
+]
+
+interface NewApptForm {
+  contactQuery: string
+  contactId: string
+  contactName: string
+  title: string
+  type: string
+  date: string
+  startTime: string
+  endTime: string
+  location: string
+  description: string
+}
+
+const emptyForm = (): NewApptForm => ({
+  contactQuery: "",
+  contactId: "",
+  contactName: "",
+  title: "",
+  type: "BUYER_CONSULTATION",
+  date: format(new Date(), "yyyy-MM-dd"),
+  startTime: "09:00",
+  endTime: "09:30",
+  location: "",
+  description: "",
+})
+
+function NewAppointmentModal({
+  defaultDate,
+  onClose,
+  onCreated,
+}: {
+  defaultDate: Date | null
+  onClose: () => void
+  onCreated: (apt: any) => void
+}) {
+  const [form, setForm] = useState<NewApptForm>(() => ({
+    ...emptyForm(),
+    date: defaultDate ? format(defaultDate, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
+  }))
+  const [contactResults, setContactResults] = useState<any[]>([])
+  const [showDropdown, setShowDropdown] = useState(false)
+  const [searching, setSearching] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState("")
+  const searchTimer = useRef<NodeJS.Timeout | null>(null)
+
+  const searchContacts = useCallback((q: string) => {
+    if (searchTimer.current) clearTimeout(searchTimer.current)
+    if (!q.trim()) { setContactResults([]); setShowDropdown(false); return }
+    setSearching(true)
+    searchTimer.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/contacts?search=${encodeURIComponent(q)}&pageSize=8`)
+        const data = await res.json()
+        setContactResults(data.contacts || [])
+        setShowDropdown(true)
+      } finally {
+        setSearching(false)
+      }
+    }, 300)
+  }, [])
+
+  const set = (k: keyof NewApptForm, v: string) => setForm(f => ({ ...f, [k]: v }))
+
+  const pickContact = (c: any) => {
+    const name = `${c.firstName} ${c.lastName}`.trim()
+    setForm(f => ({
+      ...f,
+      contactId: c.id,
+      contactName: name,
+      contactQuery: name,
+      title: f.title || `${f.type.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())} — ${name}`,
+    }))
+    setShowDropdown(false)
+  }
+
+  const handleSubmit = async () => {
+    if (!form.title || !form.date || !form.startTime || !form.endTime) {
+      setError("Title, date, and times are required.")
+      return
+    }
+    setSubmitting(true)
+    setError("")
+    try {
+      const res = await fetch("/api/appointments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: form.title,
+          type: form.type,
+          startTime: `${form.date}T${form.startTime}:00`,
+          endTime: `${form.date}T${form.endTime}:00`,
+          contactId: form.contactId || undefined,
+          location: form.location || undefined,
+          description: form.description || undefined,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      onCreated(data)
+    } catch (e: any) {
+      setError(e.message || "Failed to create appointment.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h2 className="text-lg font-bold text-gray-900">New Appointment</h2>
+          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
+            <X className="w-4 h-4 text-gray-500" />
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          {/* Contact search */}
+          <div className="relative">
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">Contact (optional)</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                value={form.contactQuery}
+                onChange={e => { set("contactQuery", e.target.value); set("contactId", ""); searchContacts(e.target.value) }}
+                placeholder="Search by name, email, or phone…"
+                className="w-full border border-gray-300 rounded-xl pl-9 pr-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+              />
+              {searching && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 animate-spin" />}
+            </div>
+            {showDropdown && contactResults.length > 0 && (
+              <div className="absolute z-10 top-full mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+                {contactResults.map(c => (
+                  <button
+                    key={c.id}
+                    onClick={() => pickContact(c)}
+                    className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 transition-colors text-sm"
+                  >
+                    <span className="font-medium text-gray-900">{c.firstName} {c.lastName}</span>
+                    {c.phone && <span className="text-gray-400 ml-2">{c.phone}</span>}
+                    {c.email && <span className="text-gray-400 ml-2 text-xs">{c.email}</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Type */}
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">Type</label>
+            <select
+              value={form.type}
+              onChange={e => set("type", e.target.value)}
+              className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+            >
+              {TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+          </div>
+
+          {/* Title */}
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">Title *</label>
+            <input
+              value={form.title}
+              onChange={e => set("title", e.target.value)}
+              placeholder="e.g. Buyer Consultation — John Smith"
+              className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+            />
+          </div>
+
+          {/* Date + Times */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="col-span-3 sm:col-span-1">
+              <label className="text-xs font-semibold text-gray-600 mb-1 block">Date *</label>
+              <input
+                type="date"
+                value={form.date}
+                onChange={e => set("date", e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-600 mb-1 block">Start *</label>
+              <input
+                type="time"
+                value={form.startTime}
+                onChange={e => set("startTime", e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-600 mb-1 block">End *</label>
+              <input
+                type="time"
+                value={form.endTime}
+                onChange={e => set("endTime", e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Location */}
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">Location</label>
+            <div className="relative">
+              <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                value={form.location}
+                onChange={e => set("location", e.target.value)}
+                placeholder="Address or Zoom link"
+                className="w-full border border-gray-300 rounded-xl pl-9 pr-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">Notes</label>
+            <textarea
+              value={form.description}
+              onChange={e => set("description", e.target.value)}
+              placeholder="Additional details…"
+              rows={2}
+              className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
+            />
+          </div>
+
+          {error && (
+            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{error}</p>
+          )}
+        </div>
+
+        <div className="px-6 pb-5 flex gap-3">
+          <Button variant="outline" className="flex-1" onClick={onClose} disabled={submitting}>Cancel</Button>
+          <Button
+            className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white"
+            onClick={handleSubmit}
+            disabled={submitting}
+          >
+            {submitting ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Saving…</> : "Create Appointment"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default function CalendarClient({ appointments: initialAppointments }: CalendarClientProps) {
+  const [appointments, setAppointments] = useState(initialAppointments)
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [selectedDay, setSelectedDay] = useState<Date | null>(new Date())
+  const [showModal, setShowModal] = useState(false)
+  const [modalDefaultDate, setModalDefaultDate] = useState<Date | null>(null)
 
   const monthStart = startOfMonth(currentMonth)
   const monthEnd = endOfMonth(currentMonth)
@@ -33,14 +293,31 @@ export default function CalendarClient({ appointments }: CalendarClientProps) {
   const getAppointmentsForDay = (day: Date) =>
     appointments.filter((apt) => isSameDay(new Date(apt.startTime), day))
 
-  const selectedDayAppointments = selectedDay
-    ? getAppointmentsForDay(selectedDay)
-    : []
+  const selectedDayAppointments = selectedDay ? getAppointmentsForDay(selectedDay) : []
 
-  const todayAppointments = appointments.filter((apt) => isToday(new Date(apt.startTime)))
+  const openModal = (date: Date | null = null) => {
+    setModalDefaultDate(date)
+    setShowModal(true)
+  }
+
+  const handleCreated = (apt: any) => {
+    setAppointments(prev => [...prev, apt])
+    setShowModal(false)
+    // Select the day of the new appointment
+    setSelectedDay(new Date(apt.startTime))
+    setCurrentMonth(new Date(apt.startTime))
+  }
 
   return (
     <div className="p-6 animate-fade-in">
+      {showModal && (
+        <NewAppointmentModal
+          defaultDate={modalDefaultDate}
+          onClose={() => setShowModal(false)}
+          onCreated={handleCreated}
+        />
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <div>
@@ -49,7 +326,7 @@ export default function CalendarClient({ appointments }: CalendarClientProps) {
             {appointments.length} appointments this month
           </p>
         </div>
-        <Button size="sm" className="bg-lofty-600 hover:bg-lofty-700 gap-2">
+        <Button size="sm" className="bg-lofty-600 hover:bg-lofty-700 gap-2" onClick={() => openModal(selectedDay)}>
           <Plus className="w-4 h-4" /> New Appointment
         </Button>
       </div>
@@ -143,7 +420,7 @@ export default function CalendarClient({ appointments }: CalendarClientProps) {
                   <h3 className="font-semibold text-gray-900">
                     {isToday(selectedDay) ? "Today" : format(selectedDay, "EEEE, MMM d")}
                   </h3>
-                  <Button size="sm" variant="outline" className="h-7 gap-1">
+                  <Button size="sm" variant="outline" className="h-7 gap-1" onClick={() => openModal(selectedDay)}>
                     <Plus className="w-3 h-3" /> Add
                   </Button>
                 </div>

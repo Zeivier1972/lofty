@@ -141,13 +141,17 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
   const autoSMS   = cfg?.autoRespondSMS   !== false
   const autoEmail = cfg?.autoRespondEmail !== false
   const autoCall  = cfg?.autoCallEnabled  !== false
-  const area = location || campaign || "Miami"
+  // Use real location only — never expose raw campaign names to the lead
+  const area = location || "Miami"
   const bookingUrl = (cfg as any)?.calendlyUrl || `${process.env.NEXT_PUBLIC_APP_URL}/book`
   const realtorPhone = cfg?.realtorPhone || "305-283-0872"
 
   if (phone && autoSMS) {
     const toPhone = phone.startsWith("+") ? phone : `+1${phoneDigits}`
-    const smsBody = `Hola ${firstName}! Soy Sofía, asistente de Catherine Gomez Realtor en Miami 🏠 Vi que estás buscando propiedad en ${area}. ¿Tienes un momentito para hablar? Llámanos al ${realtorPhone} o agenda aquí: ${bookingUrl} | Hi ${firstName}! I'm Sofia from Catherine Gomez Realtor. Interested in ${area} properties — call us at ${realtorPhone} or book here: ${bookingUrl}`
+    const interest = propertyType === "PRE_CONSTRUCTION" || (campaign || "").toLowerCase().includes("pre")
+      ? "pre-construcción y programas para primeros compradores"
+      : propertyType ? `propiedades tipo ${propertyType.toLowerCase().replace("_", " ")} en Miami` : "propiedades en Miami"
+    const smsBody = `Hola ${firstName}! Soy Sofía, asistente de Catherine Gomez Realtor 🏠 Vi que estás interesado en ${interest}. ¿Tienes un momentito para hablar? Agenda con Catherine: ${bookingUrl} · Tel: ${realtorPhone} | Hi ${firstName}! I'm Sofia from Catherine Gomez Realtor. Interested in ${interest}. Book with Catherine: ${bookingUrl} · Call: ${realtorPhone}`
     sendSMS(toPhone, smsBody)
       .then(() => console.log(`[INGEST] SMS sent to ${toPhone}`))
       .catch(e => console.error("[INGEST] SMS failed:", e))
@@ -169,11 +173,10 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
     console.log(`[INGEST] Email skipped — email=${!!email} autoEmail=${autoEmail}`)
   }
 
-  // VAPI outbound call — immediate (Sofia calls the lead right away)
+  // VAPI outbound call — immediate, or schedule for next business hours
   if (phone && autoCall) {
     const toPhone = phone.startsWith("+") ? phone : `+1${phoneDigits}`
-    console.log(`[INGEST] Triggering VAPI call to ${toPhone}`)
-    triggerOutboundCall({
+    const callOpts = {
       toPhone,
       contactId: contact.id,
       contactName: `${firstName} ${lastName || ""}`.trim(),
@@ -182,18 +185,33 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
       bedrooms: bedroomsMin ?? null,
       campaign: campaign ?? null,
       propertyType: propertyType ?? null,
-    }).then(callId => console.log(`[INGEST] VAPI call initiated: ${callId}`))
-      .catch(e => console.error("[INGEST] VAPI call failed:", e))
+    }
+
+    // Check if we're in business hours (8am–9pm ET, Mon–Sat)
+    const nowET = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }))
+    const hour = nowET.getHours()
+    const day = nowET.getDay() // 0=Sun
+    const inHours = day !== 0 && hour >= 8 && hour < 21
+
+    if (inHours) {
+      console.log(`[INGEST] Triggering VAPI call to ${toPhone}`)
+      triggerOutboundCall(callOpts)
+        .then(callId => console.log(`[INGEST] VAPI call initiated: ${callId}`))
+        .catch(e => console.error("[INGEST] VAPI call failed:", e))
+    } else {
+      // Schedule for 8am ET next business day
+      const next8am = new Date(nowET)
+      next8am.setHours(8, 0, 0, 0)
+      if (hour >= 21 || day === 0) next8am.setDate(next8am.getDate() + (day === 6 ? 2 : day === 0 ? 1 : 1))
+      // Convert back to UTC offset (ET is UTC-4 or UTC-5; use getTimezoneOffset approach)
+      const utcOffset = new Date().getTime() - new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" })).getTime()
+      const scheduledAt = new Date(next8am.getTime() + utcOffset)
+      console.log(`[INGEST] Outside business hours — scheduling call for ${next8am.toISOString()} ET`)
+      prisma.scheduledCall.create({ data: { contactId: contact.id, scheduledAt, attempt: 1, status: "PENDING" } }).catch(() => {})
+    }
   } else {
     console.log(`[INGEST] VAPI call skipped — phone=${!!phone} autoCall=${autoCall}`)
   }
-
-  // AI agent for personalized follow-up (requires ANTHROPIC_API_KEY)
-  fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/ai/trigger`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ trigger: "NEW_LEAD", contactId: contact.id }),
-  }).catch(e => console.error("[INGEST] AI trigger fetch failed:", e))
 
   return { contactId: contact.id, isNew: true }
 }

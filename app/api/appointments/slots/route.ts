@@ -25,14 +25,24 @@ export async function GET(req: Request) {
   const dayOfWeek = date.getDay()
 
   try {
-    // Get availability for this day of week
+    // Get availability for this day of week; fall back to default Mon–Sat 9am–6pm
     const avail = userId
       ? await prisma.availability.findFirst({ where: { userId, dayOfWeek } })
       : await prisma.availability.findFirst({ where: { dayOfWeek } })
 
-    if (!avail || !avail.isAvailable) {
+    const DEFAULT_START = "09:00"
+    const DEFAULT_END = "18:00"
+    const isWeekend = dayOfWeek === 0 // Sunday closed by default
+
+    if (isWeekend && !avail) {
       return NextResponse.json({ slots: [], message: "No disponible este día" })
     }
+
+    if (!avail?.isAvailable) {
+      return NextResponse.json({ slots: [], message: "No disponible este día" })
+    }
+
+    const effectiveAvail = avail ?? { startTime: DEFAULT_START, endTime: DEFAULT_END, slotMinutes: 30, isAvailable: true }
 
     // Get full-day blocks for this date
     const dayBlocks = await prisma.availabilityBlock.findMany({
@@ -56,9 +66,9 @@ export async function GET(req: Request) {
     })
 
     // Generate all possible slots
-    const startMin = timeToMinutes(avail.startTime)
-    const endMin = timeToMinutes(avail.endTime)
-    const slotMins = avail.slotMinutes || 30
+    const startMin = timeToMinutes(effectiveAvail.startTime)
+    const endMin = timeToMinutes(effectiveAvail.endTime)
+    const slotMins = effectiveAvail.slotMinutes || 30
 
     const slots: string[] = []
     for (let m = startMin; m + slotMins <= endMin; m += slotMins) {

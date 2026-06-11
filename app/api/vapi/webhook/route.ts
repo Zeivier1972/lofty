@@ -114,6 +114,7 @@ export async function POST(req: Request) {
             duration: payload.call?.endedAt && payload.call?.startedAt
               ? Math.round((new Date(payload.call.endedAt).getTime() - new Date(payload.call.startedAt).getTime()) / 1000)
               : 0,
+            recordingUrl: payload.artifact?.recordingUrl || payload.recordingUrl || null,
             transcription: transcript || null,
             aiSummary: summary || null,
           },

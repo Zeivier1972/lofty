@@ -15,9 +15,17 @@ interface EmailOptions {
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
 
 async function sendViaResend(opts: EmailOptions): Promise<boolean> {
-  if (!resend) return false
-  const { error } = await resend.emails.send({
-    from: opts.from || process.env.RESEND_FROM || "Catherine <onboarding@resend.dev>",
+  if (!resend) {
+    console.warn("[EMAIL] RESEND_API_KEY not set — skipping Resend")
+    return false
+  }
+  const from = opts.from || process.env.RESEND_FROM
+  if (!from) {
+    console.error("[EMAIL] RESEND_FROM env var is not set. Set it to e.g. 'Sofia <sofia@catherinegomezrealtor.com>' in Railway.")
+    throw new Error("RESEND_FROM is not configured. Add it to Railway environment variables.")
+  }
+  const { data, error } = await resend.emails.send({
+    from,
     to: opts.to,
     subject: opts.subject,
     html: opts.html,
@@ -25,7 +33,8 @@ async function sendViaResend(opts: EmailOptions): Promise<boolean> {
     replyTo: opts.replyTo,
     headers: opts.headers,
   })
-  if (error) throw new Error(error.message)
+  if (error) throw new Error(`Resend error: ${error.message}`)
+  console.log(`[EMAIL] Sent via Resend to ${opts.to} (id: ${data?.id})`)
   return true
 }
 
