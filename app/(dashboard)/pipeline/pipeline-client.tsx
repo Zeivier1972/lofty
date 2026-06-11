@@ -12,6 +12,9 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog"
 import { cn, formatCurrency, formatDate, getInitials } from "@/lib/utils"
 import { useToast } from "@/components/ui/use-toast"
 
@@ -20,13 +23,15 @@ interface PipelineClientProps {
   allPipelines: any[]
 }
 
-// ── Manage Stages Modal ────────────────────────────────────────────────────────
-function ManageStagesModal({
+// ── Manage Stages Dialog ───────────────────────────────────────────────────────
+function ManageStagesDialog({
+  open,
   pipelineId,
   initialStages,
   onClose,
   onSaved,
 }: {
+  open: boolean
   pipelineId: string
   initialStages: any[]
   onClose: () => void
@@ -103,16 +108,13 @@ function ManageStagesModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-bold text-gray-900">Manage Stages</h2>
-          <button onClick={() => { onSaved(stages); onClose() }} className="p-1.5 hover:bg-gray-100 rounded-lg">
-            <X className="w-4 h-4 text-gray-500" />
-          </button>
-        </div>
+    <Dialog open={open} onOpenChange={v => { if (!v) { onSaved(stages); onClose() } }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Manage Stages</DialogTitle>
+        </DialogHeader>
 
-        <div className="px-6 py-4 space-y-2 max-h-80 overflow-y-auto">
+        <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
           {stages.map(stage => (
             <div key={stage.id} className="flex items-center gap-2 p-2.5 bg-gray-50 rounded-xl border border-gray-200">
               <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: stage.color }} />
@@ -152,7 +154,7 @@ function ManageStagesModal({
           ))}
         </div>
 
-        <div className="px-6 pb-5 pt-3 border-t border-gray-100">
+        <div className="border-t border-gray-100 pt-3">
           <p className="text-xs font-semibold text-gray-500 mb-2">Add new stage</p>
           <div className="flex gap-2">
             <input
@@ -167,8 +169,8 @@ function ManageStagesModal({
             </Button>
           </div>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -199,7 +201,6 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
     if (!dragging) return
     setDragOver(null)
 
-    // Find the lead and current stage
     let leadToMove: any = null
     let sourceStageId: string | null = null
 
@@ -214,7 +215,6 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
 
     if (!leadToMove || sourceStageId === targetStageId) return
 
-    // Optimistic update
     setStages((prev: any[]) =>
       prev.map((stage: any) => {
         if (stage.id === sourceStageId) {
@@ -253,8 +253,9 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
 
   return (
     <div className="p-6 animate-fade-in">
-      {showManageStages && pipeline && (
-        <ManageStagesModal
+      {pipeline && (
+        <ManageStagesDialog
+          open={showManageStages}
           pipelineId={pipeline.id}
           initialStages={stages}
           onClose={() => setShowManageStages(false)}
@@ -314,7 +315,6 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
             onDrop={(e) => handleDrop(e, stage.id)}
             onDragLeave={() => setDragOver(null)}
           >
-            {/* Column header */}
             <div className="p-3 border-b border-gray-200 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: stage.color }} />
@@ -326,7 +326,6 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
               </Button>
             </div>
 
-            {/* Cards */}
             <div className="p-2 space-y-2 min-h-16">
               {stage.leads.map((lead: any) => (
                 <div
@@ -339,7 +338,6 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
                     dragging === lead.id && "opacity-50 dragging"
                   )}
                 >
-                  {/* Contact header */}
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                       <Avatar className="w-7 h-7 flex-shrink-0">
@@ -371,7 +369,6 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
                     </DropdownMenu>
                   </div>
 
-                  {/* Tags */}
                   {lead.contact.tags.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-2">
                       {lead.contact.tags.slice(0, 2).map((ct: any) => (
@@ -386,7 +383,6 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
                     </div>
                   )}
 
-                  {/* Value */}
                   {lead.value && (
                     <div className="mt-2 flex items-center gap-1 text-sm font-semibold text-green-600">
                       <DollarSign className="w-3.5 h-3.5" />
@@ -394,7 +390,6 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
                     </div>
                   )}
 
-                  {/* Probability */}
                   {lead.probability != null && (
                     <div className="mt-1.5">
                       <div className="flex items-center justify-between text-xs text-gray-400 mb-0.5">
@@ -410,7 +405,6 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
                     </div>
                   )}
 
-                  {/* Expected close */}
                   {lead.expectedClose && (
                     <div className="mt-2 flex items-center gap-1 text-xs text-gray-400">
                       <Calendar className="w-3 h-3" />
@@ -418,23 +412,14 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
                     </div>
                   )}
 
-                  {/* Contact info */}
                   <div className="mt-2 flex gap-2">
                     {lead.contact.phone && (
-                      <a
-                        href={`tel:${lead.contact.phone}`}
-                        className="text-gray-400 hover:text-lofty-600 transition-colors"
-                        onClick={(e) => e.stopPropagation()}
-                      >
+                      <a href={`tel:${lead.contact.phone}`} className="text-gray-400 hover:text-lofty-600 transition-colors" onClick={(e) => e.stopPropagation()}>
                         <Phone className="w-3.5 h-3.5" />
                       </a>
                     )}
                     {lead.contact.email && (
-                      <a
-                        href={`mailto:${lead.contact.email}`}
-                        className="text-gray-400 hover:text-lofty-600 transition-colors"
-                        onClick={(e) => e.stopPropagation()}
-                      >
+                      <a href={`mailto:${lead.contact.email}`} className="text-gray-400 hover:text-lofty-600 transition-colors" onClick={(e) => e.stopPropagation()}>
                         <Mail className="w-3.5 h-3.5" />
                       </a>
                     )}
@@ -442,7 +427,6 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
                 </div>
               ))}
 
-              {/* Empty state */}
               {stage.leads.length === 0 && (
                 <div className="h-16 flex items-center justify-center">
                   <p className="text-xs text-gray-300">Drop leads here</p>
