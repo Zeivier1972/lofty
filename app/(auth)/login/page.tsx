@@ -152,11 +152,6 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-            <p className="text-sm text-gray-600 font-medium mb-1">Demo credentials:</p>
-            <p className="text-sm text-gray-500">Email: agent@loftycrm.com</p>
-            <p className="text-sm text-gray-500">Password: password123</p>
-          </div>
         </div>
       </div>
     </div>
