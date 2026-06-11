@@ -82,6 +82,21 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
     await prisma.pipelineLead.create({ data: { contactId: contact.id, stageId: newStage.id } })
   }
 
+  // Auto-enroll in Compradores de Primera Vez plan unless international (non-US phone)
+  const isInternational = phone ? (phone.startsWith("+") && !phone.startsWith("+1")) : false
+  if (!isInternational) {
+    prisma.smartPlan.findFirst({ where: { name: { contains: "Compradores de Primera Vez" } } })
+      .then(async plan => {
+        if (!plan) return
+        const already = await prisma.smartPlanEnrollment.findFirst({ where: { contactId: contact.id, planId: plan.id } })
+        if (!already) {
+          await prisma.smartPlanEnrollment.create({ data: { contactId: contact.id, planId: plan.id, status: "ACTIVE" } })
+          console.log(`[INGEST] Enrolled ${contact.id} in plan: ${plan.name}`)
+        }
+      })
+      .catch(e => console.error("[INGEST] FTBO plan enrollment error:", e))
+  }
+
   // Note with campaign info and form answers
   const noteContent = [
     campaign ? `[Campaña: ${campaign}]` : "",
