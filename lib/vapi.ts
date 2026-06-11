@@ -47,6 +47,10 @@ CATHERINE:
 - Especialista en Brickell, Miami Beach, Doral, Kendall, Coral Gables, Aventura y Sunny Isles
 - Habla español e inglés, disponible los siete días`
 
+const DEFAULT_VOICEMAIL_MSG =
+  "Hola, soy Sofía de Catherine Gomez Realtor en Miami. Te llamé porque mostraste interés en propiedades y quería platicarte. " +
+  "Por favor llámanos al 305-283-0872 o agenda una consulta gratuita en nuestra página web. ¡Que tengas un excelente día! Hasta pronto."
+
 export interface VAPICallOptions {
   toPhone: string
   contactId: string
@@ -59,6 +63,10 @@ export interface VAPICallOptions {
   campaign?: string | null
   propertyType?: string | null
   skipBusinessHoursCheck?: boolean
+  // Power dial session fields
+  sessionId?: string
+  sessionIndex?: number
+  voicemailMsg?: string
 }
 
 function isBusinessHours(): boolean {
@@ -108,11 +116,24 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
     ? `¡Hola! Soy Sofía, asistente de Catherine Gomez Realtor en Miami. Te llamo porque mostraste interés en ${propertyHint}. ¿Tienes un momentito para hablar?`
     : FIRST_MESSAGE
 
-  const body = {
+  const vmMsg = opts.voicemailMsg || DEFAULT_VOICEMAIL_MSG
+
+  const body: any = {
     phoneNumberId,
     customer: { number: opts.toPhone, name: opts.contactName },
-    metadata: { contactId: opts.contactId },
+    metadata: {
+      contactId: opts.contactId,
+      ...(opts.sessionId && { sessionId: opts.sessionId, sessionIndex: opts.sessionIndex ?? 0 }),
+    },
+    // Voicemail detection — leave message and advance to next contact
+    voicemailDetection: {
+      provider: "twilio",
+      enabled: true,
+      voicemailDetectionTypes: ["machine_end_beep", "machine_end_silence"],
+      machineDetectionTimeout: 30,
+    },
     assistant: {
+      voicemailMessage: vmMsg,
       name: "Sofia",
       firstMessage,
       server: { url: webhookUrl },

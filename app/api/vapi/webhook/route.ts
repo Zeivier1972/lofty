@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { handleCallOutcome } from "@/lib/lead-flow"
+import { triggerOutboundCall } from "@/lib/vapi"
 
 async function searchProperties(input: any): Promise<string> {
   try {
@@ -59,6 +60,57 @@ async function updateLead(input: any, contactId: string): Promise<string> {
   } catch {
     return "No se pudo guardar."
   }
+}
+
+async function advanceSession(sessionId: string, completedIndex: number, endedReason: string) {
+  const session = await prisma.powerDialSession.findUnique({ where: { id: sessionId } })
+  if (!session || session.status !== "ACTIVE") return
+
+  const queue: any[] = JSON.parse(session.contactQueue)
+  const callLog: any[] = JSON.parse(session.callLog)
+  const justCalled = queue[completedIndex]
+
+  // Determine outcome label
+  const isVoicemail = endedReason === "voicemail" || endedReason?.includes("machine")
+  const outcome = isVoicemail ? "voicemail" : (endedReason === "customer-ended-call" || endedReason === "assistant-ended-call") ? "connected" : "no_answer"
+
+  const updatedLog = [...callLog, { name: justCalled?.name, phone: justCalled?.phone, outcome, at: new Date().toISOString() }]
+  const nextIndex = completedIndex + 1
+
+  if (nextIndex >= queue.length) {
+    // All done
+    await prisma.powerDialSession.update({
+      where: { id: sessionId },
+      data: { status: "COMPLETED", currentIndex: nextIndex, callLog: JSON.stringify(updatedLog) },
+    })
+    console.log(`[PowerDial] Session ${sessionId} completed — ${queue.length} calls done`)
+    return
+  }
+
+  const next = queue[nextIndex]
+  console.log(`[PowerDial] Advancing session ${sessionId} → contact ${nextIndex + 1}/${queue.length}: ${next.name}`)
+
+  // Small delay to avoid VAPI rate limits
+  await new Promise(r => setTimeout(r, 2000))
+
+  const callId = await triggerOutboundCall({
+    toPhone: next.phone,
+    contactId: next.id,
+    contactName: next.name,
+    skipBusinessHoursCheck: true,
+    sessionId,
+    sessionIndex: nextIndex,
+    voicemailMsg: session.voicemailMsg || undefined,
+  })
+
+  await prisma.powerDialSession.update({
+    where: { id: sessionId },
+    data: {
+      currentIndex: nextIndex,
+      currentCallId: callId || null,
+      callLog: JSON.stringify(updatedLog),
+    },
+  })
 }
 
 export async function POST(req: Request) {
@@ -145,6 +197,15 @@ export async function POST(req: Request) {
         handleCallOutcome(contactId, endedReason, duration).catch(e =>
           console.error("[lead-flow] handleCallOutcome error:", e)
         )
+
+        // Advance power-dial session if this was a session call
+        const sessionId: string | undefined = call?.metadata?.sessionId
+        const sessionIndex: number | undefined = call?.metadata?.sessionIndex
+        if (sessionId) {
+          advanceSession(sessionId, sessionIndex ?? 0, endedReason).catch(e =>
+            console.error("[PowerDial] advance error:", e)
+          )
+        }
       } catch (e) {
         console.error("[VAPI webhook] Error saving call report:", e)
       }
