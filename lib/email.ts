@@ -17,7 +17,7 @@ const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KE
 async function sendViaResend(opts: EmailOptions): Promise<boolean> {
   if (!resend) return false
   const { error } = await resend.emails.send({
-    from: opts.from || process.env.RESEND_FROM || "Catherine <noreply@loftycrm.com>",
+    from: opts.from || process.env.RESEND_FROM || "Catherine <onboarding@resend.dev>",
     to: opts.to,
     subject: opts.subject,
     html: opts.html,

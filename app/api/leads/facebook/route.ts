@@ -52,10 +52,17 @@ export async function POST(req: Request) {
             `https://graph.facebook.com/v18.0/${leadId}?fields=field_data,ad_name,campaign_name&access_token=${pageToken}`
           )
           const fbData = await fbRes.json()
+          if (fbData.error) {
+            console.error(`[FB lead] Graph API error for lead ${leadId} (page ${pageId}):`, JSON.stringify(fbData.error))
+          } else {
+            console.log(`[FB lead] Retrieved ${fbData?.field_data?.length ?? 0} fields for lead ${leadId}`)
+          }
           for (const f of fbData?.field_data || []) {
             fieldData[f.name] = f.values?.[0] || ""
           }
           campaign = fbData.campaign_name || fbData.ad_name
+        } else {
+          console.error(`[FB lead] No page access token found for pageId=${pageId} — lead data will be empty`)
         }
 
         const firstName = fieldData.first_name || fieldData.full_name?.split(" ")[0] || "Lead"
