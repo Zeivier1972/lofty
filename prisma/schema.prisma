@@ -525,6 +525,7 @@ model AIConfig {
   realtorPhone    String?
   realtorEmail    String?
   calendlyUrl     String?
+  zoomLink        String?
   agentLanguage   String   @default("es")
   preQualEnabled  Boolean  @default(true)
   updatedAt       DateTime @updatedAt

@@ -10,6 +10,7 @@ export async function POST(req: Request) {
       date, time, slotMinutes = 30,
       firstName, lastName, email, phone,
       topic, message, type = "BUYER_CONSULTATION",
+      meetingType = "PHONE",
     } = await req.json()
 
     if (!date || !time || !firstName || !lastName) {
@@ -50,6 +51,9 @@ export async function POST(req: Request) {
 
     // Get the agent user (first user or admin)
     const agent = await prisma.user.findFirst({ where: { isActive: true } })
+    const aiCfg = await prisma.aIConfig.findFirst({ select: { realtorEmail: true, realtorPhone: true, realtorName: true, zoomLink: true } })
+    const zoomLink = aiCfg?.zoomLink || "https://zoom.us/j/9840963033"
+    const meetingLocation = meetingType === "ZOOM" ? `Zoom — ${zoomLink}` : "Teléfono"
 
     // Create appointment
     const appointment = await prisma.appointment.create({
@@ -60,7 +64,7 @@ export async function POST(req: Request) {
         endTime,
         type,
         status: "SCHEDULED",
-        location: "Zoom / Teléfono",
+        location: meetingLocation,
         contactId: contact.id,
         ...(agent && { userId: agent.id }),
       },
@@ -91,7 +95,7 @@ export async function POST(req: Request) {
     })
 
     // Notify Catherine by email and SMS
-    const cfg = await prisma.aIConfig.findFirst({ select: { realtorEmail: true, realtorPhone: true, realtorName: true } })
+    const cfg = aiCfg
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://lofty-production.up.railway.app"
     const formattedDateCath = new Date(startTime).toLocaleDateString("es-US", {
       weekday: "long", year: "numeric", month: "long", day: "numeric",
@@ -153,10 +157,17 @@ export async function POST(req: Request) {
       <p style="margin:0 0 8px;color:#6B7280;font-size:14px">📋 Tema / Topic</p>
       <p style="margin:0;font-weight:bold;color:#111827">${topic || "Consulta general"}</p>
     </div>
-    <p style="color:#374151">Catherine se comunicará contigo para confirmar los detalles de la reunión (teléfono o Zoom).</p>
+    ${meetingType === "ZOOM"
+      ? `<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:12px;padding:16px;margin:16px 0">
+          <p style="margin:0 0 8px;font-weight:bold;color:#1E40AF">📹 Tu enlace de Zoom / Your Zoom Link</p>
+          <a href="${zoomLink}" style="color:#2563EB;word-break:break-all">${zoomLink}</a>
+          <p style="margin:8px 0 0;font-size:13px;color:#3B82F6">Guarda este enlace — lo usarás el día de la cita.</p>
+        </div>`
+      : `<p style="color:#374151">Catherine te llamará al número que proporcionaste el día de la cita.</p>`
+    }
     <p style="color:#374151">Si necesitas cambiar o cancelar tu cita, por favor responde a este correo.</p>
     <hr style="border:none;border-top:1px solid #E5E7EB;margin:24px 0"/>
-    <p style="color:#374151">Hi <strong>${firstName}</strong>, your appointment has been confirmed for ${formattedDate} at ${time}. Catherine will contact you with meeting details (phone or Zoom).</p>
+    <p style="color:#374151">Hi <strong>${firstName}</strong>, your appointment has been confirmed for ${formattedDate} at ${time}. ${meetingType === "ZOOM" ? `Join via Zoom: <a href="${zoomLink}">${zoomLink}</a>` : "Catherine will call you at the number you provided."}</p>
   </div>
 </div>`,
         })
@@ -169,6 +180,7 @@ export async function POST(req: Request) {
       success: true,
       appointmentId: appointment.id,
       message: "¡Cita confirmada! Te enviaremos un correo de confirmación.",
+      ...(meetingType === "ZOOM" && { zoomLink }),
     })
   } catch (e) {
     console.error("Booking error:", e)

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import {
   ChevronLeft, ChevronRight, Calendar, Clock, User, Mail,
-  Phone, MessageSquare, CheckCircle2, Loader2, Home,
+  Phone, MessageSquare, CheckCircle2, Loader2, Home, Video,
 } from "lucide-react"
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay, isToday, isBefore, startOfDay } from "date-fns"
 import { es } from "date-fns/locale"
@@ -39,6 +39,8 @@ export default function BookingClient({ agentName, agentTitle }: BookingClientPr
     topic: "", message: "",
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [meetingType, setMeetingType] = useState<"PHONE" | "ZOOM">("PHONE")
+  const [zoomLink, setZoomLink] = useState<string | null>(null)
 
   const monthStart = startOfMonth(currentMonth)
   const monthEnd = endOfMonth(currentMonth)
@@ -95,10 +97,12 @@ export default function BookingClient({ agentName, agentTitle }: BookingClientPr
           slotMinutes,
           ...form,
           type: "BUYER_CONSULTATION",
+          meetingType,
         }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
+      if (data.zoomLink) setZoomLink(data.zoomLink)
       setStep("success")
     } catch (e: any) {
       setErrors({ submit: e.message || "Error al agendar. Por favor intenta de nuevo." })
@@ -147,11 +151,30 @@ export default function BookingClient({ agentName, agentTitle }: BookingClientPr
                 ? `Hemos enviado una confirmación a ${form.email}.`
                 : "Catherine se comunicará contigo pronto para confirmar los detalles."}
             </p>
+            {meetingType === "ZOOM" && zoomLink && (
+              <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5 text-left mb-4">
+                <p className="text-sm font-semibold text-blue-900 mb-1 flex items-center gap-2">
+                  <Video className="w-4 h-4" /> Tu enlace de Zoom
+                </p>
+                <a
+                  href={zoomLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline text-sm break-all font-medium"
+                >
+                  {zoomLink}
+                </a>
+                <p className="text-xs text-blue-500 mt-1">Guarda este enlace — lo usarás el día de la cita</p>
+              </div>
+            )}
             <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-6 text-left">
               <h3 className="font-semibold text-indigo-900 mb-3">¿Qué sigue?</h3>
               <ul className="space-y-2 text-sm text-indigo-700">
                 <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-indigo-500" />Catherine revisará tu cita y te contactará</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-indigo-500" />Recibirás el enlace de Zoom o número de teléfono</li>
+                {meetingType === "ZOOM"
+                  ? <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-indigo-500" />Conéctate al Zoom el día de la cita con el enlace de arriba</li>
+                  : <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-indigo-500" />Catherine te llamará al número que proporcionaste</li>
+                }
                 <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-indigo-500" />La consulta es completamente gratuita</li>
               </ul>
             </div>
@@ -338,7 +361,38 @@ export default function BookingClient({ agentName, agentTitle }: BookingClientPr
                       <p className="text-sm font-semibold text-indigo-900 capitalize">
                         {selectedDate ? format(selectedDate, "EEEE, d 'de' MMMM yyyy", { locale: es }) : ""}
                       </p>
-                      <p className="text-xs text-indigo-600">{selectedTime ? formatTime12(selectedTime) : ""} · {slotMinutes} min · Teléfono o Zoom</p>
+                      <p className="text-xs text-indigo-600">{selectedTime ? formatTime12(selectedTime) : ""} · {slotMinutes} min · {meetingType === "ZOOM" ? "Zoom" : "Teléfono"}</p>
+                    </div>
+                  </div>
+
+                  {/* Meeting type toggle */}
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600 mb-2 block">¿Cómo prefieres reunirte?</label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setMeetingType("PHONE")}
+                        className={cn(
+                          "flex items-center justify-center gap-2 px-4 py-3 rounded-xl border text-sm font-medium transition-all",
+                          meetingType === "PHONE"
+                            ? "border-indigo-500 bg-indigo-50 text-indigo-700 shadow-sm"
+                            : "border-gray-200 text-gray-600 hover:border-indigo-200 hover:bg-indigo-50/50"
+                        )}
+                      >
+                        <Phone className="w-4 h-4" /> Teléfono
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMeetingType("ZOOM")}
+                        className={cn(
+                          "flex items-center justify-center gap-2 px-4 py-3 rounded-xl border text-sm font-medium transition-all",
+                          meetingType === "ZOOM"
+                            ? "border-indigo-500 bg-indigo-50 text-indigo-700 shadow-sm"
+                            : "border-gray-200 text-gray-600 hover:border-indigo-200 hover:bg-indigo-50/50"
+                        )}
+                      >
+                        <Video className="w-4 h-4" /> Zoom
+                      </button>
                     </div>
                   </div>
 

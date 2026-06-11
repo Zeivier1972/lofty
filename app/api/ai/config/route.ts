@@ -31,7 +31,7 @@ export async function PUT(req: Request) {
   const {
     agentName, realtorName, realtorPhone, realtorEmail,
     autoRespondSMS, autoRespondEmail, autoFollowUp, autoCallEnabled,
-    calendlyUrl, agentPersona, preQualEnabled,
+    calendlyUrl, zoomLink, agentPersona, preQualEnabled,
     leadScoreThreshold, followUpDelayHours,
   } = body
 
@@ -42,6 +42,7 @@ export async function PUT(req: Request) {
     ...(realtorPhone !== undefined && { realtorPhone }),
     ...(realtorEmail !== undefined && { realtorEmail }),
     ...(calendlyUrl !== undefined && { calendlyUrl }),
+    ...(zoomLink !== undefined && { zoomLink }),
     ...(agentPersona !== undefined && { agentPersona }),
     ...(preQualEnabled !== undefined && { preQualEnabled }),
     ...(leadScoreThreshold !== undefined && { leadScoreThreshold }),

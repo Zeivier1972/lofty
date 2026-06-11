@@ -548,6 +548,16 @@ export default function AIAgentClient({
                   />
                   <p className="text-[10px] text-gray-400 mt-0.5">Sofia incluye este enlace en cada mensaje para agendar citas</p>
                 </div>
+                <div>
+                  <Label className="text-xs text-gray-500">Enlace Zoom personal (para citas por video)</Label>
+                  <Input
+                    value={config.zoomLink || ""}
+                    onChange={e => setConfig((c: any) => ({ ...c, zoomLink: e.target.value }))}
+                    placeholder="https://zoom.us/j/9840963033"
+                    className="mt-1 h-8 text-sm"
+                  />
+                  <p className="text-[10px] text-gray-400 mt-0.5">Se envía al lead cuando elige Zoom al agendar</p>
+                </div>
               </div>
 
               <Button className="w-full bg-indigo-600 hover:bg-indigo-700 h-8 text-sm" onClick={saveConfig}>
