@@ -166,8 +166,14 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
   if (email && autoEmail) {
     const subject = `Hola ${firstName}! Catherine Gomez Realtor está aquí para ayudarte 🏠`
     const html = `<p>Hola ${firstName},</p><p>Gracias por tu interés en propiedades en <strong>${area}</strong>. Soy Sofía, la asistente virtual de <strong>Catherine Gomez Realtor</strong>.</p><p>Catherine tiene más de 20 años de experiencia en Miami y habla español. Estamos listos para ayudarte a encontrar tu hogar ideal.</p><p><a href="${bookingUrl}" style="background:#4F46E5;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;display:inline-block;margin:12px 0">Agendar cita gratis con Catherine →</a></p><p>O llámanos al <strong>${realtorPhone}</strong></p>`
+    const fromAddress = process.env.RESEND_FROM || "Sofia <sofia@catherinegomezrealtor.com>"
     sendEmail({ to: email, subject, html, text: `Hola ${firstName}! Catherine Gomez Realtor está aquí para ayudarte. Agenda aquí: ${bookingUrl} · Tel: ${realtorPhone}` })
-      .then(() => console.log(`[INGEST] Email sent to ${email}`))
+      .then(() => {
+        console.log(`[INGEST] Email sent to ${email}`)
+        prisma.email.create({
+          data: { subject, body: html, fromAddress, toAddress: email, status: "SENT", sentAt: new Date(), contactId: contact.id },
+        }).catch(() => {})
+      })
       .catch(e => console.error("[INGEST] Email failed:", e))
   } else {
     console.log(`[INGEST] Email skipped — email=${!!email} autoEmail=${autoEmail}`)
