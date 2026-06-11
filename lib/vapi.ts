@@ -115,6 +115,7 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
     assistant: {
       name: "Sofia",
       firstMessage,
+      server: { url: webhookUrl },
       model: {
         provider: "openai",
         model: "gpt-4o-mini",

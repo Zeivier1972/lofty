@@ -101,7 +101,14 @@ export async function POST(req: Request) {
 
     // ── End of call report ────────────────────────────────────────────────────
     if (type === "end-of-call-report" && contactId) {
-      const { transcript, summary, endedReason } = payload
+      const endedReason: string = payload.endedReason || payload.call?.endedReason || ""
+      const transcript: string = payload.transcript || payload.artifact?.transcript || ""
+      const summary: string = payload.summary || payload.analysis?.summary || payload.artifact?.summary || ""
+      const recordingUrl: string = payload.artifact?.recordingUrl || payload.recordingUrl || payload.call?.recordingUrl || ""
+      const duration = payload.call?.endedAt && payload.call?.startedAt
+        ? Math.round((new Date(payload.call.endedAt).getTime() - new Date(payload.call.startedAt).getTime()) / 1000)
+        : 0
+      console.log(`[VAPI webhook] end-of-call contactId=${contactId} reason=${endedReason} duration=${duration}s transcript=${transcript.length}ch`)
 
       try {
         // Save to DialerCall table
@@ -111,10 +118,8 @@ export async function POST(req: Request) {
             phoneNumber: payload.call?.customer?.number || "unknown",
             direction: "OUTBOUND",
             status: endedReason === "customer-ended-call" || endedReason === "assistant-ended-call" ? "COMPLETED" : "NO_ANSWER",
-            duration: payload.call?.endedAt && payload.call?.startedAt
-              ? Math.round((new Date(payload.call.endedAt).getTime() - new Date(payload.call.startedAt).getTime()) / 1000)
-              : 0,
-            recordingUrl: payload.artifact?.recordingUrl || payload.recordingUrl || null,
+            duration,
+            recordingUrl: recordingUrl || null,
             transcription: transcript || null,
             aiSummary: summary || null,
           },
@@ -137,10 +142,7 @@ export async function POST(req: Request) {
         })
 
         // Trigger automated lead flow based on call outcome
-        const duration = payload.call?.endedAt && payload.call?.startedAt
-          ? Math.round((new Date(payload.call.endedAt).getTime() - new Date(payload.call.startedAt).getTime()) / 1000)
-          : 0
-        handleCallOutcome(contactId, endedReason || "", duration).catch(e =>
+        handleCallOutcome(contactId, endedReason, duration).catch(e =>
           console.error("[lead-flow] handleCallOutcome error:", e)
         )
       } catch (e) {

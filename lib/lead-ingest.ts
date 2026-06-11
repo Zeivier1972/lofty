@@ -72,12 +72,12 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
     },
   })
 
-  // Auto-assign to "New" stage in default pipeline
+  // Auto-assign to first stage of default pipeline
   const pipeline = await prisma.pipeline.findFirst({
     where: { isDefault: true },
     include: { stages: { orderBy: { order: "asc" } } },
   })
-  const newStage = pipeline?.stages.find(s => s.name === "New") ?? pipeline?.stages[0]
+  const newStage = pipeline?.stages.find(s => s.name === "New Leads") ?? pipeline?.stages[0]
   if (newStage) {
     await prisma.pipelineLead.create({ data: { contactId: contact.id, stageId: newStage.id } })
   }
@@ -151,7 +151,7 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
     const interest = propertyType === "PRE_CONSTRUCTION" || (campaign || "").toLowerCase().includes("pre")
       ? "pre-construcción y programas para primeros compradores"
       : propertyType ? `propiedades tipo ${propertyType.toLowerCase().replace("_", " ")} en Miami` : "propiedades en Miami"
-    const smsBody = `Hola ${firstName}! Soy Sofía, asistente de Catherine Gomez Realtor 🏠 Vi que estás interesado en ${interest}. ¿Tienes un momentito para hablar? Agenda con Catherine: ${bookingUrl} · Tel: ${realtorPhone} | Hi ${firstName}! I'm Sofia from Catherine Gomez Realtor. Interested in ${interest}. Book with Catherine: ${bookingUrl} · Call: ${realtorPhone}`
+    const smsBody = `Hola ${firstName}! Soy Sofía, asistente de Catherine Gomez Realtor 🏠 Vi que estás interesado en ${interest}. ¿Tienes un momentito para hablar? Agenda aquí: ${bookingUrl} · Tel: ${realtorPhone}`
     sendSMS(toPhone, smsBody)
       .then(() => console.log(`[INGEST] SMS sent to ${toPhone}`))
       .catch(e => console.error("[INGEST] SMS failed:", e))
@@ -165,9 +165,15 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
 
   if (email && autoEmail) {
     const subject = `Hola ${firstName}! Catherine Gomez Realtor está aquí para ayudarte 🏠`
-    const html = `<p>Hola ${firstName},</p><p>Gracias por tu interés en propiedades en <strong>${area}</strong>. Soy Sofía, la asistente virtual de <strong>Catherine Gomez Realtor</strong>.</p><p>Catherine tiene más de 20 años de experiencia en Miami y habla español. Estamos listos para ayudarte a encontrar tu hogar ideal.</p><p><a href="${bookingUrl}" style="background:#4F46E5;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;display:inline-block;margin:12px 0">Agendar cita gratis con Catherine →</a></p><p>O llámanos al <strong>${realtorPhone}</strong></p><hr/><p>Hi ${firstName}, thanks for your interest in ${area} properties. Catherine Gomez has 20+ years of Miami real estate experience. Call us at ${realtorPhone} or <a href="${bookingUrl}">schedule a free consultation</a>.</p>`
+    const html = `<p>Hola ${firstName},</p><p>Gracias por tu interés en propiedades en <strong>${area}</strong>. Soy Sofía, la asistente virtual de <strong>Catherine Gomez Realtor</strong>.</p><p>Catherine tiene más de 20 años de experiencia en Miami y habla español. Estamos listos para ayudarte a encontrar tu hogar ideal.</p><p><a href="${bookingUrl}" style="background:#4F46E5;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;display:inline-block;margin:12px 0">Agendar cita gratis con Catherine →</a></p><p>O llámanos al <strong>${realtorPhone}</strong></p>`
+    const fromAddress = process.env.RESEND_FROM || "Sofia <sofia@catherinegomezrealtor.com>"
     sendEmail({ to: email, subject, html, text: `Hola ${firstName}! Catherine Gomez Realtor está aquí para ayudarte. Agenda aquí: ${bookingUrl} · Tel: ${realtorPhone}` })
-      .then(() => console.log(`[INGEST] Email sent to ${email}`))
+      .then(() => {
+        console.log(`[INGEST] Email sent to ${email}`)
+        prisma.email.create({
+          data: { subject, body: html, fromAddress, toAddress: email, status: "SENT", sentAt: new Date(), contactId: contact.id },
+        }).catch(() => {})
+      })
       .catch(e => console.error("[INGEST] Email failed:", e))
   } else {
     console.log(`[INGEST] Email skipped — email=${!!email} autoEmail=${autoEmail}`)
