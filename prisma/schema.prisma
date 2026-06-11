@@ -123,6 +123,7 @@ model Contact {
   portalAccess  ClientPortalAccess?
   portalMessages PortalMessage[]
   tags          ContactTag[]
+  scheduledCalls ScheduledCall[]
   assignedTo    User?     @relation(fields: [assignedToId], references: [id])
   assignedToId  String?
   customFields  String?
@@ -788,6 +789,18 @@ model CampaignEnrollment {
   enrolledAt  DateTime          @default(now())
   completedAt DateTime?
   @@unique([campaignId, contactId])
+}
+
+// ─── Scheduled VAPI retry calls ──────────────────────────────────────────────
+
+model ScheduledCall {
+  id          String   @id @default(cuid())
+  contactId   String
+  contact     Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  scheduledAt DateTime
+  status      String   @default("PENDING") // PENDING | FIRED | CANCELLED | EXPIRED
+  attempt     Int      @default(1)
+  createdAt   DateTime @default(now())
 }
 
 // ─── Key-value settings store ────────────────────────────────────────────────

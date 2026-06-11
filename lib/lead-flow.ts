@@ -4,7 +4,8 @@
  * Stage progression on no-answer calls:
  *   New / none → Contacted 1 → Contacted 2 → Contacted 3 → Contacted 4 → Drip Campaign
  *
- * Any engagement (answers call >30s, replies to SMS/email) → Warm
+ * Sofia (AI) auto-retries all 4 calls — 24 h apart, during business hours.
+ * Catherine only gets involved when a lead becomes Warm (engagement detected).
  */
 
 import { prisma } from "@/lib/prisma"
@@ -20,6 +21,8 @@ const NO_ANSWER_REASONS = [
   "silence-timed-out",
   "pipeline-error",
 ]
+
+const RETRY_DELAY_HOURS = 24
 
 async function getPipeline() {
   return prisma.pipeline.findFirst({
@@ -49,7 +52,6 @@ async function moveToStage(contactId: string, stageId: string, stageName: string
 }
 
 async function createCatherineTask(contactId: string, title: string, description?: string) {
-  // Assign to the first user in the DB (Catherine)
   const user = await prisma.user.findFirst({ select: { id: true } })
   const due = new Date()
   due.setHours(due.getHours() + 2)
@@ -64,6 +66,14 @@ async function createCatherineTask(contactId: string, title: string, description
       status: "PENDING",
       type: "CALL",
     },
+  })
+}
+
+async function scheduleRetryCall(contactId: string, attempt: number) {
+  const scheduledAt = new Date()
+  scheduledAt.setHours(scheduledAt.getHours() + RETRY_DELAY_HOURS)
+  await prisma.scheduledCall.create({
+    data: { contactId, scheduledAt, attempt, status: "PENDING" },
   })
 }
 
@@ -100,7 +110,6 @@ async function sendOutreachMessages(contact: any, stageName: string, config: any
     }).catch(() => {})
   }
 
-  // Store outbound SMS in DB
   if (phone) {
     prisma.sMSMessage.create({
       data: {
@@ -128,16 +137,19 @@ export async function handleCallOutcome(
   if (!pipeline) return
 
   const config = await prisma.aIConfig.findFirst()
-
   const stageByName = (name: string) => pipeline.stages.find(s => s.name === name)
 
   const engaged = !NO_ANSWER_REASONS.includes(endedReason) && durationSeconds > 30
 
   if (engaged) {
-    // Lead answered and talked — move to Warm
     const warmStage = stageByName("Warm")
     if (warmStage) {
       await moveToStage(contactId, warmStage.id, "Warm")
+      // Cancel any pending Sofia retries — lead is engaged
+      await prisma.scheduledCall.updateMany({
+        where: { contactId, status: "PENDING" },
+        data: { status: "CANCELLED" },
+      })
       await prisma.aINotification.create({
         data: {
           type: "NEW_LEAD",
@@ -147,11 +159,16 @@ export async function handleCallOutcome(
           contactId,
         },
       })
+      await createCatherineTask(
+        contactId,
+        `🔥 Seguimiento urgente — ${contact.firstName} ${contact.lastName || ""}`,
+        `Respondió la llamada de Sofía (${durationSeconds}s). Hacer seguimiento inmediato.`
+      )
     }
     return
   }
 
-  if (!NO_ANSWER_REASONS.includes(endedReason)) return // some other outcome, skip
+  if (!NO_ANSWER_REASONS.includes(endedReason)) return
 
   // No answer — advance through Contacted stages
   const currentStage = await getCurrentStage(contactId)
@@ -173,16 +190,11 @@ export async function handleCallOutcome(
   await moveToStage(contactId, nextStage.id, nextStageName)
 
   if (nextStageName === "Drip Campaign") {
-    await createCatherineTask(
-      contactId,
-      `Agregar a drip campaign — ${contact.firstName} ${contact.lastName || ""}`,
-      "4 intentos de llamada sin respuesta. Enrolar en drip campaign."
-    )
     await prisma.aINotification.create({
       data: {
         type: "FOLLOW_UP",
         title: `${contact.firstName} movido a Drip Campaign`,
-        body: "4 intentos sin respuesta. Agregar a secuencia automatizada.",
+        body: "4 intentos de Sofía sin respuesta. Agregar a secuencia automatizada.",
         priority: "MEDIUM",
         contactId,
       },
@@ -190,19 +202,15 @@ export async function handleCallOutcome(
     return
   }
 
-  // Contacted 1–4: send outreach + create task
+  // Contacted 1–4: send outreach text/email to lead + schedule Sofia's next call
   const attemptNum = CONTACTED_STAGES.indexOf(nextStageName) + 1
   await sendOutreachMessages(contact, nextStageName, config)
-  await createCatherineTask(
-    contactId,
-    `Llamar a ${contact.firstName} ${contact.lastName || ""} — intento ${attemptNum}`,
-    `Sofía llamó sin respuesta. Intento de contacto #${attemptNum}.`
-  )
+  await scheduleRetryCall(contactId, attemptNum + 1)
   await prisma.aINotification.create({
     data: {
       type: "FOLLOW_UP",
       title: `Sin respuesta: ${contact.firstName} (intento ${attemptNum})`,
-      body: `Movido a ${nextStageName}. SMS y email enviados. Tarea creada para Catherine.`,
+      body: `Movido a ${nextStageName}. SMS y email enviados. Sofía volverá a llamar en ${RETRY_DELAY_HOURS}h.`,
       priority: "MEDIUM",
       contactId,
     },
@@ -218,7 +226,6 @@ export async function handleLeadEngaged(contactId: string, channel: string) {
   if (!pipeline) return
 
   const currentStage = await getCurrentStage(contactId)
-  // Already warm or further — don't downgrade
   if (currentStage?.name === "Warm" || currentStage?.name === "Hot" ||
       currentStage?.name === "Appointment Set" || currentStage?.name === "Showing") return
 
@@ -226,6 +233,13 @@ export async function handleLeadEngaged(contactId: string, channel: string) {
   if (!warmStage) return
 
   await moveToStage(contactId, warmStage.id, "Warm")
+
+  // Cancel pending Sofia retries — lead is now engaged
+  await prisma.scheduledCall.updateMany({
+    where: { contactId, status: "PENDING" },
+    data: { status: "CANCELLED" },
+  })
+
   await createCatherineTask(
     contactId,
     `🔥 Seguimiento urgente — ${contact.firstName} ${contact.lastName || ""}`,
