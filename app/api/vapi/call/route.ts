@@ -29,6 +29,7 @@ export async function POST(req: Request) {
       location: contact.buyerLocation ?? null,
       bedrooms: contact.buyerBedroomsMin ?? null,
       propertyType: contact.buyerPropertyType ?? null,
+      skipBusinessHoursCheck: true,
     })
 
     if (!callId) {

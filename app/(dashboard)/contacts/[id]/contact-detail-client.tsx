@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
   Phone, Mail, MapPin, Edit, ArrowLeft, Tag, Plus,
@@ -13,6 +14,9 @@ import {
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
@@ -66,18 +70,61 @@ const ACTIVITY_ICONS: Record<string, { icon: string; color: string }> = {
 
 type TabId = "overview" | "properties" | "searches" | "transactions" | "documents" | "automations"
 
-export default function ContactDetailClient({ contact }: { contact: any }) {
+export default function ContactDetailClient({ contact, stages = [], pipelineId = "" }: { contact: any; stages?: any[]; pipelineId?: string }) {
   const { toast } = useToast()
+  const router = useRouter()
   const [newNote, setNewNote] = useState("")
   const [notes, setNotes] = useState(contact.notes)
   const [isAddingNote, setIsAddingNote] = useState(false)
   const [activeTab, setActiveTab] = useState<TabId>("overview")
   const [noteType, setNoteType] = useState("Note")
+  const [updatingStage, setUpdatingStage] = useState(false)
+  const [currentPipeline, setCurrentPipeline] = useState(contact.pipelineLeads?.[0])
+  const [sofiaLoading, setSofiaLoading] = useState(false)
+
+  const triggerSofiaCall = async () => {
+    if (!contact.phone) return
+    setSofiaLoading(true)
+    try {
+      const res = await fetch("/api/vapi/call", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contactId: contact.id, phone: contact.phone, name: `${contact.firstName} ${contact.lastName || ""}`.trim() }),
+      })
+      const data = await res.json()
+      if (data.callId) {
+        toast({ title: "📞 Sofía está llamando...", description: `Llamada iniciada a ${contact.firstName}` })
+      } else {
+        toast({ title: "Error", description: data.error || "No se pudo iniciar la llamada", variant: "destructive" })
+      }
+    } catch {
+      toast({ title: "Error", description: "No se pudo conectar", variant: "destructive" })
+    } finally {
+      setSofiaLoading(false)
+    }
+  }
+
+  const assignStage = async (stageId: string) => {
+    setUpdatingStage(true)
+    try {
+      const res = await fetch("/api/pipeline/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contactId: contact.id, stageId, pipelineId }),
+      })
+      if (!res.ok) throw new Error("Failed")
+      const stage = stages.find(s => s.id === stageId)
+      setCurrentPipeline((prev: any) => ({ ...prev, stage }))
+      router.refresh()
+    } catch {
+      toast({ title: "Failed to update stage", variant: "destructive" })
+    }
+    setUpdatingStage(false)
+  }
 
   const insight = generateInsight(contact)
   const fullName = `${contact.firstName} ${contact.lastName}`
   const initials = getInitials(fullName)
-  const pipeline = contact.pipelineLeads?.[0]
   const enrollment = contact.enrollments?.[0]
   const daysSinceContact = contact.lastContacted
     ? Math.floor((Date.now() - new Date(contact.lastContacted).getTime()) / 86400000)
@@ -130,8 +177,8 @@ export default function ContactDetailClient({ contact }: { contact: any }) {
                   <Phone className="w-3 h-3" /> Call to qualify needs
                 </a>
               )}
-              <button className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white text-xs font-medium px-3 py-1.5 rounded-full transition-colors">
-                <Bot className="w-3 h-3" /> Talk to AI Agent
+              <button onClick={triggerSofiaCall} disabled={sofiaLoading || !contact.phone} className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 disabled:opacity-50 text-white text-xs font-medium px-3 py-1.5 rounded-full transition-colors">
+                <Bot className="w-3 h-3" /> {sofiaLoading ? "Llamando..." : "Talk to AI Agent"}
               </button>
             </div>
           </div>
@@ -170,16 +217,24 @@ export default function ContactDetailClient({ contact }: { contact: any }) {
           {/* Pipeline */}
           <div>
             <p className="text-xs text-gray-400 mb-1 font-medium">Pipeline</p>
-            <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 cursor-pointer hover:bg-gray-100 transition-colors">
-              <GitBranch className="w-3.5 h-3.5 text-gray-500" />
-              <span className="text-sm text-gray-700 flex-1">
-                {pipeline ? pipeline.stage.name : "Not in pipeline"}
-              </span>
-              <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
-            </div>
-            {pipeline && (
-              <p className="text-xs text-gray-400 mt-1 px-1">{pipeline.stage.pipeline.name}</p>
-            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className={cn("w-full flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 hover:bg-gray-100 transition-colors text-left", updatingStage && "opacity-50")}>
+                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: currentPipeline?.stage?.color || "#94a3b8" }} />
+                  <span className="text-sm text-gray-700 flex-1 truncate">{currentPipeline?.stage?.name || "Set stage"}</span>
+                  <ChevronDown className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56 max-h-72 overflow-y-auto">
+                {stages.map((s: any) => (
+                  <DropdownMenuItem key={s.id} onClick={() => assignStage(s.id)} className={cn("flex items-center gap-2", currentPipeline?.stage?.id === s.id && "bg-lofty-50")}>
+                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
+                    {s.name}
+                  </DropdownMenuItem>
+                ))}
+                {stages.length === 0 && <DropdownMenuItem disabled className="text-gray-400 text-xs">No stages configured</DropdownMenuItem>}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           {/* Quick actions */}

@@ -24,5 +24,10 @@ export default async function ContactDetailPage({ params }: { params: { id: stri
 
   if (!contact) notFound()
 
-  return <ContactDetailClient contact={JSON.parse(JSON.stringify(contact))} />
+  const pipeline = await prisma.pipeline.findFirst({
+    where: { isDefault: true },
+    include: { stages: { orderBy: { order: "asc" } } },
+  })
+
+  return <ContactDetailClient contact={JSON.parse(JSON.stringify(contact))} stages={JSON.parse(JSON.stringify(pipeline?.stages || []))} pipelineId={pipeline?.id || ""} />
 }
