@@ -526,6 +526,7 @@ model AIConfig {
   realtorEmail    String?
   calendlyUrl     String?
   zoomLink        String?
+  voicemailMsg    String?
   agentLanguage   String   @default("es")
   preQualEnabled  Boolean  @default(true)
   updatedAt       DateTime @updatedAt
@@ -790,6 +791,21 @@ model CampaignEnrollment {
   enrolledAt  DateTime          @default(now())
   completedAt DateTime?
   @@unique([campaignId, contactId])
+}
+
+// ─── Auto Power Dial Sessions ────────────────────────────────────────────────
+
+model PowerDialSession {
+  id            String   @id @default(cuid())
+  status        String   @default("ACTIVE") // ACTIVE | COMPLETED | STOPPED
+  contactQueue  String   // JSON: [{id,name,phone}]
+  currentIndex  Int      @default(0)
+  totalCount    Int      @default(0)
+  currentCallId String?
+  voicemailMsg  String?
+  callLog       String   @default("[]") // JSON: [{name,phone,outcome,at}]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
 
 // ─── Scheduled VAPI retry calls ──────────────────────────────────────────────

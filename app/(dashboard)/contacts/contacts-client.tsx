@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
@@ -422,164 +422,374 @@ function BulkEmailModal({ contactIds, onClose }: { contactIds: string[]; onClose
   )
 }
 
-// ── Power Dialer ─────────────────────────────────────────────────────────────
-function PowerDialerModal({ contacts, onClose }: { contacts: any[]; onClose: () => void }) {
+// ── Auto Power Dialer ─────────────────────────────────────────────────────────
+const DEFAULT_VM = "Hola, soy Sofía de Catherine Gomez Realtor en Miami. Te llamé porque mostraste interés en propiedades y quería platicar contigo. Por favor llámanos al 305-283-0872 o agenda una consulta gratuita en nuestra página web. ¡Que tengas un excelente día!"
+
+function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onClose }: {
+  contactIds: string[]
+  contacts: any[]
+  contactCount: number
+  onClose: () => void
+}) {
   const { toast } = useToast()
-  const [index, setIndex] = useState(0)
-  const [note, setNote] = useState("")
-  const [callStatus, setCallStatus] = useState<"pending" | "called" | "no_answer" | "skip">("pending")
-  const [savingNote, setSavingNote] = useState(false)
-  const [log, setLog] = useState<{ name: string; status: string }[]>([])
+  const [phase, setPhase] = useState<"config" | "running" | "done">("config")
+  const [callerType, setCallerType] = useState<"sofia" | "catherine">("sofia")
+  const [voicemailMsg, setVoicemailMsg] = useState(DEFAULT_VM)
+  const [starting, setStarting] = useState(false)
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [sessionData, setSessionData] = useState<any>(null)
+  // Catherine manual dialer state
+  const [manualIndex, setManualIndex] = useState(0)
+  const [manualNote, setManualNote] = useState("")
+  const [manualLog, setManualLog] = useState<{ name: string; outcome: string }[]>([])
+  const [loggingCall, setLoggingCall] = useState(false)
+  const manualContacts = contactList.filter(c => c.phone) // only contacts with phones
 
-  const current = contacts[index]
-  const isLast = index === contacts.length - 1
-
-  const markAndAdvance = async (status: "called" | "no_answer" | "skip") => {
-    if (status !== "skip" && note.trim()) {
-      setSavingNote(true)
+  // Poll session status every 3s while running
+  useEffect(() => {
+    if (phase !== "running" || !sessionId) return
+    const interval = setInterval(async () => {
       try {
-        await fetch(`/api/contacts/${current.id}/notes`, {
+        const res = await fetch(`/api/power-dial/${sessionId}`)
+        const data = await res.json()
+        setSessionData(data)
+        if (data.status === "COMPLETED" || data.status === "STOPPED") {
+          setPhase("done")
+          clearInterval(interval)
+        }
+      } catch { /* retry next tick */ }
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [phase, sessionId])
+
+  const startSession = async () => {
+    setStarting(true)
+    try {
+      const res = await fetch("/api/power-dial", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contactIds, voicemailMsg }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setSessionId(data.sessionId)
+      setSessionData({ currentIndex: 0, totalCount: data.totalCount, callLog: [], status: "ACTIVE" })
+      setPhase("running")
+      if (data.skipped > 0) toast({ title: `${data.skipped} contactos sin teléfono fueron omitidos` })
+    } catch (e: any) {
+      toast({ title: e.message || "No se pudo iniciar la sesión", variant: "destructive" })
+    } finally { setStarting(false) }
+  }
+
+  const stopSession = async () => {
+    if (!sessionId) return
+    await fetch(`/api/power-dial/${sessionId}`, { method: "DELETE" })
+    setPhase("done")
+    toast({ title: "Sesión de marcación detenida" })
+  }
+
+  const logManualCall = async (outcome: "connected" | "voicemail" | "no_answer" | "skip") => {
+    const contact = manualContacts[manualIndex]
+    if (!contact) return
+    if (outcome !== "skip") {
+      setLoggingCall(true)
+      try {
+        await fetch(`/api/contacts/${contact.id}/log-call`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content: `[Power Dialer – ${status === "called" ? "Contactado" : "Sin respuesta"}] ${note.trim()}` }),
+          body: JSON.stringify({
+            outcome,
+            note: manualNote.trim() || undefined,
+            callerName: "Catherine",
+          }),
         })
-      } catch { /* ignore */ }
-      finally { setSavingNote(false) }
+      } catch { /* non-blocking */ }
+      finally { setLoggingCall(false) }
     }
-
-    setLog(prev => [...prev, {
-      name: `${current.firstName} ${current.lastName}`,
-      status,
-    }])
-
-    if (isLast) {
-      toast({ title: `Sesión terminada — ${log.length + 1} contacto${log.length !== 0 ? "s" : ""} procesado${log.length !== 0 ? "s" : ""}` })
-      onClose()
+    const newLog = [...manualLog, { name: `${contact.firstName} ${contact.lastName}`, outcome }]
+    setManualLog(newLog)
+    if (manualIndex + 1 >= manualContacts.length) {
+      setSessionData({ callLog: newLog.map(e => ({ ...e, at: new Date().toISOString() })), totalCount: manualContacts.length })
+      setPhase("done")
     } else {
-      setIndex(i => i + 1)
-      setNote("")
-      setCallStatus("pending")
+      setManualIndex(i => i + 1)
+      setManualNote("")
     }
   }
 
-  if (!current) return null
-
-  const progress = Math.round(((index) / contacts.length) * 100)
+  const outcomeIcon = (outcome: string) => {
+    if (outcome === "connected") return <CheckCircle className="w-3.5 h-3.5 text-green-500" />
+    if (outcome === "voicemail") return <MessageSquare className="w-3.5 h-3.5 text-blue-500" />
+    return <PhoneOff className="w-3.5 h-3.5 text-gray-400" />
+  }
+  const outcomeLabel = (outcome: string) => {
+    if (outcome === "connected") return "Conectado"
+    if (outcome === "voicemail") return "Buzón de voz"
+    return "Sin respuesta"
+  }
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b bg-gray-900 rounded-t-2xl">
+        <div className="flex items-center justify-between p-5 border-b bg-gray-900 rounded-t-2xl flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-green-500 rounded-xl flex items-center justify-center">
               <PhoneCall className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h2 className="font-bold text-white text-sm">Power Dialer</h2>
-              <p className="text-gray-400 text-xs">{index + 1} de {contacts.length} contactos</p>
+              <h2 className="font-bold text-white text-sm">
+                {callerType === "sofia" ? "Auto Dialer — Sofía" : "Manual Dialer — Catherine"}
+              </h2>
+              <p className="text-gray-400 text-xs">
+                {phase === "config" ? `${contactCount} contactos seleccionados` :
+                 phase === "running" && callerType === "sofia" ? `Llamada ${(sessionData?.currentIndex ?? 0) + 1} de ${sessionData?.totalCount ?? "…"}` :
+                 phase === "running" ? `${manualIndex + 1} de ${manualContacts.length}` :
+                 `Sesión completada`}
+              </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1.5 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white">
-            <X className="w-4 h-4" />
-          </button>
+          {phase !== "running" && (
+            <button onClick={onClose} className="p-1.5 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white">
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
         {/* Progress bar */}
-        <div className="h-1 bg-gray-200">
-          <div className="h-1 bg-green-500 transition-all" style={{ width: `${progress}%` }} />
-        </div>
-
-        {/* Current contact */}
-        <div className="p-6 space-y-5">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
-              {current.firstName?.[0]}{current.lastName?.[0]}
-            </div>
-            <div className="flex-1 min-w-0">
-              <h3 className="text-xl font-bold text-gray-900">{current.firstName} {current.lastName}</h3>
-              {current.phone && (
-                <a
-                  href={`tel:${current.phone}`}
-                  className="text-lg font-semibold text-green-600 hover:text-green-700 flex items-center gap-1.5 mt-0.5"
-                >
-                  <Phone className="w-4 h-4" />
-                  {current.phone}
-                </a>
-              )}
-              {!current.phone && (
-                <p className="text-sm text-red-500 flex items-center gap-1 mt-0.5">
-                  <PhoneOff className="w-4 h-4" /> Sin número de teléfono
-                </p>
-              )}
-              {current.email && (
-                <p className="text-xs text-gray-400 mt-0.5">{current.email}</p>
-              )}
-            </div>
-          </div>
-
-          {/* Notes */}
-          <div>
-            <label className="text-xs font-semibold text-gray-500 mb-1.5 block">Notas de la llamada (opcional)</label>
-            <textarea
-              value={note}
-              onChange={e => setNote(e.target.value)}
-              rows={3}
-              placeholder="Interesado en... llama de vuelta el... etc."
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
+        {phase === "running" && sessionData && (
+          <div className="h-1.5 bg-gray-200 flex-shrink-0">
+            <div
+              className="h-1.5 bg-green-500 transition-all duration-1000"
+              style={{ width: `${Math.round(((sessionData.completedCount ?? 0) / (sessionData.totalCount || 1)) * 100)}%` }}
             />
           </div>
-
-          {/* Action buttons */}
-          <div className="grid grid-cols-3 gap-2">
-            <button
-              onClick={() => markAndAdvance("called")}
-              disabled={savingNote}
-              className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-green-50 hover:bg-green-100 border border-green-200 text-green-700 transition-colors"
-            >
-              <CheckCircle className="w-5 h-5" />
-              <span className="text-xs font-semibold">Contactado</span>
-            </button>
-            <button
-              onClick={() => markAndAdvance("no_answer")}
-              disabled={savingNote}
-              className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 transition-colors"
-            >
-              <Clock className="w-5 h-5" />
-              <span className="text-xs font-semibold">Sin respuesta</span>
-            </button>
-            <button
-              onClick={() => markAndAdvance("skip")}
-              className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-600 transition-colors"
-            >
-              <SkipForward className="w-5 h-5" />
-              <span className="text-xs font-semibold">Omitir</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Queue preview */}
-        {contacts.length > 1 && (
-          <div className="border-t border-gray-100 px-5 py-3">
-            <p className="text-xs text-gray-400 mb-2">En cola:</p>
-            <div className="flex gap-1.5 overflow-x-auto pb-1">
-              {contacts.map((c, i) => (
-                <div
-                  key={c.id}
-                  className={cn(
-                    "flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold",
-                    i < index ? "bg-gray-200 text-gray-400" :
-                    i === index ? "bg-indigo-600 text-white ring-2 ring-indigo-300" :
-                    "bg-gray-100 text-gray-500"
-                  )}
-                  title={`${c.firstName} ${c.lastName}`}
-                >
-                  {c.firstName?.[0]}{c.lastName?.[0]}
-                </div>
-              ))}
-            </div>
-          </div>
         )}
+
+        <div className="overflow-y-auto flex-1">
+          {/* Config phase */}
+          {phase === "config" && (
+            <div className="p-6 space-y-5">
+              {/* Caller selector */}
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-2 block">¿Quién hace las llamadas?</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setCallerType("sofia")}
+                    className={cn(
+                      "flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all text-left",
+                      callerType === "sofia" ? "border-green-500 bg-green-50" : "border-gray-200 hover:border-gray-300"
+                    )}
+                  >
+                    <div className="w-10 h-10 bg-gradient-to-br from-green-400 to-emerald-600 rounded-xl flex items-center justify-center">
+                      <span className="text-white text-lg">🤖</span>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-900 text-sm">Sofía (IA)</p>
+                      <p className="text-xs text-gray-500 mt-0.5">Auto-llama · Deja buzón · Sola</p>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCallerType("catherine")}
+                    className={cn(
+                      "flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all text-left",
+                      callerType === "catherine" ? "border-indigo-500 bg-indigo-50" : "border-gray-200 hover:border-gray-300"
+                    )}
+                  >
+                    <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center">
+                      <span className="text-white text-lg">👩</span>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-900 text-sm">Catherine (Manual)</p>
+                      <p className="text-xs text-gray-500 mt-0.5">Click-to-call · Tú controlas</p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Sofia config */}
+              {callerType === "sofia" && (
+                <>
+                  <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-xs text-green-700 space-y-1">
+                    <p className="font-semibold">Sofía llama automáticamente:</p>
+                    <p>• Si contesta → conversación de ventas, agenda cita</p>
+                    <p>• Si buzón → deja el mensaje de abajo y pasa al siguiente</p>
+                    <p>• Pipeline se actualiza automáticamente tras cada llamada</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600 mb-1.5 block">Mensaje para buzón de voz</label>
+                    <textarea
+                      value={voicemailMsg}
+                      onChange={e => setVoicemailMsg(e.target.value)}
+                      rows={3}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
+                    />
+                    <p className="text-xs text-gray-400 mt-1">{voicemailMsg.length} caracteres</p>
+                  </div>
+                  <Button onClick={startSession} disabled={starting} className="w-full bg-green-600 hover:bg-green-700 text-white gap-2 h-11">
+                    {starting ? <Loader2 className="w-4 h-4 animate-spin" /> : <PhoneCall className="w-4 h-4" />}
+                    {starting ? "Iniciando…" : `Iniciar con Sofía (${contactCount} contactos)`}
+                  </Button>
+                </>
+              )}
+
+              {/* Catherine config */}
+              {callerType === "catherine" && (
+                <>
+                  <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3 text-xs text-indigo-700 space-y-1">
+                    <p className="font-semibold">Catherine llama manualmente:</p>
+                    <p>• Se muestra un contacto a la vez con su número</p>
+                    <p>• Toca el número para llamar desde tu teléfono</p>
+                    <p>• Registra el resultado → pipeline se actualiza solo</p>
+                    <p>• Sofía continuará con los follow-ups automáticos</p>
+                  </div>
+                  {manualContacts.length === 0 ? (
+                    <p className="text-sm text-red-500 text-center py-4">Ninguno de los contactos seleccionados tiene número de teléfono.</p>
+                  ) : (
+                    <Button
+                      onClick={() => setPhase("running")}
+                      className="w-full bg-indigo-600 hover:bg-indigo-700 text-white gap-2 h-11"
+                    >
+                      <PhoneCall className="w-4 h-4" /> Iniciar con Catherine ({manualContacts.length} contactos)
+                    </Button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Catherine manual dialer running */}
+          {phase === "running" && callerType === "catherine" && (() => {
+            const contact = manualContacts[manualIndex]
+            if (!contact) return null
+            const progress = Math.round((manualIndex / manualContacts.length) * 100)
+            return (
+              <div className="p-6 space-y-5">
+                <div className="flex items-center gap-4 p-4 bg-gray-50 border border-gray-200 rounded-xl">
+                  <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
+                    {contact.firstName?.[0]}{contact.lastName?.[0]}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-gray-500 font-semibold mb-0.5">{manualIndex + 1} de {manualContacts.length}</p>
+                    <h3 className="font-bold text-gray-900">{contact.firstName} {contact.lastName}</h3>
+                    <a href={`tel:${contact.phone}`} className="text-green-600 font-semibold text-lg flex items-center gap-1 mt-0.5 hover:text-green-700">
+                      <Phone className="w-4 h-4" />{contact.phone}
+                    </a>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 mb-1.5 block">Notas (opcional)</label>
+                  <textarea
+                    value={manualNote}
+                    onChange={e => setManualNote(e.target.value)}
+                    rows={2}
+                    placeholder="Interesado en Doral, llama de vuelta el martes..."
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => logManualCall("connected")} disabled={loggingCall}
+                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-green-50 hover:bg-green-100 border border-green-200 text-green-700 transition-colors">
+                    <CheckCircle className="w-5 h-5" /><span className="text-xs font-semibold">Contestó</span>
+                  </button>
+                  <button onClick={() => logManualCall("voicemail")} disabled={loggingCall}
+                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 transition-colors">
+                    <MessageSquare className="w-5 h-5" /><span className="text-xs font-semibold">Buzón de voz</span>
+                  </button>
+                  <button onClick={() => logManualCall("no_answer")} disabled={loggingCall}
+                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 transition-colors">
+                    <Clock className="w-5 h-5" /><span className="text-xs font-semibold">No contestó</span>
+                  </button>
+                  <button onClick={() => logManualCall("skip")} disabled={loggingCall}
+                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-600 transition-colors">
+                    <SkipForward className="w-5 h-5" /><span className="text-xs font-semibold">Omitir</span>
+                  </button>
+                </div>
+                {/* Queue dots */}
+                <div className="flex gap-1.5 justify-center pt-1">
+                  {manualContacts.map((_, i) => (
+                    <div key={i} className={cn("w-2 h-2 rounded-full transition-colors",
+                      i < manualIndex ? "bg-gray-300" : i === manualIndex ? "bg-indigo-600" : "bg-gray-200")} />
+                  ))}
+                </div>
+              </div>
+            )
+          })()}
+
+          {/* Sofia running phase */}
+          {phase === "running" && callerType === "sofia" && sessionData && (
+            <div className="p-6 space-y-5">
+              {/* Current call */}
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex items-center gap-4">
+                <div className="w-12 h-12 bg-gradient-to-br from-green-400 to-emerald-600 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <div className="w-3 h-3 bg-white rounded-full animate-pulse" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 mb-0.5">Llamando ahora</p>
+                  <p className="font-bold text-gray-900">{sessionData.currentContact?.name ?? "—"}</p>
+                  <p className="text-sm text-gray-500">{sessionData.currentContact?.phone ?? ""}</p>
+                </div>
+              </div>
+
+              {/* Call log */}
+              {sessionData.callLog?.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 mb-2">Historial de llamadas</p>
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                    {[...sessionData.callLog].reverse().map((entry: any, i: number) => (
+                      <div key={i} className="flex items-center gap-3 py-1.5 px-2 rounded-lg bg-gray-50 text-sm">
+                        {outcomeIcon(entry.outcome)}
+                        <span className="flex-1 font-medium text-gray-800 truncate">{entry.name}</span>
+                        <span className="text-xs text-gray-400 flex-shrink-0">{outcomeLabel(entry.outcome)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <Button
+                onClick={stopSession}
+                variant="outline"
+                className="w-full border-red-200 text-red-600 hover:bg-red-50 gap-2"
+              >
+                <PhoneOff className="w-4 h-4" /> Detener sesión
+              </Button>
+            </div>
+          )}
+
+          {/* Done phase */}
+          {phase === "done" && sessionData && (
+            <div className="p-6 space-y-4">
+              <div className="text-center py-4">
+                <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <CheckCircle className="w-7 h-7 text-green-600" />
+                </div>
+                <h3 className="text-lg font-bold text-gray-900">Sesión completada</h3>
+                <p className="text-gray-500 text-sm mt-1">
+                  {sessionData.callLog?.length ?? 0} de {sessionData.totalCount} contactos procesados
+                </p>
+              </div>
+
+              {/* Summary counts */}
+              <div className="grid grid-cols-3 gap-3">
+                {["connected", "voicemail", "no_answer"].map(type => {
+                  const count = (sessionData.callLog || []).filter((e: any) => e.outcome === type).length
+                  return (
+                    <div key={type} className="text-center bg-gray-50 rounded-xl p-3">
+                      <p className="text-xl font-bold text-gray-900">{count}</p>
+                      <p className="text-xs text-gray-500">{outcomeLabel(type)}</p>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <Button onClick={onClose} className="w-full bg-indigo-600 hover:bg-indigo-700">Cerrar</Button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -735,7 +945,9 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
       {showBulkEmail && <BulkEmailModal contactIds={selectedIds} onClose={() => setShowBulkEmail(false)} />}
       {showPowerDialer && (
         <PowerDialerModal
+          contactIds={Array.from(selected)}
           contacts={contacts.filter(c => selected.has(c.id))}
+          contactCount={selected.size}
           onClose={() => { setShowPowerDialer(false); setSelected(new Set()); router.refresh() }}
         />
       )}
