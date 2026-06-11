@@ -90,6 +90,31 @@ export async function POST(req: Request) {
       },
     })
 
+    // Notify Catherine by email and SMS
+    const cfg = await prisma.aIConfig.findFirst({ select: { realtorEmail: true, realtorPhone: true, realtorName: true } })
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://lofty-production.up.railway.app"
+    const formattedDateCath = new Date(startTime).toLocaleDateString("es-US", {
+      weekday: "long", year: "numeric", month: "long", day: "numeric",
+    })
+
+    if (cfg?.realtorEmail) {
+      const lines = [
+        `Nombre: ${firstName} ${lastName}`,
+        email ? `Email: ${email}` : "",
+        phone ? `Tel: ${phone}` : "",
+        `Tema: ${topic || "Consulta general"}`,
+        `Fecha: ${formattedDateCath} a las ${time}`,
+        message ? `Mensaje: ${message}` : "",
+      ].filter(Boolean)
+
+      sendEmail({
+        to: cfg.realtorEmail,
+        subject: `📅 Nueva cita: ${firstName} ${lastName} — ${formattedDateCath} ${time}`,
+        html: `<p>Hola ${cfg.realtorName || "Catherine"},</p><p>Tienes una nueva cita agendada en línea:</p><ul>${lines.map(l => `<li>${l}</li>`).join("")}</ul><p><a href="${appUrl}/contacts/${contact.id}">Ver contacto en el CRM →</a></p>`,
+        text: `Nueva cita:\n${lines.join("\n")}\n\nVer CRM: ${appUrl}/contacts/${contact.id}`,
+      }).catch(e => console.error("[BOOKING] Realtor email failed:", e))
+    }
+
     // Notify Catherine
     await prisma.aINotification.create({
       data: {
