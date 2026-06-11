@@ -1,19 +1,18 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState } from "react"
 import Link from "next/link"
 import {
-  Plus, GitBranch, DollarSign, Users, TrendingUp, Settings,
+  Plus, GitBranch, DollarSign, Settings,
   MoreVertical, Phone, Mail, Calendar, ChevronDown,
+  X, Pencil, Trash2, Check, Loader2, GripVertical,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Card, CardContent } from "@/components/ui/card"
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { cn, formatCurrency, formatDate, getInitials, getLeadScoreColor } from "@/lib/utils"
+import { cn, formatCurrency, formatDate, getInitials } from "@/lib/utils"
 import { useToast } from "@/components/ui/use-toast"
 
 interface PipelineClientProps {
@@ -21,11 +20,164 @@ interface PipelineClientProps {
   allPipelines: any[]
 }
 
+// ── Manage Stages Modal ────────────────────────────────────────────────────────
+function ManageStagesModal({
+  pipelineId,
+  initialStages,
+  onClose,
+  onSaved,
+}: {
+  pipelineId: string
+  initialStages: any[]
+  onClose: () => void
+  onSaved: (stages: any[]) => void
+}) {
+  const { toast } = useToast()
+  const [stages, setStages] = useState(initialStages.map(s => ({ ...s })))
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editName, setEditName] = useState("")
+  const [newName, setNewName] = useState("")
+  const [saving, setSaving] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const [adding, setAdding] = useState(false)
+
+  const startEdit = (stage: any) => {
+    setEditingId(stage.id)
+    setEditName(stage.name)
+  }
+
+  const saveRename = async (id: string) => {
+    if (!editName.trim()) return
+    setSaving(id)
+    try {
+      const res = await fetch(`/api/pipeline/stages/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: editName.trim() }),
+      })
+      if (!res.ok) throw new Error()
+      setStages(prev => prev.map(s => s.id === id ? { ...s, name: editName.trim() } : s))
+      setEditingId(null)
+      toast({ title: "Stage renamed" })
+    } catch {
+      toast({ title: "Failed to rename stage", variant: "destructive" })
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  const deleteStage = async (id: string) => {
+    if (!confirm("Delete this stage? Leads in it will also be removed from the pipeline.")) return
+    setDeleting(id)
+    try {
+      const res = await fetch(`/api/pipeline/stages/${id}`, { method: "DELETE" })
+      if (!res.ok) throw new Error()
+      setStages(prev => prev.filter(s => s.id !== id))
+      toast({ title: "Stage deleted" })
+    } catch {
+      toast({ title: "Failed to delete stage", variant: "destructive" })
+    } finally {
+      setDeleting(null)
+    }
+  }
+
+  const addStage = async () => {
+    if (!newName.trim()) return
+    setAdding(true)
+    try {
+      const res = await fetch("/api/pipeline/stages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pipelineId, name: newName.trim() }),
+      })
+      if (!res.ok) throw new Error()
+      const stage = await res.json()
+      setStages(prev => [...prev, { ...stage, leads: [] }])
+      setNewName("")
+      toast({ title: "Stage added" })
+    } catch {
+      toast({ title: "Failed to add stage", variant: "destructive" })
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h2 className="text-lg font-bold text-gray-900">Manage Stages</h2>
+          <button onClick={() => { onSaved(stages); onClose() }} className="p-1.5 hover:bg-gray-100 rounded-lg">
+            <X className="w-4 h-4 text-gray-500" />
+          </button>
+        </div>
+
+        <div className="px-6 py-4 space-y-2 max-h-80 overflow-y-auto">
+          {stages.map(stage => (
+            <div key={stage.id} className="flex items-center gap-2 p-2.5 bg-gray-50 rounded-xl border border-gray-200">
+              <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: stage.color }} />
+              {editingId === stage.id ? (
+                <input
+                  autoFocus
+                  value={editName}
+                  onChange={e => setEditName(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && saveRename(stage.id)}
+                  className="flex-1 border border-indigo-300 rounded-lg px-2 py-1 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                />
+              ) : (
+                <span className="flex-1 text-sm font-medium text-gray-800">{stage.name}</span>
+              )}
+              <span className="text-xs text-gray-400 flex-shrink-0">{stage.leads?.length ?? 0} leads</span>
+              {editingId === stage.id ? (
+                <button
+                  onClick={() => saveRename(stage.id)}
+                  disabled={!!saving}
+                  className="p-1 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                >
+                  {saving === stage.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                </button>
+              ) : (
+                <button onClick={() => startEdit(stage)} className="p-1 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+              )}
+              <button
+                onClick={() => deleteStage(stage.id)}
+                disabled={deleting === stage.id}
+                className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+              >
+                {deleting === stage.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <div className="px-6 pb-5 pt-3 border-t border-gray-100">
+          <p className="text-xs font-semibold text-gray-500 mb-2">Add new stage</p>
+          <div className="flex gap-2">
+            <input
+              value={newName}
+              onChange={e => setNewName(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && addStage()}
+              placeholder="Stage name…"
+              className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+            />
+            <Button onClick={addStage} disabled={adding || !newName.trim()} className="bg-indigo-600 hover:bg-indigo-700 text-white">
+              {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function PipelineClient({ pipeline, allPipelines }: PipelineClientProps) {
   const { toast } = useToast()
   const [stages, setStages] = useState(pipeline?.stages || [])
   const [dragging, setDragging] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState<string | null>(null)
+  const [showManageStages, setShowManageStages] = useState(false)
 
   const totalValue = stages.reduce((sum: number, stage: any) =>
     sum + stage.leads.reduce((s: number, l: any) => s + (l.value || 0), 0), 0)
@@ -101,6 +253,15 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
 
   return (
     <div className="p-6 animate-fade-in">
+      {showManageStages && pipeline && (
+        <ManageStagesModal
+          pipelineId={pipeline.id}
+          initialStages={stages}
+          onClose={() => setShowManageStages(false)}
+          onSaved={(updated) => setStages(updated)}
+        />
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <div>
@@ -115,7 +276,7 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="gap-2">
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => setShowManageStages(true)}>
             <Settings className="w-4 h-4" /> Manage Stages
           </Button>
           <Button size="sm" className="bg-lofty-600 hover:bg-lofty-700 gap-2">
