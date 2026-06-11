@@ -58,6 +58,7 @@ export interface VAPICallOptions {
   bedrooms?: number | null
   campaign?: string | null
   propertyType?: string | null
+  skipBusinessHoursCheck?: boolean
 }
 
 function isBusinessHours(): boolean {
@@ -85,7 +86,7 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
     return null
   }
 
-  if (!isBusinessHours()) {
+  if (!opts.skipBusinessHoursCheck && !isBusinessHours()) {
     console.log("[VAPI] Outside business hours — skipping call")
     return null
   }
