@@ -87,10 +87,8 @@ export default function IntegrationsClient() {
         setSavingManual(false)
         return
       }
-      await loadStatus()
-      setShowManual(false)
-      setManualToken("")
-      toast({ title: "¡Conectado!", description: `${data.pages?.length || 1} página(s) de Facebook conectada(s) con token permanente.` })
+      // Force full reload so connected state is guaranteed fresh
+      window.location.href = "/integrations?success=facebook"
     } catch {
       setManualError("Error de red. Intenta de nuevo.")
     }
