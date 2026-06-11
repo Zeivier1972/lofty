@@ -13,7 +13,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog"
 import { cn, formatCurrency, formatDate, getInitials } from "@/lib/utils"
 import { useToast } from "@/components/ui/use-toast"
@@ -23,27 +23,36 @@ interface PipelineClientProps {
   allPipelines: any[]
 }
 
-function ManageStagesDialog({
-  open,
+function ManageStages({
   pipelineId,
-  initialStages,
-  onClose,
+  stages: parentStages,
   onSaved,
 }: {
-  open: boolean
   pipelineId: string
-  initialStages: any[]
-  onClose: () => void
+  stages: any[]
   onSaved: (stages: any[]) => void
 }) {
   const { toast } = useToast()
-  const [stages, setStages] = useState(initialStages.map(s => ({ ...s })))
+  const [open, setOpen] = useState(false)
+  const [stages, setStages] = useState<any[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState("")
   const [newName, setNewName] = useState("")
   const [saving, setSaving] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
+
+  const handleOpenChange = (v: boolean) => {
+    if (v) {
+      setStages(parentStages.map(s => ({ ...s })))
+      setEditingId(null)
+      setEditName("")
+      setNewName("")
+    } else {
+      onSaved(stages)
+    }
+    setOpen(v)
+  }
 
   const startEdit = (stage: any) => { setEditingId(stage.id); setEditName(stage.name) }
 
@@ -98,7 +107,12 @@ function ManageStagesDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={v => { if (!v) { onSaved(stages); onClose() } }}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" className="gap-2">
+          <Settings className="w-4 h-4" /> Manage Stages
+        </Button>
+      </DialogTrigger>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Manage Stages</DialogTitle>
@@ -121,15 +135,15 @@ function ManageStagesDialog({
               )}
               <span className="text-xs text-gray-400 flex-shrink-0">{stage.leads?.length ?? 0} leads</span>
               {editingId === stage.id ? (
-                <button onClick={() => saveRename(stage.id)} disabled={!!saving} className="p-1 text-green-600 hover:bg-green-50 rounded-lg">
+                <button type="button" onClick={() => saveRename(stage.id)} disabled={!!saving} className="p-1 text-green-600 hover:bg-green-50 rounded-lg">
                   {saving === stage.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                 </button>
               ) : (
-                <button onClick={() => startEdit(stage)} className="p-1 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg">
+                <button type="button" onClick={() => startEdit(stage)} className="p-1 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg">
                   <Pencil className="w-3.5 h-3.5" />
                 </button>
               )}
-              <button onClick={() => deleteStage(stage.id)} disabled={deleting === stage.id} className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
+              <button type="button" onClick={() => deleteStage(stage.id)} disabled={deleting === stage.id} className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
                 {deleting === stage.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
               </button>
             </div>
@@ -146,7 +160,7 @@ function ManageStagesDialog({
               placeholder="Stage name…"
               className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
             />
-            <Button onClick={addStage} disabled={adding || !newName.trim()} className="bg-indigo-600 hover:bg-indigo-700 text-white">
+            <Button type="button" onClick={addStage} disabled={adding || !newName.trim()} className="bg-indigo-600 hover:bg-indigo-700 text-white">
               {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
             </Button>
           </div>
@@ -161,7 +175,6 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
   const [stages, setStages] = useState(pipeline?.stages || [])
   const [dragging, setDragging] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState<string | null>(null)
-  const [showManageStages, setShowManageStages] = useState(false)
 
   const totalValue = stages.reduce((sum: number, stage: any) =>
     sum + stage.leads.reduce((s: number, l: any) => s + (l.value || 0), 0), 0)
@@ -225,14 +238,6 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
 
   return (
     <div className="p-6 animate-fade-in">
-      <ManageStagesDialog
-        open={showManageStages}
-        pipelineId={pipeline.id}
-        initialStages={stages}
-        onClose={() => setShowManageStages(false)}
-        onSaved={(updated) => setStages(updated)}
-      />
-
       <div className="flex items-center justify-between mb-5">
         <div>
           <div className="flex items-center gap-2">
@@ -246,9 +251,11 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="gap-2" onClick={() => setShowManageStages(true)}>
-            <Settings className="w-4 h-4" /> Manage Stages
-          </Button>
+          <ManageStages
+            pipelineId={pipeline.id}
+            stages={stages}
+            onSaved={(updated) => setStages(updated)}
+          />
           <Button size="sm" className="bg-lofty-600 hover:bg-lofty-700 gap-2">
             <Plus className="w-4 h-4" /> Add Lead
           </Button>
