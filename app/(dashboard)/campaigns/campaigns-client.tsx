@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import {
   Mail, Plus, Send, Users, BarChart3, Eye, Trash2,
   X, ChevronDown, CheckCircle2, Clock, AlertCircle,
-  Sparkles, FileText, Tag as TagIcon,
+  FileText, Tag as TagIcon,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -481,29 +481,16 @@ export default function CampaignsClient({ campaigns: initCampaigns, tags, stats 
         ))}
       </div>
 
-      {/* Provider info banner */}
-      <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 flex items-start gap-3">
-        <Sparkles className="w-5 h-5 text-indigo-500 flex-shrink-0 mt-0.5" />
+      {/* How it works tip */}
+      <div className="bg-green-50 border border-green-100 rounded-xl p-4 flex items-start gap-3">
+        <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
         <div>
-          <p className="text-sm font-semibold text-indigo-900">Configura tu proveedor de email para envíos masivos</p>
-          <p className="text-xs text-indigo-700 mt-0.5">
-            Para 25,000 emails/mes, configura una de estas opciones en tus variables de entorno de Railway:
+          <p className="text-sm font-semibold text-green-900">Sistema listo para envíos</p>
+          <p className="text-xs text-green-700 mt-0.5">
+            Haz clic en <strong>+ Nueva Campaña</strong> para enviar a tus {stats.emailableContacts} contactos con email.
+            Puedes elegir enviar a todos o filtrar por segmento (compradores, leads nuevos, fríos, etc.).
+            El sistema personaliza cada email con el nombre del contacto.
           </p>
-          <div className="flex flex-wrap gap-2 mt-2">
-            {[
-              { name: "Resend", cost: "$20/mes · 50k emails", env: "RESEND_API_KEY", recommended: true },
-              { name: "SendGrid", cost: "$20/mes · 50k emails", env: "SMTP_* credentials" },
-              { name: "Amazon SES", cost: "~$2.50/25k emails", env: "SMTP_* via SES SMTP" },
-            ].map(p => (
-              <div key={p.name} className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border",
-                p.recommended ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-indigo-700 border-indigo-200"
-              )}>
-                {p.recommended && <CheckCircle2 className="w-3 h-3" />}
-                <span>{p.name}</span>
-                <span className="opacity-70">· {p.cost}</span>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
 
