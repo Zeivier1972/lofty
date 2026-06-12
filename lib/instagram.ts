@@ -91,8 +91,24 @@ export function extractPhone(text: string): string | null {
   return digits.length === 10 ? digits : null
 }
 
-// Check if message is an opt-out
+// Check if message is an opt-out (whole words only, so "teléfono"/"número" don't match "no")
 export function isOptOut(text: string): boolean {
   const lower = text.toLowerCase().trim()
-  return ["stop", "unsubscribe", "no", "detener", "parar", "basta", "remove"].some(w => lower.includes(w))
+  if (lower === "no" || lower === "no gracias" || lower === "no, gracias") return true
+  return ["stop", "unsubscribe", "detener", "parar", "basta", "remove"].some(w =>
+    new RegExp(`\\b${w}\\b`).test(lower)
+  )
+}
+
+// Parse buyer intent from an A/B/C qualification reply
+export function parseIntent(text: string): string | null {
+  const lower = text.toLowerCase().trim()
+  const first = lower.charAt(0)
+  if (first === "a" && lower.length <= 3) return "comprador_vivienda"
+  if (first === "b" && lower.length <= 3) return "inversionista_airbnb"
+  if (first === "c" && lower.length <= 3) return "solo_explorando"
+  if (/vivir|comprar para|para vivir|vivienda/.test(lower)) return "comprador_vivienda"
+  if (/airbnb|invertir|inversi[oó]n|renta/.test(lower)) return "inversionista_airbnb"
+  if (/explorando|explorar|curios|solo/.test(lower)) return "solo_explorando"
+  return null
 }

@@ -41,7 +41,14 @@ export async function POST(req: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const data = await req.json()
+  const body = await req.json()
+  const data: Record<string, any> = {}
+  for (const key of [
+    "isEnabled", "triggerKeywords", "msgGreeting", "msgAskIntent",
+    "msgAskName", "msgAskEmail", "msgAskPhone", "msgThankYou", "websiteUrl",
+  ]) {
+    if (body[key] !== undefined) data[key] = body[key]
+  }
   const existing = await prisma.instagramBotConfig.findFirst()
 
   const config = existing

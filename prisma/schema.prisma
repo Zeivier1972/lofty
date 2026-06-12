@@ -660,10 +660,11 @@ model InstagramConversation {
   id              String    @id @default(cuid())
   igUserId        String    @unique
   igUsername      String?
-  state           String    @default("ASKED_NAME")
+  state           String    @default("ASKED_OPTIN")
   firstName       String?
   email           String?
   phone           String?
+  intent          String?
   contactId       String?
   sourceCommentId String?
   createdAt       DateTime  @default(now())
@@ -673,11 +674,14 @@ model InstagramConversation {
 model InstagramBotConfig {
   id              String   @id @default(cuid())
   isEnabled       Boolean  @default(false)
-  triggerKeywords String   @default("info,INFO,más info,mas info,interesado,precio,price,interested,details,detalles")
-  msgGreeting     String   @default("Hola! 👋 Soy Sofia, asistente de Catherine Gomez Realtor. Vi que te interesan propiedades en Miami. ¿Cuál es tu nombre completo?")
-  msgAskEmail     String   @default("Mucho gusto, {name}! ¿Me puedes dar tu email para enviarte las propiedades disponibles?")
-  msgAskPhone     String   @default("Perfecto! ¿Y tu número de teléfono para que Catherine te contacte personalmente?")
-  msgThankYou     String   @default("¡Excelente {name}! Ya tenemos tu información. Catherine te contactará muy pronto con las mejores opciones en Miami. 🏠✨")
+  triggerKeywords String   @default("info,más info,mas info,interesado,precio,price,interested,details,detalles,casa,comprar,invest,miami,hola,interesa,preconstruccion,preconstrucción")
+  msgGreeting     String   @default("¡Hola! 👋 Gracias por tu interés en nuestros proyectos en Miami y Homestead. ¿Te gustaría recibir nuestra lista exclusiva de casas en preconstrucción o nuestro paquete de inversión para Airbnb y rentas cortas? Responde SÍ y te la envío 🏠")
+  msgAskIntent    String   @default("¡Perfecto! 🎉 Antes de enviarte la información, para ayudarte mejor... ¿Estás interesado en:\n\nA) Comprar para vivir\nB) Invertir para Airbnb\nC) Solo explorando\n\nResponde A, B o C")
+  msgAskName      String   @default("¡Excelente! ¿Cuál es tu nombre completo?")
+  msgAskEmail     String   @default("Mucho gusto, {name}! Para enviarte el catálogo completo y planos de los proyectos, ¿me puedes escribir tu correo electrónico? 📧")
+  msgAskPhone     String   @default("¡Perfecto! Una última cosa... ¿Podrías compartirme tu número de teléfono con código de país? Ejemplo: +1 786 123 4567 📱 (usa el número correcto, no te vamos a molestar)")
+  msgThankYou     String   @default("¡Muchas gracias {name}! 🙌 Ya tenemos tu información. Catherine te contactará muy pronto con las mejores opciones. Mientras tanto puedes visitar nuestra página web: {website}")
+  websiteUrl      String   @default("https://catherinegomezrealtor.com")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }

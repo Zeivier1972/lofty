@@ -160,11 +160,22 @@ export default function InstagramBotClient() {
               <p className="text-xs text-gray-400 mt-1">Cuando alguien comenta una de estas palabras, el bot les envía un DM automáticamente</p>
             </div>
 
+            <div>
+              <label className="text-xs font-semibold text-gray-700 mb-1 block">🌐 Página web (se envía al final)</label>
+              <Input
+                value={config.websiteUrl || ""}
+                onChange={e => setConfig({ ...config, websiteUrl: e.target.value })}
+                placeholder="https://catherinegomezrealtor.com"
+              />
+            </div>
+
             {[
-              { key: "msgGreeting", label: "🤖 Mensaje inicial (cuando comenta)", hint: "Primera DM — pide el nombre" },
-              { key: "msgAskEmail", label: "📧 Pedir email", hint: "Usa {name} para el nombre" },
-              { key: "msgAskPhone", label: "📱 Pedir teléfono", hint: "Usa {name} para el nombre" },
-              { key: "msgThankYou", label: "✅ Mensaje de gracias (lead capturado)", hint: "Usa {name} para el nombre" },
+              { key: "msgGreeting", label: "🤖 1. Mensaje inicial (cuando comenta o escribe)", hint: "Ofrece la lista exclusiva — cualquier respuesta positiva continúa" },
+              { key: "msgAskIntent", label: "🎯 2. Pregunta de calificación (A/B/C)", hint: "A = comprar para vivir · B = invertir Airbnb · C = solo explorando. Se guarda como etiqueta en el contacto" },
+              { key: "msgAskName", label: "👤 3. Pedir nombre", hint: "" },
+              { key: "msgAskEmail", label: "📧 4. Pedir email", hint: "Usa {name} para el nombre" },
+              { key: "msgAskPhone", label: "📱 5. Pedir teléfono", hint: "Usa {name} para el nombre" },
+              { key: "msgThankYou", label: "✅ 6. Mensaje de gracias (lead capturado)", hint: "Usa {name} para el nombre y {website} para tu página web" },
             ].map(({ key, label, hint }) => (
               <div key={key}>
                 <label className="text-xs font-semibold text-gray-700 mb-1 block">{label}</label>
