@@ -19,6 +19,7 @@ export default async function CalendarPage() {
       where: {
         ...(userId && { userId }),
         startTime: { gte: startOfMonth, lte: endOfMonth },
+        status: { not: "CANCELLED" },
       },
       include: { contact: { select: { id: true, firstName: true, lastName: true, phone: true } } },
       orderBy: { startTime: "asc" },
