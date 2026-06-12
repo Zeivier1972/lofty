@@ -654,7 +654,34 @@ model DialerCall {
   createdAt    DateTime       @default(now())
 }
 
-// ─── Client Portal ────────────────────────────────────────────────────────────
+// ─── Instagram Lead Bot ───────────────────────────────────────────────────────
+
+model InstagramConversation {
+  id              String    @id @default(cuid())
+  igUserId        String    @unique
+  igUsername      String?
+  state           String    @default("ASKED_NAME")
+  firstName       String?
+  email           String?
+  phone           String?
+  contactId       String?
+  sourceCommentId String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model InstagramBotConfig {
+  id              String   @id @default(cuid())
+  isEnabled       Boolean  @default(false)
+  triggerKeywords String   @default("info,INFO,más info,mas info,interesado,precio,price,interested,details,detalles")
+  msgGreeting     String   @default("Hola! 👋 Soy Sofia, asistente de Catherine Gomez Realtor. Vi que te interesan propiedades en Miami. ¿Cuál es tu nombre completo?")
+  msgAskEmail     String   @default("Mucho gusto, {name}! ¿Me puedes dar tu email para enviarte las propiedades disponibles?")
+  msgAskPhone     String   @default("Perfecto! ¿Y tu número de teléfono para que Catherine te contacte personalmente?")
+  msgThankYou     String   @default("¡Excelente {name}! Ya tenemos tu información. Catherine te contactará muy pronto con las mejores opciones en Miami. 🏠✨")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
 
 model ClientPortalAccess {
   id           String    @id @default(cuid())
