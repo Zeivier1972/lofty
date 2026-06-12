@@ -66,14 +66,13 @@ export async function GET(req: Request) {
 
     const step = steps[stepIndex]
 
-    function fill(text: string) {
-      return text
+    const fill = (text: string) =>
+      text
         .replace(/\{first_name\}/gi, contact.firstName)
         .replace(/\{last_name\}/gi, contact.lastName || "")
         .replace(/\{calendly_url\}/gi, calendlyUrl)
         .replace(/\{agent_name\}/gi, aiConfig?.realtorName || "Catherine")
         .replace(/\{agent_phone\}/gi, aiConfig?.realtorPhone || "305-283-0872")
-    }
 
     try {
       if (step.type === "EMAIL" && step.subject && step.content) {
