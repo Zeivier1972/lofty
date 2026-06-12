@@ -18,10 +18,13 @@ export async function sendInstagramDM(igUserId: string, text: string): Promise<b
   }
   try {
     const res = await fetch(
-      `${IG_API}/${accountId}/messages?access_token=${token}`,
+      `${IG_API}/${accountId}/messages`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
         body: JSON.stringify({
           recipient: { id: igUserId },
           message: { text },
@@ -46,10 +49,13 @@ export async function replyToComment(commentId: string, text: string): Promise<b
   if (!token) return false
   try {
     const res = await fetch(
-      `${IG_API}/${commentId}/private_replies?access_token=${token}`,
+      `${IG_API}/${commentId}/private_replies`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
         body: JSON.stringify({ message: text }),
       }
     )
