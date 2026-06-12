@@ -66,16 +66,22 @@ export async function POST(req: Request) {
           const existing = await prisma.instagramConversation.findUnique({
             where: { igUserId },
           })
-          if (existing && existing.state === "COMPLETE") continue
 
-          if (!existing) {
+          // Re-trigger: reset completed/opted-out conversations so repeat commenters restart the flow
+          if (existing && (existing.state === "COMPLETE" || existing.state === "OPTED_OUT")) {
+            await prisma.instagramConversation.update({
+              where: { igUserId },
+              data: { state: "ASKED_OPTIN", sourceCommentId: commentId, intent: null, firstName: null, email: null, phone: null, contactId: null },
+            })
+          } else if (!existing) {
             await prisma.instagramConversation.create({
               data: { igUserId, igUsername, state: "ASKED_OPTIN", sourceCommentId: commentId },
             })
           }
 
-          // Private reply to the comment (only allowed way to DM someone who hasn't messaged us)
-          await replyToComment(commentId, config.msgGreeting)
+          // Send greeting DM — try private reply first, fall back to direct DM
+          const replied = await replyToComment(commentId, config.msgGreeting)
+          if (!replied) await sendInstagramDM(igUserId, config.msgGreeting)
         }
       }
 
@@ -102,7 +108,17 @@ export async function POST(req: Request) {
           continue
         }
 
-        if (convo.state === "COMPLETE" || convo.state === "OPTED_OUT") continue
+        // Re-trigger: OPTED_OUT stays blocked; COMPLETE re-starts if they send a keyword again
+        if (convo.state === "OPTED_OUT") continue
+        if (convo.state === "COMPLETE") {
+          if (!matchesKeyword(text)) continue
+          convo = await prisma.instagramConversation.update({
+            where: { igUserId },
+            data: { state: "ASKED_OPTIN", intent: null, firstName: null, email: null, phone: null, contactId: null },
+          })
+          await sendInstagramDM(igUserId, config.msgGreeting)
+          continue
+        }
 
         if (isOptOut(text)) {
           await prisma.instagramConversation.update({
