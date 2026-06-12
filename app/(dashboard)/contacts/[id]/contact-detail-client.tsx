@@ -274,6 +274,7 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
           </div>
 
           <ShareWithLenderButton contactId={contact.id} />
+          <SendPortalInviteButton contactId={contact.id} email={contact.email} firstName={contact.firstName} />
 
           {/* Insight metrics */}
           <div className="bg-gray-50 rounded-xl p-3 space-y-2">
@@ -1021,5 +1022,42 @@ function ShareWithLenderButton({ contactId }: { contactId: string }) {
         </div>
       )}
     </>
+  )
+}
+
+function SendPortalInviteButton({ contactId, email, firstName }: { contactId: string; email?: string | null; firstName: string }) {
+  const [sending, setSending] = useState(false)
+  const [sent, setSent] = useState(false)
+  const { toast } = useToast()
+
+  if (!email) return null
+
+  async function handleInvite() {
+    setSending(true)
+    try {
+      const res = await fetch(`/api/contacts/${contactId}/portal-invite`, { method: "POST" })
+      const data = await res.json()
+      if (data.success) {
+        setSent(true)
+        toast({ title: "✅ Invitación enviada", description: `Link del portal enviado a ${email}` })
+        setTimeout(() => setSent(false), 5000)
+      } else {
+        toast({ title: "Error", description: data.error || "No se pudo enviar", variant: "destructive" })
+      }
+    } catch {
+      toast({ title: "Error", description: "No se pudo conectar", variant: "destructive" })
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <button
+      onClick={handleInvite}
+      disabled={sending}
+      className="w-full flex items-center justify-center gap-2 py-2 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 disabled:opacity-50 text-blue-700 text-xs font-medium transition-colors">
+      <Globe className="w-3.5 h-3.5" />
+      {sending ? "Enviando..." : sent ? "✓ Invitación enviada" : "Invitar al Portal del Cliente"}
+    </button>
   )
 }
