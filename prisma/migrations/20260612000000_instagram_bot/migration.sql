@@ -1,5 +1,5 @@
 -- CreateTable
-CREATE TABLE "InstagramConversation" (
+CREATE TABLE IF NOT EXISTS "InstagramConversation" (
     "id" TEXT NOT NULL,
     "igUserId" TEXT NOT NULL,
     "igUsername" TEXT,
@@ -16,7 +16,7 @@ CREATE TABLE "InstagramConversation" (
 );
 
 -- CreateTable
-CREATE TABLE "InstagramBotConfig" (
+CREATE TABLE IF NOT EXISTS "InstagramBotConfig" (
     "id" TEXT NOT NULL,
     "isEnabled" BOOLEAN NOT NULL DEFAULT false,
     "triggerKeywords" TEXT NOT NULL DEFAULT 'info,INFO,más info,mas info,interesado,precio,price,interested,details,detalles',
@@ -31,4 +31,4 @@ CREATE TABLE "InstagramBotConfig" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "InstagramConversation_igUserId_key" ON "InstagramConversation"("igUserId");
+CREATE UNIQUE INDEX IF NOT EXISTS "InstagramConversation_igUserId_key" ON "InstagramConversation"("igUserId");
