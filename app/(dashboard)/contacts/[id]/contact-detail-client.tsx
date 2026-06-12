@@ -273,6 +273,8 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
             <SofiaCallButton contactId={contact.id} phone={contact.phone} name={`${contact.firstName} ${contact.lastName || ""}`.trim()} />
           </div>
 
+          <ShareWithLenderButton contactId={contact.id} />
+
           {/* Insight metrics */}
           <div className="bg-gray-50 rounded-xl p-3 space-y-2">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Insight</p>
@@ -932,5 +934,92 @@ function SofiaCallButton({ contactId, phone, name }: { contactId: string; phone?
       className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-violet-500 hover:bg-violet-600 disabled:opacity-50 text-white text-sm font-medium transition-colors">
       <Bot className="w-4 h-4" />
     </button>
+  )
+}
+
+function ShareWithLenderButton({ contactId }: { contactId: string }) {
+  const [open, setOpen] = useState(false)
+  const [partners, setPartners] = useState<{ id: string; name: string; company: string | null; pricePerLead: number; isActive: boolean }[]>([])
+  const [loadingPartners, setLoadingPartners] = useState(false)
+  const [sharing, setSharing] = useState<string | null>(null)
+  const { toast } = useToast()
+
+  async function openModal() {
+    setOpen(true)
+    setLoadingPartners(true)
+    try {
+      const res = await fetch("/api/partners")
+      const data = await res.json()
+      setPartners((data.partners || []).filter((p: any) => p.isActive))
+    } finally {
+      setLoadingPartners(false)
+    }
+  }
+
+  async function share(loanOfficerId: string) {
+    setSharing(loanOfficerId)
+    try {
+      const res = await fetch("/api/partners/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contactId, loanOfficerId }),
+      })
+      const data = await res.json()
+      if (data.share) {
+        toast({ title: "✅ Lead compartido", description: "El loan officer recibió una notificación por email" })
+        setOpen(false)
+      } else {
+        toast({ title: "Error", description: data.error || "No se pudo compartir", variant: "destructive" })
+      }
+    } finally {
+      setSharing(null)
+    }
+  }
+
+  return (
+    <>
+      <button
+        onClick={openModal}
+        className="w-full flex items-center justify-center gap-2 py-2 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-medium transition-colors">
+        <Building className="w-3.5 h-3.5" />
+        Compartir con Loan Officer
+      </button>
+
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 px-4" onClick={() => setOpen(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-3" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <p className="font-semibold text-gray-900">Compartir lead</p>
+              <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600 text-xl font-light">×</button>
+            </div>
+            {loadingPartners ? (
+              <p className="text-sm text-gray-400 py-4 text-center">Cargando...</p>
+            ) : partners.length === 0 ? (
+              <p className="text-sm text-gray-400 py-4 text-center">
+                No tienes loan officers activos. Agrégalos en la página <strong>Loan Officers</strong>.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {partners.map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => share(p.id)}
+                    disabled={!!sharing}
+                    className="w-full flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50 disabled:opacity-50 text-left transition-all">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">{p.name}</p>
+                      {p.company && <p className="text-xs text-gray-400">{p.company}</p>}
+                    </div>
+                    <span className="text-xs font-semibold text-indigo-600">
+                      {sharing === p.id ? "Compartiendo..." : `$${p.pricePerLead}`}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   )
 }

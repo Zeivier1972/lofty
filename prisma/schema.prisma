@@ -124,6 +124,7 @@ model Contact {
   portalMessages PortalMessage[]
   tags          ContactTag[]
   scheduledCalls ScheduledCall[]
+  leadShares    LeadShare[]
   assignedTo    User?     @relation(fields: [assignedToId], references: [id])
   assignedToId  String?
   customFields  String?
@@ -669,6 +670,49 @@ model InstagramConversation {
   sourceCommentId String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+}
+
+// ─── Loan Officer Partner Portal ──────────────────────────────────────────────
+
+model LoanOfficer {
+  id           String      @id @default(cuid())
+  name         String
+  email        String      @unique
+  passwordHash String
+  company      String?
+  phone        String?
+  isActive     Boolean     @default(true)
+  pricePerLead Float       @default(25)
+  leadShares   LeadShare[]
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+}
+
+model LeadShare {
+  id              String          @id @default(cuid())
+  contact         Contact         @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  contactId       String
+  loanOfficer     LoanOfficer     @relation(fields: [loanOfficerId], references: [id], onDelete: Cascade)
+  loanOfficerId   String
+  price           Float
+  status          String          @default("PENDING") // PENDING (awaiting payment) | PAID | REVOKED
+  paidAt          DateTime?
+  stripeSessionId String?
+  loStatus        String          @default("NEW") // NEW | CONTACTED | PRE_APPROVED | DOCS_REQUESTED | CLOSED | LOST
+  notes           LeadShareNote[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@unique([contactId, loanOfficerId])
+}
+
+model LeadShareNote {
+  id          String    @id @default(cuid())
+  leadShare   LeadShare @relation(fields: [leadShareId], references: [id], onDelete: Cascade)
+  leadShareId String
+  author      String    @default("LO") // LO | ADMIN
+  content     String
+  createdAt   DateTime  @default(now())
 }
 
 model InstagramBotConfig {
