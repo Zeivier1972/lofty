@@ -137,14 +137,14 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
       contactId: opts.contactId,
       ...(opts.sessionId && { sessionId: opts.sessionId, sessionIndex: opts.sessionIndex ?? 0 }),
     },
-    // Voicemail detection — leave message and advance to next contact
-    voicemailDetection: {
-      provider: "twilio",
-      enabled: true,
-      voicemailDetectionTypes: ["machine_end_beep", "machine_end_silence"],
-      machineDetectionTimeout: 30,
-    },
     assistant: {
+      // Voicemail detection — leave message and advance to next contact
+      voicemailDetection: {
+        provider: "twilio",
+        enabled: true,
+        voicemailDetectionTypes: ["machine_end_beep", "machine_end_silence"],
+        machineDetectionTimeout: 30,
+      },
       voicemailMessage: vmMsg,
       name: "Sofia",
       firstMessage,
@@ -211,9 +211,9 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
               message: "¡Con mucho gusto! Déjame conectarte con Catherine ahora mismo, un momentico...",
               description: "Transferir la llamada a Catherine Gomez, la agente de bienes raíces en persona",
               transferPlan: {
-                mode: "warm-transfer",
-                // If Catherine doesn't answer, control returns to Sofia
-                summaryPlan: { enabled: false },
+                // Sofia announces the lead to Catherine before connecting them
+                mode: "warm-transfer-say-message",
+                message: "Hola Catherine, te transfiero un lead que está en la línea y pidió hablar contigo sobre propiedades.",
               },
             }],
             function: {
