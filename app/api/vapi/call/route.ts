@@ -30,10 +30,11 @@ export async function POST(req: Request) {
       bedrooms: contact.buyerBedroomsMin ?? null,
       propertyType: contact.buyerPropertyType ?? null,
       skipBusinessHoursCheck: true,
+      isManual: true,
     })
 
     if (!callId) {
-      return NextResponse.json({ error: "Call failed — check VAPI_API_KEY and VAPI_PHONE_NUMBER_ID in Railway" }, { status: 500 })
+      return NextResponse.json({ error: "La llamada no se pudo iniciar — revisa los logs de Railway" }, { status: 500 })
     }
 
     return NextResponse.json({ callId })

@@ -69,6 +69,8 @@ export interface VAPICallOptions {
   campaign?: string | null
   propertyType?: string | null
   skipBusinessHoursCheck?: boolean
+  // Manual click-to-call: bypass the auto-call setting and surface real errors
+  isManual?: boolean
   // Power dial session fields
   sessionId?: string
   sessionIndex?: number
@@ -91,13 +93,15 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
 
   if (!apiKey || !phoneNumberId) {
     console.log("[VAPI] Missing VAPI_API_KEY or VAPI_PHONE_NUMBER_ID — skipping call")
+    if (opts.isManual) throw new Error("VAPI_API_KEY o VAPI_PHONE_NUMBER_ID no están configurados en Railway")
     return null
   }
 
   const aiConfig = await prisma.aIConfig.findFirst({
     select: { autoCallEnabled: true, realtorPhone: true },
   })
-  if (aiConfig && aiConfig.autoCallEnabled === false) {
+  // The auto-call kill switch only applies to automatic calls, not manual click-to-call
+  if (!opts.isManual && aiConfig && aiConfig.autoCallEnabled === false) {
     console.log("[VAPI] Auto-calling disabled by user setting — skipping call")
     return null
   }
@@ -244,6 +248,14 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
     if (!res.ok) {
       const err = await res.text()
       console.error("[VAPI] Call failed:", err)
+      if (opts.isManual) {
+        let detail = err
+        try {
+          const parsed = JSON.parse(err)
+          detail = Array.isArray(parsed.message) ? parsed.message.join(", ") : (parsed.message || err)
+        } catch {}
+        throw new Error(`VAPI: ${detail}`)
+      }
       return null
     }
 
@@ -252,6 +264,7 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
     return data.id || null
   } catch (e: any) {
     console.error("[VAPI] Error:", e.message)
+    if (opts.isManual) throw e
     return null
   }
 }
