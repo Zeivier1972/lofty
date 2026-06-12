@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma"
 const VAPI_BASE = "https://api.vapi.ai"
 
 const FIRST_MESSAGE =
-  "¡Hola! Habla Sofía, de parte de Catherine Gomez Realtor aquí en Miami. " +
+  "¡Hola! Habla Sofía, de la oficina de Catherine Gómez, asesores de bienes raíces aquí en Miami. " +
   "Te llamo porque vi que estás buscando una propiedad y quería hablar contigo un momentico. " +
   "¿Cómo estás? ¿Tienes un par de minutos?"
 
@@ -35,6 +35,16 @@ FLUJO NATURAL DE LA CONVERSACIÓN:
 7. Si dicen sí → usa bookAppointment y da el link
 8. Si no pueden hablar ahora → pregunta cuándo llamar de nuevo, agradece y usa endCall
 
+PRONUNCIACIÓN — habla español natural y claro:
+- Pronuncia los nombres en español: "Sofía", "Catherine Gómez"
+- No uses palabras en inglés salvo nombres de lugares (Brickell, Doral, Sunny Isles)
+- Di "asesora de bienes raíces", nunca "Realtor"
+
+CONFIDENCIALIDAD — NUNCA reveles cómo llegó el lead:
+- NUNCA digas "Instagram", "Facebook", "bot", "campaña", "anuncio" ni el nombre de ninguna campaña
+- Si en el contexto aparece una campaña como origen, solo úsala para entender qué le interesa
+- En vez de eso di cosas naturales: "vi que estás interesado en propiedades en preconstrucción", "me comentaron que estás buscando invertir en Miami"
+
 REGLAS IMPORTANTES:
 - Frases cortas. Máximo dos oraciones seguidas, luego pausa
 - Si no hay propiedades disponibles: "Fíjate que ahora mismo no tengo nada en el sistema con esos criterios, pero Catherine tiene acceso a propiedades exclusivas que no están publicadas. ¿Quieres que te conecte con ella?"
@@ -54,7 +64,7 @@ TRANSFERENCIA EN VIVO A CATHERINE:
 - SI LA TRANSFERENCIA FALLA O CATHERINE NO CONTESTA: di "Ay, parece que Catherine está ocupada en este momento, pero no te preocupes. ¿Te gustaría que te agendara directamente una cita con ella para que puedan hablar cuando esté disponible?" — y si dicen sí, usa bookAppointment para darle el link`
 
 const DEFAULT_VOICEMAIL_MSG =
-  "Hola, soy Sofía de Catherine Gomez Realtor en Miami. Te llamé porque mostraste interés en propiedades y quería platicarte. " +
+  "Hola, soy Sofía, de la oficina de Catherine Gómez, bienes raíces en Miami. Te llamé porque mostraste interés en propiedades y quería platicarte. " +
   "Por favor llámanos al 305-283-0872 o agenda una consulta gratuita en nuestra página web. ¡Que tengas un excelente día! Hasta pronto."
 
 export interface VAPICallOptions {
@@ -113,6 +123,13 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
 
   const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/vapi/webhook`
 
+  // Transfer destination must be E.164 (+1XXXXXXXXXX) or VAPI rejects/fails the transfer
+  const realtorPhoneE164 = aiConfig?.realtorPhone
+    ? (aiConfig.realtorPhone.startsWith("+")
+        ? aiConfig.realtorPhone.replace(/[^\d+]/g, "")
+        : `+1${aiConfig.realtorPhone.replace(/\D/g, "").slice(-10)}`)
+    : null
+
   // Build context summary for the assistant
   const ctx: string[] = [`Nombre del lead: ${opts.contactName}`]
   if (opts.campaign) ctx.push(`Campaña de origen: ${opts.campaign}`)
@@ -122,10 +139,15 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
   if (opts.bedrooms) ctx.push(`Cuartos mínimos: ${opts.bedrooms}`)
   if (opts.propertyType) ctx.push(`Tipo de propiedad: ${opts.propertyType}`)
 
-  // Personalize first message if we know what they clicked on
-  const propertyHint = opts.location || (opts.campaign ? opts.campaign.replace(/\b(20\d\d|Q[1-4]|H[12])\b/gi, "").trim() : null)
-  const firstMessage = propertyHint
-    ? `¡Hola! Soy Sofía, asistente de Catherine Gomez Realtor en Miami. Te llamo porque mostraste interés en ${propertyHint}. ¿Tienes un momentito para hablar?`
+  // Personalize first message from real interest only — never expose campaign/platform names
+  const isPreCon = opts.propertyType === "PRE_CONSTRUCTION" || /pre.?construcci/i.test(opts.campaign || "")
+  const interestHint = opts.location
+    ? `propiedades en ${opts.location}`
+    : isPreCon
+      ? "propiedades en preconstrucción y oportunidades de inversión en Miami"
+      : null
+  const firstMessage = interestHint
+    ? `¡Hola! Habla Sofía, de la oficina de Catherine Gómez, asesores de bienes raíces en Miami. Te llamo porque mostraste interés en ${interestHint}. ¿Tienes un momentito para hablar?`
     : FIRST_MESSAGE
 
   const vmMsg = opts.voicemailMsg || DEFAULT_VOICEMAIL_MSG
@@ -203,11 +225,11 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
           },
           { type: "endCall" },
           // Live warm transfer to Catherine when lead explicitly asks for a human
-          ...(aiConfig?.realtorPhone ? [{
+          ...(realtorPhoneE164 ? [{
             type: "transferCall",
             destinations: [{
               type: "phoneNumber",
-              number: aiConfig.realtorPhone,
+              number: realtorPhoneE164,
               message: "¡Con mucho gusto! Déjame conectarte con Catherine ahora mismo, un momentico...",
               description: "Transferir la llamada a Catherine Gomez, la agente de bienes raíces en persona",
               transferPlan: {
