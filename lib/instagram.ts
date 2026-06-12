@@ -1,36 +1,29 @@
-const IG_API = "https://graph.facebook.com/v19.0"
+// Instagram API with Instagram Login — tokens start with "IGAA" and use graph.instagram.com
+const IG_API = "https://graph.instagram.com/v23.0"
 
 function getToken() {
   return process.env.INSTAGRAM_ACCESS_TOKEN
 }
 
-function getAccountId() {
-  return process.env.INSTAGRAM_ACCOUNT_ID
-}
-
 // Send a DM to an Instagram user
 export async function sendInstagramDM(igUserId: string, text: string): Promise<boolean> {
   const token = getToken()
-  const accountId = getAccountId()
-  if (!token || !accountId) {
-    console.warn("[INSTAGRAM] INSTAGRAM_ACCESS_TOKEN or INSTAGRAM_ACCOUNT_ID not set")
+  if (!token) {
+    console.warn("[INSTAGRAM] INSTAGRAM_ACCESS_TOKEN not set")
     return false
   }
   try {
-    const res = await fetch(
-      `${IG_API}/${accountId}/messages`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          recipient: { id: igUserId },
-          message: { text },
-        }),
-      }
-    )
+    const res = await fetch(`${IG_API}/me/messages`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        recipient: { id: igUserId },
+        message: { text },
+      }),
+    })
     const data = await res.json()
     if (!res.ok) {
       console.error("[INSTAGRAM] DM error:", data)
@@ -43,22 +36,22 @@ export async function sendInstagramDM(igUserId: string, text: string): Promise<b
   }
 }
 
-// Private reply to a comment (sends a DM to the commenter)
+// Private reply to a comment (sends a DM to the commenter, allowed even if they never DM'd us)
 export async function replyToComment(commentId: string, text: string): Promise<boolean> {
   const token = getToken()
   if (!token) return false
   try {
-    const res = await fetch(
-      `${IG_API}/${commentId}/private_replies`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
-        body: JSON.stringify({ message: text }),
-      }
-    )
+    const res = await fetch(`${IG_API}/me/messages`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        recipient: { comment_id: commentId },
+        message: { text },
+      }),
+    })
     const data = await res.json()
     if (!res.ok) {
       console.error("[INSTAGRAM] private reply error:", data)

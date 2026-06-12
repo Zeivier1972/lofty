@@ -73,8 +73,8 @@ export async function POST(req: Request) {
             })
           }
 
-          // Send greeting DM directly to the commenter
-          await sendInstagramDM(igUserId, config.msgGreeting)
+          // Private reply to the comment (only allowed way to DM someone who hasn't messaged us)
+          await replyToComment(commentId, config.msgGreeting)
         }
       }
 
