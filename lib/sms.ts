@@ -41,7 +41,8 @@ export async function initiateCall(to: string, callbackUrl: string): Promise<str
 export async function sendWhatsApp(to: string, body: string, mediaUrl?: string): Promise<string | null> {
   const c = getClient()
   const toNumber = to.startsWith("whatsapp:") ? to : `whatsapp:${to}`
-  const fromNumber = `whatsapp:${process.env.TWILIO_PHONE_NUMBER}`
+  // Use dedicated WhatsApp number if configured, otherwise fall back to SMS number
+  const fromNumber = `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER || process.env.TWILIO_PHONE_NUMBER}`
   if (!c) {
     console.log("[WHATSAPP MOCK] To:", toNumber, "Body:", body)
     return "mock-wa-sid"

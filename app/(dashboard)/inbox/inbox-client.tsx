@@ -92,11 +92,16 @@ export default function InboxClient() {
     if (!replyText.trim() || !selectedContact || sending) return
     setSending(true)
     try {
-      await fetch(`/api/inbox/${selectedContact}/reply`, {
+      const res = await fetch(`/api/inbox/${selectedContact}/reply`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: replyText, channel: replyChannel }),
       })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        toast({ title: "Error enviando mensaje", description: data.error || "Intenta de nuevo", variant: "destructive" })
+        return
+      }
       setReplyText("")
       await fetchConversation(selectedContact)
       await fetchThreads()

@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth"
-import { sendSMS } from "@/lib/sms"
+import { sendSMS, sendWhatsApp } from "@/lib/sms"
 
 export async function POST(req: Request, { params }: { params: { contactId: string } }) {
   const session = await auth()
@@ -19,25 +19,34 @@ export async function POST(req: Request, { params }: { params: { contactId: stri
   if (!contact?.phone) return NextResponse.json({ error: "Contact has no phone number" }, { status: 400 })
 
   const toNumber = contact.phone.startsWith("+") ? contact.phone : `+1${contact.phone.replace(/\D/g, "")}`
+  // WhatsApp may use a separate number (Sandbox or Business); falls back to the SMS number
   const fromNumber = process.env.TWILIO_PHONE_NUMBER || ""
+  const waFromNumber = process.env.TWILIO_WHATSAPP_NUMBER || fromNumber
 
   if (channel === "whatsapp") {
-    // Attempt WhatsApp send
+    if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
+      return NextResponse.json({ error: "WhatsApp not configured: TWILIO credentials missing" }, { status: 503 })
+    }
+
+    let sendError: string | null = null
     try {
-      const twilio = require("twilio")(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
-      await twilio.messages.create({
-        from: `whatsapp:${fromNumber}`,
-        to: `whatsapp:${toNumber}`,
-        body: message,
-      })
-    } catch (e) {
+      await sendWhatsApp(toNumber, message)
+    } catch (e: any) {
       console.error("WhatsApp send error:", e)
+      sendError = e?.message || "WhatsApp send failed"
+    }
+
+    if (sendError) {
+      return NextResponse.json(
+        { error: `WhatsApp delivery failed: ${sendError}. Make sure your Twilio number is WhatsApp-enabled (Sandbox or Business API) and set TWILIO_WHATSAPP_NUMBER in Railway if it differs from TWILIO_PHONE_NUMBER.` },
+        { status: 502 }
+      )
     }
 
     await prisma.whatsAppMessage.create({
       data: {
         body: message,
-        fromNumber,
+        fromNumber: waFromNumber,
         toNumber,
         direction: "OUTBOUND",
         status: "SENT",
