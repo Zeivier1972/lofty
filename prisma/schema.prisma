@@ -856,6 +856,17 @@ model CMAReport {
 
 // ─── Blog ─────────────────────────────────────────────────────────────────────
 
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  email     String
+  token     String   @unique @default(cuid())
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+}
+
+// ─── Blog ─────────────────────────────────────────────────────────────────────
+
 model BlogPost {
   id          String   @id @default(cuid())
   title       String
