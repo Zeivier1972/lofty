@@ -6,6 +6,7 @@ import {
   sendInstagramDM, replyToComment, verifyWebhookToken,
   extractEmail, extractPhone, isOptOut, parseIntent,
 } from "@/lib/instagram"
+import { ingestLead } from "@/lib/lead-ingest"
 
 const INTENT_TAG_COLORS: Record<string, string> = {
   comprador_vivienda: "#22C55E",
@@ -163,67 +164,54 @@ export async function POST(req: Request) {
           }
 
           const nameParts = (convo.firstName || convo.igUsername || "Instagram Lead").split(/\s+/)
-          // Create contact in CRM
-          const contact = await prisma.contact.create({
-            data: {
-              firstName: nameParts[0],
-              lastName: nameParts.slice(1).join(" "),
-              email: convo.email || undefined,
-              phone,
-              source: "INSTAGRAM",
-              status: "LEAD",
-              socialInstagram: convo.igUsername || undefined,
-            },
+
+          // Full lead ingestion: pipeline, smart plan, scoring, welcome SMS + email,
+          // AI call, and notifications — same as Facebook/website leads
+          const isPreConstruction = convo.intent === "comprador_vivienda" || convo.intent === "inversionista_airbnb"
+          const { contactId } = await ingestLead({
+            firstName: nameParts[0],
+            lastName: nameParts.slice(1).join(" "),
+            email: convo.email || undefined,
+            phone,
+            source: "INSTAGRAM",
+            campaign: isPreConstruction ? "Instagram Bot — Preconstrucción" : "Instagram Bot",
+            propertyType: isPreConstruction ? "PRE_CONSTRUCTION" : undefined,
+            notes: `IG: @${convo.igUsername || igUserId}${convo.intent ? ` | Interés: ${convo.intent.replace(/_/g, " ")}` : ""}`,
+            smsConsent: true, // they provided their number in the DM to be contacted
           })
 
-          // Tag by qualification intent (comprador_vivienda / inversionista_airbnb / solo_explorando)
+          // Instagram-specific extras: handle + qualification tag
+          await prisma.contact.update({
+            where: { id: contactId },
+            data: { socialInstagram: convo.igUsername || undefined },
+          }).catch(() => {})
+
           if (convo.intent) {
             const tag = await prisma.tag.upsert({
               where: { name: convo.intent },
               update: {},
               create: { name: convo.intent, color: INTENT_TAG_COLORS[convo.intent] || "#3B82F6" },
             })
-            await prisma.contactTag.create({
-              data: { contactId: contact.id, tagId: tag.id },
+            await prisma.contactTag.upsert({
+              where: { contactId_tagId: { contactId, tagId: tag.id } },
+              update: {},
+              create: { contactId, tagId: tag.id },
             })
           }
 
-          // Add to default pipeline
-          const pipeline = await prisma.pipeline.findFirst({
-            where: { isDefault: true },
-            include: { stages: { orderBy: { order: "asc" }, take: 1 } },
-          })
-          if (pipeline?.stages[0]) {
-            await prisma.pipelineLead.create({
-              data: { contactId: contact.id, stageId: pipeline.stages[0].id },
-            })
-          }
-
-          // Create activity
           await prisma.activity.create({
             data: {
               type: "NOTE",
               title: "Lead capturado via Instagram",
               description: `Instagram: @${convo.igUsername || igUserId}${convo.intent ? ` · Interés: ${convo.intent.replace(/_/g, " ")}` : ""}`,
-              contactId: contact.id,
-            },
-          })
-
-          // Notify agent
-          await prisma.aINotification.create({
-            data: {
-              type: "NEW_LEAD",
-              title: `📸 Nuevo lead de Instagram: ${convo.firstName || convo.igUsername}`,
-              body: `Email: ${convo.email || "N/A"} · Teléfono: ${phone}${convo.intent ? ` · Interés: ${convo.intent.replace(/_/g, " ")}` : ""} · IG: @${convo.igUsername || igUserId}`,
-              priority: "HIGH",
-              contactId: contact.id,
+              contactId,
             },
           })
 
           // Mark conversation complete
           await prisma.instagramConversation.update({
             where: { igUserId },
-            data: { phone, state: "COMPLETE", contactId: contact.id },
+            data: { phone, state: "COMPLETE", contactId },
           })
 
           // Send thank you with website link
