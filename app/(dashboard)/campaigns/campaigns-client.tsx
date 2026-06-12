@@ -126,10 +126,14 @@ function NewCampaignModal({ tags, onClose, onCreated }: { tags: any[]; onClose: 
   const [loadingCount, setLoadingCount] = useState(false)
 
   const applyTemplate = (tpl: typeof TEMPLATES[0]) => {
-    setSubject(tpl.subject)
-    setBody(tpl.body)
+    const monthName = new Date().toLocaleString("es", { month: "long" })
+    const capitalMonth = monthName.charAt(0).toUpperCase() + monthName.slice(1)
+    setSubject(tpl.subject.replace(/\{month\}/gi, capitalMonth))
+    setBody(tpl.body.replace(/\{month\}/gi, capitalMonth))
     setSelectedTemplate(tpl.id)
-    setStep("compose")
+    // Auto-fill campaign name from template if user hasn't typed one yet
+    if (!name.trim()) setName(tpl.name)
+    setStep("audience")
   }
 
   const fetchAudienceCount = async () => {
