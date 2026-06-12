@@ -25,6 +25,7 @@ import {
   getInitials, getStatusColor, getPriorityColor, getLeadScoreColor,
 } from "@/lib/utils"
 import { useToast } from "@/components/ui/use-toast"
+import { AiAssistBar } from "@/components/ui/ai-assist-bar"
 
 function generateInsight(contact: any): string | null {
   const emails = contact.emails || []
@@ -878,6 +879,7 @@ function SmsButton({ contactId, phone, name }: { contactId: string; phone?: stri
               placeholder={`Escribe tu mensaje para ${name}...`}
               className="w-full border border-gray-200 rounded-xl p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-300"
             />
+            <AiAssistBar contactId={contactId} draft={message} onApply={setMessage} />
             <div className="flex items-center justify-between">
               <p className="text-xs text-gray-400">{message.length}/160 caracteres</p>
               <button

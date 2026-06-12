@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { useToast } from "@/components/ui/use-toast"
 import { formatDistanceToNow } from "date-fns"
 import { es } from "date-fns/locale"
+import { AiAssistBar } from "@/components/ui/ai-assist-bar"
 
 interface Thread {
   contactId: string
@@ -380,6 +381,14 @@ export default function InboxClient() {
                   <Send className="w-4 h-4" />
                 </Button>
               </div>
+              {selectedContact && (
+                <AiAssistBar
+                  contactId={selectedContact}
+                  draft={replyText}
+                  onApply={setReplyText}
+                  className="mt-1"
+                />
+              )}
             </div>
           </>
         )}
