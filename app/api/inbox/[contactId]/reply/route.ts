@@ -3,13 +3,13 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth"
-import { sendSMS, sendWhatsApp } from "@/lib/sms"
+import { sendSMS, sendWhatsApp, sendWhatsAppTemplate } from "@/lib/sms"
 
 export async function POST(req: Request, { params }: { params: { contactId: string } }) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const { message, channel = "sms" } = await req.json()
+  const { message, channel = "sms", templateSid } = await req.json()
   if (!message?.trim()) return NextResponse.json({ error: "Message required" }, { status: 400 })
 
   const contact = await prisma.contact.findUnique({
@@ -28,17 +28,23 @@ export async function POST(req: Request, { params }: { params: { contactId: stri
       return NextResponse.json({ error: "WhatsApp not configured: TWILIO credentials missing" }, { status: 503 })
     }
 
-    let sendError: string | null = null
+    const bookingUrl = `${process.env.NEXT_PUBLIC_APP_URL}/book`
+
     try {
-      await sendWhatsApp(toNumber, message)
+      if (templateSid) {
+        // Business-initiated: use approved WhatsApp template
+        await sendWhatsAppTemplate(toNumber, templateSid, {
+          "1": contact.firstName,
+          "2": bookingUrl,
+        })
+      } else {
+        // Free-form: only works within 24h window after contact messaged first
+        await sendWhatsApp(toNumber, message)
+      }
     } catch (e: any) {
       console.error("WhatsApp send error:", e)
-      sendError = e?.message || "WhatsApp send failed"
-    }
-
-    if (sendError) {
       return NextResponse.json(
-        { error: `WhatsApp delivery failed: ${sendError}. Make sure your Twilio number is WhatsApp-enabled (Sandbox or Business API) and set TWILIO_WHATSAPP_NUMBER in Railway if it differs from TWILIO_PHONE_NUMBER.` },
+        { error: `WhatsApp falló: ${e?.message}. Usa una plantilla aprobada para iniciar contacto.` },
         { status: 502 }
       )
     }

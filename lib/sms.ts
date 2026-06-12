@@ -56,7 +56,26 @@ export async function sendWhatsApp(to: string, body: string, mediaUrl?: string):
   return msg.sid
 }
 
-export async function getCallStatus(callSid: string) {
+export async function sendWhatsAppTemplate(
+  to: string,
+  contentSid: string,
+  variables: Record<string, string>
+): Promise<string | null> {
+  const c = getClient()
+  const toNumber = to.startsWith("whatsapp:") ? to : `whatsapp:${to}`
+  const fromNumber = `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER || process.env.TWILIO_PHONE_NUMBER}`
+  if (!c) {
+    console.log("[WHATSAPP TEMPLATE MOCK] To:", toNumber, "SID:", contentSid, "Vars:", variables)
+    return "mock-wa-template-sid"
+  }
+  const msg = await (c.messages as any).create({
+    from: fromNumber,
+    to: toNumber,
+    contentSid,
+    contentVariables: JSON.stringify(variables),
+  })
+  return msg.sid
+}
   const c = getClient()
   if (!c) return { status: "mock", duration: 0 }
   const call = await c.calls(callSid).fetch()

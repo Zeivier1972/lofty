@@ -47,6 +47,7 @@ export default function InboxClient() {
   const [conversation, setConversation] = useState<ConversationData | null>(null)
   const [replyText, setReplyText] = useState("")
   const [replyChannel, setReplyChannel] = useState<"sms" | "whatsapp">("sms")
+  const [selectedTemplateSid, setSelectedTemplateSid] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
@@ -95,7 +96,11 @@ export default function InboxClient() {
       const res = await fetch(`/api/inbox/${selectedContact}/reply`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: replyText, channel: replyChannel }),
+        body: JSON.stringify({
+          message: replyText,
+          channel: replyChannel,
+          templateSid: replyChannel === "whatsapp" ? selectedTemplateSid : undefined,
+        }),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
@@ -103,6 +108,7 @@ export default function InboxClient() {
         return
       }
       setReplyText("")
+      setSelectedTemplateSid(null)
       await fetchConversation(selectedContact)
       await fetchThreads()
     } catch {
@@ -309,7 +315,7 @@ export default function InboxClient() {
                 {(["sms", "whatsapp"] as const).map(ch => (
                   <button
                     key={ch}
-                    onClick={() => setReplyChannel(ch)}
+                    onClick={() => { setReplyChannel(ch); setSelectedTemplateSid(null); setReplyText("") }}
                     className={cn(
                       "text-xs px-2.5 py-1 rounded-full font-medium transition-colors",
                       replyChannel === ch
@@ -321,6 +327,40 @@ export default function InboxClient() {
                   </button>
                 ))}
               </div>
+
+              {/* WhatsApp template selector */}
+              {replyChannel === "whatsapp" && (
+                <div className="mb-2 p-2.5 bg-green-50 border border-green-100 rounded-xl">
+                  <p className="text-[10px] text-green-700 font-semibold mb-1.5">PLANTILLAS APROBADAS</p>
+                  <div className="flex gap-2 flex-wrap">
+                    <button
+                      onClick={() => {
+                        setSelectedTemplateSid("HX5bf6e0866ea70408e9387e46939a16bd")
+                        setReplyText(`Hola ${conversation?.contact.firstName}, Catherine Gomez tiene nuevas propiedades disponibles en Miami que podrían interesarte. ¿Te gustaría recibir más información? Responde SÍ y te contactamos.`)
+                      }}
+                      className={cn(
+                        "text-xs px-2.5 py-1 rounded-lg border font-medium transition-all",
+                        selectedTemplateSid === "HX5bf6e0866ea70408e9387e46939a16bd"
+                          ? "bg-green-500 text-white border-green-500"
+                          : "bg-white text-green-700 border-green-300 hover:bg-green-100"
+                      )}
+                    >
+                      ✅ Re-enganche
+                    </button>
+                    <button
+                      onClick={() => { setSelectedTemplateSid(null); setReplyText("") }}
+                      className={cn(
+                        "text-xs px-2.5 py-1 rounded-lg border font-medium transition-all",
+                        !selectedTemplateSid
+                          ? "bg-gray-500 text-white border-gray-500"
+                          : "bg-white text-gray-500 border-gray-200 hover:bg-gray-100"
+                      )}
+                    >
+                      Libre (solo si contestó antes)
+                    </button>
+                  </div>
+                </div>
+              )}
               <div className="flex gap-2">
                 <textarea
                   value={replyText}
