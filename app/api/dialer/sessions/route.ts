@@ -33,6 +33,11 @@ export async function POST(req: Request) {
 
   const dialerSession = await prisma.dialerSession.create({
     data: { name, agentId: session?.user?.id as string },
+    include: {
+      calls: {
+        include: { contact: { select: { id: true, firstName: true, lastName: true } } },
+      },
+    },
   })
 
   return NextResponse.json(dialerSession, { status: 201 })

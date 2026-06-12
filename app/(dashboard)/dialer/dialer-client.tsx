@@ -90,10 +90,11 @@ export default function DialerClient({ contacts, sessions: initialSessions }: Pr
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: `Session ${new Date().toLocaleDateString()}` }),
     })
-    const session = await res.json()
-    setSessions(prev => [session, ...prev])
-    setActiveSession(session)
-    return session
+    const data = await res.json()
+    const newSession = { calls: [], totalCalls: 0, answered: 0, voicemails: 0, noAnswers: 0, ...data }
+    setSessions(prev => [newSession, ...prev])
+    setActiveSession(newSession)
+    return newSession
   }
 
   function addToQueue(contact: Contact) {
