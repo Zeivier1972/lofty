@@ -76,6 +76,8 @@ export async function sendWhatsAppTemplate(
   })
   return msg.sid
 }
+
+export async function getCallStatus(callSid: string) {
   const c = getClient()
   if (!c) return { status: "mock", duration: 0 }
   const call = await c.calls(callSid).fetch()
