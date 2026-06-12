@@ -43,9 +43,16 @@ interface DialerSession {
   calls: DialerCall[]
 }
 
+interface PipelineStage {
+  id: string
+  name: string
+  contacts: Contact[]
+}
+
 interface Props {
   contacts: Contact[]
   sessions: DialerSession[]
+  pipelineStages: PipelineStage[]
 }
 
 const DISPOSITIONS = [
@@ -58,7 +65,7 @@ const DISPOSITIONS = [
   { value: "APPOINTMENT", label: "Appointment Set", icon: CheckCircle2, color: "text-emerald-600" },
 ]
 
-export default function DialerClient({ contacts, sessions: initialSessions }: Props) {
+export default function DialerClient({ contacts, sessions: initialSessions, pipelineStages }: Props) {
   const [sessions, setSessions] = useState<DialerSession[]>(initialSessions)
   const [activeSession, setActiveSession] = useState<DialerSession | null>(initialSessions[0] || null)
   const [queue, setQueue] = useState<Contact[]>([])
@@ -74,6 +81,7 @@ export default function DialerClient({ contacts, sessions: initialSessions }: Pr
   const [sessionRunning, setSessionRunning] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [addingToQueue, setAddingToQueue] = useState(false)
+  const [selectedStage, setSelectedStage] = useState<string>("all")
 
   const filteredContacts = contacts.filter(c => {
     const name = `${c.firstName} ${c.lastName}`.toLowerCase()
@@ -336,40 +344,78 @@ export default function DialerClient({ contacts, sessions: initialSessions }: Pr
             </button>
             {addingToQueue && (
               <div className="border-t">
-                <div className="p-2 border-b">
+                {/* Pipeline stage filter */}
+                <div className="p-2 border-b space-y-2">
+                  <select
+                    value={selectedStage}
+                    onChange={e => { setSelectedStage(e.target.value); setSearchQuery("") }}
+                    className="w-full text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-lofty-500 bg-white"
+                  >
+                    <option value="all">Todos los contactos con teléfono</option>
+                    {pipelineStages.map(s => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({s.contacts.length})
+                      </option>
+                    ))}
+                  </select>
                   <div className="relative">
                     <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-gray-400" />
                     <input
                       type="text"
-                      placeholder="Search contacts..."
+                      placeholder="Buscar contacto..."
                       value={searchQuery}
                       onChange={e => setSearchQuery(e.target.value)}
-                      className="w-full pl-7 pr-3 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-1 focus:ring-lofty-500"
+                      className="w-full pl-7 pr-3 py-1.5 text-xs border rounded-md focus:outline-none focus:ring-1 focus:ring-lofty-500"
                     />
                   </div>
+                  {/* Add all from stage */}
+                  {selectedStage !== "all" && (() => {
+                    const stage = pipelineStages.find(s => s.id === selectedStage)
+                    const toAdd = (stage?.contacts || []).filter((c: Contact) => !queue.some(q => q.id === c.id))
+                    return toAdd.length > 0 ? (
+                      <button
+                        onClick={() => toAdd.forEach((c: Contact) => addToQueue(c))}
+                        className="w-full text-xs bg-lofty-600 text-white rounded-md py-1.5 font-medium hover:bg-lofty-700"
+                      >
+                        + Agregar todos ({toAdd.length})
+                      </button>
+                    ) : null
+                  })()}
                 </div>
+                {/* Contact list */}
                 <div className="max-h-48 overflow-y-auto">
-                  {filteredContacts.slice(0, 20).map(c => (
-                    <button
-                      key={c.id}
-                      onClick={() => addToQueue(c)}
-                      className="w-full flex items-center gap-3 px-3 py-2 hover:bg-gray-50 text-left"
-                    >
-                      <div className="w-7 h-7 bg-lofty-100 rounded-full flex items-center justify-center flex-shrink-0">
-                        <User className="w-3.5 h-3.5 text-lofty-600" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs font-medium text-gray-900 truncate">
-                          {c.firstName} {c.lastName}
+                  {(() => {
+                    const pool = selectedStage === "all"
+                      ? contacts
+                      : (pipelineStages.find(s => s.id === selectedStage)?.contacts || [])
+                    const filtered = pool
+                      .filter((c: Contact) => !queue.some(q => q.id === c.id))
+                      .filter((c: Contact) => {
+                        const name = `${c.firstName} ${c.lastName}`.toLowerCase()
+                        return name.includes(searchQuery.toLowerCase()) || (c.phone || "").includes(searchQuery)
+                      })
+                    if (filtered.length === 0) return (
+                      <p className="text-xs text-gray-500 p-3 text-center">No hay contactos</p>
+                    )
+                    return filtered.slice(0, 30).map((c: Contact) => (
+                      <button
+                        key={c.id}
+                        onClick={() => addToQueue(c)}
+                        className="w-full flex items-center gap-3 px-3 py-2 hover:bg-gray-50 text-left"
+                      >
+                        <div className="w-7 h-7 bg-lofty-100 rounded-full flex items-center justify-center flex-shrink-0">
+                          <User className="w-3.5 h-3.5 text-lofty-600" />
                         </div>
-                        <div className="text-xs text-gray-500">{formatPhone(c.phone || "")}</div>
-                      </div>
-                      <Plus className="w-3.5 h-3.5 text-lofty-500 flex-shrink-0" />
-                    </button>
-                  ))}
-                  {filteredContacts.length === 0 && (
-                    <p className="text-xs text-gray-500 p-3 text-center">No contacts found</p>
-                  )}
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-medium text-gray-900 truncate">
+                            {c.firstName} {c.lastName}
+                          </div>
+                          <div className="text-xs text-gray-500">{formatPhone(c.phone || "")}</div>
+                        </div>
+                        <Plus className="w-3.5 h-3.5 text-lofty-500 flex-shrink-0" />
+                      </button>
+                    ))
+                  })()}
                 </div>
               </div>
             )}
