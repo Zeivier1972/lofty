@@ -230,7 +230,7 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
             </div>
             <div>
               <h2 className="font-bold text-gray-900">Importar Leads (CSV)</h2>
-              <p className="text-xs text-gray-500">Compatible con exportaciones de Lofty CRM y formato simple</p>
+              <p className="text-xs text-gray-500">Compatible con exportaciones de Lofty CRM · Lead Type: Buyer, Seller, Rental</p>
             </div>
           </div>
           <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg">

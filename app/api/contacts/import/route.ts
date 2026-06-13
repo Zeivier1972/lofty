@@ -43,6 +43,7 @@ function normalizePhone(val: string): string {
 
 const STATUS_MAP: Record<string, string> = {
   lead: "LEAD", prospect: "PROSPECT", buyer: "LEAD", seller: "LEAD",
+  rental: "LEAD", renter: "LEAD", tenant: "LEAD", lease: "LEAD",
   "active client": "ACTIVE_CLIENT", "past client": "PAST_CLIENT",
   sphere: "SPHERE_OF_INFLUENCE", soi: "SPHERE_OF_INFLUENCE",
 }
@@ -105,8 +106,9 @@ export async function POST(req: Request) {
       const zip   = (isLoftyFormat ? row.mailing_zip_code || row.mailing_zipcode : row.zip)?.trim() || ""
 
       // ── Status / Source ──────────────────────────────────────────────
-      const leadTypeRaw = (row.lead_type || "buyer").toLowerCase()
+      const leadTypeRaw = (row.lead_type || row.type || "buyer").toLowerCase()
       const isSeller    = leadTypeRaw.includes("sell")
+      const isRental    = leadTypeRaw.includes("rent") || leadTypeRaw.includes("lease") || leadTypeRaw.includes("tenant")
       const statusRaw   = (row.status || row.lead_status || leadTypeRaw || "lead").toLowerCase()
       const status      = STATUS_MAP[statusRaw] || "LEAD"
       const sourceRaw   = (row.source || row.lead_source || "").toLowerCase()
@@ -155,7 +157,9 @@ export async function POST(req: Request) {
       if (regDateRaw) customData.regDate = regDateRaw
 
       // ── Tags ─────────────────────────────────────────────────────────
-      const tagNames = [row.tag, row.group1, row.group2]
+      // Auto-add a "Rental" tag for rental leads so they're easy to filter
+      const autoTag = isRental ? "Rental" : isSeller ? "Seller" : null
+      const tagNames = [row.tag, row.group1, row.group2, autoTag]
         .map(t => t?.trim())
         .filter(Boolean) as string[]
 
@@ -183,9 +187,10 @@ export async function POST(req: Request) {
           assignedToId: (session.user as any)?.id,
           customFields: Object.keys(customData).length > 0 ? JSON.stringify(customData) : undefined,
           ...(isSeller ? {
-            sellerAddress: sellerAddress || (buyerLocation ? undefined : undefined),
+            sellerAddress: sellerAddress || undefined,
             sellerEstimatedValue: sellerPrice || undefined,
           } : {
+            // applies to both Buyer and Rental leads
             buyerBudgetMax:    maxPrice   || undefined,
             buyerBudgetMin:    minPrice   || undefined,
             buyerBedroomsMin:  minBeds    || undefined,
