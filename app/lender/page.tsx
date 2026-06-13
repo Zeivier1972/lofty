@@ -9,8 +9,13 @@ export default async function LenderDashboardPage() {
   const partner = await getLoanOfficer()
   if (!partner) redirect("/lender/login")
 
+  const isSubscribed = partner.subscriptionStatus === "active"
+
   const shares = await prisma.leadShare.findMany({
-    where: { loanOfficerId: partner.id, status: { in: ["PENDING", "PAID"] } },
+    where: {
+      loanOfficerId: partner.id,
+      status: { in: ["ACTIVE", "PENDING", "PAID"] },
+    },
     orderBy: { createdAt: "desc" },
     include: {
       contact: {
@@ -24,29 +29,34 @@ export default async function LenderDashboardPage() {
   })
 
   const leads = shares.map(s => {
-    const paid = s.status === "PAID"
+    // Legacy per-lead paid shares are always accessible; new ACTIVE shares need subscription
+    const unlocked = s.status === "PAID" || isSubscribed
     return {
       id: s.id,
       status: s.status,
       loStatus: s.loStatus,
-      price: s.price,
       sharedAt: s.createdAt.toISOString(),
-      // Locked previews only reveal first name + last initial and general interest
       firstName: s.contact.firstName,
       lastInitial: s.contact.lastName ? `${s.contact.lastName.charAt(0)}.` : "",
-      lastName: paid ? s.contact.lastName : null,
-      phone: paid ? s.contact.phone : null,
-      email: paid ? s.contact.email : null,
+      lastName: unlocked ? s.contact.lastName : null,
+      phone: unlocked ? s.contact.phone : null,
+      email: unlocked ? s.contact.email : null,
       budgetMax: s.contact.buyerBudgetMax,
       location: s.contact.buyerLocation,
       propertyType: s.contact.buyerPropertyType,
-      source: paid ? s.contact.source : null,
+      source: unlocked ? s.contact.source : null,
     }
   })
 
   return (
     <LenderDashboardClient
-      partner={{ name: partner.name, company: partner.company }}
+      partner={{
+        name: partner.name,
+        company: partner.company,
+        subscriptionStatus: partner.subscriptionStatus,
+        subscriptionEndDate: partner.subscriptionEndDate?.toISOString() || null,
+        monthlyFee: partner.monthlyFee,
+      }}
       leads={leads}
     />
   )

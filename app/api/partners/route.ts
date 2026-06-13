@@ -5,7 +5,7 @@ import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import bcrypt from "bcryptjs"
 
-// GET — list loan officers with share/revenue stats
+// GET — list loan officers with subscription status and share stats
 export async function GET() {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -20,7 +20,7 @@ export async function GET() {
   })
 
   const result = partners.map(p => {
-    const paid = p.leadShares.filter(s => s.status === "PAID")
+    const paidShares = p.leadShares.filter(s => s.status === "PAID")
     return {
       id: p.id,
       name: p.name,
@@ -28,11 +28,13 @@ export async function GET() {
       company: p.company,
       phone: p.phone,
       isActive: p.isActive,
-      pricePerLead: p.pricePerLead,
+      monthlyFee: p.monthlyFee,
+      subscriptionStatus: p.subscriptionStatus,
+      subscriptionEndDate: p.subscriptionEndDate?.toISOString() || null,
       createdAt: p.createdAt,
       totalShares: p.leadShares.length,
-      paidShares: paid.length,
-      revenue: paid.reduce((sum, s) => sum + s.price, 0),
+      paidShares: paidShares.length,
+      legacyRevenue: paidShares.reduce((sum, s) => sum + s.price, 0),
     }
   })
 
@@ -44,7 +46,7 @@ export async function POST(req: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const { name, email, company, phone, pricePerLead } = await req.json()
+  const { name, email, company, phone, monthlyFee } = await req.json()
   if (!name || !email) {
     return NextResponse.json({ error: "Nombre y email son requeridos" }, { status: 400 })
   }
@@ -52,7 +54,6 @@ export async function POST(req: Request) {
   const exists = await prisma.loanOfficer.findUnique({ where: { email: email.toLowerCase() } })
   if (exists) return NextResponse.json({ error: "Ya existe un loan officer con ese email" }, { status: 409 })
 
-  // Generate a readable temporary password
   const tempPassword = Math.random().toString(36).slice(-8) + Math.floor(Math.random() * 90 + 10)
   const passwordHash = await bcrypt.hash(tempPassword, 10)
 
@@ -63,7 +64,7 @@ export async function POST(req: Request) {
       passwordHash,
       company: company || undefined,
       phone: phone || undefined,
-      pricePerLead: pricePerLead ? Number(pricePerLead) : 25,
+      monthlyFee: monthlyFee ? Number(monthlyFee) : 99,
     },
   })
 

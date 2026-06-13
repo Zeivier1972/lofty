@@ -32,28 +32,27 @@ export async function POST(req: Request) {
   const share = existing
     ? await prisma.leadShare.update({
         where: { id: existing.id },
-        data: { status: "PENDING", price: partner.pricePerLead, paidAt: null, stripeSessionId: null },
+        data: { status: "ACTIVE", price: 0, paidAt: null, stripeSessionId: null },
       })
     : await prisma.leadShare.create({
-        data: { contactId, loanOfficerId, price: partner.pricePerLead },
+        data: { contactId, loanOfficerId, price: 0, status: "ACTIVE" },
       })
 
   await prisma.activity.create({
     data: {
       type: "NOTE",
       title: `Lead compartido con loan officer`,
-      description: `Compartido con ${partner.name}${partner.company ? ` (${partner.company})` : ""} — $${partner.pricePerLead}`,
+      description: `Compartido con ${partner.name}${partner.company ? ` (${partner.company})` : ""}`,
       contactId,
     },
   }).catch(() => {})
 
-  // Notify the loan officer (fire and forget)
   sendEmail({
     to: partner.email,
     subject: `🆕 Nuevo lead disponible — Catherine Gomez Realtor`,
-    html: `<p>Hola ${partner.name},</p><p>Catherine te compartió un nuevo lead pre-calificado interesado en comprar propiedad en Miami.</p><p><a href="${process.env.NEXT_PUBLIC_APP_URL}/lender" style="background:#4F46E5;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;display:inline-block">Ver lead en el portal →</a></p>`,
+    html: `<p>Hola ${partner.name},</p><p>Catherine te compartió un nuevo lead pre-calificado interesado en propiedad en Miami.</p><p><a href="${process.env.NEXT_PUBLIC_APP_URL}/lender" style="background:#4F46E5;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;display:inline-block">Ver lead en el portal →</a></p>`,
     text: `Hola ${partner.name}, Catherine te compartió un nuevo lead. Míralo en ${process.env.NEXT_PUBLIC_APP_URL}/lender`,
   }).catch(() => {})
 
-  return NextResponse.json({ share: { id: share.id, status: share.status, price: share.price } })
+  return NextResponse.json({ share: { id: share.id, status: share.status } })
 }
