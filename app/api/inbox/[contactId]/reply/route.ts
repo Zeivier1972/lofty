@@ -33,9 +33,9 @@ export async function POST(req: Request, { params }: { params: { contactId: stri
     try {
       if (templateSid) {
         // Business-initiated: use approved WhatsApp template
+        // Pass only {{1}} = firstName; bookingUrl removed — template likely has 1 variable
         await sendWhatsAppTemplate(toNumber, templateSid, {
           "1": contact.firstName,
-          "2": bookingUrl,
         })
       } else {
         // Free-form: only works within 24h window after contact messaged first

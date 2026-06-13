@@ -68,11 +68,22 @@ export async function sendWhatsAppTemplate(
     console.log("[WHATSAPP TEMPLATE MOCK] To:", toNumber, "SID:", contentSid, "Vars:", variables)
     return "mock-wa-template-sid"
   }
+
+  // Only pass variables that are actually defined (non-empty)
+  // Some templates have no variables — don't pass contentVariables in that case
+  const filteredVars: Record<string, string> = {}
+  for (const [k, v] of Object.entries(variables)) {
+    if (v) filteredVars[k] = v
+  }
+  const hasVars = Object.keys(filteredVars).length > 0
+
+  console.log("[WHATSAPP TEMPLATE] from:", fromNumber, "to:", toNumber, "sid:", contentSid, "vars:", filteredVars)
+
   const msg = await (c.messages as any).create({
     from: fromNumber,
     to: toNumber,
     contentSid,
-    contentVariables: JSON.stringify(variables),
+    ...(hasVars ? { contentVariables: JSON.stringify(filteredVars) } : {}),
   })
   return msg.sid
 }
