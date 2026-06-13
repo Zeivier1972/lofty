@@ -305,6 +305,7 @@ model Email {
   body        String
   fromAddress String
   toAddress   String
+  direction   String         @default("OUTBOUND")
   status      String         @default("DRAFT")
   contact     Contact?       @relation(fields: [contactId], references: [id])
   contactId   String?

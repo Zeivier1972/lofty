@@ -69,7 +69,18 @@ async function sendViaNodemailer(opts: EmailOptions): Promise<boolean> {
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
+
+// If an inbound domain is configured, automatically set Reply-To so replies
+// come back through Resend's inbound webhook instead of Catherine's inbox.
+function withReplyTo(opts: EmailOptions): EmailOptions {
+  if (opts.replyTo) return opts
+  const inboundDomain = process.env.INBOUND_EMAIL_DOMAIN
+  if (!inboundDomain) return opts
+  return { ...opts, replyTo: `reply@${inboundDomain}` }
+}
+
 export async function sendEmail(opts: EmailOptions): Promise<boolean> {
+  opts = withReplyTo(opts)
   try {
     if (await sendViaResend(opts)) return true
     if (await sendViaNodemailer(opts)) return true

@@ -614,25 +614,32 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
                     ))}
 
                     {/* Emails */}
-                    {(activityFilter === "All" || activityFilter === "Emails") && contact.emails.map((email: any) => (
-                      <div key={email.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-                        <div className="flex items-start gap-3">
-                          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm">✉️</div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-2 mb-1">
-                              <button onClick={() => setExpandedEmail(expandedEmail === email.id ? null : email.id)} className="text-sm font-medium text-blue-700 hover:underline text-left">
-                                {email.subject}
-                              </button>
-                              <Badge className={cn("text-xs flex-shrink-0", email.status === "SENT" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500")}>{email.status}</Badge>
+                    {(activityFilter === "All" || activityFilter === "Emails") && contact.emails.map((email: any) => {
+                      const isInbound = email.direction === "INBOUND"
+                      return (
+                        <div key={email.id} className={cn("rounded-xl border shadow-sm p-4", isInbound ? "bg-green-50 border-green-200" : "bg-white border-gray-100")}>
+                          <div className="flex items-start gap-3">
+                            <div className={cn("w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-sm", isInbound ? "bg-green-200" : "bg-blue-100")}>
+                              {isInbound ? "📩" : "✉️"}
                             </div>
-                            <p className="text-xs text-gray-400">{formatRelativeTime(email.createdAt)}</p>
-                            {expandedEmail === email.id && email.body && (
-                              <div className="mt-3 p-3 bg-gray-50 rounded-lg text-sm text-gray-700 border border-gray-100" dangerouslySetInnerHTML={{ __html: email.body }} />
-                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2 mb-1">
+                                <button onClick={() => setExpandedEmail(expandedEmail === email.id ? null : email.id)} className={cn("text-sm font-medium hover:underline text-left", isInbound ? "text-green-700" : "text-blue-700")}>
+                                  {email.subject}
+                                </button>
+                                <Badge className={cn("text-xs flex-shrink-0", isInbound ? "bg-green-100 text-green-700" : email.status === "SENT" ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-500")}>
+                                  {isInbound ? "Respuesta" : email.status}
+                                </Badge>
+                              </div>
+                              <p className="text-xs text-gray-400">{isInbound ? `De: ${email.fromAddress} · ` : ""}{formatRelativeTime(email.createdAt)}</p>
+                              {expandedEmail === email.id && email.body && (
+                                <div className="mt-3 p-3 bg-white rounded-lg text-sm text-gray-700 border border-gray-200 whitespace-pre-wrap">{email.body.replace(/<[^>]*>/g, "")}</div>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      )
+                    })}
 
                     {/* Calls */}
                     {(activityFilter === "All" || activityFilter === "Calls") && contact.dialerCalls?.map((call: any) => (
