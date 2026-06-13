@@ -9,7 +9,7 @@ import {
   CheckSquare, Zap, Clock, Pin, Trash2, Send, MoreVertical,
   Building, Globe, Facebook, Instagram, Linkedin, Bot,
   TrendingUp, Eye, Star, ChevronRight, ChevronDown,
-  Activity, Search,
+  Activity, Search, Loader2, X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -85,6 +85,19 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
   const [activityFilter, setActivityFilter] = useState("All")
   const [expandedEmail, setExpandedEmail] = useState<string | null>(null)
   const [expandedCall, setExpandedCall] = useState<string | null>(null)
+  const [tasks, setTasks] = useState<any[]>(contact.tasks || [])
+  const [appointments, setAppointments] = useState<any[]>(contact.appointments || [])
+  const [newTaskTitle, setNewTaskTitle] = useState("")
+  const [newTaskDue, setNewTaskDue] = useState("")
+  const [newTaskPriority, setNewTaskPriority] = useState("MEDIUM")
+  const [addingTask, setAddingTask] = useState(false)
+  const [newAptTitle, setNewAptTitle] = useState("")
+  const [newAptStart, setNewAptStart] = useState("")
+  const [newAptEnd, setNewAptEnd] = useState("")
+  const [addingApt, setAddingApt] = useState(false)
+  const [showNewTx, setShowNewTx] = useState(false)
+  const [newTxForm, setNewTxForm] = useState({ title: "", address: "", city: "", state: "FL", zip: "", type: "BUYER", listPrice: "" })
+  const [savingTx, setSavingTx] = useState(false)
 
   const triggerSofiaCall = async () => {
     if (!contact.phone) return
@@ -124,6 +137,78 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
       toast({ title: "Failed to update stage", variant: "destructive" })
     }
     setUpdatingStage(false)
+  }
+
+  async function addTask() {
+    if (!newTaskTitle.trim()) return
+    setAddingTask(true)
+    try {
+      const res = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: newTaskTitle.trim(), dueDate: newTaskDue || undefined, priority: newTaskPriority, contactId: contact.id }),
+      })
+      const task = await res.json()
+      setTasks(prev => [...prev, task])
+      setNewTaskTitle("")
+      setNewTaskDue("")
+    } finally {
+      setAddingTask(false)
+    }
+  }
+
+  async function toggleTask(taskId: string, currentStatus: string) {
+    const nextStatus = currentStatus === "COMPLETED" ? "PENDING" : "COMPLETED"
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: nextStatus } : t))
+    await fetch(`/api/tasks/${taskId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: nextStatus }),
+    })
+  }
+
+  async function deleteTask(taskId: string) {
+    setTasks(prev => prev.filter(t => t.id !== taskId))
+    await fetch(`/api/tasks/${taskId}`, { method: "DELETE" })
+  }
+
+  async function addAppointment() {
+    if (!newAptTitle.trim() || !newAptStart || !newAptEnd) return
+    setAddingApt(true)
+    try {
+      const res = await fetch("/api/appointments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: newAptTitle.trim(), startTime: newAptStart, endTime: newAptEnd, contactId: contact.id }),
+      })
+      const apt = await res.json()
+      if (apt.id) {
+        setAppointments(prev => [...prev, apt])
+        setNewAptTitle("")
+        setNewAptStart("")
+        setNewAptEnd("")
+      }
+    } finally {
+      setAddingApt(false)
+    }
+  }
+
+  async function createTransactionForContact() {
+    if (!newTxForm.title.trim() || !newTxForm.address.trim() || !newTxForm.city.trim() || !newTxForm.zip.trim()) return
+    setSavingTx(true)
+    try {
+      const res = await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...newTxForm, contactId: contact.id, listPrice: newTxForm.listPrice || undefined }),
+      })
+      const data = await res.json()
+      if (data.transaction) {
+        router.push(`/transactions/${data.transaction.id}`)
+      }
+    } finally {
+      setSavingTx(false)
+    }
   }
 
   const insight = generateInsight(contact)
@@ -429,7 +514,7 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
             {activeTab === "overview" && (
               <div className="grid grid-cols-3 gap-5">
                 {/* Activity timeline */}
-                <div className="col-span-2 space-y-3">
+                <div className={cn("space-y-3", (activityFilter === "Tasks" || activityFilter === "Appointments") ? "col-span-3" : "col-span-2")}>
                   {/* Note input */}
                   <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
                     <div className="flex items-center gap-2 mb-2">
@@ -584,7 +669,7 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
                       )
                     })}
 
-                    {notes.length === 0 && contact.activities.length === 0 && contact.emails.length === 0 && smsMessages.length === 0 && !contact.dialerCalls?.length && activityFilter !== "Portal" && (
+                    {notes.length === 0 && contact.activities.length === 0 && contact.emails.length === 0 && smsMessages.length === 0 && !contact.dialerCalls?.length && activityFilter !== "Portal" && activityFilter !== "Tasks" && activityFilter !== "Appointments" && (
                       <div className="text-center py-12">
                         <Activity className="w-10 h-10 text-gray-200 mx-auto mb-3" />
                         <p className="text-gray-400 text-sm">No activity yet — add a note or log a call</p>
@@ -595,20 +680,112 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
                     {activityFilter === "Portal" && (
                       <PortalChatPanel contactId={contact.id} />
                     )}
+
+                    {/* Tasks panel */}
+                    {activityFilter === "Tasks" && (
+                      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
+                        <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+                          <CheckSquare className="w-4 h-4 text-blue-500" /> Tareas
+                        </h2>
+                        <div className="space-y-2">
+                          {tasks.length === 0 && <p className="text-xs text-gray-400 py-2">Sin tareas. Agrega la primera.</p>}
+                          {tasks.map((task: any) => (
+                            <div key={task.id} className="flex items-center gap-3 group p-2 rounded-xl hover:bg-gray-50">
+                              <button onClick={() => toggleTask(task.id, task.status)} className="flex-shrink-0">
+                                {task.status === "COMPLETED"
+                                  ? <CheckSquare className="w-5 h-5 text-green-500" />
+                                  : <div className="w-5 h-5 rounded border-2 border-gray-300 hover:border-blue-400 transition-colors" />}
+                              </button>
+                              <div className="flex-1 min-w-0">
+                                <p className={cn("text-sm", task.status === "COMPLETED" && "line-through text-gray-400")}>{task.title}</p>
+                                {task.dueDate && (
+                                  <p className={cn("text-xs", new Date(task.dueDate) < new Date() && task.status !== "COMPLETED" ? "text-orange-500" : "text-gray-400")}>
+                                    {new Date(task.dueDate).toLocaleDateString("es-US", { month: "short", day: "numeric" })}
+                                  </p>
+                                )}
+                              </div>
+                              <div className={cn("w-2 h-2 rounded-full flex-shrink-0", {
+                                "bg-red-500": task.priority === "URGENT",
+                                "bg-orange-500": task.priority === "HIGH",
+                                "bg-blue-400": task.priority === "MEDIUM",
+                                "bg-gray-300": task.priority === "LOW",
+                              })} />
+                              <button onClick={() => deleteTask(task.id)} className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-400 transition-all">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="pt-3 border-t border-gray-50 space-y-2">
+                          <input value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} onKeyDown={e => { if (e.key === "Enter") addTask() }} placeholder="Nueva tarea..." className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                          <div className="flex gap-2">
+                            <input type="date" value={newTaskDue} onChange={e => setNewTaskDue(e.target.value)} className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                            <select value={newTaskPriority} onChange={e => setNewTaskPriority(e.target.value)} className="border border-gray-200 rounded-xl px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
+                              <option value="LOW">Baja</option>
+                              <option value="MEDIUM">Media</option>
+                              <option value="HIGH">Alta</option>
+                              <option value="URGENT">Urgente</option>
+                            </select>
+                            <Button onClick={addTask} disabled={addingTask || !newTaskTitle.trim()} size="sm" className="bg-blue-600 hover:bg-blue-700 shrink-0">
+                              {addingTask ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Appointments panel */}
+                    {activityFilter === "Appointments" && (
+                      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
+                        <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+                          <Calendar className="w-4 h-4 text-pink-500" /> Citas
+                        </h2>
+                        <div className="space-y-2">
+                          {appointments.length === 0 && <p className="text-xs text-gray-400 py-2">Sin citas agendadas.</p>}
+                          {appointments.map((apt: any) => (
+                            <div key={apt.id} className="flex items-center gap-3 group p-2 rounded-xl hover:bg-gray-50">
+                              <Calendar className="w-4 h-4 text-pink-400 flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium">{apt.title}</p>
+                                <p className="text-xs text-gray-400">{new Date(apt.startTime).toLocaleString("es-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="pt-3 border-t border-gray-50 space-y-2">
+                          <input value={newAptTitle} onChange={e => setNewAptTitle(e.target.value)} placeholder="Título de la cita..." className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-xs text-gray-400 mb-1 block">Inicio</label>
+                              <input type="datetime-local" value={newAptStart} onChange={e => setNewAptStart(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                            </div>
+                            <div>
+                              <label className="text-xs text-gray-400 mb-1 block">Fin</label>
+                              <input type="datetime-local" value={newAptEnd} onChange={e => setNewAptEnd(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                            </div>
+                          </div>
+                          <Button onClick={addAppointment} disabled={addingApt || !newAptTitle.trim() || !newAptStart || !newAptEnd} size="sm" className="w-full bg-pink-600 hover:bg-pink-700">
+                            {addingApt ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Plus className="w-3.5 h-3.5 mr-1" />}
+                            Agendar cita
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {/* Right: Tasks + Appointments */}
+                {/* Right: Tasks + Appointments (hidden when those filter tabs are active) */}
+                {(activityFilter === "Tasks" || activityFilter === "Appointments") ? null :
                 <div className="space-y-4">
                   <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
                     <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
                       <h3 className="text-sm font-semibold text-gray-900">Tasks</h3>
-                      <button className="w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
+                      <button onClick={() => setActivityFilter("Tasks")} className="w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
                         <Plus className="w-3.5 h-3.5 text-gray-600" />
                       </button>
                     </div>
                     <div className="p-3 space-y-2">
-                      {contact.tasks.map((task: any) => (
+                      {tasks.map((task: any) => (
                         <div key={task.id} className="flex items-start gap-2 p-2 rounded-lg hover:bg-gray-50">
                           <div className={cn("w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0", {
                             "bg-red-500": task.priority === "URGENT",
@@ -631,7 +808,7 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
                           </div>
                         </div>
                       ))}
-                      {contact.tasks.length === 0 && (
+                      {tasks.length === 0 && (
                         <p className="text-xs text-gray-400 text-center py-3">No tasks</p>
                       )}
                     </div>
@@ -640,7 +817,7 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
                   <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
                     <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
                       <h3 className="text-sm font-semibold text-gray-900">Appointments</h3>
-                      <button className="w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
+                      <button onClick={() => setActivityFilter("Appointments")} className="w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
                         <Plus className="w-3.5 h-3.5 text-gray-600" />
                       </button>
                     </div>
@@ -662,7 +839,7 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
                       )}
                     </div>
                   </div>
-                </div>
+                </div>}
               </div>
             )}
 
@@ -748,6 +925,12 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
             {/* Transactions Tab */}
             {activeTab === "transactions" && (
               <div className="space-y-3">
+                <div className="flex justify-end">
+                  <Button size="sm" onClick={() => setShowNewTx(true)} className="bg-lofty-600 hover:bg-lofty-700 gap-1.5">
+                    <Plus className="w-3.5 h-3.5" /> Nueva Transacción
+                  </Button>
+                </div>
+
                 {contact.transactions?.length === 0 ? (
                   <div className="text-center py-12">
                     <FileText className="w-10 h-10 text-gray-200 mx-auto mb-3" />
@@ -771,6 +954,33 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
                       </div>
                     </Link>
                   ))
+                )}
+
+                {/* New Transaction inline modal */}
+                {showNewTx && (
+                  <div className="bg-white rounded-2xl border border-blue-200 shadow-md p-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-semibold text-gray-900 text-sm">Nueva Transacción</h3>
+                      <button onClick={() => setShowNewTx(false)} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
+                    </div>
+                    <input value={newTxForm.title} onChange={e => setNewTxForm(f => ({ ...f, title: e.target.value }))} placeholder="Título *" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                    <div className="grid grid-cols-2 gap-2">
+                      <select value={newTxForm.type} onChange={e => setNewTxForm(f => ({ ...f, type: e.target.value }))} className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
+                        {["BUYER","SELLER","DUAL","LEASE","REFERRAL"].map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                      <input value={newTxForm.listPrice} onChange={e => setNewTxForm(f => ({ ...f, listPrice: e.target.value }))} type="number" placeholder="Precio lista" className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                    </div>
+                    <input value={newTxForm.address} onChange={e => setNewTxForm(f => ({ ...f, address: e.target.value }))} placeholder="Dirección *" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                    <div className="grid grid-cols-3 gap-2">
+                      <input value={newTxForm.city} onChange={e => setNewTxForm(f => ({ ...f, city: e.target.value }))} placeholder="Ciudad *" className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                      <input value={newTxForm.state} onChange={e => setNewTxForm(f => ({ ...f, state: e.target.value }))} placeholder="Estado" className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                      <input value={newTxForm.zip} onChange={e => setNewTxForm(f => ({ ...f, zip: e.target.value }))} placeholder="ZIP *" className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                    </div>
+                    <Button onClick={createTransactionForContact} disabled={savingTx || !newTxForm.title.trim() || !newTxForm.address.trim() || !newTxForm.city.trim() || !newTxForm.zip.trim()} size="sm" className="w-full bg-lofty-600 hover:bg-lofty-700">
+                      {savingTx ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Plus className="w-3.5 h-3.5 mr-1" />}
+                      Crear y abrir transacción
+                    </Button>
+                  </div>
                 )}
               </div>
             )}

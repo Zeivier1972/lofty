@@ -2,19 +2,15 @@
 
 import { useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import {
-  FileText, Plus, Building, Calendar, DollarSign, Check, Clock,
-  ChevronRight, MoreVertical, TrendingUp, Home,
+  FileText, Plus, Building, Calendar, DollarSign, TrendingUp, Home, X, Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { cn, formatCurrency, formatDate, getStatusColor } from "@/lib/utils"
-import { format } from "date-fns"
 
 interface TransactionsClientProps {
   transactions: any[]
@@ -35,15 +31,44 @@ function getMilestoneProgress(milestones: any[]): number {
   return Math.round((completed / milestones.length) * 100)
 }
 
+const TX_TYPES = ["BUYER", "SELLER", "DUAL", "LEASE", "REFERRAL"]
+
 export default function TransactionsClient({ transactions, stats }: TransactionsClientProps) {
+  const router = useRouter()
   const [activeTab, setActiveTab] = useState<string>("ALL")
+  const [showNew, setShowNew] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [txList, setTxList] = useState(transactions)
+  const [form, setForm] = useState({
+    title: "", address: "", city: "", state: "FL", zip: "", type: "BUYER", listPrice: "", closeDate: "",
+  })
+
+  function setField(key: string, val: string) { setForm(f => ({ ...f, [key]: val })) }
+
+  async function createTransaction() {
+    if (!form.title.trim() || !form.address.trim() || !form.city.trim() || !form.zip.trim()) return
+    setSaving(true)
+    try {
+      const res = await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, listPrice: form.listPrice || undefined, closeDate: form.closeDate || undefined }),
+      })
+      const data = await res.json()
+      if (data.transaction) {
+        router.push(`/transactions/${data.transaction.id}`)
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const totalVolume = stats.reduce((sum, s) => sum + (s._sum.salePrice || 0), 0)
   const closedVolume = stats.find((s) => s.status === "CLOSED")?._sum?.salePrice || 0
   const activeCount = (stats.find((s) => s.status === "ACTIVE_LISTING")?._count || 0) +
     (stats.find((s) => s.status === "UNDER_CONTRACT")?._count || 0)
 
-  const filtered = activeTab === "ALL" ? transactions : transactions.filter((t) => t.status === activeTab)
+  const filtered = activeTab === "ALL" ? txList : txList.filter((t) => t.status === activeTab)
 
   const tabs = [
     { key: "ALL", label: "All" },
@@ -59,9 +84,9 @@ export default function TransactionsClient({ transactions, stats }: Transactions
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Transactions</h1>
-          <p className="text-gray-500 text-sm mt-0.5">{transactions.length} total transactions</p>
+          <p className="text-gray-500 text-sm mt-0.5">{txList.length} total transactions</p>
         </div>
-        <Button size="sm" className="bg-lofty-600 hover:bg-lofty-700 gap-2">
+        <Button size="sm" onClick={() => setShowNew(true)} className="bg-lofty-600 hover:bg-lofty-700 gap-2">
           <Plus className="w-4 h-4" /> New Transaction
         </Button>
       </div>
@@ -102,7 +127,7 @@ export default function TransactionsClient({ transactions, stats }: Transactions
           >
             {tab.label}
             <span className="ml-1.5 text-xs text-gray-400">
-              ({tab.key === "ALL" ? transactions.length : transactions.filter((t) => t.status === tab.key).length})
+              ({tab.key === "ALL" ? txList.length : txList.filter((t) => t.status === tab.key).length})
             </span>
           </button>
         ))}
@@ -177,12 +202,72 @@ export default function TransactionsClient({ transactions, stats }: Transactions
           <div className="bg-white rounded-xl border border-gray-200 py-16 text-center shadow-sm">
             <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
             <p className="text-gray-500 font-medium">No transactions found</p>
-            <Button className="mt-4 bg-lofty-600 hover:bg-lofty-700">
+            <Button onClick={() => setShowNew(true)} className="mt-4 bg-lofty-600 hover:bg-lofty-700">
               <Plus className="w-4 h-4 mr-2" /> New Transaction
             </Button>
           </div>
         )}
       </div>
+
+      {/* New Transaction Modal */}
+      {showNew && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between p-5 border-b border-gray-100">
+              <h2 className="font-semibold text-gray-900">Nueva Transacción</h2>
+              <button onClick={() => setShowNew(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-5 space-y-3">
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Título *</label>
+                <input value={form.title} onChange={e => setField("title", e.target.value)} placeholder="ej: 1234 SW 5th St - Compra" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Tipo</label>
+                <select value={form.type} onChange={e => setField("type", e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
+                  {TX_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Dirección *</label>
+                <input value={form.address} onChange={e => setField("address", e.target.value)} placeholder="1234 SW 5th St" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="col-span-1">
+                  <label className="text-xs text-gray-500 mb-1 block">Ciudad *</label>
+                  <input value={form.city} onChange={e => setField("city", e.target.value)} placeholder="Miami" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Estado</label>
+                  <input value={form.state} onChange={e => setField("state", e.target.value)} placeholder="FL" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">ZIP *</label>
+                  <input value={form.zip} onChange={e => setField("zip", e.target.value)} placeholder="33101" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Precio lista</label>
+                  <input type="number" value={form.listPrice} onChange={e => setField("listPrice", e.target.value)} placeholder="350000" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Fecha cierre</label>
+                  <input type="date" value={form.closeDate} onChange={e => setField("closeDate", e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                </div>
+              </div>
+            </div>
+            <div className="px-5 pb-5 flex gap-2 justify-end">
+              <Button variant="ghost" onClick={() => setShowNew(false)}>Cancelar</Button>
+              <Button onClick={createTransaction} disabled={saving || !form.title.trim() || !form.address.trim() || !form.city.trim() || !form.zip.trim()} className="bg-lofty-600 hover:bg-lofty-700">
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Crear Transacción"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
