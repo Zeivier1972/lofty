@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
@@ -9,7 +9,7 @@ import {
   CheckSquare, Zap, Clock, Pin, Trash2, Send, MoreVertical,
   Building, Globe, Facebook, Instagram, Linkedin, Bot,
   TrendingUp, Eye, Star, ChevronRight, ChevronDown,
-  Activity, Search, Loader2, X,
+  Activity, Search, Loader2, X, PhoneCall, PhoneMissed, PhoneOff, MicOff, Play,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -69,7 +69,7 @@ const ACTIVITY_ICONS: Record<string, { icon: string; color: string }> = {
   CONTACT_CREATED: { icon: "👤", color: "bg-gray-100" },
 }
 
-type TabId = "overview" | "properties" | "searches" | "transactions" | "documents" | "automations"
+type TabId = "overview" | "properties" | "searches" | "transactions" | "documents" | "automations" | "calls"
 
 export default function ContactDetailClient({ contact, smsMessages = [], stages = [], pipelineId = "" }: { contact: any; smsMessages?: any[]; stages?: any[]; pipelineId?: string }) {
   const { toast } = useToast()
@@ -95,6 +95,10 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
   const [newAptStart, setNewAptStart] = useState("")
   const [newAptEnd, setNewAptEnd] = useState("")
   const [addingApt, setAddingApt] = useState(false)
+  const [calls, setCalls] = useState<any[]>([])
+  const [callsLoaded, setCallsLoaded] = useState(false)
+  const [loadingCalls, setLoadingCalls] = useState(false)
+  const [expandedCallId, setExpandedCallId] = useState<string | null>(null)
   const [showNewTx, setShowNewTx] = useState(false)
   const [newTxForm, setNewTxForm] = useState({ title: "", address: "", city: "", state: "FL", zip: "", type: "BUYER", listPrice: "" })
   const [savingTx, setSavingTx] = useState(false)
@@ -246,7 +250,21 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
     { id: "transactions", label: "Transactions", count: contact.transactions?.length },
     { id: "documents", label: "Documents" },
     { id: "automations", label: `Automations${contact.enrollments?.length > 0 ? ` (${contact.enrollments.length})` : ""}` },
+    { id: "calls", label: "Llamadas" },
   ]
+
+  const loadCalls = useCallback(async () => {
+    if (callsLoaded) return
+    setLoadingCalls(true)
+    try {
+      const res = await fetch(`/api/contacts/${contact.id}/calls`)
+      const data = await res.json()
+      setCalls(data.calls || [])
+      setCallsLoaded(true)
+    } finally {
+      setLoadingCalls(false)
+    }
+  }, [contact.id, callsLoaded])
 
   return (
     <div className="h-full flex flex-col">
@@ -497,7 +515,7 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
           <div className="border-b border-gray-200 bg-white sticky top-0 z-10">
             <div className="flex gap-0 px-4 overflow-x-auto">
               {TABS.map(tab => (
-                <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                <button key={tab.id} onClick={() => { setActiveTab(tab.id as TabId); if (tab.id === "calls") loadCalls() }}
                   className={cn("px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors",
                     activeTab === tab.id
                       ? "border-blue-600 text-blue-600"
@@ -993,6 +1011,104 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
                 <Button variant="outline" size="sm" className="mt-4 gap-2">
                   <Plus className="w-4 h-4" /> Upload Document
                 </Button>
+              </div>
+            )}
+
+            {/* Calls Tab */}
+            {activeTab === "calls" && (
+              <div className="space-y-3">
+                {loadingCalls ? (
+                  <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-gray-300" /></div>
+                ) : calls.length === 0 ? (
+                  <div className="text-center py-12">
+                    <PhoneCall className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+                    <p className="text-gray-400 text-sm">No hay llamadas registradas para este contacto</p>
+                  </div>
+                ) : (
+                  calls.map((call: any) => {
+                    const isExpanded = expandedCallId === call.id
+                    const dur = call.duration ? `${Math.floor(call.duration / 60)}:${String(call.duration % 60).padStart(2, "0")}` : null
+                    const disposition = call.disposition || call.status
+                    const isVoicemail = disposition?.toLowerCase().includes("voicemail") || disposition === "voicemail"
+                    const isConnected = ["answered", "connected", "REACHED", "customerLiveAnswer"].some(v => disposition?.includes(v))
+                    const Icon = isVoicemail ? MicOff : isConnected ? PhoneCall : PhoneOff
+                    const iconColor = isVoicemail ? "text-amber-500" : isConnected ? "text-green-500" : "text-gray-400"
+                    const proxyUrl = call.recordingUrl ? `/api/dialer/recording-proxy?url=${encodeURIComponent(call.recordingUrl)}` : null
+
+                    return (
+                      <div key={call.id} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+                        <button
+                          onClick={() => setExpandedCallId(isExpanded ? null : call.id)}
+                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left"
+                        >
+                          <div className={cn("w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0", iconColor.replace("text-", "text-"))}>
+                            <Icon className={cn("w-4 h-4", iconColor)} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-medium text-gray-900">
+                                {isVoicemail ? "Buzón de voz" : isConnected ? "Llamada contestada" : "Sin respuesta"}
+                              </span>
+                              {dur && <span className="text-xs text-gray-400">{dur} min</span>}
+                              {call.recordingUrl && (
+                                <span className="text-[10px] bg-blue-50 text-blue-600 border border-blue-100 rounded-full px-2 py-0.5 flex items-center gap-1">
+                                  <Play className="w-2.5 h-2.5" /> Grabación
+                                </span>
+                              )}
+                              {call.aiSummary && (
+                                <span className="text-[10px] bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-full px-2 py-0.5">
+                                  ✦ Resumen IA
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-gray-400 mt-0.5">
+                              Sofía · {new Date(call.createdAt).toLocaleString("es", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                            </p>
+                          </div>
+                          <ChevronDown className={cn("w-4 h-4 text-gray-400 flex-shrink-0 transition-transform", isExpanded && "rotate-180")} />
+                        </button>
+
+                        {isExpanded && (
+                          <div className="px-4 pb-4 border-t border-gray-50 space-y-3">
+                            {/* Audio player */}
+                            {proxyUrl && (
+                              <div className="mt-3">
+                                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Grabación</p>
+                                <audio controls className="w-full h-10" src={proxyUrl}>
+                                  Tu navegador no soporta audio.
+                                </audio>
+                              </div>
+                            )}
+
+                            {/* AI Summary */}
+                            {call.aiSummary && (
+                              <div className="bg-indigo-50 rounded-xl p-3">
+                                <p className="text-[10px] font-semibold text-indigo-500 uppercase tracking-wider mb-1">Resumen IA</p>
+                                <p className="text-sm text-indigo-900 leading-relaxed whitespace-pre-wrap">{call.aiSummary}</p>
+                              </div>
+                            )}
+
+                            {/* Transcription */}
+                            {call.transcription && (
+                              <div className="bg-gray-50 rounded-xl p-3 max-h-48 overflow-y-auto">
+                                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Transcripción</p>
+                                <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap">{call.transcription}</p>
+                              </div>
+                            )}
+
+                            {/* Notes */}
+                            {call.notes && (
+                              <div>
+                                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Notas</p>
+                                <p className="text-sm text-gray-700">{call.notes}</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })
+                )}
               </div>
             )}
 
