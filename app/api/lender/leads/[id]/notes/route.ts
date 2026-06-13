@@ -13,9 +13,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (!content?.trim()) return NextResponse.json({ error: "Nota vacía" }, { status: 400 })
 
   const share = await prisma.leadShare.findUnique({ where: { id: params.id } })
-  if (!share || share.loanOfficerId !== partner.id || share.status !== "PAID") {
-    return NextResponse.json({ error: "Lead no encontrado" }, { status: 404 })
-  }
+  const canAccess = share && share.loanOfficerId === partner.id &&
+    (share.status === "PAID" || (share.status === "ACTIVE" && partner.subscriptionStatus === "active"))
+  if (!canAccess) return NextResponse.json({ error: "Lead no encontrado" }, { status: 404 })
 
   const note = await prisma.leadShareNote.create({
     data: { leadShareId: share.id, author: "LO", content: content.trim() },

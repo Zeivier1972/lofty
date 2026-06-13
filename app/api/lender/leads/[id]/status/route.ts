@@ -17,9 +17,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   }
 
   const share = await prisma.leadShare.findUnique({ where: { id: params.id } })
-  if (!share || share.loanOfficerId !== partner.id || share.status !== "PAID") {
-    return NextResponse.json({ error: "Lead no encontrado" }, { status: 404 })
-  }
+  const canAccess = share && share.loanOfficerId === partner.id &&
+    (share.status === "PAID" || (share.status === "ACTIVE" && partner.subscriptionStatus === "active"))
+  if (!canAccess) return NextResponse.json({ error: "Lead no encontrado" }, { status: 404 })
 
   await prisma.leadShare.update({ where: { id: share.id }, data: { loStatus } })
 
