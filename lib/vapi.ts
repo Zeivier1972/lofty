@@ -140,6 +140,7 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
   if (opts.propertyType) ctx.push(`Tipo de propiedad: ${opts.propertyType}`)
 
   // Personalize first message from real interest only — never expose campaign/platform names
+  const firstName = opts.contactName.split(" ")[0]
   const isPreCon = opts.propertyType === "PRE_CONSTRUCTION" || /pre.?construcci/i.test(opts.campaign || "")
   const interestHint = opts.location
     ? `propiedades en ${opts.location}`
@@ -147,8 +148,8 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
       ? "propiedades en preconstrucción y oportunidades de inversión en Miami"
       : null
   const firstMessage = interestHint
-    ? `¡Hola! Habla Sofía, de la oficina de Catherine Gómez, asesores de bienes raíces en Miami. Te llamo porque mostraste interés en ${interestHint}. ¿Tienes un momentito para hablar?`
-    : FIRST_MESSAGE
+    ? `¡Hola, ${firstName}! Habla Sofía, de la oficina de Catherine Gómez, asesores de bienes raíces en Miami. Te llamo porque mostraste interés en ${interestHint}. ¿Tienes un momentito para hablar?`
+    : `¡Hola, ${firstName}! Habla Sofía, de la oficina de Catherine Gómez, asesores de bienes raíces aquí en Miami. Te llamo porque vi que estás buscando una propiedad y quería hablar contigo un momentico. ¿Cómo estás? ¿Tienes un par de minutos?`
 
   const vmMsg = opts.voicemailMsg || DEFAULT_VOICEMAIL_MSG
 
