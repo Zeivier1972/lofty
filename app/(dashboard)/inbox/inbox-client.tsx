@@ -330,38 +330,59 @@ export default function InboxClient() {
               </div>
 
               {/* WhatsApp template selector */}
-              {replyChannel === "whatsapp" && (
-                <div className="mb-2 p-2.5 bg-green-50 border border-green-100 rounded-xl">
-                  <p className="text-[10px] text-green-700 font-semibold mb-1.5">PLANTILLAS APROBADAS</p>
-                  <div className="flex gap-2 flex-wrap">
-                    <button
-                      onClick={() => {
-                        setSelectedTemplateSid("HXc53bdda85fa30d72254fbf79b8278ae7")
-                        setReplyText(`Hola ${conversation?.contact.firstName}, Catherine Gomez tiene nuevas propiedades disponibles en Miami que podrían interesarte. ¿Te gustaría recibir más información? Responde SÍ y te contactamos.`)
-                      }}
-                      className={cn(
-                        "text-xs px-2.5 py-1 rounded-lg border font-medium transition-all",
-                        selectedTemplateSid === "HXc53bdda85fa30d72254fbf79b8278ae7"
-                          ? "bg-green-500 text-white border-green-500"
-                          : "bg-white text-green-700 border-green-300 hover:bg-green-100"
-                      )}
-                    >
-                      ✅ Re-enganche
-                    </button>
-                    <button
-                      onClick={() => { setSelectedTemplateSid(null); setReplyText("") }}
-                      className={cn(
-                        "text-xs px-2.5 py-1 rounded-lg border font-medium transition-all",
-                        !selectedTemplateSid
-                          ? "bg-gray-500 text-white border-gray-500"
-                          : "bg-white text-gray-500 border-gray-200 hover:bg-gray-100"
-                      )}
-                    >
-                      Libre (solo si contestó antes)
-                    </button>
+              {replyChannel === "whatsapp" && (() => {
+                const phone = conversation?.contact.phone || ""
+                const isUS = phone.startsWith("+1") || (phone.replace(/\D/g, "").length === 10 && !phone.startsWith("+"))
+                if (isUS) {
+                  return (
+                    <div className="mb-2 p-2.5 bg-amber-50 border border-amber-200 rounded-xl">
+                      <p className="text-xs font-semibold text-amber-800 mb-1">⚠️ Número de EE.UU. — Plantillas bloqueadas</p>
+                      <p className="text-[11px] text-amber-700 leading-snug">
+                        Desde abril 2025, Meta bloquea plantillas de Marketing a números +1 (EE.UU.).
+                        Usa <strong>SMS</strong> para contactar a este lead.
+                      </p>
+                      <button
+                        onClick={() => { setReplyChannel("sms"); setSelectedTemplateSid(null); setReplyText("") }}
+                        className="mt-2 text-xs px-3 py-1 bg-blue-500 text-white rounded-full font-medium hover:bg-blue-600 transition-colors"
+                      >
+                        Cambiar a SMS
+                      </button>
+                    </div>
+                  )
+                }
+                return (
+                  <div className="mb-2 p-2.5 bg-green-50 border border-green-100 rounded-xl">
+                    <p className="text-[10px] text-green-700 font-semibold mb-1.5">PLANTILLAS APROBADAS</p>
+                    <div className="flex gap-2 flex-wrap">
+                      <button
+                        onClick={() => {
+                          setSelectedTemplateSid("HXc53bdda85fa30d72254fbf79b8278ae7")
+                          setReplyText(`Hola ${conversation?.contact.firstName}, Catherine Gomez tiene nuevas propiedades disponibles en Miami que podrían interesarte. ¿Te gustaría recibir más información? Responde SÍ y te contactamos.`)
+                        }}
+                        className={cn(
+                          "text-xs px-2.5 py-1 rounded-lg border font-medium transition-all",
+                          selectedTemplateSid === "HXc53bdda85fa30d72254fbf79b8278ae7"
+                            ? "bg-green-500 text-white border-green-500"
+                            : "bg-white text-green-700 border-green-300 hover:bg-green-100"
+                        )}
+                      >
+                        ✅ Re-enganche
+                      </button>
+                      <button
+                        onClick={() => { setSelectedTemplateSid(null); setReplyText("") }}
+                        className={cn(
+                          "text-xs px-2.5 py-1 rounded-lg border font-medium transition-all",
+                          !selectedTemplateSid
+                            ? "bg-gray-500 text-white border-gray-500"
+                            : "bg-white text-gray-500 border-gray-200 hover:bg-gray-100"
+                        )}
+                      >
+                        Libre (solo si contestó antes)
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )}
+                )
+              })()}
               <div className="flex gap-2">
                 <textarea
                   value={replyText}
