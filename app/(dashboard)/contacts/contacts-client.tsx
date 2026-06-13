@@ -160,13 +160,45 @@ function PipelineSettingsModal({
 function ImportModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
   const [csv, setCsv] = useState("")
   const [importing, setImporting] = useState(false)
-  const [result, setResult] = useState<{ imported: number; skipped: number; errors: string[] } | null>(null)
+  const [result, setResult] = useState<{ imported: number; skipped: number; errors: string[]; total: number } | null>(null)
+  const [preview, setPreview] = useState<{ headers: string[]; rows: string[][] } | null>(null)
   const { toast } = useToast()
 
-  const SAMPLE_CSV = `first_name,last_name,email,phone,status,source,type,budget,area,bedrooms,notes
-Maria,Garcia,maria@email.com,305-555-0101,lead,zillow,buyer,450000,Coral Gables,3,Looking for single family
-Carlos,Rodriguez,carlos@email.com,786-555-0202,prospect,referral,seller,,Brickell,,Wants to sell condo
-Ana,Martinez,ana@email.com,305-555-0303,lead,facebook,buyer,650000,Coconut Grove,4,Needs pool`
+  function parsePreview(raw: string) {
+    const lines = raw.trim().split(/\r?\n/).filter(l => l.trim()).slice(0, 6)
+    if (lines.length < 2) return null
+    const parseRow = (row: string): string[] => {
+      const result: string[] = []
+      let cur = "", inQ = false
+      for (const ch of row) {
+        if (ch === '"') { inQ = !inQ }
+        else if (ch === ',' && !inQ) { result.push(cur.trim()); cur = "" }
+        else { cur += ch }
+      }
+      result.push(cur.trim())
+      return result
+    }
+    const headers = parseRow(lines[0])
+    const rows = lines.slice(1).map(parseRow)
+    return { headers, rows }
+  }
+
+  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = ev => {
+      const text = ev.target?.result as string
+      setCsv(text)
+      setPreview(parsePreview(text))
+    }
+    reader.readAsText(file)
+  }
+
+  function handlePaste(text: string) {
+    setCsv(text)
+    setPreview(parsePreview(text))
+  }
 
   async function handleImport() {
     if (!csv.trim()) return
@@ -188,25 +220,17 @@ Ana,Martinez,ana@email.com,305-555-0303,lead,facebook,buyer,650000,Coconut Grove
     }
   }
 
-  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = ev => setCsv(ev.target?.result as string)
-    reader.readAsText(file)
-  }
-
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-5 border-b">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-lofty-100 rounded-lg flex items-center justify-center">
               <Upload className="w-4 h-4 text-lofty-600" />
             </div>
             <div>
-              <h2 className="font-bold text-gray-900">Bulk Import Leads</h2>
-              <p className="text-xs text-gray-500">Upload CSV — IDX search profiles auto-assigned from lead data</p>
+              <h2 className="font-bold text-gray-900">Importar Leads (CSV)</h2>
+              <p className="text-xs text-gray-500">Compatible con exportaciones de Lofty CRM y formato simple</p>
             </div>
           </div>
           <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg">
@@ -219,58 +243,95 @@ Ana,Martinez,ana@email.com,305-555-0303,lead,facebook,buyer,650000,Coconut Grove
             <div className="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-xl">
               <CheckCircle2 className="w-6 h-6 text-green-600 flex-shrink-0" />
               <div>
-                <p className="font-semibold text-green-800">Import Complete</p>
-                <p className="text-sm text-green-700">{result.imported} imported · {result.skipped} skipped (duplicates)</p>
+                <p className="font-semibold text-green-800">Importación completa</p>
+                <p className="text-sm text-green-700">{result.imported} importados · {result.skipped} omitidos (duplicados) · {result.total} total en archivo</p>
               </div>
             </div>
             {result.errors.length > 0 && (
               <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                <p className="text-xs font-medium text-red-700 mb-1">Errors ({result.errors.length}):</p>
-                {result.errors.slice(0, 5).map((e, i) => <p key={i} className="text-xs text-red-600">{e}</p>)}
+                <p className="text-xs font-medium text-red-700 mb-1">Errores ({result.errors.length}):</p>
+                {result.errors.map((e, i) => <p key={i} className="text-xs text-red-600">{e}</p>)}
               </div>
             )}
-            <Button onClick={onClose} className="w-full bg-lofty-600 hover:bg-lofty-700">Done</Button>
+            <Button onClick={onClose} className="w-full bg-lofty-600 hover:bg-lofty-700">Listo</Button>
           </div>
         ) : (
           <div className="p-5 space-y-4">
-            <div className="border-2 border-dashed border-gray-200 rounded-xl p-4 text-center">
+            {/* Upload zone */}
+            <div className="border-2 border-dashed border-gray-200 rounded-xl p-5 text-center hover:border-lofty-400 transition-colors">
               <FileText className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-              <p className="text-sm font-medium text-gray-700 mb-1">Upload CSV file</p>
-              <p className="text-xs text-gray-400 mb-3">Supports: first_name, last_name, email, phone, status, source, type, budget, area, bedrooms</p>
+              <p className="text-sm font-medium text-gray-700 mb-1">Arrastra tu CSV aquí o haz clic para seleccionar</p>
+              <p className="text-xs text-gray-400 mb-3">Formatos soportados: exportación Lofty CRM · CSV simple</p>
               <label className="cursor-pointer">
-                <span className="bg-lofty-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-lofty-700 transition-colors">Choose File</span>
+                <span className="bg-lofty-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-lofty-700 transition-colors">Seleccionar archivo</span>
                 <input type="file" accept=".csv,.txt" onChange={handleFile} className="hidden" />
               </label>
             </div>
 
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-sm font-medium text-gray-700">Or paste CSV data</label>
-                <button onClick={() => setCsv(SAMPLE_CSV)} className="text-xs text-lofty-600 hover:text-lofty-700 font-medium">
-                  Load sample
-                </button>
+            {/* Supported columns info */}
+            <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+              <p className="text-xs font-semibold text-blue-700 mb-1.5">Columnas reconocidas del export de Lofty:</p>
+              <div className="flex flex-wrap gap-1">
+                {["First Name","Last Name","Email","Phone","Lead Type","Mailing Street Addr.","Mailing City","Mailing State","Mailing Zip Code","Source","Tag","Group1","Group2","Pipeline","Birthday","Max Price","Min Price","Min Bedroom","Property Type","Inquired City","Unsubscribed","Phone DNC status","Number Consent","Buyer Timeframe","Pre-Qualified","Family Member First Name"].map(col => (
+                  <span key={col} className="text-[10px] px-1.5 py-0.5 bg-white border border-blue-200 rounded text-blue-600">{col}</span>
+                ))}
               </div>
-              <textarea
-                value={csv}
-                onChange={e => setCsv(e.target.value)}
-                rows={8}
-                placeholder="first_name,last_name,email,phone,status,source,type,budget,area..."
-                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-xs font-mono focus:ring-2 focus:ring-lofty-500 outline-none resize-none"
-              />
             </div>
 
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex gap-2">
-              <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-              <div className="text-xs text-amber-700">
-                <strong>IDX auto-assign:</strong> The <code>type</code> (buyer/seller), <code>budget</code>, <code>area</code>, and <code>bedrooms</code> columns will automatically set each contact's search profile for IDX matching once connected.
+            {/* Preview table */}
+            {preview && (
+              <div>
+                <p className="text-xs font-medium text-gray-600 mb-1.5">Vista previa — primeras {preview.rows.length} filas:</p>
+                <div className="overflow-x-auto border border-gray-200 rounded-xl">
+                  <table className="text-xs w-full">
+                    <thead className="bg-gray-50 border-b border-gray-200">
+                      <tr>
+                        {preview.headers.slice(0, 8).map((h, i) => (
+                          <th key={i} className="px-2 py-1.5 text-left text-gray-500 font-medium whitespace-nowrap">{h}</th>
+                        ))}
+                        {preview.headers.length > 8 && <th className="px-2 py-1.5 text-gray-400">+{preview.headers.length - 8} más</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {preview.rows.map((row, ri) => (
+                        <tr key={ri} className="border-b border-gray-100 last:border-0">
+                          {row.slice(0, 8).map((cell, ci) => (
+                            <td key={ci} className="px-2 py-1 text-gray-700 max-w-[120px] truncate">{cell}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">{csv.trim().split(/\r?\n/).length - 1} filas en total (sin encabezado)</p>
               </div>
-            </div>
+            )}
+
+            {/* Paste fallback */}
+            {!preview && (
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1.5">O pega el CSV directamente</label>
+                <textarea
+                  value={csv}
+                  onChange={e => handlePaste(e.target.value)}
+                  rows={6}
+                  placeholder="First Name,Last Name,Email,Phone,Lead Type..."
+                  className="w-full border border-gray-300 rounded-xl px-4 py-3 text-xs font-mono focus:ring-2 focus:ring-lofty-500 outline-none resize-none"
+                />
+              </div>
+            )}
+
+            {csv && preview && (
+              <button onClick={() => { setCsv(""); setPreview(null) }} className="text-xs text-gray-400 hover:text-red-500 transition-colors">
+                × Borrar y elegir otro archivo
+              </button>
+            )}
 
             <div className="flex gap-3">
-              <Button onClick={handleImport} disabled={importing || !csv.trim()} className="flex-1 bg-lofty-600 hover:bg-lofty-700">
-                {importing ? "Importing..." : "Import Contacts"}
+              <Button onClick={handleImport} disabled={importing || !csv.trim()} className="flex-1 bg-lofty-600 hover:bg-lofty-700 gap-2">
+                {importing ? <><Loader2 className="w-4 h-4 animate-spin" /> Importando...</> : `Importar${preview ? ` ${csv.trim().split(/\r?\n/).length - 1} leads` : ""}`}
               </Button>
-              <Button onClick={onClose} variant="outline" className="flex-1">Cancel</Button>
+              <Button onClick={onClose} variant="outline">Cancelar</Button>
             </div>
           </div>
         )}
