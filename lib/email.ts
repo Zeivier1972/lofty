@@ -74,7 +74,8 @@ async function sendViaNodemailer(opts: EmailOptions): Promise<boolean> {
 // come back through Resend's inbound webhook instead of Catherine's inbox.
 function withReplyTo(opts: EmailOptions): EmailOptions {
   if (opts.replyTo) return opts
-  const inboundDomain = process.env.INBOUND_EMAIL_DOMAIN
+  // Use custom domain if set, otherwise fall back to Resend's built-in inbound domain
+  const inboundDomain = process.env.INBOUND_EMAIL_DOMAIN || process.env.RESEND_INBOUND_DOMAIN
   if (!inboundDomain) return opts
   return { ...opts, replyTo: `reply@${inboundDomain}` }
 }

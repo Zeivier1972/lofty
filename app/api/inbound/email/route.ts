@@ -3,17 +3,21 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
-// Resend inbound email webhook
-// Receives replies from contacts and stores them against the matching contact.
+// Resend inbound email webhook (event type: email.received)
+// Resend wraps the payload as { type: "email.received", data: { email: {...} } }
+// but also supports flat format — handle both.
 export async function POST(req: Request) {
   try {
     const payload = await req.json()
-    console.log("[Inbound email] received from:", payload.from)
+
+    // Unwrap Resend's event envelope if present
+    const email = payload.data?.email ?? payload
+    console.log("[Inbound email] received from:", email.from, "type:", payload.type)
 
     // Resend sends either a string or array for `to`
-    const fromRaw: string = Array.isArray(payload.from) ? payload.from[0] : (payload.from || "")
-    const subject: string = payload.subject || "(sin asunto)"
-    const body: string = payload.text || payload.plain_text || payload.html || ""
+    const fromRaw: string = Array.isArray(email.from) ? email.from[0] : (email.from || "")
+    const subject: string = email.subject || "(sin asunto)"
+    const body: string = email.text || email.plain_text || email.html || ""
 
     // Extract sender email address — handle "Name <email@example.com>" format
     const fromMatch = fromRaw.match(/<([^>]+)>/) || fromRaw.match(/([^\s]+@[^\s]+)/)
@@ -26,7 +30,7 @@ export async function POST(req: Request) {
 
     // Find the contact by email address
     const contact = await prisma.contact.findFirst({
-      where: { email: { equals: fromEmail, mode: "insensitive" } },
+      where: { email: { equals: fromEmail, mode: "insensitive" } } as any,
       select: { id: true, firstName: true, lastName: true },
     })
 
