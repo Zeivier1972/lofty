@@ -102,6 +102,10 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
   const [showNewTx, setShowNewTx] = useState(false)
   const [newTxForm, setNewTxForm] = useState({ title: "", address: "", city: "", state: "FL", zip: "", type: "BUYER", listPrice: "" })
   const [savingTx, setSavingTx] = useState(false)
+  const [emailOpen, setEmailOpen] = useState(false)
+  const [emailSubject, setEmailSubject] = useState("")
+  const [emailBody, setEmailBody] = useState("")
+  const [sendingEmail, setSendingEmail] = useState(false)
 
   const triggerSofiaCall = async () => {
     if (!contact.phone) return
@@ -267,6 +271,7 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
   }, [contact.id, callsLoaded])
 
   return (
+    <>
     <div className="h-full flex flex-col">
       {/* AI Insight Banner */}
       {insight && (
@@ -368,11 +373,12 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
               <Phone className="w-4 h-4" />
             </a>
             <SmsButton contactId={contact.id} phone={contact.phone} name={`${contact.firstName} ${contact.lastName || ""}`.trim()} />
-            <a href={`mailto:${contact.email}`}
+            <button
+              onClick={() => contact.email && setEmailOpen(true)}
               className={cn("flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-white text-sm font-medium transition-colors",
                 contact.email ? "bg-purple-500 hover:bg-purple-600" : "bg-gray-200 cursor-not-allowed text-gray-400")}>
               <Mail className="w-4 h-4" />
-            </a>
+            </button>
             <SofiaCallButton contactId={contact.id} phone={contact.phone} name={`${contact.firstName} ${contact.lastName || ""}`.trim()} />
           </div>
 
@@ -1150,6 +1156,74 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
         </div>
       </div>
     </div>
+
+    {/* Email compose modal */}
+    {emailOpen && (
+      <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 px-4" onClick={() => setEmailOpen(false)}>
+        <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-5 space-y-4" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-semibold text-gray-900">Nuevo email</p>
+              <p className="text-sm text-gray-400">{contact.email}</p>
+            </div>
+            <button onClick={() => setEmailOpen(false)} className="text-gray-400 hover:text-gray-600 text-xl font-light">×</button>
+          </div>
+          <input
+            autoFocus
+            type="text"
+            value={emailSubject}
+            onChange={e => setEmailSubject(e.target.value)}
+            placeholder="Asunto"
+            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300"
+          />
+          <textarea
+            rows={6}
+            value={emailBody}
+            onChange={e => setEmailBody(e.target.value)}
+            placeholder={`Escribe tu mensaje para ${contact.firstName}...`}
+            className="w-full border border-gray-200 rounded-xl p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-300"
+          />
+          <AiAssistBar contactId={contact.id} draft={emailBody} onApply={setEmailBody} />
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setEmailOpen(false)}
+              className="px-4 py-2.5 rounded-xl text-sm text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors">
+              Cancelar
+            </button>
+            <button
+              disabled={sendingEmail || !emailSubject.trim() || !emailBody.trim()}
+              onClick={async () => {
+                setSendingEmail(true)
+                try {
+                  const res = await fetch("/api/emails/send", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ contactId: contact.id, to: contact.email, subject: emailSubject, body: emailBody }),
+                  })
+                  const data = await res.json()
+                  if (res.ok) {
+                    toast({ title: "✅ Email enviado", description: `Enviado a ${contact.email}` })
+                    setEmailOpen(false)
+                    setEmailSubject("")
+                    setEmailBody("")
+                  } else {
+                    toast({ title: "Error", description: data.error || "No se pudo enviar el email", variant: "destructive" })
+                  }
+                } catch {
+                  toast({ title: "Error", description: "No se pudo conectar", variant: "destructive" })
+                } finally {
+                  setSendingEmail(false)
+                }
+              }}
+              className="flex items-center gap-2 bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition-colors">
+              <Send className="w-4 h-4" />
+              {sendingEmail ? "Enviando..." : "Enviar"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   )
 }
 
