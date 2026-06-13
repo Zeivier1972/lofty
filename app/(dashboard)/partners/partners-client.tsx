@@ -179,6 +179,22 @@ export default function PartnersClient() {
                     className="w-20 border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300"
                   />
                   <div className="flex-1" />
+                  {p.subscriptionStatus !== "active" && (
+                    <button
+                      onClick={async () => {
+                        await fetch(`/api/partners/${p.id}`, {
+                          method: "PATCH",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ subscriptionStatus: "active" }),
+                        })
+                        fetchPartners()
+                        toast({ title: "Acceso activado", description: `${p.name} ahora tiene acceso completo` })
+                      }}
+                      className="text-xs text-indigo-500 hover:text-indigo-700 transition-colors font-medium"
+                    >
+                      Dar acceso gratis
+                    </button>
+                  )}
                   {p.subscriptionStatus === "active" && (
                     <button onClick={() => cancelSubscription(p)} className="text-xs text-red-400 hover:text-red-600 transition-colors">
                       Cancelar suscripción

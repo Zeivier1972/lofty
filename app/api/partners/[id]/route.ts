@@ -18,6 +18,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (body.name) data.name = body.name
   if (body.company !== undefined) data.company = body.company || null
   if (body.phone !== undefined) data.phone = body.phone || null
+  if (body.subscriptionStatus !== undefined) data.subscriptionStatus = body.subscriptionStatus
 
   let tempPassword: string | undefined
   if (body.resetPassword) {
