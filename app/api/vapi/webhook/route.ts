@@ -118,6 +118,9 @@ export async function POST(req: Request) {
     const payload = await req.json()
     const { type, call, toolCallList } = payload
 
+    // Log every incoming event so we can see what VAPI is sending in Railway logs
+    console.log(`[VAPI webhook] type=${type} contactId=${call?.metadata?.contactId} callId=${call?.id}`)
+
     const contactId: string | undefined = call?.metadata?.contactId
 
     // ── Tool calls ────────────────────────────────────────────────────────────
@@ -152,7 +155,12 @@ export async function POST(req: Request) {
     }
 
     // ── End of call report ────────────────────────────────────────────────────
-    if (type === "end-of-call-report" && contactId) {
+    // VAPI sends "end-of-call-report" in most versions; some older versions use
+    // "status-update" with status "ended". Handle both.
+    const isEndOfCall = type === "end-of-call-report" ||
+      (type === "status-update" && (payload.status === "ended" || call?.status === "ended"))
+
+    if (isEndOfCall && contactId) {
       const endedReason: string = payload.endedReason || payload.call?.endedReason || ""
       const transcript: string = payload.transcript || payload.artifact?.transcript || ""
       const summary: string = payload.summary || payload.analysis?.summary || payload.artifact?.summary || ""
