@@ -116,12 +116,18 @@ async function advanceSession(sessionId: string, completedIndex: number, endedRe
 export async function POST(req: Request) {
   try {
     const payload = await req.json()
-    const { type, call, toolCallList } = payload
 
-    // Log every incoming event so we can see what VAPI is sending in Railway logs
-    console.log(`[VAPI webhook] type=${type} contactId=${call?.metadata?.contactId} callId=${call?.id}`)
+    // VAPI newer versions wrap everything under payload.message; older versions send flat.
+    // Handle both so the same handler works regardless of VAPI SDK version.
+    const msg = payload.message ?? payload
+    const { type, call, toolCallList } = msg
 
-    const contactId: string | undefined = call?.metadata?.contactId
+    // Log the raw payload shape to help diagnose format issues
+    console.log(`[VAPI webhook] type=${type} contactId=${call?.metadata?.contactId} callId=${call?.id} hasMessage=${!!payload.message}`)
+
+    // VAPI may place metadata at call.metadata OR top-level metadata
+    const contactId: string | undefined =
+      call?.metadata?.contactId || msg.metadata?.contactId || payload.metadata?.contactId
 
     // ── Tool calls ────────────────────────────────────────────────────────────
     if (type === "tool-calls" && toolCallList?.length > 0) {
@@ -158,15 +164,15 @@ export async function POST(req: Request) {
     // VAPI sends "end-of-call-report" in most versions; some older versions use
     // "status-update" with status "ended". Handle both.
     const isEndOfCall = type === "end-of-call-report" ||
-      (type === "status-update" && (payload.status === "ended" || call?.status === "ended"))
+      (type === "status-update" && (msg.status === "ended" || call?.status === "ended"))
 
     if (isEndOfCall && contactId) {
-      const endedReason: string = payload.endedReason || payload.call?.endedReason || ""
-      const transcript: string = payload.transcript || payload.artifact?.transcript || ""
-      const summary: string = payload.summary || payload.analysis?.summary || payload.artifact?.summary || ""
-      const recordingUrl: string = payload.artifact?.recordingUrl || payload.recordingUrl || payload.call?.recordingUrl || ""
-      const duration = payload.call?.endedAt && payload.call?.startedAt
-        ? Math.round((new Date(payload.call.endedAt).getTime() - new Date(payload.call.startedAt).getTime()) / 1000)
+      const endedReason: string = msg.endedReason || call?.endedReason || ""
+      const transcript: string = msg.transcript || msg.artifact?.transcript || ""
+      const summary: string = msg.summary || msg.analysis?.summary || msg.artifact?.summary || ""
+      const recordingUrl: string = msg.artifact?.recordingUrl || msg.recordingUrl || call?.recordingUrl || ""
+      const duration = call?.endedAt && call?.startedAt
+        ? Math.round((new Date(call.endedAt).getTime() - new Date(call.startedAt).getTime()) / 1000)
         : 0
       console.log(`[VAPI webhook] end-of-call contactId=${contactId} reason=${endedReason} duration=${duration}s transcript=${transcript.length}ch`)
 
@@ -207,8 +213,8 @@ export async function POST(req: Request) {
         )
 
         // Advance power-dial session if this was a session call
-        const sessionId: string | undefined = call?.metadata?.sessionId
-        const sessionIndex: number | undefined = call?.metadata?.sessionIndex
+        const sessionId: string | undefined = call?.metadata?.sessionId || msg.metadata?.sessionId
+        const sessionIndex: number | undefined = call?.metadata?.sessionIndex ?? msg.metadata?.sessionIndex
         if (sessionId) {
           advanceSession(sessionId, sessionIndex ?? 0, endedReason).catch(e =>
             console.error("[PowerDial] advance error:", e)
