@@ -211,7 +211,7 @@ export async function POST(req: Request) {
     const dupSkipped = parsed.length - toCreate.length
 
     // ── Phase 3: pre-upsert all tags ────────────────────────────────────
-    const allTagNames = [...new Set(toCreate.flatMap(r => r.tagNames))]
+    const allTagNames = Array.from(new Set(toCreate.flatMap(r => r.tagNames)))
     const tagIdMap = new Map<string, string>()
     for (const name of allTagNames) {
       const tag = await prisma.tag.upsert({
