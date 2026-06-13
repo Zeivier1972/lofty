@@ -336,12 +336,12 @@ export default function InboxClient() {
                   <div className="flex gap-2 flex-wrap">
                     <button
                       onClick={() => {
-                        setSelectedTemplateSid("HX5bf6e0866ea70408e9387e46939a16bd")
+                        setSelectedTemplateSid("HXc53bdda85fa30d72254fbf79b8278ae7")
                         setReplyText(`Hola ${conversation?.contact.firstName}, Catherine Gomez tiene nuevas propiedades disponibles en Miami que podrían interesarte. ¿Te gustaría recibir más información? Responde SÍ y te contactamos.`)
                       }}
                       className={cn(
                         "text-xs px-2.5 py-1 rounded-lg border font-medium transition-all",
-                        selectedTemplateSid === "HX5bf6e0866ea70408e9387e46939a16bd"
+                        selectedTemplateSid === "HXc53bdda85fa30d72254fbf79b8278ae7"
                           ? "bg-green-500 text-white border-green-500"
                           : "bg-white text-green-700 border-green-300 hover:bg-green-100"
                       )}
