@@ -458,7 +458,7 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
 
                   {/* Activity filter */}
                   <div className="flex items-center gap-1 flex-wrap">
-                    {["All", "Notes", "Calls", "Emails", "Texts", "Tasks", "Appointments"].map(f => (
+                    {["All", "Notes", "Calls", "Emails", "Texts", "Tasks", "Appointments", "Portal"].map(f => (
                       <button key={f} onClick={() => setActivityFilter(f)} className={cn("text-xs px-3 py-1.5 rounded-full border transition-colors", activityFilter === f ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-500 hover:bg-gray-50")}>
                         {f}
                       </button>
@@ -584,11 +584,16 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
                       )
                     })}
 
-                    {notes.length === 0 && contact.activities.length === 0 && contact.emails.length === 0 && smsMessages.length === 0 && !contact.dialerCalls?.length && (
+                    {notes.length === 0 && contact.activities.length === 0 && contact.emails.length === 0 && smsMessages.length === 0 && !contact.dialerCalls?.length && activityFilter !== "Portal" && (
                       <div className="text-center py-12">
                         <Activity className="w-10 h-10 text-gray-200 mx-auto mb-3" />
                         <p className="text-gray-400 text-sm">No activity yet — add a note or log a call</p>
                       </div>
+                    )}
+
+                    {/* Portal chat thread */}
+                    {activityFilter === "Portal" && (
+                      <PortalChatPanel contactId={contact.id} />
                     )}
                   </div>
                 </div>
@@ -1059,5 +1064,93 @@ function SendPortalInviteButton({ contactId, email, firstName }: { contactId: st
       <Globe className="w-3.5 h-3.5" />
       {sending ? "Enviando..." : sent ? "✓ Invitación enviada" : "Invitar al Portal del Cliente"}
     </button>
+  )
+}
+
+function PortalChatPanel({ contactId }: { contactId: string }) {
+  const [messages, setMessages] = useState<{ id: string; fromClient: boolean; content: string; createdAt: string }[]>([])
+  const [loading, setLoading] = useState(true)
+  const [reply, setReply] = useState("")
+  const [sending, setSending] = useState(false)
+  const { toast } = useToast()
+
+  // Load messages on mount
+  useState(() => {
+    fetch(`/api/portal/admin/${contactId}`)
+      .then(r => r.json())
+      .then(d => setMessages(d.messages || []))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  })
+
+  async function sendReply() {
+    if (!reply.trim()) return
+    setSending(true)
+    try {
+      const res = await fetch(`/api/portal/admin/${contactId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: reply.trim() }),
+      })
+      const data = await res.json()
+      if (data.message) {
+        setMessages(prev => [...prev, data.message])
+        setReply("")
+      } else {
+        toast({ title: "Error", description: "No se pudo enviar el mensaje", variant: "destructive" })
+      }
+    } catch {
+      toast({ title: "Error", description: "No se pudo conectar", variant: "destructive" })
+    } finally {
+      setSending(false)
+    }
+  }
+
+  if (loading) {
+    return <p className="text-xs text-gray-400 py-4 text-center">Cargando mensajes del portal...</p>
+  }
+
+  return (
+    <div className="space-y-3">
+      {messages.length === 0 ? (
+        <p className="text-xs text-gray-400 py-2 text-center">Sin mensajes en el portal todavía.</p>
+      ) : (
+        <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+          {messages.map(m => (
+            <div key={m.id} className={cn("flex", m.fromClient ? "justify-start" : "justify-end")}>
+              <div className={cn(
+                "max-w-[80%] rounded-2xl px-3 py-2 text-sm",
+                m.fromClient
+                  ? "bg-gray-100 text-gray-800 rounded-tl-sm"
+                  : "bg-blue-600 text-white rounded-tr-sm"
+              )}>
+                <p>{m.content}</p>
+                <p className={cn("text-[10px] mt-0.5", m.fromClient ? "text-gray-400" : "text-blue-200")}>
+                  {new Date(m.createdAt).toLocaleString("es-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Reply input */}
+      <div className="flex gap-2 pt-2 border-t border-gray-100">
+        <Textarea
+          value={reply}
+          onChange={e => setReply(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendReply() } }}
+          placeholder="Escribe una respuesta al cliente..."
+          className="flex-1 min-h-[60px] text-sm resize-none rounded-xl border-gray-200"
+        />
+        <button
+          onClick={sendReply}
+          disabled={sending || !reply.trim()}
+          className="self-end px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white transition-colors"
+        >
+          <Send className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
   )
 }
