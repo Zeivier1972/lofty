@@ -23,9 +23,11 @@ export default async function LenderLeadPage({ params }: { params: { id: string 
     },
   })
 
-  if (!share || share.loanOfficerId !== partner.id || share.status !== "PAID") {
-    redirect("/lender")
-  }
+  const canAccess = share &&
+    share.loanOfficerId === partner.id &&
+    (share.status === "PAID" || (share.status === "ACTIVE" && partner.subscriptionStatus === "active"))
+
+  if (!canAccess) redirect("/lender")
 
   const [smsMessages, emails] = await Promise.all([
     prisma.sMSMessage.findMany({
