@@ -486,6 +486,7 @@ function FacebookAdModal({ onClose, onCreated }: { onClose: () => void; onCreate
   const [uploadingImg, setUploadingImg] = useState(false)
   const [destinationUrl, setDestinationUrl] = useState(process.env.NEXT_PUBLIC_APP_URL ? `${process.env.NEXT_PUBLIC_APP_URL}/book` : "")
   const [ctaType, setCtaType] = useState("LEARN_MORE")
+  const [privacyUrl, setPrivacyUrl] = useState("")
   const [targetLocations, setTargetLocations] = useState("Miami, Florida")
   const [ageMin, setAgeMin] = useState("25")
   const [ageMax, setAgeMax] = useState("65")
@@ -532,8 +533,7 @@ function FacebookAdModal({ onClose, onCreated }: { onClose: () => void; onCreate
           startTime: new Date(startDate).toISOString(),
           endTime: endDate ? new Date(endDate).toISOString() : undefined,
           targetLocations: targetLocations.split(",").map(s => s.trim()).filter(Boolean),
-          ageMin: parseInt(ageMin),
-          ageMax: parseInt(ageMax),
+          privacyPolicyUrl: privacyUrl || undefined,
         }),
       })
       const data = await res.json()
@@ -670,6 +670,15 @@ function FacebookAdModal({ onClose, onCreated }: { onClose: () => void; onCreate
                     {FB_CTA.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                   </select>
                 </div>
+                {objective === "OUTCOME_LEADS" && (
+                  <div className="col-span-2">
+                    <label className="text-sm font-semibold text-gray-700 mb-1.5 block">URL de política de privacidad *</label>
+                    <input value={privacyUrl} onChange={e => setPrivacyUrl(e.target.value)}
+                      placeholder="https://catherinegomezrealtor.com/privacy"
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                    <p className="text-xs text-gray-400 mt-1">Requerido por Facebook para formularios de captación de leads.</p>
+                  </div>
+                )}
               </div>
               <div className="flex justify-between">
                 <button onClick={() => setStep("objective")} className="px-4 py-2 border border-gray-200 rounded-xl text-sm">← Atrás</button>

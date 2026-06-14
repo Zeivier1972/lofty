@@ -63,24 +63,28 @@ export interface FbAdPayload {
 }
 
 async function createLeadForm(pageId: string, campaignName: string, privacyPolicyUrl: string, destinationUrl: string) {
-  const res = await fetch(`${GRAPH}/${pageId}/leadgen_forms`, {
+  // Ensure we have a valid absolute URL for privacy policy
+  let privacyUrl = privacyPolicyUrl
+  if (!privacyUrl || !privacyUrl.startsWith("http")) {
+    privacyUrl = destinationUrl.startsWith("http") ? destinationUrl : `https://${destinationUrl}`
+  }
+
+  const res = await fetch(`${GRAPH}/${pageId}/leadgen_forms?access_token=${token()}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name: `${campaignName} — Lead Form`,
       questions: [
-        { type: "FULL_NAME", label: "Full Name" },
-        { type: "EMAIL", label: "Email" },
-        { type: "PHONE", label: "Phone Number" },
+        { type: "FULL_NAME" },
+        { type: "EMAIL" },
+        { type: "PHONE" },
       ],
-      privacy_policy: { url: privacyPolicyUrl, link_text: "Privacy Policy" },
-      follow_up_action_url: destinationUrl,
+      privacy_policy: { url: privacyUrl },
       locale: "EN_US",
-      access_token: token(),
     }),
   })
   const data = await res.json()
-  if (data.error) throw new Error(`Lead Form: ${data.error.message}`)
+  if (data.error) throw new Error(`Lead Form: ${data.error.message} (code ${data.error.code})`)
   return data.id as string
 }
 
