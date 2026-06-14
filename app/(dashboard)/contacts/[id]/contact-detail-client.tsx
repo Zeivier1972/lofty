@@ -9,7 +9,7 @@ import {
   CheckSquare, Zap, Clock, Pin, Trash2, Send, MoreVertical,
   Building, Globe, Facebook, Instagram, Linkedin, Bot,
   TrendingUp, Eye, Star, ChevronRight, ChevronDown,
-  Activity, Search, Loader2, X, PhoneCall, PhoneMissed, PhoneOff, MicOff, Play,
+  Activity, Search, Loader2, X, PhoneCall, PhoneMissed, PhoneOff, MicOff, Play, Menu,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -78,6 +78,7 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
   const [notes, setNotes] = useState(contact.notes)
   const [isAddingNote, setIsAddingNote] = useState(false)
   const [activeTab, setActiveTab] = useState<TabId>("overview")
+  const [showMobileSidebar, setShowMobileSidebar] = useState(false)
   const [noteType, setNoteType] = useState("Note")
   const [updatingStage, setUpdatingStage] = useState(false)
   const [currentPipeline, setCurrentPipeline] = useState(contact.pipelineLeads?.[0])
@@ -358,8 +359,19 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
       )}
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Left Sidebar */}
-        <div className="w-72 flex-shrink-0 border-r border-gray-100 overflow-y-auto p-4 space-y-4">
+        {/* Left Sidebar — hidden on mobile, visible on lg+ */}
+        <div className={cn(
+          "flex-shrink-0 border-r border-gray-100 overflow-y-auto p-4 space-y-4 bg-white",
+          "w-full lg:w-72",
+          showMobileSidebar ? "block absolute inset-0 z-30 lg:relative lg:block" : "hidden lg:block"
+        )}>
+          {/* Mobile close button */}
+          {showMobileSidebar && (
+            <button onClick={() => setShowMobileSidebar(false)}
+              className="lg:hidden flex items-center gap-2 text-sm text-gray-500 mb-3 hover:text-gray-800">
+              <X className="w-4 h-4" /> Close
+            </button>
+          )}
           {/* Contact header */}
           <div className="flex items-start gap-3">
             <Avatar className="w-12 h-12 flex-shrink-0">
@@ -619,10 +631,14 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
         <div className="flex-1 overflow-y-auto">
           {/* Tabs */}
           <div className="border-b border-gray-200 bg-white sticky top-0 z-10">
-            <div className="flex gap-0 px-4 overflow-x-auto">
+            <div className="flex items-center gap-0 px-2 overflow-x-auto">
+              <button onClick={() => setShowMobileSidebar(true)}
+                className="lg:hidden flex-shrink-0 flex items-center gap-1 px-2 py-3 text-gray-500 hover:text-gray-800 border-b-2 border-transparent">
+                <Menu className="w-4 h-4" />
+              </button>
               {TABS.map(tab => (
                 <button key={tab.id} onClick={() => { setActiveTab(tab.id as TabId); if (tab.id === "calls") loadCalls() }}
-                  className={cn("px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors",
+                  className={cn("px-3 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors",
                     activeTab === tab.id
                       ? "border-blue-600 text-blue-600"
                       : "border-transparent text-gray-500 hover:text-gray-700"
@@ -636,9 +652,9 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
           <div className="p-5">
             {/* Overview Tab */}
             {activeTab === "overview" && (
-              <div className="grid grid-cols-3 gap-5">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
                 {/* Activity timeline */}
-                <div className={cn("space-y-3", (activityFilter === "Tasks" || activityFilter === "Appointments") ? "col-span-3" : "col-span-2")}>
+                <div className={cn("space-y-3", (activityFilter === "Tasks" || activityFilter === "Appointments") ? "col-span-1 lg:col-span-3" : "col-span-1 lg:col-span-2")}>
                   {/* Note input */}
                   <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
                     <div className="flex items-center gap-2 mb-2">
