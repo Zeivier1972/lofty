@@ -75,7 +75,7 @@ async function createLeadForm(pageId: string, campaignName: string, privacyPolic
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      name: `${campaignName} — Lead Form`,
+      name: `${campaignName} — Lead Form ${Date.now()}`,
       questions: [
         { type: "FULL_NAME" },
         { type: "EMAIL" },
