@@ -3,8 +3,6 @@ import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import Anthropic from "@anthropic-ai/sdk"
 
-const anthropic = new Anthropic()
-
 // ─── Tool definitions ────────────────────────────────────────────────────────
 
 const TOOLS: Anthropic.Tool[] = [
@@ -392,6 +390,7 @@ Lead temperature: 🔴 Hot (engaged last 48h, high score, active search) · 🟡
 Respond in English or Spanish based on what the user writes. Be direct, sharp, and specific. Use bullet points for lists. Bold key names and numbers. When you recommend an action, offer to execute it with your tools.`
 
   // Multi-turn tool use loop
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || "" })
   const claudeMessages: Anthropic.MessageParam[] = messages.map((m: { role: string; content: string }) => ({
     role: m.role as "user" | "assistant",
     content: m.content,
