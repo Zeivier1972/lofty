@@ -165,7 +165,10 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
     start_time: payload.startTime,
     access_token: userToken(),
   }
-  if (isLeadAd) adsetBody.promoted_object = { page_id: pageId }
+  if (isLeadAd) {
+    adsetBody.promoted_object = { page_id: pageId }
+    adsetBody.destination_type = "ON_AD"
+  }
   if (payload.endTime) adsetBody.end_time = payload.endTime
 
   const adsetRes = await fetch(`${base}/adsets`, {
@@ -241,7 +244,6 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
     adset_id: adSetId,
     creative: { creative_id: creativeId },
     status: "PAUSED",
-    ...(isLeadAd ? { destination_type: "ON_AD" } : {}),
     access_token: userToken(),
   }
   const adRes = await fetch(`${base}/ads`, {
