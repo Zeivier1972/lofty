@@ -18,7 +18,7 @@ export async function POST(req: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const { topic, audience, language, publish } = await req.json()
+  const { topic, audience, language, publish, coverImage } = await req.json()
   if (!topic?.trim()) return NextResponse.json({ error: "Topic required" }, { status: 400 })
 
   const audienceDesc = AUDIENCE_PROMPTS[audience] || AUDIENCE_PROMPTS.buyers
@@ -77,6 +77,7 @@ The post should be authoritative, educational, and specific to the Miami/South F
           slug: post.slug || post.title.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
           excerpt: post.excerpt || null,
           content: post.content,
+          coverImage: coverImage || null,
           author: "Catherine Gomez",
           tags: JSON.stringify(post.tags || []),
           published: true,
