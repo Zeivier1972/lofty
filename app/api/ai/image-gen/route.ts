@@ -29,23 +29,21 @@ export async function POST(req: Request) {
 
   const styleGuide = STYLE_PRESETS[style] || STYLE_PRESETS.professional
   const fullPrompt = `${prompt}. Style: ${styleGuide}. Miami, Florida real estate. No text or watermarks in the image.`
-  // DALL-E 2 supports only 1024x1024, 512x512, 256x256
-  const imageSize = "1024x1024"
 
   try {
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || "" })
     const response = await client.images.generate({
-      model: "dall-e-2",
+      model: "gpt-image-1",
       prompt: fullPrompt,
       n: 1,
-      size: imageSize,
+      size: "1024x1024",
     })
 
-    const openaiUrl = (response.data as any[])?.[0]?.url
-    if (!openaiUrl) throw new Error("No image returned from DALL-E")
+    const b64 = (response.data as any[])?.[0]?.b64_json
+    if (!b64) throw new Error("No image returned from gpt-image-1")
 
-    // Save to Cloudinary so URL is permanent (OpenAI URLs expire in 1 hour)
-    const uploaded = await cloudinary.uploader.upload(openaiUrl, {
+    // Upload base64 to Cloudinary so URL is permanent
+    const uploaded = await cloudinary.uploader.upload(`data:image/png;base64,${b64}`, {
       folder: "lofty-crm/generated",
       resource_type: "image",
     })
