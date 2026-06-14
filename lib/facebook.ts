@@ -123,12 +123,21 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
       name: payload.campaignName,
       objective: payload.objective,
       status: "PAUSED",
-      special_ad_categories: ["NONE"],
+      special_ad_categories: ["HOUSING"],
       access_token: token(),
     }),
   })
   const campData = await campRes.json()
-  if (campData.error) { console.error("[FB campaign]", JSON.stringify(campData.error)); throw new Error(`Campaign: ${campData.error.message} (${campData.error.error_subcode || campData.error.code})`) }
+  if (campData.error) {
+    console.error("[FB campaign full error]", JSON.stringify(campData.error))
+    const userMsg = campData.error.error_user_msg || campData.error.message || "Unknown error"
+    const code = campData.error.code
+    const sub = campData.error.error_subcode ? `/${campData.error.error_subcode}` : ""
+    const hint = (campData.error.error_subcode === 4834011 || campData.error.code === 4834011)
+      ? " → In Meta Business Manager go to: Ad Accounts → your account → Brand Safety & Suitability → Special Ad Categories → enable HOUSING."
+      : ""
+    throw new Error(`Campaign ${code}${sub}: ${userMsg}${hint}`)
+  }
   const campaignId = campData.id
 
   // 3. Create ad set
