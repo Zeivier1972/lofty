@@ -241,6 +241,7 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
     adset_id: adSetId,
     creative: { creative_id: creativeId },
     status: "PAUSED",
+    ...(isLeadAd ? { destination_type: "ON_AD" } : {}),
     access_token: userToken(),
   }
   const adRes = await fetch(`${base}/ads`, {
