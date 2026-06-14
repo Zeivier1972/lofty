@@ -84,7 +84,12 @@ async function createLeadForm(pageId: string, campaignName: string, privacyPolic
     }),
   })
   const data = await res.json()
-  if (data.error) throw new Error(`Lead Form: ${data.error.message} (code ${data.error.code})`)
+  if (data.error) {
+    console.error("[FB Lead Form full error]", JSON.stringify(data.error))
+    const detail = data.error.error_user_msg || data.error.message || "Unknown error"
+    const subcode = data.error.error_subcode ? ` (subcode ${data.error.error_subcode})` : ""
+    throw new Error(`Lead Form error ${data.error.code}${subcode}: ${detail}`)
+  }
   return data.id as string
 }
 
