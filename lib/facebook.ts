@@ -243,10 +243,6 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
     status: "PAUSED",
     access_token: userToken(),
   }
-  if (isLeadAd) {
-    adBody.tracking_specs = [{ "action.type": ["lead"], page: [pageId] }]
-  }
-
   const adRes = await fetch(`${base}/ads`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
