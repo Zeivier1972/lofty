@@ -158,6 +158,7 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
     campaign_id: campaignId,
     billing_event: "IMPRESSIONS",
     optimization_goal: isLeadAd ? "LEAD_GENERATION" : "REACH",
+    bid_strategy: "LOWEST_COST_WITHOUT_CAP",
     daily_budget: payload.dailyBudgetCents,
     targeting,
     status: "PAUSED",
