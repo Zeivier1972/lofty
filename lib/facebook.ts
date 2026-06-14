@@ -97,12 +97,13 @@ async function createLeadForm(pageId: string, campaignName: string, privacyPolic
 }
 
 export async function createFacebookAdCampaign(payload: FbAdPayload) {
-  const adAccountId = process.env.FACEBOOK_AD_ACCOUNT_ID || process.env.FB_AD_ACCOUNT_ID
+  const rawAccountId = process.env.FACEBOOK_AD_ACCOUNT_ID || process.env.FB_AD_ACCOUNT_ID
   const pageId = process.env.FACEBOOK_PAGE_ID || process.env.FB_PAGE_ID
-  if (!adAccountId || !pageId || !token()) {
+  if (!rawAccountId || !pageId || !token()) {
     throw new Error("FACEBOOK_AD_ACCOUNT_ID, FACEBOOK_PAGE_ID and FB_PAGE_ACCESS_TOKEN must be set")
   }
-
+  // Facebook API always requires act_ prefix
+  const adAccountId = rawAccountId.startsWith("act_") ? rawAccountId : `act_${rawAccountId}`
   const base = `${GRAPH}/${adAccountId}`
   const isLeadAd = payload.objective === "OUTCOME_LEADS"
 
