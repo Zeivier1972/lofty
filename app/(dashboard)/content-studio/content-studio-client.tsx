@@ -5,7 +5,7 @@ import {
   Sparkles, Search, Image, FileText, Loader2,
   Copy, Check, ExternalLink, Download, Globe,
   TrendingUp, Video, BarChart2, Users, Home, DollarSign,
-  BookOpen, RefreshCw, Send, ImageIcon,
+  BookOpen, RefreshCw, Send, ImageIcon, BedDouble, Bath, Maximize2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/components/ui/use-toast"
@@ -130,11 +130,24 @@ function BlogWriter({ toast }: { toast: any }) {
   const [post, setPost] = useState<any>(null)
   const [featuredImage, setFeaturedImage] = useState<string | null>(null)
   const [imageLoading, setImageLoading] = useState(false)
+  const [relatedListings, setRelatedListings] = useState<any[]>([])
   const [publishing, setPublishing] = useState(false)
   const [published, setPublished] = useState(false)
   const [copied, setCopied] = useState(false)
 
   const suggestions = BLOG_TOPIC_SUGGESTIONS[audience] || []
+
+  const fetchRelatedListings = async (aud: string, tags: string[]) => {
+    try {
+      const res = await fetch("/api/properties/blog-match", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ audience: aud, tags }),
+      })
+      const data = await res.json()
+      if (res.ok) setRelatedListings(data.properties || [])
+    } catch { /* listings are optional */ }
+  }
 
   const generateImage = async (title: string) => {
     setImageLoading(true)
@@ -159,7 +172,7 @@ function BlogWriter({ toast }: { toast: any }) {
 
   const generate = async () => {
     if (!topic.trim()) { toast({ title: "Enter a topic", variant: "destructive" }); return }
-    setLoading(true); setPost(null); setPublished(false); setFeaturedImage(null)
+    setLoading(true); setPost(null); setPublished(false); setFeaturedImage(null); setRelatedListings([])
     try {
       const res = await fetch("/api/ai/blog-write", {
         method: "POST",
@@ -169,8 +182,9 @@ function BlogWriter({ toast }: { toast: any }) {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
       setPost(data)
-      // auto-generate featured image in background
+      // auto-generate featured image and fetch related listings in background
       generateImage(data.title)
+      fetchRelatedListings(audience, data.tags)
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" })
     } finally { setLoading(false) }
@@ -319,6 +333,50 @@ function BlogWriter({ toast }: { toast: any }) {
               className="prose prose-gray prose-headings:font-bold prose-h2:text-xl prose-h3:text-lg prose-p:text-gray-700 prose-li:text-gray-700 prose-strong:text-gray-900 max-w-none border border-gray-100 rounded-xl p-6"
               dangerouslySetInnerHTML={{ __html: post.content }}
             />
+
+            {/* Related MLS Listings */}
+            <div className="border-t border-gray-100 pt-4">
+              <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                <Home className="w-4 h-4 text-purple-500" />
+                Related Listings
+                <span className="text-xs font-normal text-gray-400 ml-1">— auto-matched from MLS</span>
+              </h3>
+              {relatedListings.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {relatedListings.map(p => (
+                    <div key={p.id} className="border border-gray-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow">
+                      <div className="h-32 bg-gray-100 relative overflow-hidden">
+                        {p.images?.[0] ? (
+                          <img src={p.images[0]} alt={p.address} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="flex items-center justify-center h-full text-gray-300">
+                            <Home className="w-8 h-8" />
+                          </div>
+                        )}
+                        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent px-2 pb-1.5">
+                          <span className="text-white text-xs font-bold">${p.price?.toLocaleString()}</span>
+                        </div>
+                      </div>
+                      <div className="p-2.5">
+                        <p className="text-xs font-medium text-gray-800 truncate">{p.address}</p>
+                        <p className="text-xs text-gray-400 truncate">{p.city}</p>
+                        <div className="flex gap-2 mt-1.5 text-xs text-gray-500">
+                          {p.bedrooms && <span className="flex items-center gap-0.5"><BedDouble className="w-3 h-3" />{p.bedrooms}bd</span>}
+                          {p.bathrooms && <span className="flex items-center gap-0.5"><Bath className="w-3 h-3" />{p.bathrooms}ba</span>}
+                          {p.sqft && <span className="flex items-center gap-0.5"><Maximize2 className="w-3 h-3" />{p.sqft?.toLocaleString()}ft²</span>}
+                        </div>
+                        {p.mlsId && <p className="text-xs text-purple-500 mt-1">MLS# {p.mlsId}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="border border-dashed border-gray-200 rounded-xl p-4 text-center text-xs text-gray-400">
+                  <Home className="w-5 h-5 mx-auto mb-1 text-gray-300" />
+                  MLS listings will appear here automatically once your MLS feed is connected
+                </div>
+              )}
+            </div>
 
             {/* Actions */}
             <div className="flex gap-2 flex-wrap pt-2">
