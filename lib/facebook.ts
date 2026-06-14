@@ -197,8 +197,9 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url: payload.imageUrl, access_token: userToken() }),
     })
-    const imgData = await imgRes.json()
-    const hash = imgData.images?.bytes?.hash || Object.values(imgData.images || {})?.[0]?.hash
+    const imgData = await imgRes.json() as any
+    const images = (imgData.images || {}) as Record<string, { hash: string }>
+    const hash = images?.bytes?.hash || (Object.values(images)[0]?.hash)
     if (hash) linkData.image_hash = hash
   }
 
