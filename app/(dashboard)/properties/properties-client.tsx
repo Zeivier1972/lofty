@@ -100,6 +100,7 @@ export default function PropertiesClient({ properties, total, filters }: Propert
   }
 
   return (
+    <>
     <div className="p-6 space-y-5 animate-fade-in">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -349,5 +350,6 @@ export default function PropertiesClient({ properties, total, filters }: Propert
         </div>
       </div>
     )}
+    </>
   )
 }
