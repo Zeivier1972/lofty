@@ -4,8 +4,6 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import Anthropic from "@anthropic-ai/sdk"
 
-const client = new Anthropic()
-
 export async function POST(req: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -44,6 +42,7 @@ ${brief}
 Generate compelling, conversion-optimized copy that will make people stop scrolling and take action.`
 
   try {
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || "" })
     const message = await client.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 512,
