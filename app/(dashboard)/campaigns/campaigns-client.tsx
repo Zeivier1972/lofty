@@ -496,8 +496,7 @@ function FacebookAdModal({ onClose, onCreated }: { onClose: () => void; onCreate
   const [description, setDescription] = useState("")
   const [mediaItems, setMediaItems] = useState<{ type: "image" | "video"; url: string }[]>([])
   const [uploadingImg, setUploadingImg] = useState(false)
-  const [videoUrlInput, setVideoUrlInput] = useState("")
-  const [showVideoInput, setShowVideoInput] = useState(false)
+
   const [destinationUrl, setDestinationUrl] = useState(process.env.NEXT_PUBLIC_APP_URL ? `${process.env.NEXT_PUBLIC_APP_URL}/book` : "")
   const [ctaType, setCtaType] = useState("LEARN_MORE")
   const [privacyUrl, setPrivacyUrl] = useState("")
@@ -541,25 +540,19 @@ function FacebookAdModal({ onClose, onCreated }: { onClose: () => void; onCreate
   const steps = ["objective", "creative", "audience", "budget"]
   const stepIdx = steps.indexOf(step)
 
-  const handleUploadImage = async (file: File) => {
+  const handleUploadMedia = async (file: File) => {
     setUploadingImg(true)
     try {
       const form = new FormData(); form.append("file", file)
       const res = await fetch("/api/upload", { method: "POST", body: form })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
-      setMediaItems(prev => [...prev, { type: "image", url: data.url }])
+      setMediaItems(prev => [...prev, { type: data.type === "video" ? "video" : "image", url: data.url }])
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" })
     } finally { setUploadingImg(false) }
   }
 
-  const handleAddVideo = () => {
-    if (!videoUrlInput.trim()) return
-    setMediaItems(prev => [...prev, { type: "video", url: videoUrlInput.trim() }])
-    setVideoUrlInput("")
-    setShowVideoInput(false)
-  }
 
   const removeMedia = (idx: number) => setMediaItems(prev => prev.filter((_, i) => i !== idx))
 
@@ -769,27 +762,18 @@ function FacebookAdModal({ onClose, onCreated }: { onClose: () => void; onCreate
                 <div className="flex gap-2">
                   <label className={cn("flex-1 h-20 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 transition-colors text-center", uploadingImg && "opacity-50 pointer-events-none")}>
                     <input type="file" accept="image/*" multiple className="hidden"
-                      onChange={e => Array.from(e.target.files || []).forEach(f => handleUploadImage(f))} />
+                      onChange={e => Array.from(e.target.files || []).forEach(f => handleUploadMedia(f))} />
                     <ImageIcon className="w-5 h-5 text-gray-400 mb-1" />
                     <span className="text-xs text-gray-500">{uploadingImg ? "Subiendo..." : "+ Agregar imagen"}</span>
                   </label>
 
-                  <button onClick={() => setShowVideoInput(v => !v)}
-                    className="flex-1 h-20 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center hover:border-blue-400 transition-colors">
+                  <label className={cn("flex-1 h-20 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 transition-colors text-center", uploadingImg && "opacity-50 pointer-events-none")}>
+                    <input type="file" accept="video/*" multiple className="hidden"
+                      onChange={e => Array.from(e.target.files || []).forEach(f => handleUploadMedia(f))} />
                     <span className="text-lg text-gray-400 mb-1">🎬</span>
-                    <span className="text-xs text-gray-500">+ Agregar video URL</span>
-                  </button>
+                    <span className="text-xs text-gray-500">{uploadingImg ? "Subiendo..." : "+ Agregar video"}</span>
+                  </label>
                 </div>
-
-                {showVideoInput && (
-                  <div className="mt-2 flex gap-2">
-                    <input value={videoUrlInput} onChange={e => setVideoUrlInput(e.target.value)}
-                      placeholder="https://example.com/video.mp4"
-                      className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-                    <button onClick={handleAddVideo}
-                      className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium">Agregar</button>
-                  </div>
-                )}
                 <p className="text-xs text-gray-400 mt-1.5">Sube varias imágenes o videos — Facebook crea un anuncio separado por cada uno y optimiza automáticamente.</p>
               </div>
               <div className="grid grid-cols-2 gap-3">
