@@ -13,7 +13,7 @@ export async function POST(req: Request) {
   const {
     campaignName, objective, primaryText, headline, description,
     imageUrl, destinationUrl, ctaType, dailyBudgetCents,
-    startTime, endTime, targetLocations, ageMin, ageMax,
+    startTime, endTime, targetLocations, privacyPolicyUrl,
   } = body
 
   if (!campaignName || !primaryText || !headline || !destinationUrl) {
@@ -29,16 +29,14 @@ export async function POST(req: Request) {
       description: description || "",
       imageUrl: imageUrl || "",
       destinationUrl,
-      ctaType: ctaType || "LEARN_MORE",
+      ctaType: ctaType || "SIGN_UP",
       dailyBudgetCents: dailyBudgetCents || 1000,
       startTime: startTime || new Date().toISOString(),
       endTime: endTime || undefined,
       targetLocations: targetLocations || ["Miami, Florida"],
-      ageMin: ageMin || 25,
-      ageMax: ageMax || 65,
+      privacyPolicyUrl: privacyPolicyUrl || undefined,
     })
 
-    // Store in MarketingCampaign for the history view
     await prisma.marketingCampaign.create({
       data: {
         name: campaignName,
