@@ -236,19 +236,29 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
   const creativeId = creativeData.id
 
   // 5. Create ad
+  const adBody: any = {
+    name: payload.campaignName,
+    adset_id: adSetId,
+    creative: { creative_id: creativeId },
+    status: "PAUSED",
+    access_token: userToken(),
+  }
+  if (isLeadAd) {
+    adBody.tracking_specs = [{ "action.type": ["lead"], page: [pageId] }]
+  }
+
   const adRes = await fetch(`${base}/ads`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      name: payload.campaignName,
-      adset_id: adSetId,
-      creative: { creative_id: creativeId },
-      status: "PAUSED",
-      access_token: userToken(),
-    }),
+    body: JSON.stringify(adBody),
   })
   const adData = await adRes.json()
-  if (adData.error) { console.error("[FB ad]", JSON.stringify(adData.error)); throw new Error(`Ad: ${adData.error.message} (${adData.error.error_subcode || adData.error.code})`) }
+  if (adData.error) {
+    console.error("[FB ad full error]", JSON.stringify(adData.error))
+    const msg = adData.error.error_user_msg || adData.error.message || "Unknown"
+    const sub = adData.error.error_subcode ? `/${adData.error.error_subcode}` : ""
+    throw new Error(`Ad ${adData.error.code}${sub}: ${msg}`)
+  }
 
   return { campaignId, adSetId, creativeId, adId: adData.id, leadFormId }
 }
