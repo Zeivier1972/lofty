@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import Anthropic from "@anthropic-ai/sdk"
+import OpenAI from "openai"
 
 export async function POST(req: Request) {
   const session = await auth()
@@ -42,19 +42,19 @@ ${brief}
 Generate compelling, conversion-optimized copy that will make people stop scrolling and take action.`
 
   try {
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || "" })
-    const message = await client.messages.create({
-      model: "claude-sonnet-4-6",
+    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || "" })
+    const completion = await client.chat.completions.create({
+      model: "gpt-4o",
       max_tokens: 512,
-      messages: [{ role: "user", content: userPrompt }],
-      system: systemPrompt,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      response_format: { type: "json_object" },
     })
 
-    const text = message.content[0].type === "text" ? message.content[0].text : ""
-    const jsonMatch = text.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) throw new Error("Invalid AI response format")
-
-    const copy = JSON.parse(jsonMatch[0])
+    const text = completion.choices[0]?.message?.content || ""
+    const copy = JSON.parse(text)
     return NextResponse.json(copy)
   } catch (e: any) {
     console.error("[AI ad-copy]", e)
