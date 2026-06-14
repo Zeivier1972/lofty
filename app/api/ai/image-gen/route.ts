@@ -29,16 +29,16 @@ export async function POST(req: Request) {
 
   const styleGuide = STYLE_PRESETS[style] || STYLE_PRESETS.professional
   const fullPrompt = `${prompt}. Style: ${styleGuide}. Miami, Florida real estate. No text or watermarks in the image.`
-  const imageSize = size === "square" ? "1024x1024" : size === "portrait" ? "1024x1792" : "1792x1024"
+  // DALL-E 2 supports only 1024x1024, 512x512, 256x256
+  const imageSize = "1024x1024"
 
   try {
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || "" })
     const response = await client.images.generate({
-      model: "dall-e-3",
+      model: "dall-e-2",
       prompt: fullPrompt,
       n: 1,
       size: imageSize,
-      quality: "hd",
     })
 
     const openaiUrl = (response.data as any[])?.[0]?.url

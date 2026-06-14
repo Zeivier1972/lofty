@@ -33,9 +33,7 @@ const IMAGE_STYLES = [
 ]
 
 const IMAGE_SIZES = [
-  { id: "landscape", label: "Landscape (FB/Blog)", ratio: "16:9" },
-  { id: "square", label: "Square (Instagram)", ratio: "1:1" },
-  { id: "portrait", label: "Portrait (Story/Pin)", ratio: "9:16" },
+  { id: "square", label: "Square (1024×1024)", ratio: "1:1" },
 ]
 
 const RESEARCH_TYPES = [
