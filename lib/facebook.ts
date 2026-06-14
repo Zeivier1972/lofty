@@ -190,7 +190,17 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
     description: payload.description,
     link: payload.destinationUrl,
   }
-  if (payload.imageUrl) linkData.image_url = payload.imageUrl
+  // image_url not supported in link_data in v25.0 — upload image separately if needed
+  if (payload.imageUrl) {
+    const imgRes = await fetch(`${base}/adimages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: payload.imageUrl, access_token: userToken() }),
+    })
+    const imgData = await imgRes.json()
+    const hash = imgData.images?.bytes?.hash || Object.values(imgData.images || {})?.[0]?.hash
+    if (hash) linkData.image_hash = hash
+  }
 
   if (isLeadAd && leadFormId) {
     // Lead Ad: CTA opens the Instant Form
