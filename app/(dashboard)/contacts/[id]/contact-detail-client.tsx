@@ -111,6 +111,61 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
   const [emailLinkText, setEmailLinkText] = useState("")
   const [showEmailImage, setShowEmailImage] = useState(false)
   const [showEmailLink, setShowEmailLink] = useState(false)
+  const [contactTags, setContactTags] = useState<any[]>(contact.tags || [])
+  const [allTags, setAllTags] = useState<any[]>([])
+  const [showTagPicker, setShowTagPicker] = useState(false)
+  const [newTagName, setNewTagName] = useState("")
+  const [savingTag, setSavingTag] = useState(false)
+
+  const openTagPicker = async () => {
+    if (!allTags.length) {
+      const res = await fetch("/api/tags")
+      const data = await res.json()
+      setAllTags(data)
+    }
+    setShowTagPicker(true)
+  }
+
+  const toggleTag = async (tag: any) => {
+    const hasTag = contactTags.some((ct: any) => ct.tagId === tag.id)
+    if (hasTag) {
+      await fetch(`/api/contacts/${contact.id}/tags`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tagId: tag.id }),
+      })
+      setContactTags(prev => prev.filter((ct: any) => ct.tagId !== tag.id))
+    } else {
+      await fetch(`/api/contacts/${contact.id}/tags`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tagId: tag.id }),
+      })
+      setContactTags(prev => [...prev, { tagId: tag.id, tag }])
+    }
+  }
+
+  const createAndAddTag = async () => {
+    if (!newTagName.trim()) return
+    setSavingTag(true)
+    const colors = ["#4F46E5", "#059669", "#DC2626", "#D97706", "#7C3AED", "#0891B2"]
+    const color = colors[Math.floor(Math.random() * colors.length)]
+    const res = await fetch("/api/tags", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: newTagName.trim(), color }),
+    })
+    const tag = await res.json()
+    setAllTags(prev => [...prev, tag])
+    await fetch(`/api/contacts/${contact.id}/tags`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tagId: tag.id }),
+    })
+    setContactTags(prev => [...prev, { tagId: tag.id, tag }])
+    setNewTagName("")
+    setSavingTag(false)
+  }
 
   const triggerSofiaCall = async () => {
     if (!contact.phone) return
@@ -337,7 +392,7 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
                 <Badge className={cn("text-xs px-2", getStatusColor(contact.status))}>
                   {contact.status === "LEAD" ? "Buyer" : contact.status.replace(/_/g, " ")}
                 </Badge>
-                {contact.tags.slice(0, 1).map((ct: any) => (
+                {contactTags.slice(0, 1).map((ct: any) => (
                   <span key={ct.tagId} className="text-xs px-2 py-0.5 rounded-full font-medium"
                     style={{ backgroundColor: ct.tag.color + "20", color: ct.tag.color }}>
                     {ct.tag.name}
@@ -451,22 +506,62 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
           </div>
 
           {/* Tags */}
-          {contact.tags.length > 0 && (
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Tags</p>
-              <div className="flex flex-wrap gap-1.5">
-                {contact.tags.map((ct: any) => (
-                  <span key={ct.tagId} className="text-xs px-2 py-0.5 rounded-full font-medium"
-                    style={{ backgroundColor: ct.tag.color + "20", color: ct.tag.color }}>
-                    {ct.tag.name}
-                  </span>
-                ))}
-                <button className="text-xs px-2 py-0.5 rounded-full border border-dashed border-gray-300 text-gray-400 hover:border-lofty-400 hover:text-lofty-600 transition-colors flex items-center gap-0.5">
-                  <Plus className="w-3 h-3" /> Tag
-                </button>
-              </div>
+          <div className="relative">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Tags</p>
+            <div className="flex flex-wrap gap-1.5">
+              {contactTags.map((ct: any) => (
+                <span key={ct.tagId}
+                  onClick={() => toggleTag(ct.tag)}
+                  className="text-xs px-2 py-0.5 rounded-full font-medium cursor-pointer hover:opacity-70 transition-opacity"
+                  style={{ backgroundColor: ct.tag.color + "20", color: ct.tag.color }}
+                  title="Click para quitar">
+                  {ct.tag.name} ×
+                </span>
+              ))}
+              <button
+                onClick={openTagPicker}
+                className="text-xs px-2 py-0.5 rounded-full border border-dashed border-gray-300 text-gray-400 hover:border-lofty-400 hover:text-lofty-600 transition-colors flex items-center gap-0.5">
+                <Plus className="w-3 h-3" /> Tag
+              </button>
             </div>
-          )}
+
+            {showTagPicker && (
+              <div className="absolute left-0 top-full mt-1 z-30 bg-white rounded-xl shadow-xl border border-gray-200 w-56 p-3 space-y-2"
+                onMouseLeave={() => setShowTagPicker(false)}>
+                <p className="text-xs font-semibold text-gray-500">Seleccionar tag</p>
+                <div className="max-h-40 overflow-y-auto space-y-1">
+                  {allTags.map(tag => {
+                    const active = contactTags.some((ct: any) => ct.tagId === tag.id)
+                    return (
+                      <button key={tag.id} onClick={() => toggleTag(tag)}
+                        className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors",
+                          active ? "bg-gray-100" : "hover:bg-gray-50")}>
+                        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: tag.color }} />
+                        <span className="flex-1 text-left text-gray-800">{tag.name}</span>
+                        {active && <span className="text-gray-400">✓</span>}
+                      </button>
+                    )
+                  })}
+                  {allTags.length === 0 && <p className="text-xs text-gray-400 px-2">No hay tags aún</p>}
+                </div>
+                <div className="border-t border-gray-100 pt-2">
+                  <div className="flex gap-1">
+                    <input
+                      value={newTagName}
+                      onChange={e => setNewTagName(e.target.value)}
+                      onKeyDown={e => e.key === "Enter" && createAndAddTag()}
+                      placeholder="Nuevo tag..."
+                      className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-lofty-400"
+                    />
+                    <button onClick={createAndAddTag} disabled={savingTag || !newTagName.trim()}
+                      className="text-xs bg-lofty-600 text-white px-2 py-1 rounded-lg disabled:opacity-50 hover:bg-lofty-700">
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Buyer/Seller profile */}
           {(contact.buyerBudgetMax || contact.buyerLocation || contact.sellerAddress) && (
