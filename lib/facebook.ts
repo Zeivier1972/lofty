@@ -60,6 +60,8 @@ export interface FbAdPayload {
   endTime?: string
   targetLocations: string[]
   privacyPolicyUrl?: string
+  advantagePlus?: boolean
+  interests?: { id: string; name: string }[]
 }
 
 async function createLeadForm(pageId: string, campaignName: string, privacyPolicyUrl: string, destinationUrl: string) {
@@ -80,6 +82,7 @@ async function createLeadForm(pageId: string, campaignName: string, privacyPolic
         { type: "PHONE" },
       ],
       privacy_policy: { url: privacyUrl },
+      follow_up_action_url: destinationUrl,
       locale: "EN_US",
     }),
   })
@@ -140,6 +143,11 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
     },
   }
 
+  // Add interests if manual targeting chosen and interests provided
+  if (!payload.advantagePlus && payload.interests?.length) {
+    targeting.flexible_spec = [{ interests: payload.interests.map(i => ({ id: i.id, name: i.name })) }]
+  }
+
   const adsetBody: any = {
     name: `${payload.campaignName} — Ad Set`,
     campaign_id: campaignId,
@@ -151,6 +159,12 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
     start_time: payload.startTime,
     access_token: token(),
   }
+
+  // Enable Advantage+ Audience (Meta AI targeting)
+  if (payload.advantagePlus) {
+    adsetBody.targeting_automation = { advantage_audience: 1 }
+  }
+
   if (payload.endTime) adsetBody.end_time = payload.endTime
 
   const adsetRes = await fetch(`${base}/adsets`, {

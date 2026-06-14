@@ -14,6 +14,7 @@ export async function POST(req: Request) {
     campaignName, objective, primaryText, headline, description,
     imageUrl, destinationUrl, ctaType, dailyBudgetCents,
     startTime, endTime, targetLocations, privacyPolicyUrl,
+    advantagePlus, interests,
   } = body
 
   if (!campaignName || !primaryText || !headline || !destinationUrl) {
@@ -35,6 +36,8 @@ export async function POST(req: Request) {
       endTime: endTime || undefined,
       targetLocations: targetLocations || ["Miami, Florida"],
       privacyPolicyUrl: privacyPolicyUrl || undefined,
+      advantagePlus: advantagePlus ?? true,
+      interests: interests || [],
     })
 
     await prisma.marketingCampaign.create({

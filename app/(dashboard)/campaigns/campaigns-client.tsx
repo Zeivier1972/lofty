@@ -464,6 +464,18 @@ const FB_OBJECTIVES = [
   { value: "OUTCOME_AWARENESS", label: "Reconocimiento de Marca", desc: "Maximiza el alcance e impresiones" },
 ]
 
+// Real estate interests that generally work with Facebook HOUSING category
+const FB_INTERESTS = [
+  { id: "6003020834693", name: "Real Estate" },
+  { id: "6003148792459", name: "Home Buying" },
+  { id: "6003195797498", name: "Mortgage" },
+  { id: "6003404338454", name: "Home Improvement" },
+  { id: "6003329588371", name: "Real Estate Investment" },
+  { id: "6003458161900", name: "First-Time Home Buyer" },
+  { id: "6003225454116", name: "Property Management" },
+  { id: "6003384717972", name: "Luxury Real Estate" },
+]
+
 const FB_CTA = [
   { value: "LEARN_MORE", label: "Más Información" },
   { value: "CONTACT_US", label: "Contáctanos" },
@@ -488,6 +500,8 @@ function FacebookAdModal({ onClose, onCreated }: { onClose: () => void; onCreate
   const [ctaType, setCtaType] = useState("LEARN_MORE")
   const [privacyUrl, setPrivacyUrl] = useState("")
   const [targetLocations, setTargetLocations] = useState("Miami, Florida")
+  const [advantagePlus, setAdvantagePlus] = useState(true)
+  const [selectedInterests, setSelectedInterests] = useState<{ id: string; name: string }[]>([])
   const [ageMin, setAgeMin] = useState("25")
   const [ageMax, setAgeMax] = useState("65")
   const [dailyBudget, setDailyBudget] = useState("10")
@@ -534,6 +548,8 @@ function FacebookAdModal({ onClose, onCreated }: { onClose: () => void; onCreate
           endTime: endDate ? new Date(endDate).toISOString() : undefined,
           targetLocations: targetLocations.split(",").map(s => s.trim()).filter(Boolean),
           privacyPolicyUrl: privacyUrl || undefined,
+          advantagePlus,
+          interests: selectedInterests,
         }),
       })
       const data = await res.json()
@@ -693,33 +709,53 @@ function FacebookAdModal({ onClose, onCreated }: { onClose: () => void; onCreate
           {/* Step 3: Audience */}
           {step === "audience" && (
             <>
-              <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-700">
-                <strong>Categoría HOUSING:</strong> Los anuncios de bienes raíces no pueden segmentar por código postal, edad exacta o género en Facebook.
-                Solo puedes segmentar por ciudad/estado.
-              </div>
+              {/* Advantage+ toggle */}
+              <label className={cn(
+                "flex items-start gap-3 p-4 border-2 rounded-xl cursor-pointer transition-all",
+                advantagePlus ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:border-blue-200"
+              )}>
+                <input type="checkbox" checked={advantagePlus} onChange={e => setAdvantagePlus(e.target.checked)} className="mt-0.5" />
+                <div>
+                  <p className="font-semibold text-sm text-gray-900">✨ Advantage+ Audience <span className="text-blue-600 text-xs font-medium ml-1">RECOMENDADO</span></p>
+                  <p className="text-xs text-gray-500 mt-0.5">Meta AI analiza tu anuncio y lo muestra a las personas con más probabilidades de convertirse en leads. No necesitas definir intereses manualmente — el algoritmo lo hace por ti.</p>
+                </div>
+              </label>
+
+              {!advantagePlus && (
+                <>
+                  <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-700">
+                    <strong>Categoría HOUSING:</strong> Los anuncios de bienes raíces no pueden segmentar por código postal, edad o género. Solo por estado/ciudad.
+                  </div>
+                  <div>
+                    <label className="text-sm font-semibold text-gray-700 mb-2 block">Intereses relacionados</label>
+                    <div className="flex flex-wrap gap-2">
+                      {FB_INTERESTS.map(i => (
+                        <button key={i.id} onClick={() => setSelectedInterests(prev =>
+                          prev.find(x => x.id === i.id) ? prev.filter(x => x.id !== i.id) : [...prev, i]
+                        )}
+                          className={cn(
+                            "text-xs px-3 py-1.5 rounded-full border font-medium transition-all",
+                            selectedInterests.find(x => x.id === i.id)
+                              ? "bg-blue-600 text-white border-blue-600"
+                              : "border-gray-200 text-gray-600 hover:border-blue-300"
+                          )}>
+                          {i.name}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-xs text-gray-400 mt-2">Nota: con categoría HOUSING, Meta puede limitar algunos intereses automáticamente.</p>
+                  </div>
+                </>
+              )}
+
               <div>
-                <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Ciudades / mercados objetivo</label>
+                <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Mercado objetivo (estado/ciudad)</label>
                 <input value={targetLocations} onChange={e => setTargetLocations(e.target.value)}
                   placeholder="Miami, Florida, Fort Lauderdale, Florida"
                   className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-                <p className="text-xs text-gray-400 mt-1">Separa múltiples ciudades con comas.</p>
+                <p className="text-xs text-gray-400 mt-1">Separa múltiples ciudades con comas. El estado se usa para la segmentación.</p>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Edad mínima</label>
-                  <select value={ageMin} onChange={e => setAgeMin(e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
-                    {[18,21,25,30,35,40,45].map(a => <option key={a} value={a}>{a}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Edad máxima</label>
-                  <select value={ageMax} onChange={e => setAgeMax(e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
-                    {[35,40,45,50,55,60,65].map(a => <option key={a} value={a}>{a}</option>)}
-                  </select>
-                </div>
-              </div>
+
               <div className="flex justify-between">
                 <button onClick={() => setStep("creative")} className="px-4 py-2 border border-gray-200 rounded-xl text-sm">← Atrás</button>
                 <button onClick={() => setStep("budget")}
