@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import {
   Mail, Plus, Send, Users, BarChart3, Eye, Trash2,
   X, ChevronDown, CheckCircle2, Clock, AlertCircle,
-  FileText, Tag as TagIcon, Target, DollarSign, Image as ImageIcon,
+  FileText, Tag as TagIcon, Target, DollarSign, Image as ImageIcon, Sparkles, Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -505,6 +505,34 @@ function FacebookAdModal({ onClose, onCreated }: { onClose: () => void; onCreate
   const [ageMin, setAgeMin] = useState("25")
   const [ageMax, setAgeMax] = useState("65")
   const [dailyBudget, setDailyBudget] = useState("10")
+
+  // AI copy generator
+  const [aiBrief, setAiBrief] = useState("")
+  const [aiLang, setAiLang] = useState<"es" | "en" | "both">("es")
+  const [aiLoading, setAiLoading] = useState(false)
+  const [showAiPanel, setShowAiPanel] = useState(false)
+
+  const handleGenerateCopy = async () => {
+    if (!aiBrief.trim()) return
+    setAiLoading(true)
+    try {
+      const res = await fetch("/api/ai/ad-copy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ brief: aiBrief, objective, language: aiLang }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      if (data.campaignName) setCampaignName(data.campaignName)
+      if (data.primaryText) setPrimaryText(data.primaryText)
+      if (data.headline) setHeadline(data.headline)
+      if (data.description) setDescription(data.description)
+      setShowAiPanel(false)
+      toast({ title: "✨ Texto generado con IA", description: "Revisa y ajusta el copy según necesites." })
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" })
+    } finally { setAiLoading(false) }
+  }
   const [startDate, setStartDate] = useState(new Date().toISOString().split("T")[0])
   const [endDate, setEndDate] = useState("")
 
@@ -634,6 +662,41 @@ function FacebookAdModal({ onClose, onCreated }: { onClose: () => void; onCreate
           {/* Step 2: Creative */}
           {step === "creative" && (
             <>
+              {/* AI Copy Generator */}
+              <div className="rounded-xl border border-purple-200 bg-purple-50 overflow-hidden">
+                <button onClick={() => setShowAiPanel(v => !v)}
+                  className="w-full flex items-center gap-2 px-4 py-3 text-sm font-semibold text-purple-700 hover:bg-purple-100 transition-colors">
+                  <Sparkles className="w-4 h-4" />
+                  ✨ Generar copy con IA
+                  <span className="ml-auto text-purple-400 text-xs">{showAiPanel ? "▲ ocultar" : "▼ abrir"}</span>
+                </button>
+                {showAiPanel && (
+                  <div className="px-4 pb-4 space-y-3 border-t border-purple-200">
+                    <p className="text-xs text-purple-600 pt-3">
+                      Describe tu propiedad, audiencia y ventajas. La IA generará un título, texto y descripción optimizados para Facebook Ads.
+                    </p>
+                    <textarea value={aiBrief} onChange={e => setAiBrief(e.target.value)} rows={3}
+                      placeholder="Ej: Casas de 4 habitaciones en Cutler Bay, FL, sin HOA, sin CDD, precio desde $380K hasta $1.4M. El vendedor paga los gastos de cierre. Dirigido a compradores hispanos de primera vez."
+                      className="w-full border border-purple-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white" />
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs font-semibold text-purple-700">Idioma:</label>
+                      {(["es", "en", "both"] as const).map(l => (
+                        <button key={l} onClick={() => setAiLang(l)}
+                          className={cn("px-3 py-1 rounded-full text-xs font-medium border transition-colors",
+                            aiLang === l ? "bg-purple-600 text-white border-purple-600" : "border-purple-300 text-purple-600 hover:bg-purple-100")}>
+                          {l === "es" ? "Español" : l === "en" ? "English" : "Español + English"}
+                        </button>
+                      ))}
+                    </div>
+                    <button onClick={handleGenerateCopy} disabled={aiLoading || !aiBrief.trim()}
+                      className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-semibold disabled:opacity-50 hover:bg-purple-700 transition-colors">
+                      {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                      {aiLoading ? "Generando..." : "Generar copy"}
+                    </button>
+                  </div>
+                )}
+              </div>
+
               <div>
                 <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Texto principal *</label>
                 <textarea value={primaryText} onChange={e => setPrimaryText(e.target.value)} rows={3}
