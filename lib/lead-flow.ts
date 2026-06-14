@@ -102,12 +102,22 @@ async function sendOutreachMessages(contact: any, stageName: string, config: any
   }
 
   if (contact.email) {
-    sendEmail({
-      to: contact.email,
-      subject: `Intentamos contactarte sobre ${campaign}`,
-      html: emailHtml,
-      text: smsBody,
-    }).catch(() => {})
+    const subject = `Intentamos contactarte sobre ${campaign}`
+    sendEmail({ to: contact.email, subject, html: emailHtml, text: smsBody })
+      .then(() =>
+        prisma.email.create({
+          data: {
+            subject,
+            body: emailHtml,
+            fromAddress: process.env.RESEND_FROM || "sofia@loftycrm.com",
+            toAddress: contact.email!,
+            status: "SENT",
+            sentAt: new Date(),
+            contactId: contact.id,
+          },
+        }).catch(() => {})
+      )
+      .catch(() => {})
   }
 
   if (phone) {

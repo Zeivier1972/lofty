@@ -10,7 +10,7 @@ export async function POST(req: Request) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   try {
-    const { contactId, message } = await req.json()
+    const { contactId, message, mediaUrls } = await req.json()
     if (!contactId || !message?.trim()) {
       return NextResponse.json({ error: "contactId and message required" }, { status: 400 })
     }
@@ -20,7 +20,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Contact has no phone number" }, { status: 400 })
     }
 
-    const sid = await sendSMS(contact.phone, message.trim())
+    const sid = await sendSMS(contact.phone, message.trim(), mediaUrls?.length ? mediaUrls : undefined)
 
     // Save to SMSMessage log
     await prisma.sMSMessage.create({

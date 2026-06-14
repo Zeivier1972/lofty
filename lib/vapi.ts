@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma"
 const VAPI_BASE = "https://api.vapi.ai"
 
 const FIRST_MESSAGE =
-  "¡Hola! Habla Sofía, de parte de Catherine Gomez Realtor aquí en Miami. " +
+  "¡Hola! Habla Sofía, de la oficina de Catherine Gómez, asesores de bienes raíces aquí en Miami. " +
   "Te llamo porque vi que estás buscando una propiedad y quería hablar contigo un momentico. " +
   "¿Cómo estás? ¿Tienes un par de minutos?"
 
@@ -35,6 +35,16 @@ FLUJO NATURAL DE LA CONVERSACIÓN:
 7. Si dicen sí → usa bookAppointment y da el link
 8. Si no pueden hablar ahora → pregunta cuándo llamar de nuevo, agradece y usa endCall
 
+PRONUNCIACIÓN — habla español natural y claro:
+- Pronuncia los nombres en español: "Sofía", "Catherine Gómez"
+- No uses palabras en inglés salvo nombres de lugares (Brickell, Doral, Sunny Isles)
+- Di "asesora de bienes raíces", nunca "Realtor"
+
+CONFIDENCIALIDAD — NUNCA reveles cómo llegó el lead:
+- NUNCA digas "Instagram", "Facebook", "bot", "campaña", "anuncio" ni el nombre de ninguna campaña
+- Si en el contexto aparece una campaña como origen, solo úsala para entender qué le interesa
+- En vez de eso di cosas naturales: "vi que estás interesado en propiedades en preconstrucción", "me comentaron que estás buscando invertir en Miami"
+
 REGLAS IMPORTANTES:
 - Frases cortas. Máximo dos oraciones seguidas, luego pausa
 - Si no hay propiedades disponibles: "Fíjate que ahora mismo no tengo nada en el sistema con esos criterios, pero Catherine tiene acceso a propiedades exclusivas que no están publicadas. ¿Quieres que te conecte con ella?"
@@ -45,10 +55,16 @@ REGLAS IMPORTANTES:
 CATHERINE:
 - Colombiana, experta en Miami con más de veinte años de experiencia
 - Especialista en Brickell, Miami Beach, Doral, Kendall, Coral Gables, Aventura y Sunny Isles
-- Habla español e inglés, disponible los siete días`
+- Habla español e inglés, disponible los siete días
+
+TRANSFERENCIA EN VIVO A CATHERINE:
+- Si el lead pide hablar con una persona real, con "la agente", con "Catherine", o dice que prefiere no hablar con una IA → usa la herramienta transferToAgent
+- Antes de transferir di: "¡Con mucho gusto! Déjame conectarte con Catherine ahora mismo, un momentico..."
+- Solo transfiere si el lead lo pide explícitamente — no lo ofrezcas sin que lo pidan
+- SI LA TRANSFERENCIA FALLA O CATHERINE NO CONTESTA: di "Ay, parece que Catherine está ocupada en este momento, pero no te preocupes. ¿Te gustaría que te agendara directamente una cita con ella para que puedan hablar cuando esté disponible?" — y si dicen sí, usa bookAppointment para darle el link`
 
 const DEFAULT_VOICEMAIL_MSG =
-  "Hola, soy Sofía de Catherine Gomez Realtor en Miami. Te llamé porque mostraste interés en propiedades y quería platicarte. " +
+  "Hola, soy Sofía, de la oficina de Catherine Gómez, bienes raíces en Miami. Te llamé porque mostraste interés en propiedades y quería platicarte. " +
   "Por favor llámanos al 305-283-0872 o agenda una consulta gratuita en nuestra página web. ¡Que tengas un excelente día! Hasta pronto."
 
 export interface VAPICallOptions {
@@ -63,6 +79,8 @@ export interface VAPICallOptions {
   campaign?: string | null
   propertyType?: string | null
   skipBusinessHoursCheck?: boolean
+  // Manual click-to-call: bypass the auto-call setting and surface real errors
+  isManual?: boolean
   // Power dial session fields
   sessionId?: string
   sessionIndex?: number
@@ -85,11 +103,15 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
 
   if (!apiKey || !phoneNumberId) {
     console.log("[VAPI] Missing VAPI_API_KEY or VAPI_PHONE_NUMBER_ID — skipping call")
+    if (opts.isManual) throw new Error("VAPI_API_KEY o VAPI_PHONE_NUMBER_ID no están configurados en Railway")
     return null
   }
 
-  const aiConfig = await prisma.aIConfig.findFirst({ select: { autoCallEnabled: true } })
-  if (aiConfig && aiConfig.autoCallEnabled === false) {
+  const aiConfig = await prisma.aIConfig.findFirst({
+    select: { autoCallEnabled: true, realtorPhone: true },
+  })
+  // The auto-call kill switch only applies to automatic calls, not manual click-to-call
+  if (!opts.isManual && aiConfig && aiConfig.autoCallEnabled === false) {
     console.log("[VAPI] Auto-calling disabled by user setting — skipping call")
     return null
   }
@@ -101,6 +123,13 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
 
   const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/vapi/webhook`
 
+  // Transfer destination must be E.164 (+1XXXXXXXXXX) or VAPI rejects/fails the transfer
+  const realtorPhoneE164 = aiConfig?.realtorPhone
+    ? (aiConfig.realtorPhone.startsWith("+")
+        ? aiConfig.realtorPhone.replace(/[^\d+]/g, "")
+        : `+1${aiConfig.realtorPhone.replace(/\D/g, "").slice(-10)}`)
+    : null
+
   // Build context summary for the assistant
   const ctx: string[] = [`Nombre del lead: ${opts.contactName}`]
   if (opts.campaign) ctx.push(`Campaña de origen: ${opts.campaign}`)
@@ -110,11 +139,17 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
   if (opts.bedrooms) ctx.push(`Cuartos mínimos: ${opts.bedrooms}`)
   if (opts.propertyType) ctx.push(`Tipo de propiedad: ${opts.propertyType}`)
 
-  // Personalize first message if we know what they clicked on
-  const propertyHint = opts.location || (opts.campaign ? opts.campaign.replace(/\b(20\d\d|Q[1-4]|H[12])\b/gi, "").trim() : null)
-  const firstMessage = propertyHint
-    ? `¡Hola! Soy Sofía, asistente de Catherine Gomez Realtor en Miami. Te llamo porque mostraste interés en ${propertyHint}. ¿Tienes un momentito para hablar?`
-    : FIRST_MESSAGE
+  // Personalize first message from real interest only — never expose campaign/platform names
+  const firstName = opts.contactName.split(" ")[0]
+  const isPreCon = opts.propertyType === "PRE_CONSTRUCTION" || /pre.?construcci/i.test(opts.campaign || "")
+  const interestHint = opts.location
+    ? `propiedades en ${opts.location}`
+    : isPreCon
+      ? "propiedades en preconstrucción y oportunidades de inversión en Miami"
+      : null
+  const firstMessage = interestHint
+    ? `¡Hola, ${firstName}! Habla Sofía, de la oficina de Catherine Gómez, asesores de bienes raíces en Miami. Te llamo porque mostraste interés en ${interestHint}. ¿Tienes un momentito para hablar?`
+    : `¡Hola, ${firstName}! Habla Sofía, de la oficina de Catherine Gómez, asesores de bienes raíces aquí en Miami. Te llamo porque vi que estás buscando una propiedad y quería hablar contigo un momentico. ¿Cómo estás? ¿Tienes un par de minutos?`
 
   const vmMsg = opts.voicemailMsg || DEFAULT_VOICEMAIL_MSG
 
@@ -125,14 +160,14 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
       contactId: opts.contactId,
       ...(opts.sessionId && { sessionId: opts.sessionId, sessionIndex: opts.sessionIndex ?? 0 }),
     },
-    // Voicemail detection — leave message and advance to next contact
-    voicemailDetection: {
-      provider: "twilio",
-      enabled: true,
-      voicemailDetectionTypes: ["machine_end_beep", "machine_end_silence"],
-      machineDetectionTimeout: 30,
-    },
     assistant: {
+      // Voicemail detection — leave message and advance to next contact
+      voicemailDetection: {
+        provider: "twilio",
+        enabled: true,
+        voicemailDetectionTypes: ["machine_end_beep", "machine_end_silence"],
+        machineDetectionTimeout: 30,
+      },
       voicemailMessage: vmMsg,
       name: "Sofia",
       firstMessage,
@@ -190,6 +225,25 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
             server: { url: webhookUrl },
           },
           { type: "endCall" },
+          // Live warm transfer to Catherine when lead explicitly asks for a human
+          ...(realtorPhoneE164 ? [{
+            type: "transferCall",
+            destinations: [{
+              type: "phoneNumber",
+              number: realtorPhoneE164,
+              message: "¡Con mucho gusto! Déjame conectarte con Catherine ahora mismo, un momentico...",
+              description: "Transferir la llamada a Catherine Gomez, la agente de bienes raíces en persona",
+              transferPlan: {
+                // Sofia announces the lead to Catherine before connecting them
+                mode: "warm-transfer-say-message",
+                message: "Hola Catherine, te transfiero un lead que está en la línea y pidió hablar contigo sobre propiedades.",
+              },
+            }],
+            function: {
+              name: "transferToAgent",
+              description: "Transfiere la llamada en vivo a Catherine Gomez cuando el lead pide explícitamente hablar con una persona real o con la agente",
+            },
+          }] : []),
         ],
       },
       voice: {
@@ -217,6 +271,14 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
     if (!res.ok) {
       const err = await res.text()
       console.error("[VAPI] Call failed:", err)
+      if (opts.isManual) {
+        let detail = err
+        try {
+          const parsed = JSON.parse(err)
+          detail = Array.isArray(parsed.message) ? parsed.message.join(", ") : (parsed.message || err)
+        } catch {}
+        throw new Error(`VAPI: ${detail}`)
+      }
       return null
     }
 
@@ -225,6 +287,7 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
     return data.id || null
   } catch (e: any) {
     console.error("[VAPI] Error:", e.message)
+    if (opts.isManual) throw e
     return null
   }
 }

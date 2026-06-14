@@ -94,6 +94,7 @@ model Contact {
   homeClosedAt        DateTime?
   preferredSendHour   Int?
   facebookLeadId      String?
+  facebookPsid        String?
   lastScoreCalculatedAt DateTime?
   buyerBudgetMin Float?
   buyerBudgetMax Float?
@@ -119,11 +120,13 @@ model Contact {
   dialerCalls   DialerCall[]
   campaignEnrollments CampaignEnrollment[]
   whatsappMessages WhatsAppMessage[]
+  facebookMessages FacebookMessage[]
   videoMessages VideoMessage[]
   portalAccess  ClientPortalAccess?
   portalMessages PortalMessage[]
   tags          ContactTag[]
   scheduledCalls ScheduledCall[]
+  leadShares    LeadShare[]
   assignedTo    User?     @relation(fields: [assignedToId], references: [id])
   assignedToId  String?
   customFields  String?
@@ -304,6 +307,7 @@ model Email {
   body        String
   fromAddress String
   toAddress   String
+  direction   String         @default("OUTBOUND")
   status      String         @default("DRAFT")
   contact     Contact?       @relation(fields: [contactId], references: [id])
   contactId   String?
@@ -654,7 +658,86 @@ model DialerCall {
   createdAt    DateTime       @default(now())
 }
 
-// ─── Client Portal ────────────────────────────────────────────────────────────
+// ─── Instagram Lead Bot ───────────────────────────────────────────────────────
+
+model InstagramConversation {
+  id              String    @id @default(cuid())
+  igUserId        String    @unique
+  igUsername      String?
+  state           String    @default("ASKED_OPTIN")
+  firstName       String?
+  email           String?
+  phone           String?
+  intent          String?
+  contactId       String?
+  sourceCommentId String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// ─── Loan Officer Partner Portal ──────────────────────────────────────────────
+
+model LoanOfficer {
+  id                   String      @id @default(cuid())
+  name                 String
+  email                String      @unique
+  passwordHash         String
+  company              String?
+  phone                String?
+  isActive             Boolean     @default(true)
+  monthlyFee           Float       @default(99)
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  subscriptionStatus   String      @default("inactive") // active | inactive | past_due | canceled
+  subscriptionEndDate  DateTime?
+  pricePerLead         Float       @default(25) // legacy: kept for historical per-lead shares
+  leadShares           LeadShare[]
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+}
+
+model LeadShare {
+  id              String          @id @default(cuid())
+  contact         Contact         @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  contactId       String
+  loanOfficer     LoanOfficer     @relation(fields: [loanOfficerId], references: [id], onDelete: Cascade)
+  loanOfficerId   String
+  price           Float
+  status          String          @default("PENDING") // PENDING (awaiting payment) | PAID | REVOKED
+  paidAt          DateTime?
+  stripeSessionId String?
+  loStatus        String          @default("NEW") // NEW | CONTACTED | PRE_APPROVED | DOCS_REQUESTED | CLOSED | LOST
+  notes           LeadShareNote[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@unique([contactId, loanOfficerId])
+}
+
+model LeadShareNote {
+  id          String    @id @default(cuid())
+  leadShare   LeadShare @relation(fields: [leadShareId], references: [id], onDelete: Cascade)
+  leadShareId String
+  author      String    @default("LO") // LO | ADMIN
+  content     String
+  createdAt   DateTime  @default(now())
+}
+
+model InstagramBotConfig {
+  id              String   @id @default(cuid())
+  isEnabled       Boolean  @default(false)
+  triggerKeywords String   @default("info,más info,mas info,interesado,precio,price,interested,details,detalles,casa,comprar,invest,miami,hola,interesa,preconstruccion,preconstrucción")
+  msgGreeting     String   @default("¡Hola! 👋 Gracias por tu interés en nuestros proyectos en Miami y Homestead. ¿Te gustaría recibir nuestra lista exclusiva de casas en preconstrucción o nuestro paquete de inversión para Airbnb y rentas cortas? Responde SÍ y te la envío 🏠")
+  msgAskIntent    String   @default("¡Perfecto! 🎉 Antes de enviarte la información, para ayudarte mejor... ¿Estás interesado en:\n\nA) Comprar para vivir\nB) Invertir para Airbnb\nC) Solo explorando\n\nResponde A, B o C")
+  msgAskName      String   @default("¡Excelente! ¿Cuál es tu nombre completo?")
+  msgAskEmail     String   @default("Mucho gusto, {name}! Para enviarte el catálogo completo y planos de los proyectos, ¿me puedes escribir tu correo electrónico? 📧")
+  msgAskPhone     String   @default("¡Perfecto! Una última cosa... ¿Podrías compartirme tu número de teléfono con código de país? Ejemplo: +1 786 123 4567 📱 (usa el número correcto, no te vamos a molestar)")
+  msgThankYou     String   @default("¡Muchas gracias {name}! 🙌 Ya tenemos tu información. Catherine te contactará muy pronto con las mejores opciones. Mientras tanto puedes visitar nuestra página web: {website}")
+  websiteUrl      String   @default("https://catherinegomezrealtor.com")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
 
 model ClientPortalAccess {
   id           String    @id @default(cuid())
@@ -675,6 +758,22 @@ model PortalMessage {
   content    String
   isRead     Boolean  @default(false)
   createdAt  DateTime @default(now())
+}
+
+// ─── Facebook Messenger ───────────────────────────────────────────────────────
+
+model FacebookMessage {
+  id          String    @id @default(cuid())
+  psid        String
+  pageId      String    @default("")
+  body        String
+  direction   String    @default("INBOUND")
+  status      String    @default("SENT")
+  messageId   String?
+  attachments String?
+  contactId   String?
+  contact     Contact?  @relation(fields: [contactId], references: [id])
+  createdAt   DateTime  @default(now())
 }
 
 // ─── WhatsApp ─────────────────────────────────────────────────────────────────
@@ -852,6 +951,17 @@ model CMAReport {
   viewedAt       DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+}
+
+// ─── Blog ─────────────────────────────────────────────────────────────────────
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  email     String
+  token     String   @unique @default(cuid())
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
 }
 
 // ─── Blog ─────────────────────────────────────────────────────────────────────

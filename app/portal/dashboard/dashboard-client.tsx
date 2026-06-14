@@ -75,7 +75,19 @@ const TRANSACTION_STAGES = [
   { key: "CLOSED", label: "Closed!", step: 6 },
 ]
 
-export default function PortalDashboardClient({ contact }: { contact: Contact }) {
+export default function PortalDashboardClient({
+  contact,
+  agentPhone = "305-283-0872",
+  agentEmail = "",
+  agentName = "Catherine",
+}: {
+  contact: Contact
+  agentPhone?: string
+  agentEmail?: string
+  agentName?: string
+}) {
+  const phoneE164 = agentPhone.startsWith("+") ? agentPhone : `+1${agentPhone.replace(/\D/g, "").slice(-10)}`
+  const phoneDisplay = agentPhone.replace(/^\+1/, "").replace(/(\d{3})(\d{3})(\d{4})/, "($1) $2-$3")
   const transaction = contact.transactions[0] || null
   const currentStageStep = TRANSACTION_STAGES.find(s => s.key === transaction?.status)?.step || 1
   const completedMilestones = transaction?.milestones.filter(m => m.status === "COMPLETED").length || 0
@@ -330,14 +342,14 @@ export default function PortalDashboardClient({ contact }: { contact: Contact })
         <div className="space-y-4">
           {/* Agent contact card */}
           <div className="bg-white rounded-2xl border p-5 shadow-sm">
-            <h3 className="font-bold text-gray-900 mb-4">Your Agent</h3>
+            <h3 className="font-bold text-gray-900 mb-4">Tu Agente / Your Agent</h3>
             <div className="flex items-center gap-3 mb-4">
               <div className="w-14 h-14 bg-lofty-100 rounded-2xl flex items-center justify-center flex-shrink-0">
-                <span className="text-xl font-black text-lofty-700">C</span>
+                <span className="text-xl font-black text-lofty-700">{agentName.charAt(0)}</span>
               </div>
               <div>
-                <div className="font-bold text-gray-900">Catherine</div>
-                <div className="text-xs text-gray-500">Licensed Real Estate Agent</div>
+                <div className="font-bold text-gray-900">{agentName}</div>
+                <div className="text-xs text-gray-500">Agente de Bienes Raíces</div>
                 <div className="flex items-center gap-0.5 mt-0.5">
                   {[1,2,3,4,5].map(i => <Star key={i} className="w-3 h-3 fill-amber-400 text-amber-400" />)}
                 </div>
@@ -348,20 +360,28 @@ export default function PortalDashboardClient({ contact }: { contact: Contact })
                 href="/portal/messages"
                 className="flex items-center gap-2 w-full p-3 bg-lofty-600 text-white rounded-xl text-sm font-semibold hover:bg-lofty-700 transition-colors"
               >
-                <MessageSquare className="w-4 h-4" /> Send a Message
+                <MessageSquare className="w-4 h-4" /> Enviar mensaje
               </Link>
               <a
-                href="tel:+15555555555"
+                href={`sms:${phoneE164}`}
                 className="flex items-center gap-2 w-full p-2.5 border rounded-xl text-sm text-gray-700 hover:bg-gray-50 transition-colors"
               >
-                <Phone className="w-4 h-4 text-lofty-600" /> Call (555) 555-5555
+                <MessageSquare className="w-4 h-4 text-green-600" /> Enviar texto · {phoneDisplay}
               </a>
               <a
-                href="mailto:agent@loftycrm.com"
+                href={`tel:${phoneE164}`}
                 className="flex items-center gap-2 w-full p-2.5 border rounded-xl text-sm text-gray-700 hover:bg-gray-50 transition-colors"
               >
-                <Mail className="w-4 h-4 text-lofty-600" /> Send Email
+                <Phone className="w-4 h-4 text-lofty-600" /> Llamar · {phoneDisplay}
               </a>
+              {agentEmail && (
+                <a
+                  href={`mailto:${agentEmail}`}
+                  className="flex items-center gap-2 w-full p-2.5 border rounded-xl text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  <Mail className="w-4 h-4 text-lofty-600" /> Enviar email
+                </a>
+              )}
             </div>
           </div>
 
@@ -369,16 +389,16 @@ export default function PortalDashboardClient({ contact }: { contact: Contact })
           <div className="bg-gradient-to-br from-purple-600 to-lofty-700 rounded-2xl p-5 text-white shadow-sm">
             <div className="flex items-center gap-2 mb-3">
               <Sparkles className="w-4 h-4" />
-              <span className="text-sm font-semibold">Alex — AI Assistant</span>
+              <span className="text-sm font-semibold">Sofía — Asistente IA</span>
             </div>
             <p className="text-sm text-purple-100 leading-relaxed">
-              I'm here 24/7 to answer your real estate questions in English and Spanish. Message your agent anytime!
+              Estoy aquí 24/7 para responder tus preguntas sobre bienes raíces en español o inglés. ¡Escríbeme cuando quieras!
             </p>
             <p className="text-xs text-purple-300 mt-2">
-              Estoy aquí 24/7 para responder sus preguntas en inglés y español.
+              Available 24/7 in English and Spanish.
             </p>
             <Link href="/portal/messages" className="mt-3 flex items-center gap-1 text-xs font-semibold text-white/80 hover:text-white">
-              Chat now <ArrowRight className="w-3 h-3" />
+              Chatear ahora <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
 

@@ -7,6 +7,7 @@ import DialerClient from "./dialer-client"
 export default async function DialerPage() {
   let contacts: any[] = []
   let sessions: any[] = []
+  let pipelineStages: any[] = []
 
   try {
     const session = await auth()
@@ -15,7 +16,7 @@ export default async function DialerPage() {
         select: { id: true, firstName: true, lastName: true, phone: true, phone2: true, status: true, leadScore: true },
         where: { phone: { not: null } },
         orderBy: { leadScore: "desc" },
-        take: 100,
+        take: 200,
       }),
       prisma.dialerSession.findMany({
         where: { agentId: session?.user?.id },
@@ -30,6 +31,34 @@ export default async function DialerPage() {
         take: 5,
       }),
     ])
+
+    const pipeline = await prisma.pipeline.findFirst({
+      where: { isDefault: true },
+      include: {
+        stages: {
+          orderBy: { order: "asc" },
+          include: {
+            leads: {
+              include: {
+                contact: {
+                  select: { id: true, firstName: true, lastName: true, phone: true, phone2: true, status: true, leadScore: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    })
+
+    if (pipeline) {
+      pipelineStages = pipeline.stages.map(s => ({
+        id: s.id,
+        name: s.name,
+        contacts: s.leads
+          .map((l: any) => l.contact)
+          .filter((c: any) => c && c.phone),
+      }))
+    }
   } catch (e) {
     console.error("Dialer page error:", e)
   }
@@ -38,6 +67,7 @@ export default async function DialerPage() {
     <DialerClient
       contacts={JSON.parse(JSON.stringify(contacts))}
       sessions={JSON.parse(JSON.stringify(sessions))}
+      pipelineStages={JSON.parse(JSON.stringify(pipelineStages))}
     />
   )
 }

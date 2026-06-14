@@ -10,6 +10,10 @@ export default async function PortalMessagesPage() {
   const contact = await getPortalContact()
   if (!contact) redirect("/portal/login")
 
+  const aiConfig = await prisma.aIConfig.findFirst({
+    select: { realtorPhone: true },
+  })
+
   // Mark agent messages as read
   await prisma.portalMessage.updateMany({
     where: { contactId: contact.id, fromClient: false, isRead: false },
@@ -32,6 +36,7 @@ export default async function PortalMessagesPage() {
         contactId={contact.id}
         contactName={`${contact.firstName} ${contact.lastName}`}
         messages={JSON.parse(JSON.stringify(messages))}
+        agentPhone={aiConfig?.realtorPhone || "305-283-0872"}
       />
     </PortalShell>
   )

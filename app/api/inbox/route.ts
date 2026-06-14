@@ -11,67 +11,61 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const channel = searchParams.get("channel") || "all"
 
-  // Get latest SMS per contact
-  const smsMessages = channel !== "whatsapp"
-    ? await prisma.sMSMessage.findMany({
-        where: { contactId: { not: null } },
-        orderBy: { createdAt: "desc" },
-        take: 500,
-      })
-    : []
+  const [smsMessages, waMessages, fbMessages] = await Promise.all([
+    channel !== "whatsapp" && channel !== "facebook"
+      ? prisma.sMSMessage.findMany({ where: { contactId: { not: null } }, orderBy: { createdAt: "desc" }, take: 500 })
+      : [],
+    channel !== "sms" && channel !== "facebook"
+      ? prisma.whatsAppMessage.findMany({ where: { contactId: { not: null } }, orderBy: { createdAt: "desc" }, take: 500 })
+      : [],
+    channel !== "sms" && channel !== "whatsapp"
+      ? prisma.facebookMessage.findMany({ where: { contactId: { not: null } }, orderBy: { createdAt: "desc" }, take: 500 })
+      : [],
+  ])
 
-  // Get latest WhatsApp per contact
-  const waMessages = channel !== "sms"
-    ? await prisma.whatsAppMessage.findMany({
-        where: { contactId: { not: null } },
-        orderBy: { createdAt: "desc" },
-        take: 500,
-      })
-    : []
-
-  // Build map of contactId → latest message
   const threadMap = new Map<string, any>()
 
-  for (const msg of smsMessages) {
+  for (const msg of smsMessages as any[]) {
     if (!msg.contactId) continue
     if (!threadMap.has(msg.contactId)) {
       threadMap.set(msg.contactId, {
-        contactId: msg.contactId,
-        lastMessage: msg.body,
-        lastMessageAt: msg.createdAt,
-        lastDirection: msg.direction,
-        channel: "sms",
-        unread: msg.direction === "INBOUND",
+        contactId: msg.contactId, lastMessage: msg.body, lastMessageAt: msg.createdAt,
+        lastDirection: msg.direction, channel: "sms", unread: msg.direction === "INBOUND",
       })
     }
   }
 
-  for (const msg of waMessages) {
+  for (const msg of waMessages as any[]) {
     if (!msg.contactId) continue
     const existing = threadMap.get(msg.contactId)
     if (!existing) {
       threadMap.set(msg.contactId, {
-        contactId: msg.contactId,
-        lastMessage: msg.body,
-        lastMessageAt: msg.createdAt,
-        lastDirection: msg.direction,
-        channel: "whatsapp",
-        unread: msg.direction === "INBOUND",
+        contactId: msg.contactId, lastMessage: msg.body, lastMessageAt: msg.createdAt,
+        lastDirection: msg.direction, channel: "whatsapp", unread: msg.direction === "INBOUND",
       })
     } else if (msg.createdAt > existing.lastMessageAt) {
-      existing.lastMessage = msg.body
-      existing.lastMessageAt = msg.createdAt
-      existing.lastDirection = msg.direction
-      existing.channel = "whatsapp"
+      Object.assign(existing, { lastMessage: msg.body, lastMessageAt: msg.createdAt, lastDirection: msg.direction, channel: "whatsapp" })
     }
   }
 
-  // Fetch contacts for all thread IDs
+  for (const msg of fbMessages as any[]) {
+    if (!msg.contactId) continue
+    const existing = threadMap.get(msg.contactId)
+    if (!existing) {
+      threadMap.set(msg.contactId, {
+        contactId: msg.contactId, lastMessage: msg.body, lastMessageAt: msg.createdAt,
+        lastDirection: msg.direction, channel: "facebook", unread: msg.direction === "INBOUND",
+      })
+    } else if (msg.createdAt > existing.lastMessageAt) {
+      Object.assign(existing, { lastMessage: msg.body, lastMessageAt: msg.createdAt, lastDirection: msg.direction, channel: "facebook" })
+    }
+  }
+
   const contactIds = Array.from(threadMap.keys())
   const contacts = contactIds.length > 0
     ? await prisma.contact.findMany({
         where: { id: { in: contactIds } },
-        select: { id: true, firstName: true, lastName: true, phone: true, leadScore: true },
+        select: { id: true, firstName: true, lastName: true, phone: true, leadScore: true, facebookPsid: true },
       })
     : []
 
@@ -82,8 +76,9 @@ export async function GET(req: Request) {
     .filter(t => t.contact)
     .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime())
 
-  const unreadSms = smsMessages.filter(m => m.direction === "INBOUND").length
-  const unreadWa = waMessages.filter(m => m.direction === "INBOUND").length
+  const unreadSms = (smsMessages as any[]).filter(m => m.direction === "INBOUND").length
+  const unreadWa = (waMessages as any[]).filter(m => m.direction === "INBOUND").length
+  const unreadFb = (fbMessages as any[]).filter(m => m.direction === "INBOUND").length
 
-  return NextResponse.json({ threads, unreadSms, unreadWa })
+  return NextResponse.json({ threads, unreadSms, unreadWa, unreadFb })
 }

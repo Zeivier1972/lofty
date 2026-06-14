@@ -9,16 +9,17 @@ function getClient() {
   return client
 }
 
-export async function sendSMS(to: string, body: string): Promise<string | null> {
+export async function sendSMS(to: string, body: string, mediaUrls?: string[]): Promise<string | null> {
   const c = getClient()
   if (!c) {
-    console.log("[SMS MOCK] To:", to, "Body:", body)
+    console.log("[SMS MOCK] To:", to, "Body:", body, "Media:", mediaUrls)
     return "mock-sid"
   }
   const msg = await c.messages.create({
     body,
     from: process.env.TWILIO_PHONE_NUMBER!,
     to,
+    ...(mediaUrls?.length ? { mediaUrl: mediaUrls } : {}),
   })
   return msg.sid
 }
@@ -41,7 +42,8 @@ export async function initiateCall(to: string, callbackUrl: string): Promise<str
 export async function sendWhatsApp(to: string, body: string, mediaUrl?: string): Promise<string | null> {
   const c = getClient()
   const toNumber = to.startsWith("whatsapp:") ? to : `whatsapp:${to}`
-  const fromNumber = `whatsapp:${process.env.TWILIO_PHONE_NUMBER}`
+  // Use dedicated WhatsApp number if configured, otherwise fall back to SMS number
+  const fromNumber = `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER || process.env.TWILIO_PHONE_NUMBER}`
   if (!c) {
     console.log("[WHATSAPP MOCK] To:", toNumber, "Body:", body)
     return "mock-wa-sid"
@@ -51,6 +53,38 @@ export async function sendWhatsApp(to: string, body: string, mediaUrl?: string):
     from: fromNumber,
     to: toNumber,
     ...(mediaUrl ? { mediaUrl: [mediaUrl] } : {}),
+  })
+  return msg.sid
+}
+
+export async function sendWhatsAppTemplate(
+  to: string,
+  contentSid: string,
+  variables: Record<string, string>
+): Promise<string | null> {
+  const c = getClient()
+  const toNumber = to.startsWith("whatsapp:") ? to : `whatsapp:${to}`
+  const fromNumber = `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER || process.env.TWILIO_PHONE_NUMBER}`
+  if (!c) {
+    console.log("[WHATSAPP TEMPLATE MOCK] To:", toNumber, "SID:", contentSid, "Vars:", variables)
+    return "mock-wa-template-sid"
+  }
+
+  // Only pass variables that are actually defined (non-empty)
+  // Some templates have no variables — don't pass contentVariables in that case
+  const filteredVars: Record<string, string> = {}
+  for (const [k, v] of Object.entries(variables)) {
+    if (v) filteredVars[k] = v
+  }
+  const hasVars = Object.keys(filteredVars).length > 0
+
+  console.log("[WHATSAPP TEMPLATE] from:", fromNumber, "to:", toNumber, "sid:", contentSid, "vars:", filteredVars)
+
+  const msg = await (c.messages as any).create({
+    from: fromNumber,
+    to: toNumber,
+    contentSid,
+    ...(hasVars ? { contentVariables: JSON.stringify(filteredVars) } : {}),
   })
   return msg.sid
 }

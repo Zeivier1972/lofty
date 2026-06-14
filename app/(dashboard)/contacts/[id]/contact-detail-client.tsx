@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
@@ -9,7 +9,7 @@ import {
   CheckSquare, Zap, Clock, Pin, Trash2, Send, MoreVertical,
   Building, Globe, Facebook, Instagram, Linkedin, Bot,
   TrendingUp, Eye, Star, ChevronRight, ChevronDown,
-  Activity, Search,
+  Activity, Search, Loader2, X, PhoneCall, PhoneMissed, PhoneOff, MicOff, Play,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -25,6 +25,7 @@ import {
   getInitials, getStatusColor, getPriorityColor, getLeadScoreColor,
 } from "@/lib/utils"
 import { useToast } from "@/components/ui/use-toast"
+import { AiAssistBar } from "@/components/ui/ai-assist-bar"
 
 function generateInsight(contact: any): string | null {
   const emails = contact.emails || []
@@ -68,7 +69,7 @@ const ACTIVITY_ICONS: Record<string, { icon: string; color: string }> = {
   CONTACT_CREATED: { icon: "👤", color: "bg-gray-100" },
 }
 
-type TabId = "overview" | "properties" | "searches" | "transactions" | "documents" | "automations"
+type TabId = "overview" | "properties" | "searches" | "transactions" | "documents" | "automations" | "calls"
 
 export default function ContactDetailClient({ contact, smsMessages = [], stages = [], pipelineId = "" }: { contact: any; smsMessages?: any[]; stages?: any[]; pipelineId?: string }) {
   const { toast } = useToast()
@@ -84,6 +85,87 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
   const [activityFilter, setActivityFilter] = useState("All")
   const [expandedEmail, setExpandedEmail] = useState<string | null>(null)
   const [expandedCall, setExpandedCall] = useState<string | null>(null)
+  const [tasks, setTasks] = useState<any[]>(contact.tasks || [])
+  const [appointments, setAppointments] = useState<any[]>(contact.appointments || [])
+  const [newTaskTitle, setNewTaskTitle] = useState("")
+  const [newTaskDue, setNewTaskDue] = useState("")
+  const [newTaskPriority, setNewTaskPriority] = useState("MEDIUM")
+  const [addingTask, setAddingTask] = useState(false)
+  const [newAptTitle, setNewAptTitle] = useState("")
+  const [newAptStart, setNewAptStart] = useState("")
+  const [newAptEnd, setNewAptEnd] = useState("")
+  const [addingApt, setAddingApt] = useState(false)
+  const [calls, setCalls] = useState<any[]>([])
+  const [callsLoaded, setCallsLoaded] = useState(false)
+  const [loadingCalls, setLoadingCalls] = useState(false)
+  const [expandedCallId, setExpandedCallId] = useState<string | null>(null)
+  const [showNewTx, setShowNewTx] = useState(false)
+  const [newTxForm, setNewTxForm] = useState({ title: "", address: "", city: "", state: "FL", zip: "", type: "BUYER", listPrice: "" })
+  const [savingTx, setSavingTx] = useState(false)
+  const [emailOpen, setEmailOpen] = useState(false)
+  const [emailSubject, setEmailSubject] = useState("")
+  const [emailBody, setEmailBody] = useState("")
+  const [sendingEmail, setSendingEmail] = useState(false)
+  const [emailMediaUrl, setEmailMediaUrl] = useState("")
+  const [emailLinkUrl, setEmailLinkUrl] = useState("")
+  const [emailLinkText, setEmailLinkText] = useState("")
+  const [showEmailImage, setShowEmailImage] = useState(false)
+  const [showEmailLink, setShowEmailLink] = useState(false)
+  const [contactTags, setContactTags] = useState<any[]>(contact.tags || [])
+  const [allTags, setAllTags] = useState<any[]>([])
+  const [showTagPicker, setShowTagPicker] = useState(false)
+  const [newTagName, setNewTagName] = useState("")
+  const [savingTag, setSavingTag] = useState(false)
+
+  const openTagPicker = async () => {
+    if (!allTags.length) {
+      const res = await fetch("/api/tags")
+      const data = await res.json()
+      setAllTags(data)
+    }
+    setShowTagPicker(true)
+  }
+
+  const toggleTag = async (tag: any) => {
+    const hasTag = contactTags.some((ct: any) => ct.tagId === tag.id)
+    if (hasTag) {
+      await fetch(`/api/contacts/${contact.id}/tags`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tagId: tag.id }),
+      })
+      setContactTags(prev => prev.filter((ct: any) => ct.tagId !== tag.id))
+    } else {
+      await fetch(`/api/contacts/${contact.id}/tags`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tagId: tag.id }),
+      })
+      setContactTags(prev => [...prev, { tagId: tag.id, tag }])
+    }
+  }
+
+  const createAndAddTag = async () => {
+    if (!newTagName.trim()) return
+    setSavingTag(true)
+    const colors = ["#4F46E5", "#059669", "#DC2626", "#D97706", "#7C3AED", "#0891B2"]
+    const color = colors[Math.floor(Math.random() * colors.length)]
+    const res = await fetch("/api/tags", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: newTagName.trim(), color }),
+    })
+    const tag = await res.json()
+    setAllTags(prev => [...prev, tag])
+    await fetch(`/api/contacts/${contact.id}/tags`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tagId: tag.id }),
+    })
+    setContactTags(prev => [...prev, { tagId: tag.id, tag }])
+    setNewTagName("")
+    setSavingTag(false)
+  }
 
   const triggerSofiaCall = async () => {
     if (!contact.phone) return
@@ -125,6 +207,78 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
     setUpdatingStage(false)
   }
 
+  async function addTask() {
+    if (!newTaskTitle.trim()) return
+    setAddingTask(true)
+    try {
+      const res = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: newTaskTitle.trim(), dueDate: newTaskDue || undefined, priority: newTaskPriority, contactId: contact.id }),
+      })
+      const task = await res.json()
+      setTasks(prev => [...prev, task])
+      setNewTaskTitle("")
+      setNewTaskDue("")
+    } finally {
+      setAddingTask(false)
+    }
+  }
+
+  async function toggleTask(taskId: string, currentStatus: string) {
+    const nextStatus = currentStatus === "COMPLETED" ? "PENDING" : "COMPLETED"
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: nextStatus } : t))
+    await fetch(`/api/tasks/${taskId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: nextStatus }),
+    })
+  }
+
+  async function deleteTask(taskId: string) {
+    setTasks(prev => prev.filter(t => t.id !== taskId))
+    await fetch(`/api/tasks/${taskId}`, { method: "DELETE" })
+  }
+
+  async function addAppointment() {
+    if (!newAptTitle.trim() || !newAptStart || !newAptEnd) return
+    setAddingApt(true)
+    try {
+      const res = await fetch("/api/appointments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: newAptTitle.trim(), startTime: newAptStart, endTime: newAptEnd, contactId: contact.id }),
+      })
+      const apt = await res.json()
+      if (apt.id) {
+        setAppointments(prev => [...prev, apt])
+        setNewAptTitle("")
+        setNewAptStart("")
+        setNewAptEnd("")
+      }
+    } finally {
+      setAddingApt(false)
+    }
+  }
+
+  async function createTransactionForContact() {
+    if (!newTxForm.title.trim() || !newTxForm.address.trim() || !newTxForm.city.trim() || !newTxForm.zip.trim()) return
+    setSavingTx(true)
+    try {
+      const res = await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...newTxForm, contactId: contact.id, listPrice: newTxForm.listPrice || undefined }),
+      })
+      const data = await res.json()
+      if (data.transaction) {
+        router.push(`/transactions/${data.transaction.id}`)
+      }
+    } finally {
+      setSavingTx(false)
+    }
+  }
+
   const insight = generateInsight(contact)
   const fullName = `${contact.firstName} ${contact.lastName}`
   const initials = getInitials(fullName)
@@ -160,9 +314,24 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
     { id: "transactions", label: "Transactions", count: contact.transactions?.length },
     { id: "documents", label: "Documents" },
     { id: "automations", label: `Automations${contact.enrollments?.length > 0 ? ` (${contact.enrollments.length})` : ""}` },
+    { id: "calls", label: "Llamadas" },
   ]
 
+  const loadCalls = useCallback(async () => {
+    if (callsLoaded) return
+    setLoadingCalls(true)
+    try {
+      const res = await fetch(`/api/contacts/${contact.id}/calls`)
+      const data = await res.json()
+      setCalls(data.calls || [])
+      setCallsLoaded(true)
+    } finally {
+      setLoadingCalls(false)
+    }
+  }, [contact.id, callsLoaded])
+
   return (
+    <>
     <div className="h-full flex flex-col">
       {/* AI Insight Banner */}
       {insight && (
@@ -223,7 +392,7 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
                 <Badge className={cn("text-xs px-2", getStatusColor(contact.status))}>
                   {contact.status === "LEAD" ? "Buyer" : contact.status.replace(/_/g, " ")}
                 </Badge>
-                {contact.tags.slice(0, 1).map((ct: any) => (
+                {contactTags.slice(0, 1).map((ct: any) => (
                   <span key={ct.tagId} className="text-xs px-2 py-0.5 rounded-full font-medium"
                     style={{ backgroundColor: ct.tag.color + "20", color: ct.tag.color }}>
                     {ct.tag.name}
@@ -264,13 +433,17 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
               <Phone className="w-4 h-4" />
             </a>
             <SmsButton contactId={contact.id} phone={contact.phone} name={`${contact.firstName} ${contact.lastName || ""}`.trim()} />
-            <a href={`mailto:${contact.email}`}
+            <button
+              onClick={() => contact.email && setEmailOpen(true)}
               className={cn("flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-white text-sm font-medium transition-colors",
                 contact.email ? "bg-purple-500 hover:bg-purple-600" : "bg-gray-200 cursor-not-allowed text-gray-400")}>
               <Mail className="w-4 h-4" />
-            </a>
+            </button>
             <SofiaCallButton contactId={contact.id} phone={contact.phone} name={`${contact.firstName} ${contact.lastName || ""}`.trim()} />
           </div>
+
+          <ShareWithLenderButton contactId={contact.id} />
+          <SendPortalInviteButton contactId={contact.id} email={contact.email} firstName={contact.firstName} />
 
           {/* Insight metrics */}
           <div className="bg-gray-50 rounded-xl p-3 space-y-2">
@@ -333,22 +506,62 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
           </div>
 
           {/* Tags */}
-          {contact.tags.length > 0 && (
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Tags</p>
-              <div className="flex flex-wrap gap-1.5">
-                {contact.tags.map((ct: any) => (
-                  <span key={ct.tagId} className="text-xs px-2 py-0.5 rounded-full font-medium"
-                    style={{ backgroundColor: ct.tag.color + "20", color: ct.tag.color }}>
-                    {ct.tag.name}
-                  </span>
-                ))}
-                <button className="text-xs px-2 py-0.5 rounded-full border border-dashed border-gray-300 text-gray-400 hover:border-lofty-400 hover:text-lofty-600 transition-colors flex items-center gap-0.5">
-                  <Plus className="w-3 h-3" /> Tag
-                </button>
-              </div>
+          <div className="relative">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Tags</p>
+            <div className="flex flex-wrap gap-1.5">
+              {contactTags.map((ct: any) => (
+                <span key={ct.tagId}
+                  onClick={() => toggleTag(ct.tag)}
+                  className="text-xs px-2 py-0.5 rounded-full font-medium cursor-pointer hover:opacity-70 transition-opacity"
+                  style={{ backgroundColor: ct.tag.color + "20", color: ct.tag.color }}
+                  title="Click para quitar">
+                  {ct.tag.name} ×
+                </span>
+              ))}
+              <button
+                onClick={openTagPicker}
+                className="text-xs px-2 py-0.5 rounded-full border border-dashed border-gray-300 text-gray-400 hover:border-lofty-400 hover:text-lofty-600 transition-colors flex items-center gap-0.5">
+                <Plus className="w-3 h-3" /> Tag
+              </button>
             </div>
-          )}
+
+            {showTagPicker && (
+              <div className="absolute left-0 top-full mt-1 z-30 bg-white rounded-xl shadow-xl border border-gray-200 w-56 p-3 space-y-2"
+                onMouseLeave={() => setShowTagPicker(false)}>
+                <p className="text-xs font-semibold text-gray-500">Seleccionar tag</p>
+                <div className="max-h-40 overflow-y-auto space-y-1">
+                  {allTags.map(tag => {
+                    const active = contactTags.some((ct: any) => ct.tagId === tag.id)
+                    return (
+                      <button key={tag.id} onClick={() => toggleTag(tag)}
+                        className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors",
+                          active ? "bg-gray-100" : "hover:bg-gray-50")}>
+                        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: tag.color }} />
+                        <span className="flex-1 text-left text-gray-800">{tag.name}</span>
+                        {active && <span className="text-gray-400">✓</span>}
+                      </button>
+                    )
+                  })}
+                  {allTags.length === 0 && <p className="text-xs text-gray-400 px-2">No hay tags aún</p>}
+                </div>
+                <div className="border-t border-gray-100 pt-2">
+                  <div className="flex gap-1">
+                    <input
+                      value={newTagName}
+                      onChange={e => setNewTagName(e.target.value)}
+                      onKeyDown={e => e.key === "Enter" && createAndAddTag()}
+                      placeholder="Nuevo tag..."
+                      className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-lofty-400"
+                    />
+                    <button onClick={createAndAddTag} disabled={savingTag || !newTagName.trim()}
+                      className="text-xs bg-lofty-600 text-white px-2 py-1 rounded-lg disabled:opacity-50 hover:bg-lofty-700">
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Buyer/Seller profile */}
           {(contact.buyerBudgetMax || contact.buyerLocation || contact.sellerAddress) && (
@@ -408,7 +621,7 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
           <div className="border-b border-gray-200 bg-white sticky top-0 z-10">
             <div className="flex gap-0 px-4 overflow-x-auto">
               {TABS.map(tab => (
-                <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                <button key={tab.id} onClick={() => { setActiveTab(tab.id as TabId); if (tab.id === "calls") loadCalls() }}
                   className={cn("px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors",
                     activeTab === tab.id
                       ? "border-blue-600 text-blue-600"
@@ -425,7 +638,7 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
             {activeTab === "overview" && (
               <div className="grid grid-cols-3 gap-5">
                 {/* Activity timeline */}
-                <div className="col-span-2 space-y-3">
+                <div className={cn("space-y-3", (activityFilter === "Tasks" || activityFilter === "Appointments") ? "col-span-3" : "col-span-2")}>
                   {/* Note input */}
                   <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
                     <div className="flex items-center gap-2 mb-2">
@@ -454,7 +667,7 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
 
                   {/* Activity filter */}
                   <div className="flex items-center gap-1 flex-wrap">
-                    {["All", "Notes", "Calls", "Emails", "Texts", "Tasks", "Appointments"].map(f => (
+                    {["All", "Notes", "Calls", "Emails", "Texts", "Tasks", "Appointments", "Portal"].map(f => (
                       <button key={f} onClick={() => setActivityFilter(f)} className={cn("text-xs px-3 py-1.5 rounded-full border transition-colors", activityFilter === f ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-500 hover:bg-gray-50")}>
                         {f}
                       </button>
@@ -501,25 +714,32 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
                     ))}
 
                     {/* Emails */}
-                    {(activityFilter === "All" || activityFilter === "Emails") && contact.emails.map((email: any) => (
-                      <div key={email.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-                        <div className="flex items-start gap-3">
-                          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm">✉️</div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-2 mb-1">
-                              <button onClick={() => setExpandedEmail(expandedEmail === email.id ? null : email.id)} className="text-sm font-medium text-blue-700 hover:underline text-left">
-                                {email.subject}
-                              </button>
-                              <Badge className={cn("text-xs flex-shrink-0", email.status === "SENT" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500")}>{email.status}</Badge>
+                    {(activityFilter === "All" || activityFilter === "Emails") && contact.emails.map((email: any) => {
+                      const isInbound = email.direction === "INBOUND"
+                      return (
+                        <div key={email.id} className={cn("rounded-xl border shadow-sm p-4", isInbound ? "bg-green-50 border-green-200" : "bg-white border-gray-100")}>
+                          <div className="flex items-start gap-3">
+                            <div className={cn("w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-sm", isInbound ? "bg-green-200" : "bg-blue-100")}>
+                              {isInbound ? "📩" : "✉️"}
                             </div>
-                            <p className="text-xs text-gray-400">{formatRelativeTime(email.createdAt)}</p>
-                            {expandedEmail === email.id && email.body && (
-                              <div className="mt-3 p-3 bg-gray-50 rounded-lg text-sm text-gray-700 border border-gray-100" dangerouslySetInnerHTML={{ __html: email.body }} />
-                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2 mb-1">
+                                <button onClick={() => setExpandedEmail(expandedEmail === email.id ? null : email.id)} className={cn("text-sm font-medium hover:underline text-left", isInbound ? "text-green-700" : "text-blue-700")}>
+                                  {email.subject}
+                                </button>
+                                <Badge className={cn("text-xs flex-shrink-0", isInbound ? "bg-green-100 text-green-700" : email.status === "SENT" ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-500")}>
+                                  {isInbound ? "Respuesta" : email.status}
+                                </Badge>
+                              </div>
+                              <p className="text-xs text-gray-400">{isInbound ? `De: ${email.fromAddress} · ` : ""}{formatRelativeTime(email.createdAt)}</p>
+                              {expandedEmail === email.id && email.body && (
+                                <div className="mt-3 p-3 bg-white rounded-lg text-sm text-gray-700 border border-gray-200 whitespace-pre-wrap">{email.body.replace(/<[^>]*>/g, "")}</div>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      )
+                    })}
 
                     {/* Calls */}
                     {(activityFilter === "All" || activityFilter === "Calls") && contact.dialerCalls?.map((call: any) => (
@@ -580,26 +800,123 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
                       )
                     })}
 
-                    {notes.length === 0 && contact.activities.length === 0 && contact.emails.length === 0 && smsMessages.length === 0 && !contact.dialerCalls?.length && (
+                    {notes.length === 0 && contact.activities.length === 0 && contact.emails.length === 0 && smsMessages.length === 0 && !contact.dialerCalls?.length && activityFilter !== "Portal" && activityFilter !== "Tasks" && activityFilter !== "Appointments" && (
                       <div className="text-center py-12">
                         <Activity className="w-10 h-10 text-gray-200 mx-auto mb-3" />
                         <p className="text-gray-400 text-sm">No activity yet — add a note or log a call</p>
                       </div>
                     )}
+
+                    {/* Portal chat thread */}
+                    {activityFilter === "Portal" && (
+                      <PortalChatPanel contactId={contact.id} />
+                    )}
+
+                    {/* Tasks panel */}
+                    {activityFilter === "Tasks" && (
+                      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
+                        <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+                          <CheckSquare className="w-4 h-4 text-blue-500" /> Tareas
+                        </h2>
+                        <div className="space-y-2">
+                          {tasks.length === 0 && <p className="text-xs text-gray-400 py-2">Sin tareas. Agrega la primera.</p>}
+                          {tasks.map((task: any) => (
+                            <div key={task.id} className="flex items-center gap-3 group p-2 rounded-xl hover:bg-gray-50">
+                              <button onClick={() => toggleTask(task.id, task.status)} className="flex-shrink-0">
+                                {task.status === "COMPLETED"
+                                  ? <CheckSquare className="w-5 h-5 text-green-500" />
+                                  : <div className="w-5 h-5 rounded border-2 border-gray-300 hover:border-blue-400 transition-colors" />}
+                              </button>
+                              <div className="flex-1 min-w-0">
+                                <p className={cn("text-sm", task.status === "COMPLETED" && "line-through text-gray-400")}>{task.title}</p>
+                                {task.dueDate && (
+                                  <p className={cn("text-xs", new Date(task.dueDate) < new Date() && task.status !== "COMPLETED" ? "text-orange-500" : "text-gray-400")}>
+                                    {new Date(task.dueDate).toLocaleDateString("es-US", { month: "short", day: "numeric" })}
+                                  </p>
+                                )}
+                              </div>
+                              <div className={cn("w-2 h-2 rounded-full flex-shrink-0", {
+                                "bg-red-500": task.priority === "URGENT",
+                                "bg-orange-500": task.priority === "HIGH",
+                                "bg-blue-400": task.priority === "MEDIUM",
+                                "bg-gray-300": task.priority === "LOW",
+                              })} />
+                              <button onClick={() => deleteTask(task.id)} className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-400 transition-all">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="pt-3 border-t border-gray-50 space-y-2">
+                          <input value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} onKeyDown={e => { if (e.key === "Enter") addTask() }} placeholder="Nueva tarea..." className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                          <div className="flex gap-2">
+                            <input type="date" value={newTaskDue} onChange={e => setNewTaskDue(e.target.value)} className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                            <select value={newTaskPriority} onChange={e => setNewTaskPriority(e.target.value)} className="border border-gray-200 rounded-xl px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
+                              <option value="LOW">Baja</option>
+                              <option value="MEDIUM">Media</option>
+                              <option value="HIGH">Alta</option>
+                              <option value="URGENT">Urgente</option>
+                            </select>
+                            <Button onClick={addTask} disabled={addingTask || !newTaskTitle.trim()} size="sm" className="bg-blue-600 hover:bg-blue-700 shrink-0">
+                              {addingTask ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Appointments panel */}
+                    {activityFilter === "Appointments" && (
+                      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
+                        <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+                          <Calendar className="w-4 h-4 text-pink-500" /> Citas
+                        </h2>
+                        <div className="space-y-2">
+                          {appointments.length === 0 && <p className="text-xs text-gray-400 py-2">Sin citas agendadas.</p>}
+                          {appointments.map((apt: any) => (
+                            <div key={apt.id} className="flex items-center gap-3 group p-2 rounded-xl hover:bg-gray-50">
+                              <Calendar className="w-4 h-4 text-pink-400 flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium">{apt.title}</p>
+                                <p className="text-xs text-gray-400">{new Date(apt.startTime).toLocaleString("es-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="pt-3 border-t border-gray-50 space-y-2">
+                          <input value={newAptTitle} onChange={e => setNewAptTitle(e.target.value)} placeholder="Título de la cita..." className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-xs text-gray-400 mb-1 block">Inicio</label>
+                              <input type="datetime-local" value={newAptStart} onChange={e => setNewAptStart(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                            </div>
+                            <div>
+                              <label className="text-xs text-gray-400 mb-1 block">Fin</label>
+                              <input type="datetime-local" value={newAptEnd} onChange={e => setNewAptEnd(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                            </div>
+                          </div>
+                          <Button onClick={addAppointment} disabled={addingApt || !newAptTitle.trim() || !newAptStart || !newAptEnd} size="sm" className="w-full bg-pink-600 hover:bg-pink-700">
+                            {addingApt ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Plus className="w-3.5 h-3.5 mr-1" />}
+                            Agendar cita
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {/* Right: Tasks + Appointments */}
+                {/* Right: Tasks + Appointments (hidden when those filter tabs are active) */}
+                {(activityFilter === "Tasks" || activityFilter === "Appointments") ? null :
                 <div className="space-y-4">
                   <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
                     <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
                       <h3 className="text-sm font-semibold text-gray-900">Tasks</h3>
-                      <button className="w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
+                      <button onClick={() => setActivityFilter("Tasks")} className="w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
                         <Plus className="w-3.5 h-3.5 text-gray-600" />
                       </button>
                     </div>
                     <div className="p-3 space-y-2">
-                      {contact.tasks.map((task: any) => (
+                      {tasks.map((task: any) => (
                         <div key={task.id} className="flex items-start gap-2 p-2 rounded-lg hover:bg-gray-50">
                           <div className={cn("w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0", {
                             "bg-red-500": task.priority === "URGENT",
@@ -622,7 +939,7 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
                           </div>
                         </div>
                       ))}
-                      {contact.tasks.length === 0 && (
+                      {tasks.length === 0 && (
                         <p className="text-xs text-gray-400 text-center py-3">No tasks</p>
                       )}
                     </div>
@@ -631,7 +948,7 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
                   <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
                     <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
                       <h3 className="text-sm font-semibold text-gray-900">Appointments</h3>
-                      <button className="w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
+                      <button onClick={() => setActivityFilter("Appointments")} className="w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
                         <Plus className="w-3.5 h-3.5 text-gray-600" />
                       </button>
                     </div>
@@ -653,7 +970,7 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
                       )}
                     </div>
                   </div>
-                </div>
+                </div>}
               </div>
             )}
 
@@ -739,6 +1056,12 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
             {/* Transactions Tab */}
             {activeTab === "transactions" && (
               <div className="space-y-3">
+                <div className="flex justify-end">
+                  <Button size="sm" onClick={() => setShowNewTx(true)} className="bg-lofty-600 hover:bg-lofty-700 gap-1.5">
+                    <Plus className="w-3.5 h-3.5" /> Nueva Transacción
+                  </Button>
+                </div>
+
                 {contact.transactions?.length === 0 ? (
                   <div className="text-center py-12">
                     <FileText className="w-10 h-10 text-gray-200 mx-auto mb-3" />
@@ -763,6 +1086,33 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
                     </Link>
                   ))
                 )}
+
+                {/* New Transaction inline modal */}
+                {showNewTx && (
+                  <div className="bg-white rounded-2xl border border-blue-200 shadow-md p-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-semibold text-gray-900 text-sm">Nueva Transacción</h3>
+                      <button onClick={() => setShowNewTx(false)} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
+                    </div>
+                    <input value={newTxForm.title} onChange={e => setNewTxForm(f => ({ ...f, title: e.target.value }))} placeholder="Título *" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                    <div className="grid grid-cols-2 gap-2">
+                      <select value={newTxForm.type} onChange={e => setNewTxForm(f => ({ ...f, type: e.target.value }))} className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
+                        {["BUYER","SELLER","DUAL","LEASE","REFERRAL"].map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                      <input value={newTxForm.listPrice} onChange={e => setNewTxForm(f => ({ ...f, listPrice: e.target.value }))} type="number" placeholder="Precio lista" className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                    </div>
+                    <input value={newTxForm.address} onChange={e => setNewTxForm(f => ({ ...f, address: e.target.value }))} placeholder="Dirección *" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                    <div className="grid grid-cols-3 gap-2">
+                      <input value={newTxForm.city} onChange={e => setNewTxForm(f => ({ ...f, city: e.target.value }))} placeholder="Ciudad *" className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                      <input value={newTxForm.state} onChange={e => setNewTxForm(f => ({ ...f, state: e.target.value }))} placeholder="Estado" className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                      <input value={newTxForm.zip} onChange={e => setNewTxForm(f => ({ ...f, zip: e.target.value }))} placeholder="ZIP *" className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                    </div>
+                    <Button onClick={createTransactionForContact} disabled={savingTx || !newTxForm.title.trim() || !newTxForm.address.trim() || !newTxForm.city.trim() || !newTxForm.zip.trim()} size="sm" className="w-full bg-lofty-600 hover:bg-lofty-700">
+                      {savingTx ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Plus className="w-3.5 h-3.5 mr-1" />}
+                      Crear y abrir transacción
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -774,6 +1124,104 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
                 <Button variant="outline" size="sm" className="mt-4 gap-2">
                   <Plus className="w-4 h-4" /> Upload Document
                 </Button>
+              </div>
+            )}
+
+            {/* Calls Tab */}
+            {activeTab === "calls" && (
+              <div className="space-y-3">
+                {loadingCalls ? (
+                  <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-gray-300" /></div>
+                ) : calls.length === 0 ? (
+                  <div className="text-center py-12">
+                    <PhoneCall className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+                    <p className="text-gray-400 text-sm">No hay llamadas registradas para este contacto</p>
+                  </div>
+                ) : (
+                  calls.map((call: any) => {
+                    const isExpanded = expandedCallId === call.id
+                    const dur = call.duration ? `${Math.floor(call.duration / 60)}:${String(call.duration % 60).padStart(2, "0")}` : null
+                    const disposition = call.disposition || call.status
+                    const isVoicemail = disposition?.toLowerCase().includes("voicemail") || disposition === "voicemail"
+                    const isConnected = ["answered", "connected", "REACHED", "customerLiveAnswer"].some(v => disposition?.includes(v))
+                    const Icon = isVoicemail ? MicOff : isConnected ? PhoneCall : PhoneOff
+                    const iconColor = isVoicemail ? "text-amber-500" : isConnected ? "text-green-500" : "text-gray-400"
+                    const proxyUrl = call.recordingUrl ? `/api/dialer/recording-proxy?url=${encodeURIComponent(call.recordingUrl)}` : null
+
+                    return (
+                      <div key={call.id} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+                        <button
+                          onClick={() => setExpandedCallId(isExpanded ? null : call.id)}
+                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left"
+                        >
+                          <div className={cn("w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0", iconColor.replace("text-", "text-"))}>
+                            <Icon className={cn("w-4 h-4", iconColor)} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-medium text-gray-900">
+                                {isVoicemail ? "Buzón de voz" : isConnected ? "Llamada contestada" : "Sin respuesta"}
+                              </span>
+                              {dur && <span className="text-xs text-gray-400">{dur} min</span>}
+                              {call.recordingUrl && (
+                                <span className="text-[10px] bg-blue-50 text-blue-600 border border-blue-100 rounded-full px-2 py-0.5 flex items-center gap-1">
+                                  <Play className="w-2.5 h-2.5" /> Grabación
+                                </span>
+                              )}
+                              {call.aiSummary && (
+                                <span className="text-[10px] bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-full px-2 py-0.5">
+                                  ✦ Resumen IA
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-gray-400 mt-0.5">
+                              Sofía · {new Date(call.createdAt).toLocaleString("es", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                            </p>
+                          </div>
+                          <ChevronDown className={cn("w-4 h-4 text-gray-400 flex-shrink-0 transition-transform", isExpanded && "rotate-180")} />
+                        </button>
+
+                        {isExpanded && (
+                          <div className="px-4 pb-4 border-t border-gray-50 space-y-3">
+                            {/* Audio player */}
+                            {proxyUrl && (
+                              <div className="mt-3">
+                                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Grabación</p>
+                                <audio controls className="w-full h-10" src={proxyUrl}>
+                                  Tu navegador no soporta audio.
+                                </audio>
+                              </div>
+                            )}
+
+                            {/* AI Summary */}
+                            {call.aiSummary && (
+                              <div className="bg-indigo-50 rounded-xl p-3">
+                                <p className="text-[10px] font-semibold text-indigo-500 uppercase tracking-wider mb-1">Resumen IA</p>
+                                <p className="text-sm text-indigo-900 leading-relaxed whitespace-pre-wrap">{call.aiSummary}</p>
+                              </div>
+                            )}
+
+                            {/* Transcription */}
+                            {call.transcription && (
+                              <div className="bg-gray-50 rounded-xl p-3 max-h-48 overflow-y-auto">
+                                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Transcripción</p>
+                                <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap">{call.transcription}</p>
+                              </div>
+                            )}
+
+                            {/* Notes */}
+                            {call.notes && (
+                              <div>
+                                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Notas</p>
+                                <p className="text-sm text-gray-700">{call.notes}</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })
+                )}
               </div>
             )}
 
@@ -815,31 +1263,202 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
         </div>
       </div>
     </div>
+
+    {/* Email compose modal */}
+    {emailOpen && (
+      <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 px-4" onClick={() => setEmailOpen(false)}>
+        <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-5 space-y-4" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-semibold text-gray-900">Nuevo email</p>
+              <p className="text-sm text-gray-400">{contact.email}</p>
+            </div>
+            <button onClick={() => setEmailOpen(false)} className="text-gray-400 hover:text-gray-600 text-xl font-light">×</button>
+          </div>
+          <input
+            autoFocus
+            type="text"
+            value={emailSubject}
+            onChange={e => setEmailSubject(e.target.value)}
+            placeholder="Asunto"
+            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300"
+          />
+          <textarea
+            rows={6}
+            value={emailBody}
+            onChange={e => setEmailBody(e.target.value)}
+            placeholder={`Escribe tu mensaje para ${contact.firstName}...`}
+            className="w-full border border-gray-200 rounded-xl p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-300"
+          />
+
+          {/* Media toolbar */}
+          <div className="flex gap-3 flex-wrap">
+            <label className="flex items-center gap-1 text-xs cursor-pointer text-purple-600 hover:text-purple-800">
+              <input type="file" accept="image/*,video/*" className="hidden"
+                onChange={async e => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  try {
+                    const form = new FormData(); form.append("file", file)
+                    const res = await fetch("/api/upload", { method: "POST", body: form })
+                    const data = await res.json()
+                    if (!res.ok) throw new Error(data.error)
+                    const isVideo = file.type.startsWith("video/")
+                    const tag = isVideo
+                      ? `\n<p>📹 <a href="${data.url}" style="color:#4F46E5">Ver video</a></p>`
+                      : `\n<img src="${data.url}" style="max-width:100%;border-radius:8px;margin:8px 0"/>`
+                    setEmailBody(b => b + tag)
+                    toast({ title: "✅ Archivo subido e insertado" })
+                  } catch (err: any) {
+                    toast({ title: "Error", description: err.message, variant: "destructive" })
+                  }
+                }} />
+              📎 Subir imagen/video
+            </label>
+            <button type="button" onClick={() => { setShowEmailImage(v => !v); setShowEmailLink(false) }}
+              className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800">
+              🖼️ URL de imagen
+            </button>
+            <button type="button" onClick={() => { setShowEmailLink(v => !v); setShowEmailImage(false) }}
+              className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800">
+              🔗 Agregar enlace
+            </button>
+          </div>
+
+          {showEmailImage && (
+            <div className="flex gap-2">
+              <input type="url" value={emailMediaUrl} onChange={e => setEmailMediaUrl(e.target.value)}
+                placeholder="URL de imagen o video (https://...)"
+                className="flex-1 border border-purple-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300" />
+              <button type="button"
+                onClick={() => {
+                  if (!emailMediaUrl.trim()) return
+                  const isVideo = /\.(mp4|mov|webm)/i.test(emailMediaUrl)
+                  const tag = isVideo
+                    ? `\n<p>📹 <a href="${emailMediaUrl}" style="color:#4F46E5">Ver video</a></p>`
+                    : `\n<img src="${emailMediaUrl}" style="max-width:100%;border-radius:8px;margin:8px 0"/>`
+                  setEmailBody(b => b + tag)
+                  setEmailMediaUrl("")
+                  setShowEmailImage(false)
+                }}
+                className="bg-purple-500 hover:bg-purple-600 text-white px-3 py-2 rounded-xl text-sm font-medium">
+                Insertar
+              </button>
+            </div>
+          )}
+
+          {showEmailLink && (
+            <div className="space-y-2">
+              <input type="text" value={emailLinkText} onChange={e => setEmailLinkText(e.target.value)}
+                placeholder="Texto del enlace (ej. Ver propiedad)"
+                className="w-full border border-purple-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300" />
+              <div className="flex gap-2">
+                <input type="url" value={emailLinkUrl} onChange={e => setEmailLinkUrl(e.target.value)}
+                  placeholder="URL (https://...)"
+                  className="flex-1 border border-purple-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300" />
+                <button type="button"
+                  onClick={() => {
+                    if (!emailLinkUrl.trim()) return
+                    const text = emailLinkText.trim() || emailLinkUrl
+                    setEmailBody(b => b + `\n<a href="${emailLinkUrl}" style="color:#4F46E5;font-weight:bold">${text}</a>`)
+                    setEmailLinkUrl("")
+                    setEmailLinkText("")
+                    setShowEmailLink(false)
+                  }}
+                  className="bg-purple-500 hover:bg-purple-600 text-white px-3 py-2 rounded-xl text-sm font-medium">
+                  Insertar
+                </button>
+              </div>
+            </div>
+          )}
+
+          <AiAssistBar contactId={contact.id} draft={emailBody} onApply={setEmailBody} />
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setEmailOpen(false)}
+              className="px-4 py-2.5 rounded-xl text-sm text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors">
+              Cancelar
+            </button>
+            <button
+              disabled={sendingEmail || !emailSubject.trim() || !emailBody.trim()}
+              onClick={async () => {
+                setSendingEmail(true)
+                try {
+                  const res = await fetch("/api/emails/send", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ contactId: contact.id, to: contact.email, subject: emailSubject, body: emailBody }),
+                  })
+                  const data = await res.json()
+                  if (res.ok) {
+                    toast({ title: "✅ Email enviado", description: `Enviado a ${contact.email}` })
+                    setEmailOpen(false)
+                    setEmailSubject("")
+                    setEmailBody("")
+                  } else {
+                    toast({ title: "Error", description: data.error || "No se pudo enviar el email", variant: "destructive" })
+                  }
+                } catch {
+                  toast({ title: "Error", description: "No se pudo conectar", variant: "destructive" })
+                } finally {
+                  setSendingEmail(false)
+                }
+              }}
+              className="flex items-center gap-2 bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition-colors">
+              <Send className="w-4 h-4" />
+              {sendingEmail ? "Enviando..." : "Enviar"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   )
 }
 
 function SmsButton({ contactId, phone, name }: { contactId: string; phone?: string; name: string }) {
   const [open, setOpen] = useState(false)
   const [message, setMessage] = useState("")
+  const [mediaUrl, setMediaUrl] = useState("")
+  const [showLink, setShowLink] = useState(false)
+  const [linkUrl, setLinkUrl] = useState("")
   const [sending, setSending] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const { toast } = useToast()
 
   if (!phone) return null
+
+  async function handleFileUpload(file: File) {
+    setUploading(true)
+    try {
+      const form = new FormData()
+      form.append("file", file)
+      const res = await fetch("/api/upload", { method: "POST", body: form })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setMediaUrl(data.url)
+      toast({ title: "✅ Archivo subido", description: "Listo para enviar" })
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message || "No se pudo subir el archivo", variant: "destructive" })
+    } finally {
+      setUploading(false)
+    }
+  }
 
   async function handleSend() {
     if (!message.trim()) return
     setSending(true)
     try {
+      const mediaUrls = mediaUrl.trim() ? [mediaUrl.trim()] : undefined
       const res = await fetch("/api/sms/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contactId, message }),
+        body: JSON.stringify({ contactId, message, mediaUrls }),
       })
       const data = await res.json()
       if (data.success) {
-        toast({ title: "✅ Mensaje enviado", description: `SMS enviado a ${name}` })
-        setMessage("")
-        setOpen(false)
+        toast({ title: "✅ Mensaje enviado", description: `SMS${mediaUrls ? " MMS" : ""} enviado a ${name}` })
+        setMessage(""); setMediaUrl(""); setShowLink(false); setLinkUrl(""); setOpen(false)
       } else {
         toast({ title: "Error", description: data.error || "No se pudo enviar", variant: "destructive" })
       }
@@ -852,37 +1471,63 @@ function SmsButton({ contactId, phone, name }: { contactId: string; phone?: stri
 
   return (
     <>
-      <button
-        onClick={() => setOpen(true)}
-        title="Enviar SMS"
-        className={cn("flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-white text-sm font-medium transition-colors",
-          "bg-blue-500 hover:bg-blue-600")}>
+      <button onClick={() => setOpen(true)} title="Enviar SMS"
+        className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-white text-sm font-medium transition-colors bg-blue-500 hover:bg-blue-600">
         <MessageSquare className="w-4 h-4" />
       </button>
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 px-4" onClick={() => setOpen(false)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-4" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-3" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <div>
-                <p className="font-semibold text-gray-900">Enviar SMS</p>
+                <p className="font-semibold text-gray-900">Enviar SMS / MMS</p>
                 <p className="text-sm text-gray-400">{phone}</p>
               </div>
               <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600 text-xl font-light">×</button>
             </div>
-            <textarea
-              autoFocus
-              rows={4}
-              value={message}
-              onChange={e => setMessage(e.target.value)}
+
+            <textarea autoFocus rows={4} value={message} onChange={e => setMessage(e.target.value)}
               placeholder={`Escribe tu mensaje para ${name}...`}
-              className="w-full border border-gray-200 rounded-xl p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-300"
-            />
+              className="w-full border border-gray-200 rounded-xl p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-300" />
+
+            {/* Toolbar */}
+            <div className="flex gap-3 flex-wrap">
+              <label className={cn("flex items-center gap-1 text-xs cursor-pointer", uploading ? "text-gray-400" : "text-blue-500 hover:text-blue-700")}>
+                <input type="file" accept="image/*,video/*" className="hidden"
+                  onChange={e => e.target.files?.[0] && handleFileUpload(e.target.files[0])} />
+                {uploading ? "⏳ Subiendo..." : "📎 Subir imagen/video"}
+              </label>
+              <button type="button" onClick={() => setShowLink(v => !v)}
+                className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-700">
+                🔗 Insertar enlace
+              </button>
+            </div>
+
+            {mediaUrl && (
+              <div className="flex items-center gap-2 bg-blue-50 rounded-xl px-3 py-2 text-xs text-blue-700">
+                📎 <span className="truncate flex-1">{mediaUrl}</span>
+                <button onClick={() => setMediaUrl("")} className="text-gray-400 hover:text-red-500 flex-shrink-0">×</button>
+              </div>
+            )}
+
+            {showLink && (
+              <div className="flex gap-2">
+                <input type="url" value={linkUrl} onChange={e => setLinkUrl(e.target.value)}
+                  placeholder="Pega el enlace (https://...)"
+                  className="flex-1 border border-blue-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                <button type="button"
+                  onClick={() => { if (linkUrl.trim()) { setMessage(m => (m ? m + "\n" : "") + linkUrl.trim()); setLinkUrl(""); setShowLink(false) } }}
+                  className="bg-blue-500 text-white px-3 py-2 rounded-xl text-sm font-medium hover:bg-blue-600">
+                  Insertar
+                </button>
+              </div>
+            )}
+
+            <AiAssistBar contactId={contactId} draft={message} onApply={setMessage} />
             <div className="flex items-center justify-between">
-              <p className="text-xs text-gray-400">{message.length}/160 caracteres</p>
-              <button
-                onClick={handleSend}
-                disabled={sending || !message.trim()}
+              <p className="text-xs text-gray-400">{message.length} chars · {mediaUrl ? "MMS" : "SMS"}</p>
+              <button onClick={handleSend} disabled={sending || !message.trim()}
                 className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition-colors">
                 <Send className="w-4 h-4" />
                 {sending ? "Enviando..." : "Enviar"}
@@ -930,5 +1575,217 @@ function SofiaCallButton({ contactId, phone, name }: { contactId: string; phone?
       className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-violet-500 hover:bg-violet-600 disabled:opacity-50 text-white text-sm font-medium transition-colors">
       <Bot className="w-4 h-4" />
     </button>
+  )
+}
+
+function ShareWithLenderButton({ contactId }: { contactId: string }) {
+  const [open, setOpen] = useState(false)
+  const [partners, setPartners] = useState<{ id: string; name: string; company: string | null; pricePerLead: number; isActive: boolean }[]>([])
+  const [loadingPartners, setLoadingPartners] = useState(false)
+  const [sharing, setSharing] = useState<string | null>(null)
+  const { toast } = useToast()
+
+  async function openModal() {
+    setOpen(true)
+    setLoadingPartners(true)
+    try {
+      const res = await fetch("/api/partners")
+      const data = await res.json()
+      setPartners((data.partners || []).filter((p: any) => p.isActive))
+    } finally {
+      setLoadingPartners(false)
+    }
+  }
+
+  async function share(loanOfficerId: string) {
+    setSharing(loanOfficerId)
+    try {
+      const res = await fetch("/api/partners/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contactId, loanOfficerId }),
+      })
+      const data = await res.json()
+      if (data.share) {
+        toast({ title: "✅ Lead compartido", description: "El loan officer recibió una notificación por email" })
+        setOpen(false)
+      } else {
+        toast({ title: "Error", description: data.error || "No se pudo compartir", variant: "destructive" })
+      }
+    } finally {
+      setSharing(null)
+    }
+  }
+
+  return (
+    <>
+      <button
+        onClick={openModal}
+        className="w-full flex items-center justify-center gap-2 py-2 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-medium transition-colors">
+        <Building className="w-3.5 h-3.5" />
+        Compartir con Loan Officer
+      </button>
+
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 px-4" onClick={() => setOpen(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-3" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <p className="font-semibold text-gray-900">Compartir lead</p>
+              <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600 text-xl font-light">×</button>
+            </div>
+            {loadingPartners ? (
+              <p className="text-sm text-gray-400 py-4 text-center">Cargando...</p>
+            ) : partners.length === 0 ? (
+              <p className="text-sm text-gray-400 py-4 text-center">
+                No tienes loan officers activos. Agrégalos en la página <strong>Loan Officers</strong>.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {partners.map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => share(p.id)}
+                    disabled={!!sharing}
+                    className="w-full flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50 disabled:opacity-50 text-left transition-all">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">{p.name}</p>
+                      {p.company && <p className="text-xs text-gray-400">{p.company}</p>}
+                    </div>
+                    <span className="text-xs font-semibold text-indigo-600">
+                      {sharing === p.id ? "Compartiendo..." : `$${p.pricePerLead}`}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+function SendPortalInviteButton({ contactId, email, firstName }: { contactId: string; email?: string | null; firstName: string }) {
+  const [sending, setSending] = useState(false)
+  const [sent, setSent] = useState(false)
+  const { toast } = useToast()
+
+  if (!email) return null
+
+  async function handleInvite() {
+    setSending(true)
+    try {
+      const res = await fetch(`/api/contacts/${contactId}/portal-invite`, { method: "POST" })
+      const data = await res.json()
+      if (data.success) {
+        setSent(true)
+        toast({ title: "✅ Invitación enviada", description: `Link del portal enviado a ${email}` })
+        setTimeout(() => setSent(false), 5000)
+      } else {
+        toast({ title: "Error", description: data.error || "No se pudo enviar", variant: "destructive" })
+      }
+    } catch {
+      toast({ title: "Error", description: "No se pudo conectar", variant: "destructive" })
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <button
+      onClick={handleInvite}
+      disabled={sending}
+      className="w-full flex items-center justify-center gap-2 py-2 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 disabled:opacity-50 text-blue-700 text-xs font-medium transition-colors">
+      <Globe className="w-3.5 h-3.5" />
+      {sending ? "Enviando..." : sent ? "✓ Invitación enviada" : "Invitar al Portal del Cliente"}
+    </button>
+  )
+}
+
+function PortalChatPanel({ contactId }: { contactId: string }) {
+  const [messages, setMessages] = useState<{ id: string; fromClient: boolean; content: string; createdAt: string }[]>([])
+  const [loading, setLoading] = useState(true)
+  const [reply, setReply] = useState("")
+  const [sending, setSending] = useState(false)
+  const { toast } = useToast()
+
+  // Load messages on mount
+  useState(() => {
+    fetch(`/api/portal/admin/${contactId}`)
+      .then(r => r.json())
+      .then(d => setMessages(d.messages || []))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  })
+
+  async function sendReply() {
+    if (!reply.trim()) return
+    setSending(true)
+    try {
+      const res = await fetch(`/api/portal/admin/${contactId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: reply.trim() }),
+      })
+      const data = await res.json()
+      if (data.message) {
+        setMessages(prev => [...prev, data.message])
+        setReply("")
+      } else {
+        toast({ title: "Error", description: "No se pudo enviar el mensaje", variant: "destructive" })
+      }
+    } catch {
+      toast({ title: "Error", description: "No se pudo conectar", variant: "destructive" })
+    } finally {
+      setSending(false)
+    }
+  }
+
+  if (loading) {
+    return <p className="text-xs text-gray-400 py-4 text-center">Cargando mensajes del portal...</p>
+  }
+
+  return (
+    <div className="space-y-3">
+      {messages.length === 0 ? (
+        <p className="text-xs text-gray-400 py-2 text-center">Sin mensajes en el portal todavía.</p>
+      ) : (
+        <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+          {messages.map(m => (
+            <div key={m.id} className={cn("flex", m.fromClient ? "justify-start" : "justify-end")}>
+              <div className={cn(
+                "max-w-[80%] rounded-2xl px-3 py-2 text-sm",
+                m.fromClient
+                  ? "bg-gray-100 text-gray-800 rounded-tl-sm"
+                  : "bg-blue-600 text-white rounded-tr-sm"
+              )}>
+                <p>{m.content}</p>
+                <p className={cn("text-[10px] mt-0.5", m.fromClient ? "text-gray-400" : "text-blue-200")}>
+                  {new Date(m.createdAt).toLocaleString("es-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Reply input */}
+      <div className="flex gap-2 pt-2 border-t border-gray-100">
+        <Textarea
+          value={reply}
+          onChange={e => setReply(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendReply() } }}
+          placeholder="Escribe una respuesta al cliente..."
+          className="flex-1 min-h-[60px] text-sm resize-none rounded-xl border-gray-200"
+        />
+        <button
+          onClick={sendReply}
+          disabled={sending || !reply.trim()}
+          className="self-end px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white transition-colors"
+        >
+          <Send className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
   )
 }

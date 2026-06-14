@@ -7,7 +7,7 @@ interface EmailOptions {
   html: string
   text?: string
   from?: string
-  replyTo?: string
+  replyTo?: string | string[]
   headers?: Record<string, string>
 }
 
@@ -69,7 +69,23 @@ async function sendViaNodemailer(opts: EmailOptions): Promise<boolean> {
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
+
+// If an inbound domain is configured, automatically set Reply-To so replies
+// come back through Resend's inbound webhook instead of Catherine's inbox.
+function withReplyTo(opts: EmailOptions): EmailOptions {
+  if (opts.replyTo) return opts
+  const inboundDomain = process.env.INBOUND_EMAIL_DOMAIN || process.env.RESEND_INBOUND_DOMAIN
+  // Catherine's real email so contacts see a professional address when replying
+  const agentEmail = process.env.AGENT_REPLY_EMAIL
+  if (!inboundDomain && !agentEmail) return opts
+  const addrs: string[] = []
+  if (agentEmail) addrs.push(agentEmail)
+  if (inboundDomain) addrs.push(`reply@${inboundDomain}`)
+  return { ...opts, replyTo: addrs.length === 1 ? addrs[0] : addrs }
+}
+
 export async function sendEmail(opts: EmailOptions): Promise<boolean> {
+  opts = withReplyTo(opts)
   try {
     if (await sendViaResend(opts)) return true
     if (await sendViaNodemailer(opts)) return true

@@ -160,13 +160,45 @@ function PipelineSettingsModal({
 function ImportModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
   const [csv, setCsv] = useState("")
   const [importing, setImporting] = useState(false)
-  const [result, setResult] = useState<{ imported: number; skipped: number; errors: string[] } | null>(null)
+  const [result, setResult] = useState<{ imported: number; skipped: number; errors: string[]; total: number } | null>(null)
+  const [preview, setPreview] = useState<{ headers: string[]; rows: string[][] } | null>(null)
   const { toast } = useToast()
 
-  const SAMPLE_CSV = `first_name,last_name,email,phone,status,source,type,budget,area,bedrooms,notes
-Maria,Garcia,maria@email.com,305-555-0101,lead,zillow,buyer,450000,Coral Gables,3,Looking for single family
-Carlos,Rodriguez,carlos@email.com,786-555-0202,prospect,referral,seller,,Brickell,,Wants to sell condo
-Ana,Martinez,ana@email.com,305-555-0303,lead,facebook,buyer,650000,Coconut Grove,4,Needs pool`
+  function parsePreview(raw: string) {
+    const lines = raw.trim().split(/\r?\n/).filter(l => l.trim()).slice(0, 6)
+    if (lines.length < 2) return null
+    const parseRow = (row: string): string[] => {
+      const result: string[] = []
+      let cur = "", inQ = false
+      for (const ch of row) {
+        if (ch === '"') { inQ = !inQ }
+        else if (ch === ',' && !inQ) { result.push(cur.trim()); cur = "" }
+        else { cur += ch }
+      }
+      result.push(cur.trim())
+      return result
+    }
+    const headers = parseRow(lines[0])
+    const rows = lines.slice(1).map(parseRow)
+    return { headers, rows }
+  }
+
+  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = ev => {
+      const text = ev.target?.result as string
+      setCsv(text)
+      setPreview(parsePreview(text))
+    }
+    reader.readAsText(file)
+  }
+
+  function handlePaste(text: string) {
+    setCsv(text)
+    setPreview(parsePreview(text))
+  }
 
   async function handleImport() {
     if (!csv.trim()) return
@@ -188,25 +220,17 @@ Ana,Martinez,ana@email.com,305-555-0303,lead,facebook,buyer,650000,Coconut Grove
     }
   }
 
-  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = ev => setCsv(ev.target?.result as string)
-    reader.readAsText(file)
-  }
-
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-5 border-b">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-lofty-100 rounded-lg flex items-center justify-center">
               <Upload className="w-4 h-4 text-lofty-600" />
             </div>
             <div>
-              <h2 className="font-bold text-gray-900">Bulk Import Leads</h2>
-              <p className="text-xs text-gray-500">Upload CSV — IDX search profiles auto-assigned from lead data</p>
+              <h2 className="font-bold text-gray-900">Importar Leads (CSV)</h2>
+              <p className="text-xs text-gray-500">Compatible con exportaciones de Lofty CRM · Lead Type: Buyer, Seller, Rental</p>
             </div>
           </div>
           <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg">
@@ -219,58 +243,95 @@ Ana,Martinez,ana@email.com,305-555-0303,lead,facebook,buyer,650000,Coconut Grove
             <div className="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-xl">
               <CheckCircle2 className="w-6 h-6 text-green-600 flex-shrink-0" />
               <div>
-                <p className="font-semibold text-green-800">Import Complete</p>
-                <p className="text-sm text-green-700">{result.imported} imported · {result.skipped} skipped (duplicates)</p>
+                <p className="font-semibold text-green-800">Importación completa</p>
+                <p className="text-sm text-green-700">{result.imported} importados · {result.skipped} omitidos (duplicados) · {result.total} total en archivo</p>
               </div>
             </div>
             {result.errors.length > 0 && (
               <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                <p className="text-xs font-medium text-red-700 mb-1">Errors ({result.errors.length}):</p>
-                {result.errors.slice(0, 5).map((e, i) => <p key={i} className="text-xs text-red-600">{e}</p>)}
+                <p className="text-xs font-medium text-red-700 mb-1">Errores ({result.errors.length}):</p>
+                {result.errors.map((e, i) => <p key={i} className="text-xs text-red-600">{e}</p>)}
               </div>
             )}
-            <Button onClick={onClose} className="w-full bg-lofty-600 hover:bg-lofty-700">Done</Button>
+            <Button onClick={onClose} className="w-full bg-lofty-600 hover:bg-lofty-700">Listo</Button>
           </div>
         ) : (
           <div className="p-5 space-y-4">
-            <div className="border-2 border-dashed border-gray-200 rounded-xl p-4 text-center">
+            {/* Upload zone */}
+            <div className="border-2 border-dashed border-gray-200 rounded-xl p-5 text-center hover:border-lofty-400 transition-colors">
               <FileText className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-              <p className="text-sm font-medium text-gray-700 mb-1">Upload CSV file</p>
-              <p className="text-xs text-gray-400 mb-3">Supports: first_name, last_name, email, phone, status, source, type, budget, area, bedrooms</p>
+              <p className="text-sm font-medium text-gray-700 mb-1">Arrastra tu CSV aquí o haz clic para seleccionar</p>
+              <p className="text-xs text-gray-400 mb-3">Formatos soportados: exportación Lofty CRM · CSV simple</p>
               <label className="cursor-pointer">
-                <span className="bg-lofty-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-lofty-700 transition-colors">Choose File</span>
+                <span className="bg-lofty-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-lofty-700 transition-colors">Seleccionar archivo</span>
                 <input type="file" accept=".csv,.txt" onChange={handleFile} className="hidden" />
               </label>
             </div>
 
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-sm font-medium text-gray-700">Or paste CSV data</label>
-                <button onClick={() => setCsv(SAMPLE_CSV)} className="text-xs text-lofty-600 hover:text-lofty-700 font-medium">
-                  Load sample
-                </button>
+            {/* Supported columns info */}
+            <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+              <p className="text-xs font-semibold text-blue-700 mb-1.5">Columnas reconocidas del export de Lofty:</p>
+              <div className="flex flex-wrap gap-1">
+                {["First Name","Last Name","Email","Phone","Lead Type","Mailing Street Addr.","Mailing City","Mailing State","Mailing Zip Code","Source","Tag","Group1","Group2","Pipeline","Birthday","Max Price","Min Price","Min Bedroom","Property Type","Inquired City","Unsubscribed","Phone DNC status","Number Consent","Buyer Timeframe","Pre-Qualified","Family Member First Name"].map(col => (
+                  <span key={col} className="text-[10px] px-1.5 py-0.5 bg-white border border-blue-200 rounded text-blue-600">{col}</span>
+                ))}
               </div>
-              <textarea
-                value={csv}
-                onChange={e => setCsv(e.target.value)}
-                rows={8}
-                placeholder="first_name,last_name,email,phone,status,source,type,budget,area..."
-                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-xs font-mono focus:ring-2 focus:ring-lofty-500 outline-none resize-none"
-              />
             </div>
 
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex gap-2">
-              <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-              <div className="text-xs text-amber-700">
-                <strong>IDX auto-assign:</strong> The <code>type</code> (buyer/seller), <code>budget</code>, <code>area</code>, and <code>bedrooms</code> columns will automatically set each contact's search profile for IDX matching once connected.
+            {/* Preview table */}
+            {preview && (
+              <div>
+                <p className="text-xs font-medium text-gray-600 mb-1.5">Vista previa — primeras {preview.rows.length} filas:</p>
+                <div className="overflow-x-auto border border-gray-200 rounded-xl">
+                  <table className="text-xs w-full">
+                    <thead className="bg-gray-50 border-b border-gray-200">
+                      <tr>
+                        {preview.headers.slice(0, 8).map((h, i) => (
+                          <th key={i} className="px-2 py-1.5 text-left text-gray-500 font-medium whitespace-nowrap">{h}</th>
+                        ))}
+                        {preview.headers.length > 8 && <th className="px-2 py-1.5 text-gray-400">+{preview.headers.length - 8} más</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {preview.rows.map((row, ri) => (
+                        <tr key={ri} className="border-b border-gray-100 last:border-0">
+                          {row.slice(0, 8).map((cell, ci) => (
+                            <td key={ci} className="px-2 py-1 text-gray-700 max-w-[120px] truncate">{cell}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">{csv.trim().split(/\r?\n/).length - 1} filas en total (sin encabezado)</p>
               </div>
-            </div>
+            )}
+
+            {/* Paste fallback */}
+            {!preview && (
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1.5">O pega el CSV directamente</label>
+                <textarea
+                  value={csv}
+                  onChange={e => handlePaste(e.target.value)}
+                  rows={6}
+                  placeholder="First Name,Last Name,Email,Phone,Lead Type..."
+                  className="w-full border border-gray-300 rounded-xl px-4 py-3 text-xs font-mono focus:ring-2 focus:ring-lofty-500 outline-none resize-none"
+                />
+              </div>
+            )}
+
+            {csv && preview && (
+              <button onClick={() => { setCsv(""); setPreview(null) }} className="text-xs text-gray-400 hover:text-red-500 transition-colors">
+                × Borrar y elegir otro archivo
+              </button>
+            )}
 
             <div className="flex gap-3">
-              <Button onClick={handleImport} disabled={importing || !csv.trim()} className="flex-1 bg-lofty-600 hover:bg-lofty-700">
-                {importing ? "Importing..." : "Import Contacts"}
+              <Button onClick={handleImport} disabled={importing || !csv.trim()} className="flex-1 bg-lofty-600 hover:bg-lofty-700 gap-2">
+                {importing ? <><Loader2 className="w-4 h-4 animate-spin" /> Importando...</> : `Importar${preview ? ` ${csv.trim().split(/\r?\n/).length - 1} leads` : ""}`}
               </Button>
-              <Button onClick={onClose} variant="outline" className="flex-1">Cancel</Button>
+              <Button onClick={onClose} variant="outline">Cancelar</Button>
             </div>
           </div>
         )}
@@ -443,7 +504,66 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
   const [manualNote, setManualNote] = useState("")
   const [manualLog, setManualLog] = useState<{ name: string; outcome: string }[]>([])
   const [loggingCall, setLoggingCall] = useState(false)
-  const manualContacts = contactList.filter(c => c.phone) // only contacts with phones
+  const manualContacts = contactList.filter(c => c.phone)
+
+  // Twilio browser softphone state
+  const [twilioDevice, setTwilioDevice] = useState<any>(null)
+  const [activeCall, setActiveCall] = useState<any>(null)
+  const [callStatus, setCallStatus] = useState<"idle" | "connecting" | "connected">("idle")
+  const [callSeconds, setCallSeconds] = useState(0)
+  const [deviceReady, setDeviceReady] = useState(false)
+  const [browserCallFailed, setBrowserCallFailed] = useState(false)
+
+  // Initialize Twilio Device when Catherine mode starts
+  useEffect(() => {
+    if (phase !== "running" || callerType !== "catherine") return
+    let device: any = null
+    ;(async () => {
+      try {
+        const tokenRes = await fetch("/api/twilio/token")
+        const { token, error } = await tokenRes.json()
+        if (error) { setBrowserCallFailed(true); return }
+        const { Device } = await import("@twilio/voice-sdk")
+        device = new Device(token, { codecPreferences: ["opus", "pcmu"] as any })
+        device.on("error", () => { setCallStatus("idle"); setActiveCall(null) })
+        setTwilioDevice(device)
+        setDeviceReady(true)
+      } catch { setBrowserCallFailed(true) }
+    })()
+    return () => { device?.destroy(); setTwilioDevice(null); setDeviceReady(false) }
+  }, [phase, callerType])
+
+  // Timer while on a call
+  useEffect(() => {
+    if (callStatus !== "connected") { setCallSeconds(0); return }
+    const t = setInterval(() => setCallSeconds(s => s + 1), 1000)
+    return () => clearInterval(t)
+  }, [callStatus])
+
+  // Reset call state when advancing to next contact
+  useEffect(() => { setCallStatus("idle"); setActiveCall(null) }, [manualIndex])
+
+  const startBrowserCall = async (phone: string) => {
+    if (!twilioDevice) return
+    setCallStatus("connecting")
+    try {
+      const digits = phone.replace(/\D/g, "")
+      const e164 = digits.length === 10 ? `+1${digits}` : `+${digits}`
+      const call = await twilioDevice.connect({ params: { To: e164 } })
+      setActiveCall(call)
+      call.on("accept", () => setCallStatus("connected"))
+      call.on("disconnect", () => { setCallStatus("idle"); setActiveCall(null) })
+      call.on("cancel", () => { setCallStatus("idle"); setActiveCall(null) })
+      call.on("error", () => { setCallStatus("idle"); setActiveCall(null) })
+    } catch {
+      setCallStatus("idle")
+      toast({ title: "No se pudo conectar la llamada", variant: "destructive" })
+    }
+  }
+
+  const hangUp = () => { activeCall?.disconnect(); setCallStatus("idle"); setActiveCall(null) }
+
+  const fmtTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`
 
   // Poll session status every 3s while running
   useEffect(() => {
@@ -661,13 +781,13 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
             </div>
           )}
 
-          {/* Catherine manual dialer running */}
+          {/* Catherine browser softphone running */}
           {phase === "running" && callerType === "catherine" && (() => {
             const contact = manualContacts[manualIndex]
             if (!contact) return null
-            const progress = Math.round((manualIndex / manualContacts.length) * 100)
             return (
-              <div className="p-6 space-y-5">
+              <div className="p-6 space-y-4">
+                {/* Contact card */}
                 <div className="flex items-center gap-4 p-4 bg-gray-50 border border-gray-200 rounded-xl">
                   <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
                     {contact.firstName?.[0]}{contact.lastName?.[0]}
@@ -675,11 +795,55 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
                   <div className="flex-1 min-w-0">
                     <p className="text-xs text-gray-500 font-semibold mb-0.5">{manualIndex + 1} de {manualContacts.length}</p>
                     <h3 className="font-bold text-gray-900">{contact.firstName} {contact.lastName}</h3>
-                    <a href={`tel:${contact.phone}`} className="text-green-600 font-semibold text-lg flex items-center gap-1 mt-0.5 hover:text-green-700">
-                      <Phone className="w-4 h-4" />{contact.phone}
-                    </a>
+                    <p className="text-sm text-gray-500 mt-0.5">{contact.phone}</p>
                   </div>
                 </div>
+
+                {/* Softphone call control */}
+                {browserCallFailed ? (
+                  /* Fallback: show tel: link when browser calling isn't configured */
+                  <div className="space-y-2">
+                    <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                      Llamada por navegador no configurada — usa tu teléfono.
+                    </p>
+                    <a href={`tel:${contact.phone}`}
+                      className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-green-500 hover:bg-green-600 text-white font-semibold transition-colors">
+                      <Phone className="w-5 h-5" /> Llamar {contact.phone}
+                    </a>
+                  </div>
+                ) : callStatus === "idle" ? (
+                  <button
+                    onClick={() => startBrowserCall(contact.phone)}
+                    disabled={!deviceReady}
+                    className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white font-semibold transition-colors"
+                  >
+                    {!deviceReady ? <Loader2 className="w-5 h-5 animate-spin" /> : <Phone className="w-5 h-5" />}
+                    {deviceReady ? `Llamar a ${contact.firstName}` : "Iniciando teléfono…"}
+                  </button>
+                ) : callStatus === "connecting" ? (
+                  <div className="flex items-center justify-between gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <Loader2 className="w-5 h-5 text-amber-600 animate-spin" />
+                      <span className="font-semibold text-amber-700 text-sm">Marcando…</span>
+                    </div>
+                    <button onClick={hangUp} className="text-red-600 hover:text-red-700 p-1.5 rounded-lg hover:bg-red-50">
+                      <PhoneOff className="w-5 h-5" />
+                    </button>
+                  </div>
+                ) : (
+                  /* connected */
+                  <div className="flex items-center justify-between gap-3 p-4 bg-green-50 border border-green-200 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <div className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse" />
+                      <span className="font-semibold text-green-700 text-sm">En llamada — {fmtTime(callSeconds)}</span>
+                    </div>
+                    <button onClick={hangUp} className="flex items-center gap-1.5 bg-red-500 hover:bg-red-600 text-white text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors">
+                      <PhoneOff className="w-4 h-4" /> Colgar
+                    </button>
+                  </div>
+                )}
+
+                {/* Notes */}
                 <div>
                   <label className="text-xs font-semibold text-gray-500 mb-1.5 block">Notas (opcional)</label>
                   <textarea
@@ -690,17 +854,19 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
                     className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
                   />
                 </div>
+
+                {/* Outcome buttons (always visible so Catherine can log even if call was via phone) */}
                 <div className="grid grid-cols-2 gap-2">
                   <button onClick={() => logManualCall("connected")} disabled={loggingCall}
-                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-green-50 hover:bg-green-100 border border-green-200 text-green-700 transition-colors">
+                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-green-50 hover:bg-green-100 border border-green-200 text-green-700 transition-colors disabled:opacity-50">
                     <CheckCircle className="w-5 h-5" /><span className="text-xs font-semibold">Contestó</span>
                   </button>
                   <button onClick={() => logManualCall("voicemail")} disabled={loggingCall}
-                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 transition-colors">
+                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 transition-colors disabled:opacity-50">
                     <MessageSquare className="w-5 h-5" /><span className="text-xs font-semibold">Buzón de voz</span>
                   </button>
                   <button onClick={() => logManualCall("no_answer")} disabled={loggingCall}
-                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 transition-colors">
+                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 transition-colors disabled:opacity-50">
                     <Clock className="w-5 h-5" /><span className="text-xs font-semibold">No contestó</span>
                   </button>
                   <button onClick={() => logManualCall("skip")} disabled={loggingCall}
@@ -708,8 +874,9 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
                     <SkipForward className="w-5 h-5" /><span className="text-xs font-semibold">Omitir</span>
                   </button>
                 </div>
+
                 {/* Queue dots */}
-                <div className="flex gap-1.5 justify-center pt-1">
+                <div className="flex gap-1.5 justify-center">
                   {manualContacts.map((_, i) => (
                     <div key={i} className={cn("w-2 h-2 rounded-full transition-colors",
                       i < manualIndex ? "bg-gray-300" : i === manualIndex ? "bg-indigo-600" : "bg-gray-200")} />
@@ -939,7 +1106,7 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
   const selectedIds = Array.from(selected)
 
   return (
-    <div className="p-6 space-y-5 animate-fade-in">
+    <div className="p-4 md:p-6 space-y-4 md:space-y-5 animate-fade-in">
       {showImport && <ImportModal onClose={() => setShowImport(false)} onImported={() => router.refresh()} />}
       {showBulkSMS && <BulkSMSModal contactIds={selectedIds} onClose={() => setShowBulkSMS(false)} />}
       {showBulkEmail && <BulkEmailModal contactIds={selectedIds} onClose={() => setShowBulkEmail(false)} />}
@@ -1102,8 +1269,8 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
       )}
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3">
-        <form onSubmit={handleSearch} className="relative flex-1 min-w-60">
+      <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-3">
+        <form onSubmit={handleSearch} className="relative flex-1 min-w-0 sm:min-w-60">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <Input
             placeholder="Search by name, email, phone..."
@@ -1139,21 +1306,7 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
       </div>
 
       {/* Contact list */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm overflow-x-auto">
-        {/* Table header */}
-        <div className="grid grid-cols-[40px_2.5fr_1.5fr_1fr_1fr_1.2fr_1fr_80px] gap-3 px-4 py-3 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide min-w-[900px]">
-          <div className="flex items-center justify-center">
-            <input type="checkbox" checked={allSelected} onChange={toggleAll}
-              className="w-4 h-4 rounded border-gray-300 text-lofty-600 focus:ring-lofty-500 cursor-pointer" />
-          </div>
-          <div>Name</div>
-          <div>Pipeline</div>
-          <div>Last Touch</div>
-          <div>Communications</div>
-          <div>Smart Plan</div>
-          <div>Tags</div>
-          <div></div>
-        </div>
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
 
         {contacts.length === 0 ? (
           <div className="py-16 text-center">
@@ -1165,153 +1318,63 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
             </Button>
           </div>
         ) : (
-          <div className="divide-y divide-gray-100">
-            {contacts.map((contact) => {
-              const isBuyer = contact.buyerBudgetMax != null || contact.buyerLocation != null
-              const isSeller = contact.sellerAddress != null || contact.sellerEstimatedValue != null
-              const pipelineStage = contact.pipelineLeads?.[0]?.stage
-              const enrollment = contact.enrollments?.[0]
-              const lastTouch = contact.lastContacted || contact.updatedAt
-
-              return (
-                <div
-                  key={contact.id}
-                  className={cn(
-                    "grid grid-cols-[40px_2.5fr_1.5fr_1fr_1fr_1.2fr_1fr_80px] gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors items-center min-w-[900px]",
-                    selected.has(contact.id) && "bg-lofty-50 hover:bg-lofty-50"
-                  )}
-                >
-                  {/* Checkbox */}
-                  <div className="flex items-center justify-center">
+          <>
+            {/* ── Mobile card view ──────────────────────────────────────── */}
+            <div className="md:hidden divide-y divide-gray-100">
+              {contacts.map((contact) => {
+                const pipelineStage = contact.pipelineLeads?.[0]?.stage
+                const lastTouch = contact.lastContacted || contact.updatedAt
+                const isBuyer = contact.buyerBudgetMax != null || contact.buyerLocation != null
+                const isSeller = contact.sellerAddress != null || contact.sellerEstimatedValue != null
+                return (
+                  <div
+                    key={contact.id}
+                    className={cn(
+                      "flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors",
+                      selected.has(contact.id) && "bg-lofty-50"
+                    )}
+                  >
                     <input
                       type="checkbox"
                       checked={selected.has(contact.id)}
                       onChange={() => toggleSelect(contact.id)}
-                      className="w-4 h-4 rounded border-gray-300 text-lofty-600 focus:ring-lofty-500 cursor-pointer"
+                      className="w-4 h-4 rounded border-gray-300 text-lofty-600 focus:ring-lofty-500 cursor-pointer flex-shrink-0"
                     />
-                  </div>
-
-                  {/* Name */}
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <Avatar className="w-8 h-8 flex-shrink-0">
-                      <AvatarFallback className="bg-lofty-100 text-lofty-700 text-xs font-semibold">
-                        {getInitials(`${contact.firstName} ${contact.lastName}`)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0">
-                      <Link
-                        href={`/contacts/${contact.id}`}
-                        className="font-medium text-gray-900 hover:text-lofty-600 transition-colors truncate block text-sm"
-                      >
-                        {contact.firstName} {contact.lastName}
-                      </Link>
-                      <div className="flex gap-1 mt-0.5">
-                        {isBuyer && (
-                          <span className="text-[10px] px-1.5 py-0 rounded-full bg-blue-100 text-blue-700 font-medium">Buyer</span>
-                        )}
-                        {isSeller && (
-                          <span className="text-[10px] px-1.5 py-0 rounded-full bg-green-100 text-green-700 font-medium">Seller</span>
-                        )}
-                        {!isBuyer && !isSeller && (
-                          <span className="text-[10px] px-1.5 py-0 rounded-full bg-gray-100 text-gray-500 font-medium">{contact.status?.replace(/_/g, " ")}</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Pipeline — inline dropdown */}
-                  <div className="min-w-0">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button className={cn(
-                          "flex items-center gap-1.5 text-sm hover:bg-gray-100 rounded-lg px-1.5 py-1 transition-colors w-full text-left",
-                          updatingStage === contact.id && "opacity-50"
-                        )}>
-                          <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: pipelineStage?.color || "#94a3b8" }} />
-                          <span className="truncate">{pipelineStage?.name || "Set stage"}</span>
-                          <svg className="w-3 h-3 text-gray-400 flex-shrink-0 ml-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start" className="w-48">
-                        {stages.map(s => (
-                          <DropdownMenuItem
-                            key={s.id}
-                            onClick={() => assignStage(contact.id, s.id)}
-                            className={cn("flex items-center gap-2", pipelineStage?.id === s.id && "bg-lofty-50")}
-                          >
-                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
-                            {s.name}
-                          </DropdownMenuItem>
-                        ))}
-                        {stages.length === 0 && (
-                          <DropdownMenuItem disabled className="text-gray-400 text-xs">No stages — open Pipeline Settings</DropdownMenuItem>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-
-                  {/* Last Touch */}
-                  <div>
-                    <span className="text-sm text-gray-600">{relativeTime(lastTouch)}</span>
-                  </div>
-
-                  {/* Communications */}
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1 text-xs text-gray-500">
-                      <Phone className="w-3.5 h-3.5 text-gray-400" />
-                      <span>{contact._count?.activities ?? 0}</span>
-                    </div>
-                    {contact.email && (
-                      <div className="flex items-center gap-1 text-xs text-gray-500">
-                        <Mail className="w-3.5 h-3.5 text-gray-400" />
-                      </div>
-                    )}
-                    {contact.phone && (
-                      <div className="flex items-center gap-1 text-xs text-gray-500">
-                        <MessageSquare className="w-3.5 h-3.5 text-gray-400" />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Smart Plan */}
-                  <div className="min-w-0">
-                    {enrollment ? (
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <Zap className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-                          <span className="text-sm text-gray-700 truncate">{enrollment.plan?.name}</span>
+                    <Link href={`/contacts/${contact.id}`} className="flex items-center gap-3 flex-1 min-w-0">
+                      <Avatar className="w-10 h-10 flex-shrink-0">
+                        <AvatarFallback className="bg-lofty-100 text-lofty-700 text-sm font-semibold">
+                          {getInitials(`${contact.firstName} ${contact.lastName}`)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-gray-900 truncate text-sm">
+                          {contact.firstName} {contact.lastName}
+                        </p>
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          {pipelineStage && (
+                            <span className="flex items-center gap-1 text-xs text-gray-500">
+                              <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: pipelineStage.color }} />
+                              {pipelineStage.name}
+                            </span>
+                          )}
+                          <span className="text-xs text-gray-400">{relativeTime(lastTouch)}</span>
+                          {isBuyer && <span className="text-[10px] px-1.5 py-0 rounded-full bg-blue-100 text-blue-700 font-medium">Buyer</span>}
+                          {isSeller && <span className="text-[10px] px-1.5 py-0 rounded-full bg-green-100 text-green-700 font-medium">Seller</span>}
                         </div>
-                        <span className="text-[10px] px-1.5 py-0 rounded-full bg-green-100 text-green-700 font-medium">Running</span>
+                        {contact.phone && (
+                          <a
+                            href={`tel:${contact.phone}`}
+                            onClick={e => e.stopPropagation()}
+                            className="text-xs text-green-600 mt-0.5 block"
+                          >
+                            {contact.phone}
+                          </a>
+                        )}
                       </div>
-                    ) : (
-                      <span className="text-sm text-gray-400">None</span>
-                    )}
-                  </div>
-
-                  {/* Tags */}
-                  <div className="flex flex-wrap gap-1 items-center">
-                    {contact.tags.slice(0, 2).map((ct: any) => (
-                      <span
-                        key={ct.tagId}
-                        className="inline-flex items-center px-1.5 py-0 text-[10px] rounded-full font-medium"
-                        style={{ backgroundColor: ct.tag.color + "20", color: ct.tag.color }}
-                      >
-                        {ct.tag.name}
-                      </span>
-                    ))}
-                    {contact.tags.length > 2 && (
-                      <span className="text-[10px] text-gray-400">+{contact.tags.length - 2}</span>
-                    )}
-                    {contact.tags.length === 0 && (
-                      <span className="text-xs text-gray-300">—</span>
-                    )}
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex justify-end">
+                    </Link>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="w-8 h-8">
+                        <Button variant="ghost" size="icon" className="w-8 h-8 flex-shrink-0">
                           <MoreVertical className="w-4 h-4" />
                         </Button>
                       </DropdownMenuTrigger>
@@ -1329,7 +1392,6 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           className="text-red-600 flex items-center gap-2"
-                          disabled={deletingContact === contact.id}
                           onClick={() => deleteContact(contact.id, `${contact.firstName} ${contact.lastName || ""}`.trim())}
                         >
                           <Trash2 className="w-4 h-4" /> Delete
@@ -1337,10 +1399,171 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
+                )
+              })}
+            </div>
+
+            {/* ── Desktop table view ────────────────────────────────────── */}
+            <div className="hidden md:block overflow-x-auto">
+              {/* Table header */}
+              <div className="grid grid-cols-[40px_2.5fr_1.5fr_1fr_1fr_1.2fr_1fr_80px] gap-3 px-4 py-3 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide min-w-[900px]">
+                <div className="flex items-center justify-center">
+                  <input type="checkbox" checked={allSelected} onChange={toggleAll}
+                    className="w-4 h-4 rounded border-gray-300 text-lofty-600 focus:ring-lofty-500 cursor-pointer" />
                 </div>
-              )
-            })}
-          </div>
+                <div>Name</div>
+                <div>Pipeline</div>
+                <div>Last Touch</div>
+                <div>Communications</div>
+                <div>Smart Plan</div>
+                <div>Tags</div>
+                <div></div>
+              </div>
+              <div className="divide-y divide-gray-100">
+                {contacts.map((contact) => {
+                  const isBuyer = contact.buyerBudgetMax != null || contact.buyerLocation != null
+                  const isSeller = contact.sellerAddress != null || contact.sellerEstimatedValue != null
+                  const pipelineStage = contact.pipelineLeads?.[0]?.stage
+                  const enrollment = contact.enrollments?.[0]
+                  const lastTouch = contact.lastContacted || contact.updatedAt
+
+                  return (
+                    <div
+                      key={contact.id}
+                      className={cn(
+                        "grid grid-cols-[40px_2.5fr_1.5fr_1fr_1fr_1.2fr_1fr_80px] gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors items-center min-w-[900px]",
+                        selected.has(contact.id) && "bg-lofty-50 hover:bg-lofty-50"
+                      )}
+                    >
+                      {/* Checkbox */}
+                      <div className="flex items-center justify-center">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(contact.id)}
+                          onChange={() => toggleSelect(contact.id)}
+                          className="w-4 h-4 rounded border-gray-300 text-lofty-600 focus:ring-lofty-500 cursor-pointer"
+                        />
+                      </div>
+
+                      {/* Name */}
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <Avatar className="w-8 h-8 flex-shrink-0">
+                          <AvatarFallback className="bg-lofty-100 text-lofty-700 text-xs font-semibold">
+                            {getInitials(`${contact.firstName} ${contact.lastName}`)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0">
+                          <Link
+                            href={`/contacts/${contact.id}`}
+                            className="font-medium text-gray-900 hover:text-lofty-600 transition-colors truncate block text-sm"
+                          >
+                            {contact.firstName} {contact.lastName}
+                          </Link>
+                          <div className="flex gap-1 mt-0.5">
+                            {isBuyer && <span className="text-[10px] px-1.5 py-0 rounded-full bg-blue-100 text-blue-700 font-medium">Buyer</span>}
+                            {isSeller && <span className="text-[10px] px-1.5 py-0 rounded-full bg-green-100 text-green-700 font-medium">Seller</span>}
+                            {!isBuyer && !isSeller && <span className="text-[10px] px-1.5 py-0 rounded-full bg-gray-100 text-gray-500 font-medium">{contact.status?.replace(/_/g, " ")}</span>}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Pipeline */}
+                      <div className="min-w-0">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button className={cn(
+                              "flex items-center gap-1.5 text-sm hover:bg-gray-100 rounded-lg px-1.5 py-1 transition-colors w-full text-left",
+                              updatingStage === contact.id && "opacity-50"
+                            )}>
+                              <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: pipelineStage?.color || "#94a3b8" }} />
+                              <span className="truncate">{pipelineStage?.name || "Set stage"}</span>
+                              <svg className="w-3 h-3 text-gray-400 flex-shrink-0 ml-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start" className="w-48">
+                            {stages.map(s => (
+                              <DropdownMenuItem key={s.id} onClick={() => assignStage(contact.id, s.id)} className={cn("flex items-center gap-2", pipelineStage?.id === s.id && "bg-lofty-50")}>
+                                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
+                                {s.name}
+                              </DropdownMenuItem>
+                            ))}
+                            {stages.length === 0 && <DropdownMenuItem disabled className="text-gray-400 text-xs">No stages — open Pipeline Settings</DropdownMenuItem>}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+
+                      {/* Last Touch */}
+                      <div><span className="text-sm text-gray-600">{relativeTime(lastTouch)}</span></div>
+
+                      {/* Communications */}
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1 text-xs text-gray-500">
+                          <Phone className="w-3.5 h-3.5 text-gray-400" />
+                          <span>{contact._count?.activities ?? 0}</span>
+                        </div>
+                        {contact.email && <div className="flex items-center gap-1 text-xs text-gray-500"><Mail className="w-3.5 h-3.5 text-gray-400" /></div>}
+                        {contact.phone && <div className="flex items-center gap-1 text-xs text-gray-500"><MessageSquare className="w-3.5 h-3.5 text-gray-400" /></div>}
+                      </div>
+
+                      {/* Smart Plan */}
+                      <div className="min-w-0">
+                        {enrollment ? (
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <Zap className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                              <span className="text-sm text-gray-700 truncate">{enrollment.plan?.name}</span>
+                            </div>
+                            <span className="text-[10px] px-1.5 py-0 rounded-full bg-green-100 text-green-700 font-medium">Running</span>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-400">None</span>
+                        )}
+                      </div>
+
+                      {/* Tags */}
+                      <div className="flex flex-wrap gap-1 items-center">
+                        {contact.tags.slice(0, 2).map((ct: any) => (
+                          <span key={ct.tagId} className="inline-flex items-center px-1.5 py-0 text-[10px] rounded-full font-medium"
+                            style={{ backgroundColor: ct.tag.color + "20", color: ct.tag.color }}>
+                            {ct.tag.name}
+                          </span>
+                        ))}
+                        {contact.tags.length > 2 && <span className="text-[10px] text-gray-400">+{contact.tags.length - 2}</span>}
+                        {contact.tags.length === 0 && <span className="text-xs text-gray-300">—</span>}
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex justify-end">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="w-8 h-8">
+                              <MoreVertical className="w-4 h-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem asChild>
+                              <Link href={`/contacts/${contact.id}`} className="flex items-center gap-2"><Eye className="w-4 h-4" /> View</Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem asChild>
+                              <Link href={`/contacts/${contact.id}/edit`} className="flex items-center gap-2"><Edit className="w-4 h-4" /> Edit</Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-red-600 flex items-center gap-2"
+                              disabled={deletingContact === contact.id}
+                              onClick={() => deleteContact(contact.id, `${contact.firstName} ${contact.lastName || ""}`.trim())}
+                            >
+                              <Trash2 className="w-4 h-4" /> Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </>
         )}
 
         {/* Pagination */}

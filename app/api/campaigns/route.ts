@@ -77,6 +77,11 @@ export async function POST(req: Request) {
     const aiConfig = await prisma.aIConfig.findFirst()
     const agentName = aiConfig?.realtorName || "Catherine"
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://localhost:3000"
+    const monthName = new Date().toLocaleString("es", { month: "long" })
+    const currentMonth = monthName.charAt(0).toUpperCase() + monthName.slice(1)
+    const resolvedSubject = subject.replace(/\{month\}/gi, currentMonth)
+    const resolvedSubjectB = subjectVariantB?.replace(/\{month\}/gi, currentMonth)
+    const resolvedBody = body.replace(/\{month\}/gi, currentMonth)
 
     // A/B split: if subjectVariantB provided, split recipients 50/50
     const useAB = !!subjectVariantB
@@ -93,7 +98,7 @@ export async function POST(req: Request) {
       },
     }))
 
-    const wrappedHtml = wrapEmail(body, {
+    const wrappedHtml = wrapEmail(resolvedBody, {
       agentName,
       unsubscribeUrl: "{unsubscribe_url}",
     })
@@ -105,13 +110,13 @@ export async function POST(req: Request) {
       const recipientsA = recipients.filter(r => r.vars._ab_variant === "A")
       const recipientsB = recipients.filter(r => r.vars._ab_variant === "B")
       const [resultA, resultB] = await Promise.all([
-        sendBulkEmail(recipientsA, { subject, html: wrappedHtml }, 50, 1000),
-        sendBulkEmail(recipientsB, { subject: subjectVariantB, html: wrappedHtml }, 50, 1000),
+        sendBulkEmail(recipientsA, { subject: resolvedSubject, html: wrappedHtml }, 50, 1000),
+        sendBulkEmail(recipientsB, { subject: resolvedSubjectB || resolvedSubject, html: wrappedHtml }, 50, 1000),
       ])
       sent = resultA.sent + resultB.sent
       failed = resultA.failed + resultB.failed
     } else {
-      const result = await sendBulkEmail(recipients, { subject, html: wrappedHtml }, 50, 1000)
+      const result = await sendBulkEmail(recipients, { subject: resolvedSubject, html: wrappedHtml }, 50, 1000)
       sent = result.sent
       failed = result.failed
     }
@@ -127,7 +132,7 @@ export async function POST(req: Request) {
       await prisma.activity.createMany({
         data: contacts.slice(0, sent).map(c => ({
           type: "EMAIL",
-          title: subject || name,
+          title: resolvedSubject || name,
           description: `Campaña: ${name}`,
           contactId: c.id,
           userId: session.user?.id as string,

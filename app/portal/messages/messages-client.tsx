@@ -16,9 +16,11 @@ interface Props {
   contactId: string
   contactName: string
   messages: Message[]
+  agentPhone: string
 }
 
-export default function PortalMessagesClient({ contactId, contactName, messages: initial }: Props) {
+export default function PortalMessagesClient({ contactId, contactName, messages: initial, agentPhone }: Props) {
+  const phoneE164 = agentPhone.startsWith("+") ? agentPhone : `+1${agentPhone.replace(/\D/g, "").slice(-10)}`
   const [messages, setMessages] = useState<Message[]>(initial)
   const [input, setInput] = useState("")
   const [sending, setSending] = useState(false)
@@ -81,18 +83,21 @@ export default function PortalMessagesClient({ contactId, contactName, messages:
           <span className="font-bold text-lofty-700 text-sm">C</span>
         </div>
         <div className="flex-1">
-          <div className="font-bold text-gray-900">Catherine — Your Agent</div>
+          <div className="font-bold text-gray-900">Catherine — Tu Agente</div>
           <div className="text-xs text-gray-500 flex items-center gap-1.5">
             <div className="w-2 h-2 bg-green-500 rounded-full" />
-            Active · Typically replies within 1 hour
+            Activa · Normalmente responde en menos de 1 hora
           </div>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1 text-xs text-purple-600 bg-purple-50 px-2 py-1 rounded-full">
             <Bot className="w-3 h-3" />
-            Alex AI active
+            Sofía IA activa
           </div>
-          <a href="tel:+15555555555" className="p-2 text-gray-400 hover:text-lofty-700 rounded-lg hover:bg-gray-50">
+          <a href={`sms:${phoneE164}`} className="p-2 text-gray-400 hover:text-green-600 rounded-lg hover:bg-gray-50" title="Enviar SMS a Catherine">
+            <MessageSquare className="w-4 h-4" />
+          </a>
+          <a href={`tel:${phoneE164}`} className="p-2 text-gray-400 hover:text-lofty-700 rounded-lg hover:bg-gray-50" title="Llamar a Catherine">
             <Phone className="w-4 h-4" />
           </a>
         </div>
@@ -105,9 +110,9 @@ export default function PortalMessagesClient({ contactId, contactName, messages:
             <div className="w-16 h-16 bg-lofty-100 rounded-2xl flex items-center justify-center mb-4">
               <MessageSquare className="w-8 h-8 text-lofty-600" />
             </div>
-            <h3 className="font-semibold text-gray-700 mb-1">Start a conversation</h3>
+            <h3 className="font-semibold text-gray-700 mb-1">Inicia una conversación</h3>
             <p className="text-sm text-gray-500 max-w-xs">
-              Send a message to your agent or ask Alex (AI) any real estate question — in English or Spanish.
+              Escríbele a Catherine o pregúntale a Sofía (IA) cualquier pregunta sobre bienes raíces — en español o inglés.
             </p>
           </div>
         )}
@@ -178,7 +183,7 @@ export default function PortalMessagesClient({ contactId, contactName, messages:
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(e) } }}
-            placeholder="Message your agent... / Escribe un mensaje..."
+            placeholder="Escribe un mensaje a Catherine..."
             rows={1}
             className="flex-1 border-2 border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-lofty-500 transition-colors resize-none min-h-[44px] max-h-32"
             style={{ height: "auto" }}
@@ -192,7 +197,7 @@ export default function PortalMessagesClient({ contactId, contactName, messages:
           </button>
         </form>
         <p className="text-xs text-gray-400 mt-1.5 text-center">
-          AI assistant responds 24/7 · Agent follows up personally
+          Sofía (IA) responde 24/7 · Catherine hace seguimiento personal
         </p>
       </div>
     </div>

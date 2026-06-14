@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import {
   Mail, Plus, Send, Users, BarChart3, Eye, Trash2,
   X, ChevronDown, CheckCircle2, Clock, AlertCircle,
-  Sparkles, FileText, Tag as TagIcon,
+  FileText, Tag as TagIcon, Target, DollarSign, Image as ImageIcon, Sparkles, Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -126,10 +126,14 @@ function NewCampaignModal({ tags, onClose, onCreated }: { tags: any[]; onClose: 
   const [loadingCount, setLoadingCount] = useState(false)
 
   const applyTemplate = (tpl: typeof TEMPLATES[0]) => {
-    setSubject(tpl.subject)
-    setBody(tpl.body)
+    const monthName = new Date().toLocaleString("es", { month: "long" })
+    const capitalMonth = monthName.charAt(0).toUpperCase() + monthName.slice(1)
+    setSubject(tpl.subject.replace(/\{month\}/gi, capitalMonth))
+    setBody(tpl.body.replace(/\{month\}/gi, capitalMonth))
     setSelectedTemplate(tpl.id)
-    setStep("compose")
+    // Auto-fill campaign name from template if user hasn't typed one yet
+    if (!name.trim()) setName(tpl.name)
+    setStep("audience")
   }
 
   const fetchAudienceCount = async () => {
@@ -356,6 +360,25 @@ function NewCampaignModal({ tags, onClose, onCreated }: { tags: any[]; onClose: 
                   placeholder="<p>Hola {first_name},</p><p>Tu mensaje aquí...</p>"
                   className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm font-mono focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
                 />
+                {/* Image upload toolbar */}
+                <div className="flex gap-3 mt-2 flex-wrap">
+                  <label className="flex items-center gap-1 text-xs cursor-pointer text-indigo-500 hover:text-indigo-700">
+                    <input type="file" accept="image/*,video/*" className="hidden"
+                      onChange={async e => {
+                        const file = e.target.files?.[0]; if (!file) return
+                        const form = new FormData(); form.append("file", file)
+                        const res = await fetch("/api/upload", { method: "POST", body: form })
+                        const data = await res.json()
+                        if (!res.ok) { alert(data.error); return }
+                        const isVideo = file.type.startsWith("video/")
+                        const tag = isVideo
+                          ? `\n<p>📹 <a href="${data.url}" style="color:#4F46E5">Ver video</a></p>`
+                          : `\n<img src="${data.url}" style="max-width:100%;border-radius:8px;margin:8px 0"/>`
+                        setBody(b => b + tag)
+                      }} />
+                    📎 Subir imagen/video
+                  </label>
+                </div>
                 <p className="text-xs text-gray-400 mt-1">
                   El sistema agregará automáticamente el encabezado, pie de página y enlace de cancelar suscripción.
                 </p>
@@ -433,31 +456,534 @@ function NewCampaignModal({ tags, onClose, onCreated }: { tags: any[]; onClose: 
   )
 }
 
+// ─── Facebook Ad Campaign Modal ───────────────────────────────────────────────
+
+const FB_OBJECTIVES = [
+  { value: "OUTCOME_LEADS", label: "Generación de Leads", desc: "Formulario de captura en Facebook/Instagram" },
+  { value: "OUTCOME_TRAFFIC", label: "Tráfico al Sitio Web", desc: "Lleva visitas a tu landing page o website" },
+  { value: "OUTCOME_AWARENESS", label: "Reconocimiento de Marca", desc: "Maximiza el alcance e impresiones" },
+]
+
+// Real estate interests that generally work with Facebook HOUSING category
+const FB_INTERESTS = [
+  { id: "6003020834693", name: "Real Estate" },
+  { id: "6003148792459", name: "Home Buying" },
+  { id: "6003195797498", name: "Mortgage" },
+  { id: "6003404338454", name: "Home Improvement" },
+  { id: "6003329588371", name: "Real Estate Investment" },
+  { id: "6003458161900", name: "First-Time Home Buyer" },
+  { id: "6003225454116", name: "Property Management" },
+  { id: "6003384717972", name: "Luxury Real Estate" },
+]
+
+const FB_CTA = [
+  { value: "LEARN_MORE", label: "Más Información" },
+  { value: "CONTACT_US", label: "Contáctanos" },
+  { value: "SIGN_UP", label: "Registrarse" },
+  { value: "GET_OFFER", label: "Obtener Oferta" },
+  { value: "BOOK_TRAVEL", label: "Agendar Cita" },
+]
+
+function FacebookAdModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const { toast } = useToast()
+  const [step, setStep] = useState<"objective" | "creative" | "audience" | "budget">("objective")
+  const [saving, setSaving] = useState(false)
+
+  const [campaignName, setCampaignName] = useState("")
+  const [objective, setObjective] = useState("OUTCOME_LEADS")
+  const [primaryText, setPrimaryText] = useState("")
+  const [headline, setHeadline] = useState("")
+  const [description, setDescription] = useState("")
+  const [mediaItems, setMediaItems] = useState<{ type: "image" | "video"; url: string }[]>([])
+  const [uploadingImg, setUploadingImg] = useState(false)
+  const [videoUrlInput, setVideoUrlInput] = useState("")
+  const [showVideoInput, setShowVideoInput] = useState(false)
+  const [destinationUrl, setDestinationUrl] = useState(process.env.NEXT_PUBLIC_APP_URL ? `${process.env.NEXT_PUBLIC_APP_URL}/book` : "")
+  const [ctaType, setCtaType] = useState("LEARN_MORE")
+  const [privacyUrl, setPrivacyUrl] = useState("")
+  const [targetLocations, setTargetLocations] = useState("Miami, Florida")
+  const [advantagePlus, setAdvantagePlus] = useState(true)
+  const [selectedInterests, setSelectedInterests] = useState<{ id: string; name: string }[]>([])
+  const [ageMin, setAgeMin] = useState("25")
+  const [ageMax, setAgeMax] = useState("65")
+  const [dailyBudget, setDailyBudget] = useState("10")
+
+  // AI copy generator
+  const [aiBrief, setAiBrief] = useState("")
+  const [aiLang, setAiLang] = useState<"es" | "en" | "both">("es")
+  const [aiLoading, setAiLoading] = useState(false)
+  const [showAiPanel, setShowAiPanel] = useState(false)
+
+  const handleGenerateCopy = async () => {
+    if (!aiBrief.trim()) return
+    setAiLoading(true)
+    try {
+      const res = await fetch("/api/ai/ad-copy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ brief: aiBrief, objective, language: aiLang }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      if (data.campaignName) setCampaignName(data.campaignName)
+      if (data.primaryText) setPrimaryText(data.primaryText)
+      if (data.headline) setHeadline(data.headline)
+      if (data.description) setDescription(data.description)
+      setShowAiPanel(false)
+      toast({ title: "✨ Texto generado con IA", description: "Revisa y ajusta el copy según necesites." })
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" })
+    } finally { setAiLoading(false) }
+  }
+  const [startDate, setStartDate] = useState(new Date().toISOString().split("T")[0])
+  const [endDate, setEndDate] = useState("")
+
+  const steps = ["objective", "creative", "audience", "budget"]
+  const stepIdx = steps.indexOf(step)
+
+  const handleUploadImage = async (file: File) => {
+    setUploadingImg(true)
+    try {
+      const form = new FormData(); form.append("file", file)
+      const res = await fetch("/api/upload", { method: "POST", body: form })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setMediaItems(prev => [...prev, { type: "image", url: data.url }])
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" })
+    } finally { setUploadingImg(false) }
+  }
+
+  const handleAddVideo = () => {
+    if (!videoUrlInput.trim()) return
+    setMediaItems(prev => [...prev, { type: "video", url: videoUrlInput.trim() }])
+    setVideoUrlInput("")
+    setShowVideoInput(false)
+  }
+
+  const removeMedia = (idx: number) => setMediaItems(prev => prev.filter((_, i) => i !== idx))
+
+  const handleLaunch = async () => {
+    if (!campaignName || !primaryText || !headline || !destinationUrl) {
+      toast({ title: "Completa todos los campos requeridos", variant: "destructive" })
+      return
+    }
+    setSaving(true)
+    try {
+      const res = await fetch("/api/facebook/ads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaignName,
+          objective,
+          primaryText,
+          headline,
+          description,
+          imageUrl: mediaItems[0]?.url || "",
+          mediaItems: mediaItems.length ? mediaItems : undefined,
+          destinationUrl,
+          ctaType,
+          dailyBudgetCents: Math.round(parseFloat(dailyBudget) * 100),
+          startTime: new Date(startDate).toISOString(),
+          endTime: endDate ? new Date(endDate).toISOString() : undefined,
+          targetLocations: targetLocations.split(",").map(s => s.trim()).filter(Boolean),
+          privacyPolicyUrl: privacyUrl || undefined,
+          advantagePlus,
+          interests: selectedInterests,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      toast({ title: "✅ Campaña creada en Facebook", description: "La campaña está en pausa — actívala en Ads Manager." })
+      onCreated()
+      onClose()
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" })
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-5 border-b flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg,#0866ff,#a855f7)" }}>
+              <Target className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h2 className="font-bold text-gray-900">Nueva Campaña de Facebook Ads</h2>
+              <div className="flex items-center gap-2 mt-0.5">
+                {steps.map((s, i) => (
+                  <div key={s} className="flex items-center gap-1">
+                    <div className={cn("w-5 h-5 rounded-full text-xs flex items-center justify-center font-semibold",
+                      step === s ? "bg-blue-600 text-white" :
+                      stepIdx > i ? "bg-green-500 text-white" : "bg-gray-200 text-gray-500"
+                    )}>{i + 1}</div>
+                    {i < 3 && <div className="w-4 h-px bg-gray-200" />}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg"><X className="w-4 h-4 text-gray-500" /></button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 p-5 space-y-4">
+
+          {/* Step 1: Objective */}
+          {step === "objective" && (
+            <>
+              <div>
+                <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Nombre de la campaña *</label>
+                <input value={campaignName} onChange={e => setCampaignName(e.target.value)}
+                  placeholder="Ej: Propiedades Miami Junio 2026"
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+              </div>
+              <div>
+                <label className="text-sm font-semibold text-gray-700 mb-2 block">Objetivo de la campaña</label>
+                <div className="space-y-2">
+                  {FB_OBJECTIVES.map(obj => (
+                    <label key={obj.value} className={cn(
+                      "flex items-start gap-3 p-3 border-2 rounded-xl cursor-pointer transition-all",
+                      objective === obj.value ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:border-blue-200"
+                    )}>
+                      <input type="radio" name="objective" value={obj.value} checked={objective === obj.value}
+                        onChange={() => setObjective(obj.value)} className="mt-0.5" />
+                      <div>
+                        <p className="font-semibold text-sm text-gray-900">{obj.label}</p>
+                        <p className="text-xs text-gray-500">{obj.desc}</p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-700">
+                <strong>Nota:</strong> Por ley (Fair Housing Act), los anuncios de bienes raíces en Facebook se crean con categoría especial HOUSING.
+                Esto restringe algo el targeting pero es obligatorio.
+              </div>
+              <div className="flex justify-end">
+                <button onClick={() => setStep("creative")} disabled={!campaignName.trim()}
+                  className="px-5 py-2 bg-blue-600 text-white rounded-xl font-medium text-sm disabled:opacity-50">
+                  Siguiente: Creativo →
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* Step 2: Creative */}
+          {step === "creative" && (
+            <>
+              {/* AI Copy Generator */}
+              <div className="rounded-xl border border-purple-200 bg-purple-50 overflow-hidden">
+                <button onClick={() => setShowAiPanel(v => !v)}
+                  className="w-full flex items-center gap-2 px-4 py-3 text-sm font-semibold text-purple-700 hover:bg-purple-100 transition-colors">
+                  <Sparkles className="w-4 h-4" />
+                  ✨ Generar copy con IA
+                  <span className="ml-auto text-purple-400 text-xs">{showAiPanel ? "▲ ocultar" : "▼ abrir"}</span>
+                </button>
+                {showAiPanel && (
+                  <div className="px-4 pb-4 space-y-3 border-t border-purple-200">
+                    <p className="text-xs text-purple-600 pt-3">
+                      Describe tu propiedad, audiencia y ventajas. La IA generará un título, texto y descripción optimizados para Facebook Ads.
+                    </p>
+                    <textarea value={aiBrief} onChange={e => setAiBrief(e.target.value)} rows={3}
+                      placeholder="Ej: Casas de 4 habitaciones en Cutler Bay, FL, sin HOA, sin CDD, precio desde $380K hasta $1.4M. El vendedor paga los gastos de cierre. Dirigido a compradores hispanos de primera vez."
+                      className="w-full border border-purple-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white" />
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs font-semibold text-purple-700">Idioma:</label>
+                      {(["es", "en", "both"] as const).map(l => (
+                        <button key={l} onClick={() => setAiLang(l)}
+                          className={cn("px-3 py-1 rounded-full text-xs font-medium border transition-colors",
+                            aiLang === l ? "bg-purple-600 text-white border-purple-600" : "border-purple-300 text-purple-600 hover:bg-purple-100")}>
+                          {l === "es" ? "Español" : l === "en" ? "English" : "Español + English"}
+                        </button>
+                      ))}
+                    </div>
+                    <button onClick={handleGenerateCopy} disabled={aiLoading || !aiBrief.trim()}
+                      className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-semibold disabled:opacity-50 hover:bg-purple-700 transition-colors">
+                      {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                      {aiLoading ? "Generando..." : "Generar copy"}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Texto principal *</label>
+                <textarea value={primaryText} onChange={e => setPrimaryText(e.target.value)} rows={3}
+                  placeholder="¿Buscas tu casa ideal en Miami? Tenemos opciones desde $300K. Contáctanos hoy."
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                <p className="text-xs text-gray-400 mt-1">Aparece encima de la imagen. Máx. 125 caracteres recomendado.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Titular *</label>
+                  <input value={headline} onChange={e => setHeadline(e.target.value)}
+                    placeholder="Casas en Miami desde $300K"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Descripción</label>
+                  <input value={description} onChange={e => setDescription(e.target.value)}
+                    placeholder="Agenda tu visita gratis"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                </div>
+              </div>
+              {/* Multi-media manager */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm font-semibold text-gray-700">
+                    Imágenes y videos
+                    {mediaItems.length > 0 && (
+                      <span className="ml-2 text-xs font-normal text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                        {mediaItems.length} creativo{mediaItems.length > 1 ? "s" : ""} — Facebook los rotará automáticamente
+                      </span>
+                    )}
+                  </label>
+                </div>
+
+                {/* Existing media grid */}
+                {mediaItems.length > 0 && (
+                  <div className="grid grid-cols-3 gap-2 mb-3">
+                    {mediaItems.map((item, idx) => (
+                      <div key={idx} className="relative rounded-lg overflow-hidden border border-gray-200 bg-gray-50 aspect-video flex items-center justify-center">
+                        {item.type === "image" ? (
+                          <img src={item.url} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="flex flex-col items-center gap-1 p-2 text-center">
+                            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                              <span className="text-blue-600 text-sm">▶</span>
+                            </div>
+                            <span className="text-xs text-gray-500 truncate w-full text-center">Video {idx + 1}</span>
+                          </div>
+                        )}
+                        <button onClick={() => removeMedia(idx)}
+                          className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shadow">×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Add buttons */}
+                <div className="flex gap-2">
+                  <label className={cn("flex-1 h-20 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 transition-colors text-center", uploadingImg && "opacity-50 pointer-events-none")}>
+                    <input type="file" accept="image/*" multiple className="hidden"
+                      onChange={e => Array.from(e.target.files || []).forEach(f => handleUploadImage(f))} />
+                    <ImageIcon className="w-5 h-5 text-gray-400 mb-1" />
+                    <span className="text-xs text-gray-500">{uploadingImg ? "Subiendo..." : "+ Agregar imagen"}</span>
+                  </label>
+
+                  <button onClick={() => setShowVideoInput(v => !v)}
+                    className="flex-1 h-20 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center hover:border-blue-400 transition-colors">
+                    <span className="text-lg text-gray-400 mb-1">🎬</span>
+                    <span className="text-xs text-gray-500">+ Agregar video URL</span>
+                  </button>
+                </div>
+
+                {showVideoInput && (
+                  <div className="mt-2 flex gap-2">
+                    <input value={videoUrlInput} onChange={e => setVideoUrlInput(e.target.value)}
+                      placeholder="https://example.com/video.mp4"
+                      className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                    <button onClick={handleAddVideo}
+                      className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium">Agregar</button>
+                  </div>
+                )}
+                <p className="text-xs text-gray-400 mt-1.5">Sube varias imágenes o videos — Facebook crea un anuncio separado por cada uno y optimiza automáticamente.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-semibold text-gray-700 mb-1.5 block">
+                    {objective === "OUTCOME_LEADS" ? "URL después del formulario (gracias)" : "URL de destino *"}
+                  </label>
+                  <input value={destinationUrl} onChange={e => setDestinationUrl(e.target.value)}
+                    placeholder={objective === "OUTCOME_LEADS" ? "https://catherinegomezrealtor.com" : "https://tusitio.com/contacto"}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                  {objective === "OUTCOME_LEADS" && (
+                    <p className="text-xs text-gray-400 mt-1">Facebook muestra esta página al lead después de llenar el formulario.</p>
+                  )}
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Botón de llamada a acción</label>
+                  <select value={ctaType} onChange={e => setCtaType(e.target.value)}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                    {FB_CTA.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                  </select>
+                </div>
+                {objective === "OUTCOME_LEADS" && (
+                  <div className="col-span-2">
+                    <label className="text-sm font-semibold text-gray-700 mb-1.5 block">URL de política de privacidad *</label>
+                    <input value={privacyUrl} onChange={e => setPrivacyUrl(e.target.value)}
+                      placeholder="https://catherinegomezrealtor.com/privacy"
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                    <p className="text-xs text-gray-400 mt-1">Requerido por Facebook para formularios de captación de leads.</p>
+                  </div>
+                )}
+              </div>
+              <div className="flex justify-between">
+                <button onClick={() => setStep("objective")} className="px-4 py-2 border border-gray-200 rounded-xl text-sm">← Atrás</button>
+                <button onClick={() => setStep("audience")} disabled={!primaryText || !headline || !destinationUrl}
+                  className="px-5 py-2 bg-blue-600 text-white rounded-xl font-medium text-sm disabled:opacity-50">
+                  Siguiente: Audiencia →
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* Step 3: Audience */}
+          {step === "audience" && (
+            <>
+              {/* Advantage+ toggle */}
+              <label className={cn(
+                "flex items-start gap-3 p-4 border-2 rounded-xl cursor-pointer transition-all",
+                advantagePlus ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:border-blue-200"
+              )}>
+                <input type="checkbox" checked={advantagePlus} onChange={e => setAdvantagePlus(e.target.checked)} className="mt-0.5" />
+                <div>
+                  <p className="font-semibold text-sm text-gray-900">✨ Advantage+ Audience <span className="text-blue-600 text-xs font-medium ml-1">RECOMENDADO</span></p>
+                  <p className="text-xs text-gray-500 mt-0.5">Meta AI analiza tu anuncio y lo muestra a las personas con más probabilidades de convertirse en leads. No necesitas definir intereses manualmente — el algoritmo lo hace por ti.</p>
+                </div>
+              </label>
+
+              {!advantagePlus && (
+                <>
+                  <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-700">
+                    <strong>Categoría HOUSING:</strong> Los anuncios de bienes raíces no pueden segmentar por código postal, edad o género. Solo por estado/ciudad.
+                  </div>
+                  <div>
+                    <label className="text-sm font-semibold text-gray-700 mb-2 block">Intereses relacionados</label>
+                    <div className="flex flex-wrap gap-2">
+                      {FB_INTERESTS.map(i => (
+                        <button key={i.id} onClick={() => setSelectedInterests(prev =>
+                          prev.find(x => x.id === i.id) ? prev.filter(x => x.id !== i.id) : [...prev, i]
+                        )}
+                          className={cn(
+                            "text-xs px-3 py-1.5 rounded-full border font-medium transition-all",
+                            selectedInterests.find(x => x.id === i.id)
+                              ? "bg-blue-600 text-white border-blue-600"
+                              : "border-gray-200 text-gray-600 hover:border-blue-300"
+                          )}>
+                          {i.name}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-xs text-gray-400 mt-2">Nota: con categoría HOUSING, Meta puede limitar algunos intereses automáticamente.</p>
+                  </div>
+                </>
+              )}
+
+              <div>
+                <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Mercado objetivo (estado/ciudad)</label>
+                <input value={targetLocations} onChange={e => setTargetLocations(e.target.value)}
+                  placeholder="Miami, Florida, Fort Lauderdale, Florida"
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                <p className="text-xs text-gray-400 mt-1">Separa múltiples ciudades con comas. El estado se usa para la segmentación.</p>
+              </div>
+
+              <div className="flex justify-between">
+                <button onClick={() => setStep("creative")} className="px-4 py-2 border border-gray-200 rounded-xl text-sm">← Atrás</button>
+                <button onClick={() => setStep("budget")}
+                  className="px-5 py-2 bg-blue-600 text-white rounded-xl font-medium text-sm">
+                  Siguiente: Presupuesto →
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* Step 4: Budget + Launch */}
+          {step === "budget" && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Presupuesto diario (USD)</label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+                    <input type="number" value={dailyBudget} onChange={e => setDailyBudget(e.target.value)} min="1"
+                      className="w-full border border-gray-200 rounded-xl pl-8 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">Mínimo recomendado: $10/día</p>
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Fecha de inicio</label>
+                  <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Fecha de fin (opcional)</label>
+                  <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                </div>
+              </div>
+
+              {/* Summary */}
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-2 text-sm">
+                <p className="font-semibold text-gray-900 mb-2">Resumen del anuncio</p>
+                <div className="flex gap-2"><span className="text-gray-500 w-28">Campaña:</span><span className="font-medium">{campaignName}</span></div>
+                <div className="flex gap-2"><span className="text-gray-500 w-28">Objetivo:</span><span>{FB_OBJECTIVES.find(o => o.value === objective)?.label}</span></div>
+                <div className="flex gap-2"><span className="text-gray-500 w-28">Titular:</span><span>{headline}</span></div>
+                <div className="flex gap-2"><span className="text-gray-500 w-28">Ciudades:</span><span>{targetLocations}</span></div>
+                <div className="flex gap-2"><span className="text-gray-500 w-28">Presupuesto:</span><span>${dailyBudget}/día</span></div>
+              </div>
+
+              <div className="bg-green-50 border border-green-100 rounded-xl p-3 text-xs text-green-700">
+                <strong>La campaña se crea en estado PAUSA</strong> para que la revises en Facebook Ads Manager antes de activarla.
+                Puedes hacer ajustes y activarla desde allí.
+              </div>
+
+              <div className="flex justify-between">
+                <button onClick={() => setStep("audience")} className="px-4 py-2 border border-gray-200 rounded-xl text-sm">← Atrás</button>
+                <button onClick={handleLaunch} disabled={saving}
+                  className="flex items-center gap-2 px-5 py-2 rounded-xl font-medium text-sm text-white disabled:opacity-50"
+                  style={{ background: "linear-gradient(135deg,#0866ff,#a855f7)" }}>
+                  <Target className="w-4 h-4" />
+                  {saving ? "Creando campaña..." : "Crear en Facebook Ads"}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
 export default function CampaignsClient({ campaigns: initCampaigns, tags, stats }: CampaignsClientProps) {
   const router = useRouter()
   const { toast } = useToast()
   const [campaigns, setCampaigns] = useState(initCampaigns)
   const [showNew, setShowNew] = useState(false)
+  const [showFbAd, setShowFbAd] = useState(false)
 
   return (
     <div className="p-6 space-y-5 animate-fade-in">
       {showNew && (
-        <NewCampaignModal
-          tags={tags}
-          onClose={() => setShowNew(false)}
-          onCreated={() => router.refresh()}
-        />
+        <NewCampaignModal tags={tags} onClose={() => setShowNew(false)} onCreated={() => router.refresh()} />
+      )}
+      {showFbAd && (
+        <FacebookAdModal onClose={() => setShowFbAd(false)} onCreated={() => router.refresh()} />
       )}
 
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Email Campaigns</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Campañas</h1>
           <p className="text-gray-500 text-sm mt-0.5">{stats.emailableContacts.toLocaleString()} contactos con email disponibles</p>
         </div>
-        <Button onClick={() => setShowNew(true)} className="bg-indigo-600 hover:bg-indigo-700 gap-2">
-          <Plus className="w-4 h-4" /> Nueva Campaña
-        </Button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowFbAd(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl font-semibold text-sm text-white shadow-sm hover:shadow-md transition-shadow"
+            style={{ background: "linear-gradient(135deg,#0866ff,#a855f7)" }}
+          >
+            <Target className="w-4 h-4" /> Facebook Ads
+          </button>
+          <Button onClick={() => setShowNew(true)} className="bg-indigo-600 hover:bg-indigo-700 gap-2">
+            <Plus className="w-4 h-4" /> Email Campaign
+          </Button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -481,29 +1007,16 @@ export default function CampaignsClient({ campaigns: initCampaigns, tags, stats 
         ))}
       </div>
 
-      {/* Provider info banner */}
-      <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 flex items-start gap-3">
-        <Sparkles className="w-5 h-5 text-indigo-500 flex-shrink-0 mt-0.5" />
+      {/* How it works tip */}
+      <div className="bg-green-50 border border-green-100 rounded-xl p-4 flex items-start gap-3">
+        <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
         <div>
-          <p className="text-sm font-semibold text-indigo-900">Configura tu proveedor de email para envíos masivos</p>
-          <p className="text-xs text-indigo-700 mt-0.5">
-            Para 25,000 emails/mes, configura una de estas opciones en tus variables de entorno de Railway:
+          <p className="text-sm font-semibold text-green-900">Sistema listo para envíos</p>
+          <p className="text-xs text-green-700 mt-0.5">
+            Haz clic en <strong>+ Nueva Campaña</strong> para enviar a tus {stats.emailableContacts} contactos con email.
+            Puedes elegir enviar a todos o filtrar por segmento (compradores, leads nuevos, fríos, etc.).
+            El sistema personaliza cada email con el nombre del contacto.
           </p>
-          <div className="flex flex-wrap gap-2 mt-2">
-            {[
-              { name: "Resend", cost: "$20/mes · 50k emails", env: "RESEND_API_KEY", recommended: true },
-              { name: "SendGrid", cost: "$20/mes · 50k emails", env: "SMTP_* credentials" },
-              { name: "Amazon SES", cost: "~$2.50/25k emails", env: "SMTP_* via SES SMTP" },
-            ].map(p => (
-              <div key={p.name} className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border",
-                p.recommended ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-indigo-700 border-indigo-200"
-              )}>
-                {p.recommended && <CheckCircle2 className="w-3 h-3" />}
-                <span>{p.name}</span>
-                <span className="opacity-70">· {p.cost}</span>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
 
@@ -526,8 +1039,11 @@ export default function CampaignsClient({ campaigns: initCampaigns, tags, stats 
             <div className="divide-y divide-gray-100">
               {campaigns.map(c => (
                 <div key={c.id} className="flex items-center gap-4 px-5 py-4 hover:bg-gray-50 transition-colors">
-                  <div className="w-9 h-9 bg-indigo-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                    <Mail className="w-4 h-4 text-indigo-600" />
+                  <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0", c.type === "FACEBOOK" ? "" : "bg-indigo-100")}
+                    style={c.type === "FACEBOOK" ? { background: "linear-gradient(135deg,#0866ff,#a855f7)" } : {}}>
+                    {c.type === "FACEBOOK"
+                      ? <Target className="w-4 h-4 text-white" />
+                      : <Mail className="w-4 h-4 text-indigo-600" />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-gray-900 text-sm">{c.name}</p>
