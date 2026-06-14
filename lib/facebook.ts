@@ -183,10 +183,12 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
   const adSetId = adsetData.id
 
   // 4. Create ad creative
+  // link is required in link_data for all ad types
   const linkData: any = {
     message: payload.primaryText,
     name: payload.headline,
     description: payload.description,
+    link: payload.destinationUrl,
   }
   if (payload.imageUrl) linkData.image_url = payload.imageUrl
 
@@ -198,7 +200,6 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
     }
   } else {
     // Traffic / Awareness: CTA goes to the website
-    linkData.link = payload.destinationUrl
     linkData.call_to_action = {
       type: payload.ctaType,
       value: { link: payload.destinationUrl },
@@ -215,7 +216,12 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
     }),
   })
   const creativeData = await creativeRes.json()
-  if (creativeData.error) { console.error("[FB creative]", JSON.stringify(creativeData.error)); throw new Error(`Creative: ${creativeData.error.message} (${creativeData.error.error_subcode || creativeData.error.code})`) }
+  if (creativeData.error) {
+    console.error("[FB creative full error]", JSON.stringify(creativeData.error))
+    const msg = creativeData.error.error_user_msg || creativeData.error.message || "Unknown"
+    const sub = creativeData.error.error_subcode ? `/${creativeData.error.error_subcode}` : ""
+    throw new Error(`Creative ${creativeData.error.code}${sub}: ${msg}`)
+  }
   const creativeId = creativeData.id
 
   // 5. Create ad
