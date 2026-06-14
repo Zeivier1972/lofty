@@ -127,11 +127,11 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
     }),
   })
   const campData = await campRes.json()
-  if (campData.error) throw new Error(`Campaign: ${campData.error.message}`)
+  if (campData.error) { console.error("[FB campaign]", JSON.stringify(campData.error)); throw new Error(`Campaign: ${campData.error.message} (${campData.error.error_subcode || campData.error.code})`) }
   const campaignId = campData.id
 
   // 3. Create ad set
-  // HOUSING category: no age/gender targeting allowed
+  // HOUSING category: no age/gender/zip/interest targeting, no Advantage+
   const targeting: any = {
     geo_locations: {
       countries: ["US"],
@@ -141,11 +141,6 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
         return { name: state }
       }),
     },
-  }
-
-  // Add interests if manual targeting chosen and interests provided
-  if (!payload.advantagePlus && payload.interests?.length) {
-    targeting.flexible_spec = [{ interests: payload.interests.map(i => ({ id: i.id, name: i.name })) }]
   }
 
   const adsetBody: any = {
@@ -159,12 +154,6 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
     start_time: payload.startTime,
     access_token: token(),
   }
-
-  // Enable Advantage+ Audience (Meta AI targeting)
-  if (payload.advantagePlus) {
-    adsetBody.targeting_automation = { advantage_audience: 1 }
-  }
-
   if (payload.endTime) adsetBody.end_time = payload.endTime
 
   const adsetRes = await fetch(`${base}/adsets`, {
@@ -173,7 +162,7 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
     body: JSON.stringify(adsetBody),
   })
   const adsetData = await adsetRes.json()
-  if (adsetData.error) throw new Error(`Ad Set: ${adsetData.error.message}`)
+  if (adsetData.error) { console.error("[FB adset]", JSON.stringify(adsetData.error)); throw new Error(`Ad Set: ${adsetData.error.message} (${adsetData.error.error_subcode || adsetData.error.code})`) }
   const adSetId = adsetData.id
 
   // 4. Create ad creative
@@ -209,7 +198,7 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
     }),
   })
   const creativeData = await creativeRes.json()
-  if (creativeData.error) throw new Error(`Creative: ${creativeData.error.message}`)
+  if (creativeData.error) { console.error("[FB creative]", JSON.stringify(creativeData.error)); throw new Error(`Creative: ${creativeData.error.message} (${creativeData.error.error_subcode || creativeData.error.code})`) }
   const creativeId = creativeData.id
 
   // 5. Create ad
@@ -225,7 +214,7 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
     }),
   })
   const adData = await adRes.json()
-  if (adData.error) throw new Error(`Ad: ${adData.error.message}`)
+  if (adData.error) { console.error("[FB ad]", JSON.stringify(adData.error)); throw new Error(`Ad: ${adData.error.message} (${adData.error.error_subcode || adData.error.code})`) }
 
   return { campaignId, adSetId, creativeId, adId: adData.id, leadFormId }
 }
