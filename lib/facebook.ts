@@ -1,7 +1,13 @@
-const GRAPH = "https://graph.facebook.com/v19.0"
+const GRAPH = "https://graph.facebook.com/v25.0"
 
+// Page Access Token — used for Messenger, lead form creation, page posts
 function token() {
   return process.env.FB_PAGE_ACCESS_TOKEN || process.env.FACEBOOK_PAGE_ACCESS_TOKEN || ""
+}
+
+// User Access Token — required for ad account operations (campaigns, ad sets, creatives, ads)
+function userToken() {
+  return process.env.FB_USER_ACCESS_TOKEN || token()
 }
 
 export async function sendFacebookMessage(psid: string, text: string): Promise<string | null> {
@@ -99,8 +105,8 @@ async function createLeadForm(pageId: string, campaignName: string, privacyPolic
 export async function createFacebookAdCampaign(payload: FbAdPayload) {
   const rawAccountId = process.env.FACEBOOK_AD_ACCOUNT_ID || process.env.FB_AD_ACCOUNT_ID
   const pageId = process.env.FACEBOOK_PAGE_ID || process.env.FB_PAGE_ID
-  if (!rawAccountId || !pageId || !token()) {
-    throw new Error("FACEBOOK_AD_ACCOUNT_ID, FACEBOOK_PAGE_ID and FB_PAGE_ACCESS_TOKEN must be set")
+  if (!rawAccountId || !pageId || !userToken()) {
+    throw new Error("FACEBOOK_AD_ACCOUNT_ID, FACEBOOK_PAGE_ID and FB_USER_ACCESS_TOKEN (or FB_PAGE_ACCESS_TOKEN) must be set")
   }
   // Facebook API always requires act_ prefix
   const adAccountId = rawAccountId.startsWith("act_") ? rawAccountId : `act_${rawAccountId}`
@@ -124,7 +130,7 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
       objective: payload.objective,
       status: "PAUSED",
       special_ad_categories: ["HOUSING"],
-      access_token: token(),
+      access_token: userToken(),
     }),
   })
   const campData = await campRes.json()
@@ -158,11 +164,12 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
     campaign_id: campaignId,
     billing_event: "IMPRESSIONS",
     optimization_goal: isLeadAd ? "LEAD_GENERATION" : "REACH",
+    bid_strategy: "LOWEST_COST_WITHOUT_CAP",
     daily_budget: payload.dailyBudgetCents,
     targeting,
     status: "PAUSED",
     start_time: payload.startTime,
-    access_token: token(),
+    access_token: userToken(),
   }
   if (payload.endTime) adsetBody.end_time = payload.endTime
 
@@ -204,7 +211,7 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
     body: JSON.stringify({
       name: `${payload.campaignName} — Creative`,
       object_story_spec: { page_id: pageId, link_data: linkData },
-      access_token: token(),
+      access_token: userToken(),
     }),
   })
   const creativeData = await creativeRes.json()
@@ -220,7 +227,7 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
       adset_id: adSetId,
       creative: { creative_id: creativeId },
       status: "PAUSED",
-      access_token: token(),
+      access_token: userToken(),
     }),
   })
   const adData = await adRes.json()
