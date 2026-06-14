@@ -5,7 +5,7 @@ import {
   Sparkles, Search, Image, FileText, Loader2,
   Copy, Check, ExternalLink, Download, Globe,
   TrendingUp, Video, BarChart2, Users, Home, DollarSign,
-  BookOpen, RefreshCw, Send,
+  BookOpen, RefreshCw, Send, ImageIcon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/components/ui/use-toast"
@@ -128,15 +128,38 @@ function BlogWriter({ toast }: { toast: any }) {
   const [language, setLanguage] = useState<"es" | "en" | "both">("es")
   const [loading, setLoading] = useState(false)
   const [post, setPost] = useState<any>(null)
+  const [featuredImage, setFeaturedImage] = useState<string | null>(null)
+  const [imageLoading, setImageLoading] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [published, setPublished] = useState(false)
   const [copied, setCopied] = useState(false)
 
   const suggestions = BLOG_TOPIC_SUGGESTIONS[audience] || []
 
+  const generateImage = async (title: string) => {
+    setImageLoading(true)
+    try {
+      const res = await fetch("/api/ai/image-gen", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: `Professional real estate marketing photo for a blog post titled: "${title}"`,
+          style: "professional",
+          size: "square",
+        }),
+      })
+      const data = await res.json()
+      if (res.ok && data.url) setFeaturedImage(data.url)
+    } catch {
+      // image is optional, don't block the blog
+    } finally {
+      setImageLoading(false)
+    }
+  }
+
   const generate = async () => {
     if (!topic.trim()) { toast({ title: "Enter a topic", variant: "destructive" }); return }
-    setLoading(true); setPost(null); setPublished(false)
+    setLoading(true); setPost(null); setPublished(false); setFeaturedImage(null)
     try {
       const res = await fetch("/api/ai/blog-write", {
         method: "POST",
@@ -146,6 +169,8 @@ function BlogWriter({ toast }: { toast: any }) {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
       setPost(data)
+      // auto-generate featured image in background
+      generateImage(data.title)
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" })
     } finally { setLoading(false) }
@@ -174,6 +199,24 @@ function BlogWriter({ toast }: { toast: any }) {
     navigator.clipboard.writeText(post.content)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  const downloadImage = async () => {
+    if (!featuredImage) return
+    try {
+      const res = await fetch(featuredImage)
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = "featured-image.png"
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch {
+      window.open(featuredImage, "_blank")
+    }
   }
 
   return (
@@ -227,48 +270,78 @@ function BlogWriter({ toast }: { toast: any }) {
       </div>
 
       {post && (
-        <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm space-y-4">
-          <div className="flex items-start justify-between gap-4">
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          {/* Featured image */}
+          <div className="relative bg-gray-100 border-b border-gray-200">
+            {imageLoading ? (
+              <div className="flex flex-col items-center justify-center h-48 gap-2 text-gray-400">
+                <Loader2 className="w-6 h-6 animate-spin" />
+                <span className="text-sm">Generating featured image…</span>
+              </div>
+            ) : featuredImage ? (
+              <div className="relative group">
+                <img src={featuredImage} alt="Featured" className="w-full max-h-72 object-cover" />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
+                  <button onClick={downloadImage}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-white rounded-lg text-sm font-medium shadow-lg hover:bg-gray-50">
+                    <Download className="w-4 h-4" /> Download Image
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-32 text-gray-300">
+                <ImageIcon className="w-8 h-8" />
+              </div>
+            )}
+          </div>
+
+          <div className="p-6 space-y-4">
+            {/* Title + meta */}
             <div>
-              <h2 className="text-lg font-bold text-gray-900">{post.title}</h2>
-              <p className="text-sm text-gray-500 mt-1">{post.metaDescription}</p>
+              <h2 className="text-2xl font-bold text-gray-900 leading-snug">{post.title}</h2>
+              <p className="text-sm text-gray-500 mt-2 italic">{post.metaDescription}</p>
               {post.tags && (
-                <div className="flex flex-wrap gap-1 mt-2">
+                <div className="flex flex-wrap gap-1 mt-3">
                   {(Array.isArray(post.tags) ? post.tags : JSON.parse(post.tags || "[]")).map((t: string) => (
-                    <span key={t} className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs">{t}</span>
+                    <span key={t} className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">{t}</span>
                   ))}
                 </div>
               )}
             </div>
-          </div>
 
-          <div className="bg-gray-50 rounded-xl p-4 text-sm text-gray-600 italic border border-gray-100">
-            {post.excerpt}
-          </div>
+            {/* Excerpt */}
+            <div className="bg-purple-50 border border-purple-100 rounded-xl px-4 py-3 text-sm text-purple-800 italic">
+              {post.excerpt}
+            </div>
 
-          <div className="prose prose-sm max-w-none border border-gray-100 rounded-xl p-4 max-h-96 overflow-y-auto"
-            dangerouslySetInnerHTML={{ __html: post.content }} />
+            {/* Full content with typography */}
+            <div
+              className="prose prose-gray prose-headings:font-bold prose-h2:text-xl prose-h3:text-lg prose-p:text-gray-700 prose-li:text-gray-700 prose-strong:text-gray-900 max-w-none border border-gray-100 rounded-xl p-6"
+              dangerouslySetInnerHTML={{ __html: post.content }}
+            />
 
-          <div className="flex gap-2 flex-wrap">
-            <button onClick={copyHtml}
-              className="flex items-center gap-1.5 px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
-              {copied ? <><Check className="w-4 h-4 text-green-500" /> Copied!</> : <><Copy className="w-4 h-4" /> Copy HTML</>}
-            </button>
-            {published ? (
-              <a href="/site/blog" target="_blank"
-                className="flex items-center gap-1.5 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors">
-                <ExternalLink className="w-4 h-4" /> View on Site
-              </a>
-            ) : (
-              <button onClick={publish} disabled={publishing}
-                className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors disabled:opacity-50">
-                {publishing ? <><Loader2 className="w-4 h-4 animate-spin" /> Publishing...</> : <><Send className="w-4 h-4" /> Publish to Website</>}
+            {/* Actions */}
+            <div className="flex gap-2 flex-wrap pt-2">
+              <button onClick={copyHtml}
+                className="flex items-center gap-1.5 px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
+                {copied ? <><Check className="w-4 h-4 text-green-500" /> Copied!</> : <><Copy className="w-4 h-4" /> Copy HTML</>}
               </button>
-            )}
-            <button onClick={generate} disabled={loading}
-              className="flex items-center gap-1.5 px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
-              <RefreshCw className="w-4 h-4" /> Regenerate
-            </button>
+              {published ? (
+                <a href="/site/blog" target="_blank"
+                  className="flex items-center gap-1.5 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors">
+                  <ExternalLink className="w-4 h-4" /> View on Site
+                </a>
+              ) : (
+                <button onClick={publish} disabled={publishing}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors disabled:opacity-50">
+                  {publishing ? <><Loader2 className="w-4 h-4 animate-spin" /> Publishing...</> : <><Send className="w-4 h-4" /> Publish to Website</>}
+                </button>
+              )}
+              <button onClick={generate} disabled={loading}
+                className="flex items-center gap-1.5 px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
+                <RefreshCw className="w-4 h-4" /> Regenerate
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -281,7 +354,7 @@ function BlogWriter({ toast }: { toast: any }) {
 function ImageGenerator({ toast }: { toast: any }) {
   const [prompt, setPrompt] = useState("")
   const [style, setStyle] = useState("professional")
-  const [size, setSize] = useState("landscape")
+  const [size, setSize] = useState("square")
   const [loading, setLoading] = useState(false)
   const [images, setImages] = useState<{ url: string; prompt: string }[]>([])
 
@@ -305,6 +378,23 @@ function ImageGenerator({ toast }: { toast: any }) {
   const copy = (url: string) => {
     navigator.clipboard.writeText(url)
     toast({ title: "URL copied!" })
+  }
+
+  const download = async (url: string, index: number) => {
+    try {
+      const res = await fetch(url)
+      const blob = await res.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = objectUrl
+      a.download = `lofty-image-${index + 1}.png`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(objectUrl)
+    } catch {
+      window.open(url, "_blank")
+    }
   }
 
   return (
@@ -363,10 +453,10 @@ function ImageGenerator({ toast }: { toast: any }) {
                     className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-medium hover:bg-gray-50">
                     <Copy className="w-3.5 h-3.5" /> Copy URL
                   </button>
-                  <a href={img.url} target="_blank" download
+                  <button onClick={() => download(img.url, i)}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded-lg text-xs font-medium hover:bg-purple-700">
                     <Download className="w-3.5 h-3.5" /> Download
-                  </a>
+                  </button>
                 </div>
               </div>
             </div>
@@ -491,7 +581,7 @@ function ResearchTool({ toast }: { toast: any }) {
               {copied ? <><Check className="w-3.5 h-3.5 text-green-500" /> Copied!</> : <><Copy className="w-3.5 h-3.5" /> Copy</>}
             </button>
           </div>
-          <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-wrap">{result}</div>
+          <div className="prose prose-gray prose-headings:font-bold prose-p:text-gray-700 prose-li:text-gray-700 prose-strong:text-gray-900 max-w-none whitespace-pre-wrap text-gray-700">{result}</div>
         </div>
       )}
     </div>
