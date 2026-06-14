@@ -28,7 +28,7 @@ export async function POST(req: Request, { params }: { params: { contactId: stri
     await prisma.facebookMessage.create({
       data: {
         psid: contact.facebookPsid,
-        pageId: process.env.FACEBOOK_PAGE_ID || "",
+        pageId: process.env.FACEBOOK_PAGE_ID || process.env.FB_PAGE_ID || "",
         body: message,
         direction: "OUTBOUND",
         status: msgId ? "SENT" : "FAILED",

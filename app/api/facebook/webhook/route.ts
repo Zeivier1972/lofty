@@ -11,7 +11,8 @@ export async function GET(req: Request) {
   const verifyToken = searchParams.get("hub.verify_token")
   const challenge = searchParams.get("hub.challenge")
 
-  if (mode === "subscribe" && verifyToken === process.env.FACEBOOK_VERIFY_TOKEN) {
+  const expectedToken = process.env.FB_VERIFY_TOKEN || process.env.FACEBOOK_VERIFY_TOKEN
+  if (mode === "subscribe" && verifyToken === expectedToken) {
     return new Response(challenge || "", { status: 200 })
   }
   return new Response("Forbidden", { status: 403 })

@@ -1,7 +1,7 @@
 const GRAPH = "https://graph.facebook.com/v19.0"
 
 function token() {
-  return process.env.FACEBOOK_PAGE_ACCESS_TOKEN || ""
+  return process.env.FB_PAGE_ACCESS_TOKEN || process.env.FACEBOOK_PAGE_ACCESS_TOKEN || ""
 }
 
 export async function sendFacebookMessage(psid: string, text: string): Promise<string | null> {
@@ -51,10 +51,10 @@ export interface FbAdPayload {
 }
 
 export async function createFacebookAdCampaign(payload: FbAdPayload) {
-  const adAccountId = process.env.FACEBOOK_AD_ACCOUNT_ID
-  const pageId = process.env.FACEBOOK_PAGE_ID
+  const adAccountId = process.env.FACEBOOK_AD_ACCOUNT_ID || process.env.FB_AD_ACCOUNT_ID
+  const pageId = process.env.FACEBOOK_PAGE_ID || process.env.FB_PAGE_ID
   if (!adAccountId || !pageId || !token()) {
-    throw new Error("FACEBOOK_AD_ACCOUNT_ID, FACEBOOK_PAGE_ID and FACEBOOK_PAGE_ACCESS_TOKEN must be set")
+    throw new Error("FACEBOOK_AD_ACCOUNT_ID, FACEBOOK_PAGE_ID and FB_PAGE_ACCESS_TOKEN must be set")
   }
 
   const base = `${GRAPH}/${adAccountId}`
