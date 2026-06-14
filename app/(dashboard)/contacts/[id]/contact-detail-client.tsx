@@ -106,6 +106,11 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
   const [emailSubject, setEmailSubject] = useState("")
   const [emailBody, setEmailBody] = useState("")
   const [sendingEmail, setSendingEmail] = useState(false)
+  const [emailMediaUrl, setEmailMediaUrl] = useState("")
+  const [emailLinkUrl, setEmailLinkUrl] = useState("")
+  const [emailLinkText, setEmailLinkText] = useState("")
+  const [showEmailImage, setShowEmailImage] = useState(false)
+  const [showEmailLink, setShowEmailLink] = useState(false)
 
   const triggerSofiaCall = async () => {
     if (!contact.phone) return
@@ -1190,6 +1195,66 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
             placeholder={`Escribe tu mensaje para ${contact.firstName}...`}
             className="w-full border border-gray-200 rounded-xl p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-300"
           />
+
+          {/* Media toolbar */}
+          <div className="flex gap-3 flex-wrap">
+            <button type="button" onClick={() => { setShowEmailImage(v => !v); setShowEmailLink(false) }}
+              className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800">
+              🖼️ {showEmailImage ? "Quitar imagen" : "Agregar imagen"}
+            </button>
+            <button type="button" onClick={() => { setShowEmailLink(v => !v); setShowEmailImage(false) }}
+              className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800">
+              🔗 {showEmailLink ? "Quitar enlace" : "Agregar enlace"}
+            </button>
+          </div>
+
+          {showEmailImage && (
+            <div className="flex gap-2">
+              <input type="url" value={emailMediaUrl} onChange={e => setEmailMediaUrl(e.target.value)}
+                placeholder="URL de imagen o video (https://...)"
+                className="flex-1 border border-purple-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300" />
+              <button type="button"
+                onClick={() => {
+                  if (!emailMediaUrl.trim()) return
+                  const isVideo = /\.(mp4|mov|webm)/i.test(emailMediaUrl)
+                  const tag = isVideo
+                    ? `\n<p>📹 <a href="${emailMediaUrl}" style="color:#4F46E5">Ver video</a></p>`
+                    : `\n<img src="${emailMediaUrl}" style="max-width:100%;border-radius:8px;margin:8px 0"/>`
+                  setEmailBody(b => b + tag)
+                  setEmailMediaUrl("")
+                  setShowEmailImage(false)
+                }}
+                className="bg-purple-500 hover:bg-purple-600 text-white px-3 py-2 rounded-xl text-sm font-medium">
+                Insertar
+              </button>
+            </div>
+          )}
+
+          {showEmailLink && (
+            <div className="space-y-2">
+              <input type="text" value={emailLinkText} onChange={e => setEmailLinkText(e.target.value)}
+                placeholder="Texto del enlace (ej. Ver propiedad)"
+                className="w-full border border-purple-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300" />
+              <div className="flex gap-2">
+                <input type="url" value={emailLinkUrl} onChange={e => setEmailLinkUrl(e.target.value)}
+                  placeholder="URL (https://...)"
+                  className="flex-1 border border-purple-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300" />
+                <button type="button"
+                  onClick={() => {
+                    if (!emailLinkUrl.trim()) return
+                    const text = emailLinkText.trim() || emailLinkUrl
+                    setEmailBody(b => b + `\n<a href="${emailLinkUrl}" style="color:#4F46E5;font-weight:bold">${text}</a>`)
+                    setEmailLinkUrl("")
+                    setEmailLinkText("")
+                    setShowEmailLink(false)
+                  }}
+                  className="bg-purple-500 hover:bg-purple-600 text-white px-3 py-2 rounded-xl text-sm font-medium">
+                  Insertar
+                </button>
+              </div>
+            </div>
+          )}
+
           <AiAssistBar contactId={contact.id} draft={emailBody} onApply={setEmailBody} />
           <div className="flex justify-end gap-2">
             <button
@@ -1237,6 +1302,8 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
 function SmsButton({ contactId, phone, name }: { contactId: string; phone?: string; name: string }) {
   const [open, setOpen] = useState(false)
   const [message, setMessage] = useState("")
+  const [mediaUrl, setMediaUrl] = useState("")
+  const [showMedia, setShowMedia] = useState(false)
   const [sending, setSending] = useState(false)
   const { toast } = useToast()
 
@@ -1246,15 +1313,18 @@ function SmsButton({ contactId, phone, name }: { contactId: string; phone?: stri
     if (!message.trim()) return
     setSending(true)
     try {
+      const mediaUrls = mediaUrl.trim() ? [mediaUrl.trim()] : undefined
       const res = await fetch("/api/sms/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contactId, message }),
+        body: JSON.stringify({ contactId, message, mediaUrls }),
       })
       const data = await res.json()
       if (data.success) {
-        toast({ title: "✅ Mensaje enviado", description: `SMS enviado a ${name}` })
+        toast({ title: "✅ Mensaje enviado", description: `SMS${mediaUrls ? " MMS" : ""} enviado a ${name}` })
         setMessage("")
+        setMediaUrl("")
+        setShowMedia(false)
         setOpen(false)
       } else {
         toast({ title: "Error", description: data.error || "No se pudo enviar", variant: "destructive" })
@@ -1294,9 +1364,25 @@ function SmsButton({ contactId, phone, name }: { contactId: string; phone?: stri
               placeholder={`Escribe tu mensaje para ${name}...`}
               className="w-full border border-gray-200 rounded-xl p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-300"
             />
+            {/* MMS media URL */}
+            <button
+              type="button"
+              onClick={() => setShowMedia(v => !v)}
+              className="flex items-center gap-1.5 text-xs text-blue-500 hover:text-blue-700">
+              📎 {showMedia ? "Quitar imagen/video" : "Adjuntar imagen o video (MMS)"}
+            </button>
+            {showMedia && (
+              <input
+                type="url"
+                value={mediaUrl}
+                onChange={e => setMediaUrl(e.target.value)}
+                placeholder="https://... (URL de imagen o video)"
+                className="w-full border border-blue-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+              />
+            )}
             <AiAssistBar contactId={contactId} draft={message} onApply={setMessage} />
             <div className="flex items-center justify-between">
-              <p className="text-xs text-gray-400">{message.length}/160 caracteres</p>
+              <p className="text-xs text-gray-400">{message.length}/160 chars {mediaUrl ? "· MMS" : ""}</p>
               <button
                 onClick={handleSend}
                 disabled={sending || !message.trim()}

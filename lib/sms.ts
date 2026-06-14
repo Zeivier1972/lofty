@@ -9,16 +9,17 @@ function getClient() {
   return client
 }
 
-export async function sendSMS(to: string, body: string): Promise<string | null> {
+export async function sendSMS(to: string, body: string, mediaUrls?: string[]): Promise<string | null> {
   const c = getClient()
   if (!c) {
-    console.log("[SMS MOCK] To:", to, "Body:", body)
+    console.log("[SMS MOCK] To:", to, "Body:", body, "Media:", mediaUrls)
     return "mock-sid"
   }
   const msg = await c.messages.create({
     body,
     from: process.env.TWILIO_PHONE_NUMBER!,
     to,
+    ...(mediaUrls?.length ? { mediaUrl: mediaUrls } : {}),
   })
   return msg.sid
 }
