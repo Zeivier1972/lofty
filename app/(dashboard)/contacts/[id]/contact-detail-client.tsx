@@ -1198,13 +1198,35 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
 
           {/* Media toolbar */}
           <div className="flex gap-3 flex-wrap">
+            <label className="flex items-center gap-1 text-xs cursor-pointer text-purple-600 hover:text-purple-800">
+              <input type="file" accept="image/*,video/*" className="hidden"
+                onChange={async e => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  try {
+                    const form = new FormData(); form.append("file", file)
+                    const res = await fetch("/api/upload", { method: "POST", body: form })
+                    const data = await res.json()
+                    if (!res.ok) throw new Error(data.error)
+                    const isVideo = file.type.startsWith("video/")
+                    const tag = isVideo
+                      ? `\n<p>📹 <a href="${data.url}" style="color:#4F46E5">Ver video</a></p>`
+                      : `\n<img src="${data.url}" style="max-width:100%;border-radius:8px;margin:8px 0"/>`
+                    setEmailBody(b => b + tag)
+                    toast({ title: "✅ Archivo subido e insertado" })
+                  } catch (err: any) {
+                    toast({ title: "Error", description: err.message, variant: "destructive" })
+                  }
+                }} />
+              📎 Subir imagen/video
+            </label>
             <button type="button" onClick={() => { setShowEmailImage(v => !v); setShowEmailLink(false) }}
               className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800">
-              🖼️ {showEmailImage ? "Quitar imagen" : "Agregar imagen"}
+              🖼️ URL de imagen
             </button>
             <button type="button" onClick={() => { setShowEmailLink(v => !v); setShowEmailImage(false) }}
               className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800">
-              🔗 {showEmailLink ? "Quitar enlace" : "Agregar enlace"}
+              🔗 Agregar enlace
             </button>
           </div>
 
@@ -1303,11 +1325,30 @@ function SmsButton({ contactId, phone, name }: { contactId: string; phone?: stri
   const [open, setOpen] = useState(false)
   const [message, setMessage] = useState("")
   const [mediaUrl, setMediaUrl] = useState("")
-  const [showMedia, setShowMedia] = useState(false)
+  const [showLink, setShowLink] = useState(false)
+  const [linkUrl, setLinkUrl] = useState("")
   const [sending, setSending] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const { toast } = useToast()
 
   if (!phone) return null
+
+  async function handleFileUpload(file: File) {
+    setUploading(true)
+    try {
+      const form = new FormData()
+      form.append("file", file)
+      const res = await fetch("/api/upload", { method: "POST", body: form })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setMediaUrl(data.url)
+      toast({ title: "✅ Archivo subido", description: "Listo para enviar" })
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message || "No se pudo subir el archivo", variant: "destructive" })
+    } finally {
+      setUploading(false)
+    }
+  }
 
   async function handleSend() {
     if (!message.trim()) return
@@ -1322,10 +1363,7 @@ function SmsButton({ contactId, phone, name }: { contactId: string; phone?: stri
       const data = await res.json()
       if (data.success) {
         toast({ title: "✅ Mensaje enviado", description: `SMS${mediaUrls ? " MMS" : ""} enviado a ${name}` })
-        setMessage("")
-        setMediaUrl("")
-        setShowMedia(false)
-        setOpen(false)
+        setMessage(""); setMediaUrl(""); setShowLink(false); setLinkUrl(""); setOpen(false)
       } else {
         toast({ title: "Error", description: data.error || "No se pudo enviar", variant: "destructive" })
       }
@@ -1338,54 +1376,63 @@ function SmsButton({ contactId, phone, name }: { contactId: string; phone?: stri
 
   return (
     <>
-      <button
-        onClick={() => setOpen(true)}
-        title="Enviar SMS"
-        className={cn("flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-white text-sm font-medium transition-colors",
-          "bg-blue-500 hover:bg-blue-600")}>
+      <button onClick={() => setOpen(true)} title="Enviar SMS"
+        className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-white text-sm font-medium transition-colors bg-blue-500 hover:bg-blue-600">
         <MessageSquare className="w-4 h-4" />
       </button>
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 px-4" onClick={() => setOpen(false)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-4" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-3" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <div>
-                <p className="font-semibold text-gray-900">Enviar SMS</p>
+                <p className="font-semibold text-gray-900">Enviar SMS / MMS</p>
                 <p className="text-sm text-gray-400">{phone}</p>
               </div>
               <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600 text-xl font-light">×</button>
             </div>
-            <textarea
-              autoFocus
-              rows={4}
-              value={message}
-              onChange={e => setMessage(e.target.value)}
+
+            <textarea autoFocus rows={4} value={message} onChange={e => setMessage(e.target.value)}
               placeholder={`Escribe tu mensaje para ${name}...`}
-              className="w-full border border-gray-200 rounded-xl p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-300"
-            />
-            {/* MMS media URL */}
-            <button
-              type="button"
-              onClick={() => setShowMedia(v => !v)}
-              className="flex items-center gap-1.5 text-xs text-blue-500 hover:text-blue-700">
-              📎 {showMedia ? "Quitar imagen/video" : "Adjuntar imagen o video (MMS)"}
-            </button>
-            {showMedia && (
-              <input
-                type="url"
-                value={mediaUrl}
-                onChange={e => setMediaUrl(e.target.value)}
-                placeholder="https://... (URL de imagen o video)"
-                className="w-full border border-blue-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-              />
+              className="w-full border border-gray-200 rounded-xl p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-300" />
+
+            {/* Toolbar */}
+            <div className="flex gap-3 flex-wrap">
+              <label className={cn("flex items-center gap-1 text-xs cursor-pointer", uploading ? "text-gray-400" : "text-blue-500 hover:text-blue-700")}>
+                <input type="file" accept="image/*,video/*" className="hidden"
+                  onChange={e => e.target.files?.[0] && handleFileUpload(e.target.files[0])} />
+                {uploading ? "⏳ Subiendo..." : "📎 Subir imagen/video"}
+              </label>
+              <button type="button" onClick={() => setShowLink(v => !v)}
+                className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-700">
+                🔗 Insertar enlace
+              </button>
+            </div>
+
+            {mediaUrl && (
+              <div className="flex items-center gap-2 bg-blue-50 rounded-xl px-3 py-2 text-xs text-blue-700">
+                📎 <span className="truncate flex-1">{mediaUrl}</span>
+                <button onClick={() => setMediaUrl("")} className="text-gray-400 hover:text-red-500 flex-shrink-0">×</button>
+              </div>
             )}
+
+            {showLink && (
+              <div className="flex gap-2">
+                <input type="url" value={linkUrl} onChange={e => setLinkUrl(e.target.value)}
+                  placeholder="Pega el enlace (https://...)"
+                  className="flex-1 border border-blue-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                <button type="button"
+                  onClick={() => { if (linkUrl.trim()) { setMessage(m => (m ? m + "\n" : "") + linkUrl.trim()); setLinkUrl(""); setShowLink(false) } }}
+                  className="bg-blue-500 text-white px-3 py-2 rounded-xl text-sm font-medium hover:bg-blue-600">
+                  Insertar
+                </button>
+              </div>
+            )}
+
             <AiAssistBar contactId={contactId} draft={message} onApply={setMessage} />
             <div className="flex items-center justify-between">
-              <p className="text-xs text-gray-400">{message.length}/160 chars {mediaUrl ? "· MMS" : ""}</p>
-              <button
-                onClick={handleSend}
-                disabled={sending || !message.trim()}
+              <p className="text-xs text-gray-400">{message.length} chars · {mediaUrl ? "MMS" : "SMS"}</p>
+              <button onClick={handleSend} disabled={sending || !message.trim()}
                 className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition-colors">
                 <Send className="w-4 h-4" />
                 {sending ? "Enviando..." : "Enviar"}
