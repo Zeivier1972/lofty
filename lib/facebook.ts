@@ -122,7 +122,7 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
       name: payload.campaignName,
       objective: payload.objective,
       status: "PAUSED",
-      special_ad_categories: ["HOUSING"],
+      special_ad_categories: [],
       access_token: token(),
     }),
   })
