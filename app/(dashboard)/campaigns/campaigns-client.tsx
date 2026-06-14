@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import {
   Mail, Plus, Send, Users, BarChart3, Eye, Trash2,
   X, ChevronDown, CheckCircle2, Clock, AlertCircle,
-  FileText, Tag as TagIcon,
+  FileText, Tag as TagIcon, Target, DollarSign, Image as ImageIcon,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -456,31 +456,364 @@ function NewCampaignModal({ tags, onClose, onCreated }: { tags: any[]; onClose: 
   )
 }
 
+// ─── Facebook Ad Campaign Modal ───────────────────────────────────────────────
+
+const FB_OBJECTIVES = [
+  { value: "OUTCOME_LEADS", label: "Generación de Leads", desc: "Formulario de captura en Facebook/Instagram" },
+  { value: "OUTCOME_TRAFFIC", label: "Tráfico al Sitio Web", desc: "Lleva visitas a tu landing page o website" },
+  { value: "OUTCOME_AWARENESS", label: "Reconocimiento de Marca", desc: "Maximiza el alcance e impresiones" },
+]
+
+const FB_CTA = [
+  { value: "LEARN_MORE", label: "Más Información" },
+  { value: "CONTACT_US", label: "Contáctanos" },
+  { value: "SIGN_UP", label: "Registrarse" },
+  { value: "GET_OFFER", label: "Obtener Oferta" },
+  { value: "BOOK_TRAVEL", label: "Agendar Cita" },
+]
+
+function FacebookAdModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const { toast } = useToast()
+  const [step, setStep] = useState<"objective" | "creative" | "audience" | "budget">("objective")
+  const [saving, setSaving] = useState(false)
+
+  const [campaignName, setCampaignName] = useState("")
+  const [objective, setObjective] = useState("OUTCOME_LEADS")
+  const [primaryText, setPrimaryText] = useState("")
+  const [headline, setHeadline] = useState("")
+  const [description, setDescription] = useState("")
+  const [imageUrl, setImageUrl] = useState("")
+  const [uploadingImg, setUploadingImg] = useState(false)
+  const [destinationUrl, setDestinationUrl] = useState(process.env.NEXT_PUBLIC_APP_URL ? `${process.env.NEXT_PUBLIC_APP_URL}/book` : "")
+  const [ctaType, setCtaType] = useState("LEARN_MORE")
+  const [targetLocations, setTargetLocations] = useState("Miami, Florida")
+  const [ageMin, setAgeMin] = useState("25")
+  const [ageMax, setAgeMax] = useState("65")
+  const [dailyBudget, setDailyBudget] = useState("10")
+  const [startDate, setStartDate] = useState(new Date().toISOString().split("T")[0])
+  const [endDate, setEndDate] = useState("")
+
+  const steps = ["objective", "creative", "audience", "budget"]
+  const stepIdx = steps.indexOf(step)
+
+  const handleUploadImage = async (file: File) => {
+    setUploadingImg(true)
+    try {
+      const form = new FormData(); form.append("file", file)
+      const res = await fetch("/api/upload", { method: "POST", body: form })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setImageUrl(data.url)
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" })
+    } finally { setUploadingImg(false) }
+  }
+
+  const handleLaunch = async () => {
+    if (!campaignName || !primaryText || !headline || !destinationUrl) {
+      toast({ title: "Completa todos los campos requeridos", variant: "destructive" })
+      return
+    }
+    setSaving(true)
+    try {
+      const res = await fetch("/api/facebook/ads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaignName,
+          objective,
+          primaryText,
+          headline,
+          description,
+          imageUrl,
+          destinationUrl,
+          ctaType,
+          dailyBudgetCents: Math.round(parseFloat(dailyBudget) * 100),
+          startTime: new Date(startDate).toISOString(),
+          endTime: endDate ? new Date(endDate).toISOString() : undefined,
+          targetLocations: targetLocations.split(",").map(s => s.trim()).filter(Boolean),
+          ageMin: parseInt(ageMin),
+          ageMax: parseInt(ageMax),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      toast({ title: "✅ Campaña creada en Facebook", description: "La campaña está en pausa — actívala en Ads Manager." })
+      onCreated()
+      onClose()
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" })
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-5 border-b flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg,#0866ff,#a855f7)" }}>
+              <Target className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h2 className="font-bold text-gray-900">Nueva Campaña de Facebook Ads</h2>
+              <div className="flex items-center gap-2 mt-0.5">
+                {steps.map((s, i) => (
+                  <div key={s} className="flex items-center gap-1">
+                    <div className={cn("w-5 h-5 rounded-full text-xs flex items-center justify-center font-semibold",
+                      step === s ? "bg-blue-600 text-white" :
+                      stepIdx > i ? "bg-green-500 text-white" : "bg-gray-200 text-gray-500"
+                    )}>{i + 1}</div>
+                    {i < 3 && <div className="w-4 h-px bg-gray-200" />}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg"><X className="w-4 h-4 text-gray-500" /></button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 p-5 space-y-4">
+
+          {/* Step 1: Objective */}
+          {step === "objective" && (
+            <>
+              <div>
+                <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Nombre de la campaña *</label>
+                <input value={campaignName} onChange={e => setCampaignName(e.target.value)}
+                  placeholder="Ej: Propiedades Miami Junio 2026"
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+              </div>
+              <div>
+                <label className="text-sm font-semibold text-gray-700 mb-2 block">Objetivo de la campaña</label>
+                <div className="space-y-2">
+                  {FB_OBJECTIVES.map(obj => (
+                    <label key={obj.value} className={cn(
+                      "flex items-start gap-3 p-3 border-2 rounded-xl cursor-pointer transition-all",
+                      objective === obj.value ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:border-blue-200"
+                    )}>
+                      <input type="radio" name="objective" value={obj.value} checked={objective === obj.value}
+                        onChange={() => setObjective(obj.value)} className="mt-0.5" />
+                      <div>
+                        <p className="font-semibold text-sm text-gray-900">{obj.label}</p>
+                        <p className="text-xs text-gray-500">{obj.desc}</p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-700">
+                <strong>Nota:</strong> Por ley (Fair Housing Act), los anuncios de bienes raíces en Facebook se crean con categoría especial HOUSING.
+                Esto restringe algo el targeting pero es obligatorio.
+              </div>
+              <div className="flex justify-end">
+                <button onClick={() => setStep("creative")} disabled={!campaignName.trim()}
+                  className="px-5 py-2 bg-blue-600 text-white rounded-xl font-medium text-sm disabled:opacity-50">
+                  Siguiente: Creativo →
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* Step 2: Creative */}
+          {step === "creative" && (
+            <>
+              <div>
+                <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Texto principal *</label>
+                <textarea value={primaryText} onChange={e => setPrimaryText(e.target.value)} rows={3}
+                  placeholder="¿Buscas tu casa ideal en Miami? Tenemos opciones desde $300K. Contáctanos hoy."
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                <p className="text-xs text-gray-400 mt-1">Aparece encima de la imagen. Máx. 125 caracteres recomendado.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Titular *</label>
+                  <input value={headline} onChange={e => setHeadline(e.target.value)}
+                    placeholder="Casas en Miami desde $300K"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Descripción</label>
+                  <input value={description} onChange={e => setDescription(e.target.value)}
+                    placeholder="Agenda tu visita gratis"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                </div>
+              </div>
+              <div>
+                <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Imagen del anuncio</label>
+                {imageUrl ? (
+                  <div className="relative w-full h-40 rounded-xl overflow-hidden border border-gray-200">
+                    <img src={imageUrl} alt="" className="w-full h-full object-cover" />
+                    <button onClick={() => setImageUrl("")}
+                      className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">×</button>
+                  </div>
+                ) : (
+                  <label className={cn("w-full h-32 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 transition-colors", uploadingImg && "opacity-50 pointer-events-none")}>
+                    <input type="file" accept="image/*" className="hidden" onChange={e => e.target.files?.[0] && handleUploadImage(e.target.files[0])} />
+                    <ImageIcon className="w-8 h-8 text-gray-400 mb-2" />
+                    <span className="text-sm text-gray-500">{uploadingImg ? "Subiendo..." : "Haz clic para subir imagen"}</span>
+                    <span className="text-xs text-gray-400 mt-1">Recomendado: 1200×628 px (relación 1.91:1)</span>
+                  </label>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-semibold text-gray-700 mb-1.5 block">URL de destino *</label>
+                  <input value={destinationUrl} onChange={e => setDestinationUrl(e.target.value)}
+                    placeholder="https://tusitio.com/contacto"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Botón de llamada a acción</label>
+                  <select value={ctaType} onChange={e => setCtaType(e.target.value)}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                    {FB_CTA.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="flex justify-between">
+                <button onClick={() => setStep("objective")} className="px-4 py-2 border border-gray-200 rounded-xl text-sm">← Atrás</button>
+                <button onClick={() => setStep("audience")} disabled={!primaryText || !headline || !destinationUrl}
+                  className="px-5 py-2 bg-blue-600 text-white rounded-xl font-medium text-sm disabled:opacity-50">
+                  Siguiente: Audiencia →
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* Step 3: Audience */}
+          {step === "audience" && (
+            <>
+              <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-700">
+                <strong>Categoría HOUSING:</strong> Los anuncios de bienes raíces no pueden segmentar por código postal, edad exacta o género en Facebook.
+                Solo puedes segmentar por ciudad/estado.
+              </div>
+              <div>
+                <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Ciudades / mercados objetivo</label>
+                <input value={targetLocations} onChange={e => setTargetLocations(e.target.value)}
+                  placeholder="Miami, Florida, Fort Lauderdale, Florida"
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                <p className="text-xs text-gray-400 mt-1">Separa múltiples ciudades con comas.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Edad mínima</label>
+                  <select value={ageMin} onChange={e => setAgeMin(e.target.value)}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                    {[18,21,25,30,35,40,45].map(a => <option key={a} value={a}>{a}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Edad máxima</label>
+                  <select value={ageMax} onChange={e => setAgeMax(e.target.value)}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                    {[35,40,45,50,55,60,65].map(a => <option key={a} value={a}>{a}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="flex justify-between">
+                <button onClick={() => setStep("creative")} className="px-4 py-2 border border-gray-200 rounded-xl text-sm">← Atrás</button>
+                <button onClick={() => setStep("budget")}
+                  className="px-5 py-2 bg-blue-600 text-white rounded-xl font-medium text-sm">
+                  Siguiente: Presupuesto →
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* Step 4: Budget + Launch */}
+          {step === "budget" && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Presupuesto diario (USD)</label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+                    <input type="number" value={dailyBudget} onChange={e => setDailyBudget(e.target.value)} min="1"
+                      className="w-full border border-gray-200 rounded-xl pl-8 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">Mínimo recomendado: $10/día</p>
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Fecha de inicio</label>
+                  <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Fecha de fin (opcional)</label>
+                  <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                </div>
+              </div>
+
+              {/* Summary */}
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-2 text-sm">
+                <p className="font-semibold text-gray-900 mb-2">Resumen del anuncio</p>
+                <div className="flex gap-2"><span className="text-gray-500 w-28">Campaña:</span><span className="font-medium">{campaignName}</span></div>
+                <div className="flex gap-2"><span className="text-gray-500 w-28">Objetivo:</span><span>{FB_OBJECTIVES.find(o => o.value === objective)?.label}</span></div>
+                <div className="flex gap-2"><span className="text-gray-500 w-28">Titular:</span><span>{headline}</span></div>
+                <div className="flex gap-2"><span className="text-gray-500 w-28">Ciudades:</span><span>{targetLocations}</span></div>
+                <div className="flex gap-2"><span className="text-gray-500 w-28">Presupuesto:</span><span>${dailyBudget}/día</span></div>
+              </div>
+
+              <div className="bg-green-50 border border-green-100 rounded-xl p-3 text-xs text-green-700">
+                <strong>La campaña se crea en estado PAUSA</strong> para que la revises en Facebook Ads Manager antes de activarla.
+                Puedes hacer ajustes y activarla desde allí.
+              </div>
+
+              <div className="flex justify-between">
+                <button onClick={() => setStep("audience")} className="px-4 py-2 border border-gray-200 rounded-xl text-sm">← Atrás</button>
+                <button onClick={handleLaunch} disabled={saving}
+                  className="flex items-center gap-2 px-5 py-2 rounded-xl font-medium text-sm text-white disabled:opacity-50"
+                  style={{ background: "linear-gradient(135deg,#0866ff,#a855f7)" }}>
+                  <Target className="w-4 h-4" />
+                  {saving ? "Creando campaña..." : "Crear en Facebook Ads"}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
 export default function CampaignsClient({ campaigns: initCampaigns, tags, stats }: CampaignsClientProps) {
   const router = useRouter()
   const { toast } = useToast()
   const [campaigns, setCampaigns] = useState(initCampaigns)
   const [showNew, setShowNew] = useState(false)
+  const [showFbAd, setShowFbAd] = useState(false)
 
   return (
     <div className="p-6 space-y-5 animate-fade-in">
       {showNew && (
-        <NewCampaignModal
-          tags={tags}
-          onClose={() => setShowNew(false)}
-          onCreated={() => router.refresh()}
-        />
+        <NewCampaignModal tags={tags} onClose={() => setShowNew(false)} onCreated={() => router.refresh()} />
+      )}
+      {showFbAd && (
+        <FacebookAdModal onClose={() => setShowFbAd(false)} onCreated={() => router.refresh()} />
       )}
 
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Email Campaigns</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Campañas</h1>
           <p className="text-gray-500 text-sm mt-0.5">{stats.emailableContacts.toLocaleString()} contactos con email disponibles</p>
         </div>
-        <Button onClick={() => setShowNew(true)} className="bg-indigo-600 hover:bg-indigo-700 gap-2">
-          <Plus className="w-4 h-4" /> Nueva Campaña
-        </Button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowFbAd(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl font-semibold text-sm text-white shadow-sm hover:shadow-md transition-shadow"
+            style={{ background: "linear-gradient(135deg,#0866ff,#a855f7)" }}
+          >
+            <Target className="w-4 h-4" /> Facebook Ads
+          </button>
+          <Button onClick={() => setShowNew(true)} className="bg-indigo-600 hover:bg-indigo-700 gap-2">
+            <Plus className="w-4 h-4" /> Email Campaign
+          </Button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -536,8 +869,11 @@ export default function CampaignsClient({ campaigns: initCampaigns, tags, stats 
             <div className="divide-y divide-gray-100">
               {campaigns.map(c => (
                 <div key={c.id} className="flex items-center gap-4 px-5 py-4 hover:bg-gray-50 transition-colors">
-                  <div className="w-9 h-9 bg-indigo-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                    <Mail className="w-4 h-4 text-indigo-600" />
+                  <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0", c.type === "FACEBOOK" ? "" : "bg-indigo-100")}
+                    style={c.type === "FACEBOOK" ? { background: "linear-gradient(135deg,#0866ff,#a855f7)" } : {}}>
+                    {c.type === "FACEBOOK"
+                      ? <Target className="w-4 h-4 text-white" />
+                      : <Mail className="w-4 h-4 text-indigo-600" />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-gray-900 text-sm">{c.name}</p>

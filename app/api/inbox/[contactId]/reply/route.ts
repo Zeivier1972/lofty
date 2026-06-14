@@ -4,6 +4,7 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth"
 import { sendSMS, sendWhatsApp, sendWhatsAppTemplate } from "@/lib/sms"
+import { sendFacebookMessage } from "@/lib/facebook"
 
 export async function POST(req: Request, { params }: { params: { contactId: string } }) {
   const session = await auth()
@@ -14,67 +15,77 @@ export async function POST(req: Request, { params }: { params: { contactId: stri
 
   const contact = await prisma.contact.findUnique({
     where: { id: params.contactId },
-    select: { id: true, phone: true, firstName: true, lastName: true },
+    select: { id: true, phone: true, firstName: true, lastName: true, facebookPsid: true },
   })
-  if (!contact?.phone) return NextResponse.json({ error: "Contact has no phone number" }, { status: 400 })
+  if (!contact) return NextResponse.json({ error: "Contact not found" }, { status: 404 })
+
+  // ── Facebook Messenger ───────────────────────────────────────────────────────
+  if (channel === "facebook") {
+    if (!contact.facebookPsid) {
+      return NextResponse.json({ error: "Este contacto no tiene cuenta de Facebook Messenger vinculada" }, { status: 400 })
+    }
+    const msgId = await sendFacebookMessage(contact.facebookPsid, message)
+    await prisma.facebookMessage.create({
+      data: {
+        psid: contact.facebookPsid,
+        pageId: process.env.FACEBOOK_PAGE_ID || "",
+        body: message,
+        direction: "OUTBOUND",
+        status: msgId ? "SENT" : "FAILED",
+        messageId: msgId || undefined,
+        contactId: contact.id,
+      },
+    })
+    await Promise.all([
+      prisma.activity.create({
+        data: {
+          type: "FACEBOOK",
+          title: "Mensaje enviado por Messenger",
+          description: message.slice(0, 120),
+          contactId: contact.id,
+          userId: session.user?.id as string,
+        },
+      }),
+      prisma.contact.update({ where: { id: contact.id }, data: { lastContacted: new Date() } }),
+    ])
+    return NextResponse.json({ success: true })
+  }
+
+  // ── Require phone for SMS / WhatsApp ─────────────────────────────────────────
+  if (!contact.phone) return NextResponse.json({ error: "Contact has no phone number" }, { status: 400 })
 
   const toNumber = contact.phone.startsWith("+") ? contact.phone : `+1${contact.phone.replace(/\D/g, "")}`
-  // WhatsApp may use a separate number (Sandbox or Business); falls back to the SMS number
   const fromNumber = process.env.TWILIO_PHONE_NUMBER || ""
   const waFromNumber = process.env.TWILIO_WHATSAPP_NUMBER || fromNumber
 
+  // ── WhatsApp ─────────────────────────────────────────────────────────────────
   if (channel === "whatsapp") {
     if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
       return NextResponse.json({ error: "WhatsApp not configured: TWILIO credentials missing" }, { status: 503 })
     }
-
-    const bookingUrl = `${process.env.NEXT_PUBLIC_APP_URL}/book`
-
     try {
       if (templateSid) {
-        // Business-initiated: use approved WhatsApp template
-        // Pass only {{1}} = firstName; bookingUrl removed — template likely has 1 variable
-        await sendWhatsAppTemplate(toNumber, templateSid, {
-          "1": contact.firstName,
-        })
+        await sendWhatsAppTemplate(toNumber, templateSid, { "1": contact.firstName })
       } else {
-        // Free-form: only works within 24h window after contact messaged first
         await sendWhatsApp(toNumber, message, mediaUrl || undefined)
       }
     } catch (e: any) {
-      console.error("WhatsApp send error:", e)
       return NextResponse.json(
         { error: `WhatsApp falló: ${e?.message}. Usa una plantilla aprobada para iniciar contacto.` },
         { status: 502 }
       )
     }
-
     await prisma.whatsAppMessage.create({
-      data: {
-        body: message,
-        fromNumber: waFromNumber,
-        toNumber,
-        direction: "OUTBOUND",
-        status: "SENT",
-        contactId: contact.id,
-      },
+      data: { body: message, fromNumber: waFromNumber, toNumber, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
     })
   } else {
-    // SMS / MMS
+    // ── SMS ───────────────────────────────────────────────────────────────────
     await sendSMS(toNumber, message, mediaUrl ? [mediaUrl] : undefined)
     await prisma.sMSMessage.create({
-      data: {
-        body: message,
-        fromNumber,
-        toNumber,
-        direction: "OUTBOUND",
-        status: "SENT",
-        contactId: contact.id,
-      },
+      data: { body: message, fromNumber, toNumber, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
     })
   }
 
-  // Log activity + update lastContacted
   await Promise.all([
     prisma.activity.create({
       data: {
@@ -85,10 +96,7 @@ export async function POST(req: Request, { params }: { params: { contactId: stri
         userId: session.user?.id as string,
       },
     }),
-    prisma.contact.update({
-      where: { id: contact.id },
-      data: { lastContacted: new Date() },
-    }),
+    prisma.contact.update({ where: { id: contact.id }, data: { lastContacted: new Date() } }),
   ])
 
   return NextResponse.json({ success: true })

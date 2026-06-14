@@ -94,6 +94,7 @@ model Contact {
   homeClosedAt        DateTime?
   preferredSendHour   Int?
   facebookLeadId      String?
+  facebookPsid        String?
   lastScoreCalculatedAt DateTime?
   buyerBudgetMin Float?
   buyerBudgetMax Float?
@@ -119,6 +120,7 @@ model Contact {
   dialerCalls   DialerCall[]
   campaignEnrollments CampaignEnrollment[]
   whatsappMessages WhatsAppMessage[]
+  facebookMessages FacebookMessage[]
   videoMessages VideoMessage[]
   portalAccess  ClientPortalAccess?
   portalMessages PortalMessage[]
@@ -756,6 +758,22 @@ model PortalMessage {
   content    String
   isRead     Boolean  @default(false)
   createdAt  DateTime @default(now())
+}
+
+// ─── Facebook Messenger ───────────────────────────────────────────────────────
+
+model FacebookMessage {
+  id          String    @id @default(cuid())
+  psid        String
+  pageId      String    @default("")
+  body        String
+  direction   String    @default("INBOUND")
+  status      String    @default("SENT")
+  messageId   String?
+  attachments String?
+  contactId   String?
+  contact     Contact?  @relation(fields: [contactId], references: [id])
+  createdAt   DateTime  @default(now())
 }
 
 // ─── WhatsApp ─────────────────────────────────────────────────────────────────
