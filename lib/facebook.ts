@@ -65,7 +65,8 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name: payload.campaignName,
-      objective: payload.objective,
+      // OUTCOME_LEADS requires a pre-built Instant Form; OUTCOME_TRAFFIC is simpler
+      objective: payload.objective === "OUTCOME_LEADS" ? "OUTCOME_TRAFFIC" : payload.objective,
       status: "PAUSED",
       special_ad_categories: ["HOUSING"],
       access_token: token(),
@@ -76,19 +77,27 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
   const campaignId = campData.id
 
   // 2. Create ad set
+  // NOTE: HOUSING special_ad_category prohibits age/gender targeting
+  const targeting: any = {
+    geo_locations: {
+      countries: ["US"],
+      // regions = US states by name
+      regions: payload.targetLocations.map(loc => {
+        // Accept "Miami, Florida" or just "Florida" — extract the state part
+        const parts = loc.split(",")
+        const state = parts.length > 1 ? parts[parts.length - 1].trim() : parts[0].trim()
+        return { name: state }
+      }),
+    },
+  }
+
   const adsetBody: any = {
     name: `${payload.campaignName} — Ad Set`,
     campaign_id: campaignId,
     billing_event: "IMPRESSIONS",
-    optimization_goal: payload.objective === "OUTCOME_LEADS" ? "LEAD_GENERATION" : "LINK_CLICKS",
+    optimization_goal: "REACH",
     daily_budget: payload.dailyBudgetCents,
-    targeting: {
-      age_min: payload.ageMin,
-      age_max: payload.ageMax,
-      geo_locations: {
-        cities: payload.targetLocations.map(name => ({ name })),
-      },
-    },
+    targeting,
     status: "PAUSED",
     start_time: payload.startTime,
     access_token: token(),
