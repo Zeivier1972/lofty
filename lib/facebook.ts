@@ -31,6 +31,19 @@ export async function getFacebookUserProfile(psid: string): Promise<{ firstName:
   } catch { return null }
 }
 
+// Fetch a submitted lead's field data from Meta
+export async function getFacebookLeadData(leadgenId: string): Promise<Record<string, string> | null> {
+  if (!token()) return null
+  try {
+    const res = await fetch(`${GRAPH}/${leadgenId}?fields=field_data&access_token=${token()}`)
+    if (!res.ok) return null
+    const d = await res.json()
+    const result: Record<string, string> = {}
+    for (const f of d.field_data || []) result[f.name] = f.values?.[0] || ""
+    return result
+  } catch { return null }
+}
+
 // ─── Meta Marketing API ───────────────────────────────────────────────────────
 
 export interface FbAdPayload {
@@ -45,9 +58,30 @@ export interface FbAdPayload {
   dailyBudgetCents: number
   startTime: string
   endTime?: string
-  targetLocations: string[]   // city names or "City, State"
-  ageMin: number
-  ageMax: number
+  targetLocations: string[]
+  privacyPolicyUrl?: string
+}
+
+async function createLeadForm(pageId: string, campaignName: string, privacyPolicyUrl: string, destinationUrl: string) {
+  const res = await fetch(`${GRAPH}/${pageId}/leadgen_forms`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: `${campaignName} — Lead Form`,
+      questions: [
+        { type: "FULL_NAME", label: "Full Name" },
+        { type: "EMAIL", label: "Email" },
+        { type: "PHONE", label: "Phone Number" },
+      ],
+      privacy_policy: { url: privacyPolicyUrl, link_text: "Privacy Policy" },
+      follow_up_action_url: destinationUrl,
+      locale: "EN_US",
+      access_token: token(),
+    }),
+  })
+  const data = await res.json()
+  if (data.error) throw new Error(`Lead Form: ${data.error.message}`)
+  return data.id as string
 }
 
 export async function createFacebookAdCampaign(payload: FbAdPayload) {
@@ -58,15 +92,23 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
   }
 
   const base = `${GRAPH}/${adAccountId}`
+  const isLeadAd = payload.objective === "OUTCOME_LEADS"
 
-  // 1. Create campaign
+  // 1. If Lead Ad, auto-create an Instant Form on the Page
+  let leadFormId: string | null = null
+  if (isLeadAd) {
+    const privacyUrl = payload.privacyPolicyUrl
+      || `${process.env.NEXT_PUBLIC_APP_URL || payload.destinationUrl}/privacy`
+    leadFormId = await createLeadForm(pageId, payload.campaignName, privacyUrl, payload.destinationUrl)
+  }
+
+  // 2. Create campaign
   const campRes = await fetch(`${base}/campaigns`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name: payload.campaignName,
-      // OUTCOME_LEADS requires a pre-built Instant Form; OUTCOME_TRAFFIC is simpler
-      objective: payload.objective === "OUTCOME_LEADS" ? "OUTCOME_TRAFFIC" : payload.objective,
+      objective: payload.objective,
       status: "PAUSED",
       special_ad_categories: ["HOUSING"],
       access_token: token(),
@@ -76,14 +118,12 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
   if (campData.error) throw new Error(`Campaign: ${campData.error.message}`)
   const campaignId = campData.id
 
-  // 2. Create ad set
-  // NOTE: HOUSING special_ad_category prohibits age/gender targeting
+  // 3. Create ad set
+  // HOUSING category: no age/gender targeting allowed
   const targeting: any = {
     geo_locations: {
       countries: ["US"],
-      // regions = US states by name
       regions: payload.targetLocations.map(loc => {
-        // Accept "Miami, Florida" or just "Florida" — extract the state part
         const parts = loc.split(",")
         const state = parts.length > 1 ? parts[parts.length - 1].trim() : parts[0].trim()
         return { name: state }
@@ -95,7 +135,7 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
     name: `${payload.campaignName} — Ad Set`,
     campaign_id: campaignId,
     billing_event: "IMPRESSIONS",
-    optimization_goal: "REACH",
+    optimization_goal: isLeadAd ? "LEAD_GENERATION" : "REACH",
     daily_budget: payload.dailyBudgetCents,
     targeting,
     status: "PAUSED",
@@ -113,26 +153,35 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
   if (adsetData.error) throw new Error(`Ad Set: ${adsetData.error.message}`)
   const adSetId = adsetData.id
 
-  // 3. Create ad creative
+  // 4. Create ad creative
+  const linkData: any = {
+    message: payload.primaryText,
+    name: payload.headline,
+    description: payload.description,
+  }
+  if (payload.imageUrl) linkData.image_url = payload.imageUrl
+
+  if (isLeadAd && leadFormId) {
+    // Lead Ad: CTA opens the Instant Form
+    linkData.call_to_action = {
+      type: "SIGN_UP",
+      value: { lead_gen_form_id: leadFormId },
+    }
+  } else {
+    // Traffic / Awareness: CTA goes to the website
+    linkData.link = payload.destinationUrl
+    linkData.call_to_action = {
+      type: payload.ctaType,
+      value: { link: payload.destinationUrl },
+    }
+  }
+
   const creativeRes = await fetch(`${base}/adcreatives`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name: `${payload.campaignName} — Creative`,
-      object_story_spec: {
-        page_id: pageId,
-        link_data: {
-          message: payload.primaryText,
-          link: payload.destinationUrl,
-          name: payload.headline,
-          description: payload.description,
-          image_url: payload.imageUrl || undefined,
-          call_to_action: {
-            type: payload.ctaType,
-            value: { link: payload.destinationUrl },
-          },
-        },
-      },
+      object_story_spec: { page_id: pageId, link_data: linkData },
       access_token: token(),
     }),
   })
@@ -140,7 +189,7 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
   if (creativeData.error) throw new Error(`Creative: ${creativeData.error.message}`)
   const creativeId = creativeData.id
 
-  // 4. Create ad
+  // 5. Create ad
   const adRes = await fetch(`${base}/ads`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -155,5 +204,5 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
   const adData = await adRes.json()
   if (adData.error) throw new Error(`Ad: ${adData.error.message}`)
 
-  return { campaignId, adSetId, creativeId, adId: adData.id }
+  return { campaignId, adSetId, creativeId, adId: adData.id, leadFormId }
 }
