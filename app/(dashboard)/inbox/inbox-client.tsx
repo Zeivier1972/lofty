@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
-import { MessageSquare, Phone, Search, Send, RefreshCw, Wifi, Smartphone } from "lucide-react"
+import { MessageSquare, Phone, Search, Send, RefreshCw, Wifi, Smartphone, Paperclip } from "lucide-react"
 import { cn, getInitials } from "@/lib/utils"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -54,6 +54,8 @@ export default function InboxClient() {
   const [sending, setSending] = useState(false)
   const [unreadSms, setUnreadSms] = useState(0)
   const [unreadWa, setUnreadWa] = useState(0)
+  const [inboxMediaUrl, setInboxMediaUrl] = useState("")
+  const [inboxUploading, setInboxUploading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const { toast } = useToast()
 
@@ -90,6 +92,22 @@ export default function InboxClient() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [conversation?.messages])
 
+  const handleInboxFileUpload = async (file: File) => {
+    setInboxUploading(true)
+    try {
+      const form = new FormData(); form.append("file", file)
+      const res = await fetch("/api/upload", { method: "POST", body: form })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setInboxMediaUrl(data.url)
+      toast({ title: "✅ Archivo subido", description: "Listo para enviar" })
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message || "No se pudo subir", variant: "destructive" })
+    } finally {
+      setInboxUploading(false)
+    }
+  }
+
   const handleSend = async () => {
     if (!replyText.trim() || !selectedContact || sending) return
     setSending(true)
@@ -101,6 +119,7 @@ export default function InboxClient() {
           message: replyText,
           channel: replyChannel,
           templateSid: replyChannel === "whatsapp" ? selectedTemplateSid : undefined,
+          mediaUrl: inboxMediaUrl || undefined,
         }),
       })
       if (!res.ok) {
@@ -110,6 +129,7 @@ export default function InboxClient() {
       }
       setReplyText("")
       setSelectedTemplateSid(null)
+      setInboxMediaUrl("")
       await fetchConversation(selectedContact)
       await fetchThreads()
     } catch {
@@ -383,7 +403,18 @@ export default function InboxClient() {
                   </div>
                 )
               })()}
-              <div className="flex gap-2">
+              {inboxMediaUrl && (
+                <div className="flex items-center gap-2 bg-blue-50 rounded-xl px-3 py-2 text-xs text-blue-700">
+                  📎 <span className="truncate flex-1">{inboxMediaUrl}</span>
+                  <button onClick={() => setInboxMediaUrl("")} className="text-gray-400 hover:text-red-500">×</button>
+                </div>
+              )}
+              <div className="flex gap-2 items-end">
+                <label className={cn("flex-shrink-0 p-2.5 rounded-xl border border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors", inboxUploading && "opacity-50 pointer-events-none")}>
+                  <input type="file" accept="image/*,video/*" className="hidden"
+                    onChange={e => e.target.files?.[0] && handleInboxFileUpload(e.target.files[0])} />
+                  <Paperclip className="w-4 h-4 text-gray-400" />
+                </label>
                 <textarea
                   value={replyText}
                   onChange={e => setReplyText(e.target.value)}

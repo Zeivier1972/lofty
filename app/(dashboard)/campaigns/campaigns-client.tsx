@@ -360,6 +360,25 @@ function NewCampaignModal({ tags, onClose, onCreated }: { tags: any[]; onClose: 
                   placeholder="<p>Hola {first_name},</p><p>Tu mensaje aquí...</p>"
                   className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm font-mono focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
                 />
+                {/* Image upload toolbar */}
+                <div className="flex gap-3 mt-2 flex-wrap">
+                  <label className="flex items-center gap-1 text-xs cursor-pointer text-indigo-500 hover:text-indigo-700">
+                    <input type="file" accept="image/*,video/*" className="hidden"
+                      onChange={async e => {
+                        const file = e.target.files?.[0]; if (!file) return
+                        const form = new FormData(); form.append("file", file)
+                        const res = await fetch("/api/upload", { method: "POST", body: form })
+                        const data = await res.json()
+                        if (!res.ok) { alert(data.error); return }
+                        const isVideo = file.type.startsWith("video/")
+                        const tag = isVideo
+                          ? `\n<p>📹 <a href="${data.url}" style="color:#4F46E5">Ver video</a></p>`
+                          : `\n<img src="${data.url}" style="max-width:100%;border-radius:8px;margin:8px 0"/>`
+                        setBody(b => b + tag)
+                      }} />
+                    📎 Subir imagen/video
+                  </label>
+                </div>
                 <p className="text-xs text-gray-400 mt-1">
                   El sistema agregará automáticamente el encabezado, pie de página y enlace de cancelar suscripción.
                 </p>

@@ -9,7 +9,7 @@ export async function POST(req: Request, { params }: { params: { contactId: stri
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const { message, channel = "sms", templateSid } = await req.json()
+  const { message, channel = "sms", templateSid, mediaUrl } = await req.json()
   if (!message?.trim()) return NextResponse.json({ error: "Message required" }, { status: 400 })
 
   const contact = await prisma.contact.findUnique({
@@ -39,7 +39,7 @@ export async function POST(req: Request, { params }: { params: { contactId: stri
         })
       } else {
         // Free-form: only works within 24h window after contact messaged first
-        await sendWhatsApp(toNumber, message)
+        await sendWhatsApp(toNumber, message, mediaUrl || undefined)
       }
     } catch (e: any) {
       console.error("WhatsApp send error:", e)
@@ -60,8 +60,8 @@ export async function POST(req: Request, { params }: { params: { contactId: stri
       },
     })
   } else {
-    // SMS
-    await sendSMS(toNumber, message)
+    // SMS / MMS
+    await sendSMS(toNumber, message, mediaUrl ? [mediaUrl] : undefined)
     await prisma.sMSMessage.create({
       data: {
         body: message,
