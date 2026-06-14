@@ -674,10 +674,15 @@ function FacebookAdModal({ onClose, onCreated }: { onClose: () => void; onCreate
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-sm font-semibold text-gray-700 mb-1.5 block">URL de destino *</label>
+                  <label className="text-sm font-semibold text-gray-700 mb-1.5 block">
+                    {objective === "OUTCOME_LEADS" ? "URL después del formulario (gracias)" : "URL de destino *"}
+                  </label>
                   <input value={destinationUrl} onChange={e => setDestinationUrl(e.target.value)}
-                    placeholder="https://tusitio.com/contacto"
+                    placeholder={objective === "OUTCOME_LEADS" ? "https://catherinegomezrealtor.com" : "https://tusitio.com/contacto"}
                     className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                  {objective === "OUTCOME_LEADS" && (
+                    <p className="text-xs text-gray-400 mt-1">Facebook muestra esta página al lead después de llenar el formulario.</p>
+                  )}
                 </div>
                 <div>
                   <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Botón de llamada a acción</label>
