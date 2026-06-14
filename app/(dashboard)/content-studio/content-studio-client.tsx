@@ -183,7 +183,7 @@ function BlogWriter({ toast }: { toast: any }) {
       const res = await fetch("/api/ai/blog-write", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic, audience, language, publish: true, ...post }),
+        body: JSON.stringify({ topic, audience, language, publish: true, coverImage: featuredImage, ...post }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
