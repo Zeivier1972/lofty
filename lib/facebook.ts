@@ -148,16 +148,9 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
   const campaignId = campData.id
 
   // 3. Create ad set
-  // HOUSING category: no age/gender/zip/interest targeting, no Advantage+
+  // HOUSING category: country-level geo only (no city/zip/age/gender/interests)
   const targeting: any = {
-    geo_locations: {
-      countries: ["US"],
-      regions: payload.targetLocations.map(loc => {
-        const parts = loc.split(",")
-        const state = parts.length > 1 ? parts[parts.length - 1].trim() : parts[0].trim()
-        return { name: state }
-      }),
-    },
+    geo_locations: { countries: ["US"] },
   }
 
   const adsetBody: any = {
@@ -165,13 +158,13 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
     campaign_id: campaignId,
     billing_event: "IMPRESSIONS",
     optimization_goal: isLeadAd ? "LEAD_GENERATION" : "REACH",
-    bid_strategy: "LOWEST_COST_WITHOUT_CAP",
     daily_budget: payload.dailyBudgetCents,
     targeting,
     status: "PAUSED",
     start_time: payload.startTime,
     access_token: userToken(),
   }
+  if (isLeadAd) adsetBody.promoted_object = { page_id: pageId }
   if (payload.endTime) adsetBody.end_time = payload.endTime
 
   const adsetRes = await fetch(`${base}/adsets`, {
@@ -180,7 +173,12 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
     body: JSON.stringify(adsetBody),
   })
   const adsetData = await adsetRes.json()
-  if (adsetData.error) { console.error("[FB adset]", JSON.stringify(adsetData.error)); throw new Error(`Ad Set: ${adsetData.error.message} (${adsetData.error.error_subcode || adsetData.error.code})`) }
+  if (adsetData.error) {
+    console.error("[FB adset full error]", JSON.stringify(adsetData.error))
+    const msg = adsetData.error.error_user_msg || adsetData.error.message || "Unknown"
+    const sub = adsetData.error.error_subcode ? `/${adsetData.error.error_subcode}` : ""
+    throw new Error(`Ad Set ${adsetData.error.code}${sub}: ${msg}`)
+  }
   const adSetId = adsetData.id
 
   // 4. Create ad creative
