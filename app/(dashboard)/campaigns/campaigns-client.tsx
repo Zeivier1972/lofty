@@ -494,8 +494,10 @@ function FacebookAdModal({ onClose, onCreated }: { onClose: () => void; onCreate
   const [primaryText, setPrimaryText] = useState("")
   const [headline, setHeadline] = useState("")
   const [description, setDescription] = useState("")
-  const [imageUrl, setImageUrl] = useState("")
+  const [mediaItems, setMediaItems] = useState<{ type: "image" | "video"; url: string }[]>([])
   const [uploadingImg, setUploadingImg] = useState(false)
+  const [videoUrlInput, setVideoUrlInput] = useState("")
+  const [showVideoInput, setShowVideoInput] = useState(false)
   const [destinationUrl, setDestinationUrl] = useState(process.env.NEXT_PUBLIC_APP_URL ? `${process.env.NEXT_PUBLIC_APP_URL}/book` : "")
   const [ctaType, setCtaType] = useState("LEARN_MORE")
   const [privacyUrl, setPrivacyUrl] = useState("")
@@ -546,11 +548,20 @@ function FacebookAdModal({ onClose, onCreated }: { onClose: () => void; onCreate
       const res = await fetch("/api/upload", { method: "POST", body: form })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
-      setImageUrl(data.url)
+      setMediaItems(prev => [...prev, { type: "image", url: data.url }])
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" })
     } finally { setUploadingImg(false) }
   }
+
+  const handleAddVideo = () => {
+    if (!videoUrlInput.trim()) return
+    setMediaItems(prev => [...prev, { type: "video", url: videoUrlInput.trim() }])
+    setVideoUrlInput("")
+    setShowVideoInput(false)
+  }
+
+  const removeMedia = (idx: number) => setMediaItems(prev => prev.filter((_, i) => i !== idx))
 
   const handleLaunch = async () => {
     if (!campaignName || !primaryText || !headline || !destinationUrl) {
@@ -568,7 +579,8 @@ function FacebookAdModal({ onClose, onCreated }: { onClose: () => void; onCreate
           primaryText,
           headline,
           description,
-          imageUrl,
+          imageUrl: mediaItems[0]?.url || "",
+          mediaItems: mediaItems.length ? mediaItems : undefined,
           destinationUrl,
           ctaType,
           dailyBudgetCents: Math.round(parseFloat(dailyBudget) * 100),
@@ -718,22 +730,67 @@ function FacebookAdModal({ onClose, onCreated }: { onClose: () => void; onCreate
                     className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
                 </div>
               </div>
+              {/* Multi-media manager */}
               <div>
-                <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Imagen del anuncio</label>
-                {imageUrl ? (
-                  <div className="relative w-full h-40 rounded-xl overflow-hidden border border-gray-200">
-                    <img src={imageUrl} alt="" className="w-full h-full object-cover" />
-                    <button onClick={() => setImageUrl("")}
-                      className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">×</button>
-                  </div>
-                ) : (
-                  <label className={cn("w-full h-32 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 transition-colors", uploadingImg && "opacity-50 pointer-events-none")}>
-                    <input type="file" accept="image/*" className="hidden" onChange={e => e.target.files?.[0] && handleUploadImage(e.target.files[0])} />
-                    <ImageIcon className="w-8 h-8 text-gray-400 mb-2" />
-                    <span className="text-sm text-gray-500">{uploadingImg ? "Subiendo..." : "Haz clic para subir imagen"}</span>
-                    <span className="text-xs text-gray-400 mt-1">Recomendado: 1200×628 px (relación 1.91:1)</span>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm font-semibold text-gray-700">
+                    Imágenes y videos
+                    {mediaItems.length > 0 && (
+                      <span className="ml-2 text-xs font-normal text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                        {mediaItems.length} creativo{mediaItems.length > 1 ? "s" : ""} — Facebook los rotará automáticamente
+                      </span>
+                    )}
                   </label>
+                </div>
+
+                {/* Existing media grid */}
+                {mediaItems.length > 0 && (
+                  <div className="grid grid-cols-3 gap-2 mb-3">
+                    {mediaItems.map((item, idx) => (
+                      <div key={idx} className="relative rounded-lg overflow-hidden border border-gray-200 bg-gray-50 aspect-video flex items-center justify-center">
+                        {item.type === "image" ? (
+                          <img src={item.url} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="flex flex-col items-center gap-1 p-2 text-center">
+                            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                              <span className="text-blue-600 text-sm">▶</span>
+                            </div>
+                            <span className="text-xs text-gray-500 truncate w-full text-center">Video {idx + 1}</span>
+                          </div>
+                        )}
+                        <button onClick={() => removeMedia(idx)}
+                          className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shadow">×</button>
+                      </div>
+                    ))}
+                  </div>
                 )}
+
+                {/* Add buttons */}
+                <div className="flex gap-2">
+                  <label className={cn("flex-1 h-20 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 transition-colors text-center", uploadingImg && "opacity-50 pointer-events-none")}>
+                    <input type="file" accept="image/*" multiple className="hidden"
+                      onChange={e => Array.from(e.target.files || []).forEach(f => handleUploadImage(f))} />
+                    <ImageIcon className="w-5 h-5 text-gray-400 mb-1" />
+                    <span className="text-xs text-gray-500">{uploadingImg ? "Subiendo..." : "+ Agregar imagen"}</span>
+                  </label>
+
+                  <button onClick={() => setShowVideoInput(v => !v)}
+                    className="flex-1 h-20 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center hover:border-blue-400 transition-colors">
+                    <span className="text-lg text-gray-400 mb-1">🎬</span>
+                    <span className="text-xs text-gray-500">+ Agregar video URL</span>
+                  </button>
+                </div>
+
+                {showVideoInput && (
+                  <div className="mt-2 flex gap-2">
+                    <input value={videoUrlInput} onChange={e => setVideoUrlInput(e.target.value)}
+                      placeholder="https://example.com/video.mp4"
+                      className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                    <button onClick={handleAddVideo}
+                      className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium">Agregar</button>
+                  </div>
+                )}
+                <p className="text-xs text-gray-400 mt-1.5">Sube varias imágenes o videos — Facebook crea un anuncio separado por cada uno y optimiza automáticamente.</p>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>

@@ -12,7 +12,7 @@ export async function POST(req: Request) {
   const body = await req.json()
   const {
     campaignName, objective, primaryText, headline, description,
-    imageUrl, destinationUrl, ctaType, dailyBudgetCents,
+    imageUrl, mediaItems, destinationUrl, ctaType, dailyBudgetCents,
     startTime, endTime, targetLocations, privacyPolicyUrl,
     advantagePlus, interests,
   } = body
@@ -29,6 +29,7 @@ export async function POST(req: Request) {
       headline,
       description: description || "",
       imageUrl: imageUrl || "",
+      mediaItems: mediaItems || undefined,
       destinationUrl,
       ctaType: ctaType || "SIGN_UP",
       dailyBudgetCents: dailyBudgetCents || 1000,

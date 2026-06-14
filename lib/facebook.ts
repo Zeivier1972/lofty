@@ -52,13 +52,20 @@ export async function getFacebookLeadData(leadgenId: string): Promise<Record<str
 
 // ─── Meta Marketing API ───────────────────────────────────────────────────────
 
+export interface MediaItem {
+  type: "image" | "video"
+  url: string        // publicly accessible URL
+  thumbnail?: string // optional preview URL (for video thumbnails)
+}
+
 export interface FbAdPayload {
   campaignName: string
   objective: "OUTCOME_LEADS" | "OUTCOME_TRAFFIC" | "OUTCOME_AWARENESS"
   primaryText: string
   headline: string
   description: string
-  imageUrl: string
+  imageUrl: string       // legacy single-image (kept for backward compat)
+  mediaItems?: MediaItem[] // multi-image / video support
   destinationUrl: string
   ctaType: string
   dailyBudgetCents: number
@@ -71,7 +78,6 @@ export interface FbAdPayload {
 }
 
 async function createLeadForm(pageId: string, campaignName: string, privacyPolicyUrl: string, destinationUrl: string) {
-  // Ensure we have a valid absolute URL for privacy policy
   let privacyUrl = privacyPolicyUrl
   if (!privacyUrl || !privacyUrl.startsWith("http")) {
     privacyUrl = destinationUrl.startsWith("http") ? destinationUrl : `https://${destinationUrl}`
@@ -102,18 +108,52 @@ async function createLeadForm(pageId: string, campaignName: string, privacyPolic
   return data.id as string
 }
 
+// Upload an image URL to adimages and return the hash
+async function uploadImageHash(base: string, imageUrl: string): Promise<string | null> {
+  const res = await fetch(`${base}/adimages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url: imageUrl, access_token: userToken() }),
+  })
+  const data = await res.json() as any
+  const images = (data.images || {}) as Record<string, { hash: string }>
+  return images?.bytes?.hash || Object.values(images)[0]?.hash || null
+}
+
+// Upload a video URL to advideos and return the video ID
+async function uploadVideoId(base: string, videoUrl: string, name: string): Promise<string | null> {
+  const res = await fetch(`${base}/advideos`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, file_url: videoUrl, access_token: userToken() }),
+  })
+  const data = await res.json() as any
+  if (data.error) {
+    console.error("[FB video upload]", JSON.stringify(data.error))
+    return null
+  }
+  return data.id as string || null
+}
+
 export async function createFacebookAdCampaign(payload: FbAdPayload) {
   const rawAccountId = process.env.FACEBOOK_AD_ACCOUNT_ID || process.env.FB_AD_ACCOUNT_ID
   const pageId = process.env.FACEBOOK_PAGE_ID || process.env.FB_PAGE_ID
   if (!rawAccountId || !pageId || !userToken()) {
     throw new Error("FACEBOOK_AD_ACCOUNT_ID, FACEBOOK_PAGE_ID and FB_USER_ACCESS_TOKEN (or FB_PAGE_ACCESS_TOKEN) must be set")
   }
-  // Facebook API always requires act_ prefix
   const adAccountId = rawAccountId.startsWith("act_") ? rawAccountId : `act_${rawAccountId}`
   const base = `${GRAPH}/${adAccountId}`
   const isLeadAd = payload.objective === "OUTCOME_LEADS"
 
-  // 1. If Lead Ad, auto-create an Instant Form on the Page
+  // Build the media list — prefer mediaItems, fall back to legacy imageUrl
+  const mediaList: MediaItem[] =
+    payload.mediaItems?.length
+      ? payload.mediaItems
+      : payload.imageUrl
+        ? [{ type: "image", url: payload.imageUrl }]
+        : [{ type: "image", url: "" }]
+
+  // 1. Lead form (for lead ads)
   let leadFormId: string | null = null
   if (isLeadAd) {
     const privacyUrl = payload.privacyPolicyUrl
@@ -121,7 +161,7 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
     leadFormId = await createLeadForm(pageId, payload.campaignName, privacyUrl, payload.destinationUrl)
   }
 
-  // 2. Create campaign
+  // 2. Campaign
   const campRes = await fetch(`${base}/campaigns`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -140,19 +180,11 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
     const userMsg = campData.error.error_user_msg || campData.error.message || "Unknown error"
     const code = campData.error.code
     const sub = campData.error.error_subcode ? `/${campData.error.error_subcode}` : ""
-    const hint = (campData.error.error_subcode === 4834011 || campData.error.code === 4834011)
-      ? " → In Meta Business Manager go to: Ad Accounts → your account → Brand Safety & Suitability → Special Ad Categories → enable HOUSING."
-      : ""
-    throw new Error(`Campaign ${code}${sub}: ${userMsg}${hint}`)
+    throw new Error(`Campaign ${code}${sub}: ${userMsg}`)
   }
   const campaignId = campData.id
 
-  // 3. Create ad set
-  // HOUSING category: country-level geo only (no city/zip/age/gender/interests)
-  const targeting: any = {
-    geo_locations: { countries: ["US"] },
-  }
-
+  // 3. Ad Set
   const adsetBody: any = {
     name: `${payload.campaignName} — Ad Set`,
     campaign_id: campaignId,
@@ -160,7 +192,7 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
     optimization_goal: isLeadAd ? "LEAD_GENERATION" : "REACH",
     bid_strategy: "LOWEST_COST_WITHOUT_CAP",
     daily_budget: payload.dailyBudgetCents,
-    targeting,
+    targeting: { geo_locations: { countries: ["US"] } },
     status: "PAUSED",
     start_time: payload.startTime,
     access_token: userToken(),
@@ -185,79 +217,93 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
   }
   const adSetId = adsetData.id
 
-  // 4. Create ad creative
-  // link is required in link_data for all ad types
-  const linkData: any = {
-    message: payload.primaryText,
-    name: payload.headline,
-    description: payload.description,
-    link: payload.destinationUrl,
-  }
-  // image_url not supported in link_data in v25.0 — upload image separately if needed
-  if (payload.imageUrl) {
-    const imgRes = await fetch(`${base}/adimages`, {
+  // 4 & 5. For each media item: create one creative + one ad
+  const adIds: string[] = []
+  const creativeIds: string[] = []
+
+  for (let i = 0; i < mediaList.length; i++) {
+    const media = mediaList[i]
+    const label = `${payload.campaignName} — ${i + 1}`
+    let storySpec: any
+
+    if (media.type === "video" && media.url) {
+      // ── Video creative ────────────────────────────────────────────────────
+      const videoId = await uploadVideoId(base, media.url, label)
+      if (!videoId) throw new Error(`Video ${i + 1}: failed to upload video`)
+
+      const cta = isLeadAd && leadFormId
+        ? { type: "SIGN_UP", value: { lead_gen_form_id: leadFormId } }
+        : { type: payload.ctaType, value: { link: payload.destinationUrl } }
+
+      storySpec = {
+        page_id: pageId,
+        video_data: {
+          video_id: videoId,
+          message: payload.primaryText,
+          title: payload.headline,
+          link_description: payload.description,
+          call_to_action: cta,
+        },
+      }
+    } else {
+      // ── Image creative ────────────────────────────────────────────────────
+      const linkData: any = {
+        message: payload.primaryText,
+        name: payload.headline,
+        description: payload.description,
+        link: payload.destinationUrl,
+      }
+      if (media.url) {
+        const hash = await uploadImageHash(base, media.url)
+        if (hash) linkData.image_hash = hash
+      }
+      linkData.call_to_action = isLeadAd && leadFormId
+        ? { type: "SIGN_UP", value: { lead_gen_form_id: leadFormId } }
+        : { type: payload.ctaType, value: { link: payload.destinationUrl } }
+
+      storySpec = { page_id: pageId, link_data: linkData }
+    }
+
+    // Create creative
+    const creativeRes = await fetch(`${base}/adcreatives`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: payload.imageUrl, access_token: userToken() }),
+      body: JSON.stringify({
+        name: `${label} — Creative`,
+        object_story_spec: storySpec,
+        access_token: userToken(),
+      }),
     })
-    const imgData = await imgRes.json() as any
-    const images = (imgData.images || {}) as Record<string, { hash: string }>
-    const hash = images?.bytes?.hash || (Object.values(images)[0]?.hash)
-    if (hash) linkData.image_hash = hash
-  }
-
-  if (isLeadAd && leadFormId) {
-    // Lead Ad: CTA opens the Instant Form
-    linkData.call_to_action = {
-      type: "SIGN_UP",
-      value: { lead_gen_form_id: leadFormId },
+    const creativeData = await creativeRes.json()
+    if (creativeData.error) {
+      console.error("[FB creative full error]", JSON.stringify(creativeData.error))
+      const msg = creativeData.error.error_user_msg || creativeData.error.message || "Unknown"
+      const sub = creativeData.error.error_subcode ? `/${creativeData.error.error_subcode}` : ""
+      throw new Error(`Creative ${i + 1} — ${creativeData.error.code}${sub}: ${msg}`)
     }
-  } else {
-    // Traffic / Awareness: CTA goes to the website
-    linkData.call_to_action = {
-      type: payload.ctaType,
-      value: { link: payload.destinationUrl },
+    creativeIds.push(creativeData.id)
+
+    // Create ad
+    const adRes = await fetch(`${base}/ads`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: `${label} — Ad`,
+        adset_id: adSetId,
+        creative: { creative_id: creativeData.id },
+        status: "PAUSED",
+        access_token: userToken(),
+      }),
+    })
+    const adData = await adRes.json()
+    if (adData.error) {
+      console.error("[FB ad full error]", JSON.stringify(adData.error))
+      const msg = adData.error.error_user_msg || adData.error.message || "Unknown"
+      const sub = adData.error.error_subcode ? `/${adData.error.error_subcode}` : ""
+      throw new Error(`Ad ${i + 1} — ${adData.error.code}${sub}: ${msg}`)
     }
+    adIds.push(adData.id)
   }
 
-  const creativeRes = await fetch(`${base}/adcreatives`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      name: `${payload.campaignName} — Creative`,
-      object_story_spec: { page_id: pageId, link_data: linkData },
-      access_token: userToken(),
-    }),
-  })
-  const creativeData = await creativeRes.json()
-  if (creativeData.error) {
-    console.error("[FB creative full error]", JSON.stringify(creativeData.error))
-    const msg = creativeData.error.error_user_msg || creativeData.error.message || "Unknown"
-    const sub = creativeData.error.error_subcode ? `/${creativeData.error.error_subcode}` : ""
-    throw new Error(`Creative ${creativeData.error.code}${sub}: ${msg}`)
-  }
-  const creativeId = creativeData.id
-
-  // 5. Create ad
-  const adBody: any = {
-    name: payload.campaignName,
-    adset_id: adSetId,
-    creative: { creative_id: creativeId },
-    status: "PAUSED",
-    access_token: userToken(),
-  }
-  const adRes = await fetch(`${base}/ads`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(adBody),
-  })
-  const adData = await adRes.json()
-  if (adData.error) {
-    console.error("[FB ad full error]", JSON.stringify(adData.error))
-    const msg = adData.error.error_user_msg || adData.error.message || "Unknown"
-    const sub = adData.error.error_subcode ? `/${adData.error.error_subcode}` : ""
-    throw new Error(`Ad ${adData.error.code}${sub}: ${msg}`)
-  }
-
-  return { campaignId, adSetId, creativeId, adId: adData.id, leadFormId }
+  return { campaignId, adSetId, creativeIds, adIds, leadFormId }
 }
