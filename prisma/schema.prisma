@@ -927,6 +927,39 @@ model Setting {
   updatedAt DateTime @updatedAt
 }
 
+// ─── Facebook Comment Bot ─────────────────────────────────────────────────────
+
+model FacebookBotConfig {
+  id              String   @id @default(cuid())
+  isEnabled       Boolean  @default(false)
+  triggerKeywords String   @default("info,precio,interesado,quiero,casa,propiedad,apartamento,más info,mas info,comprar,miami,invest")
+  msgGreeting     String   @default("¡Hola! 👋 Gracias por tu interés. Te enviamos un mensaje privado con información sobre propiedades en Miami. ¡Revisa tu bandeja de entrada de Messenger!")
+  msgAskIntent    String   @default("¡Perfecto! Para ayudarte mejor, ¿qué estás buscando?\n\nA) Comprar para vivir\nB) Invertir (Airbnb/renta)\nC) Solo explorando")
+  msgAskName      String   @default("¡Genial! ¿Cuál es tu nombre completo?")
+  msgAskEmail     String   @default("Mucho gusto, {name}! ¿Cuál es tu correo electrónico? 📧")
+  msgAskPhone     String   @default("¡Casi listo! ¿Me das tu número de teléfono con código de país? Ej: +1 786 123 4567 📱")
+  msgThankYou     String   @default("¡Muchas gracias {name}! 🙌 Catherine te contactará muy pronto. Visita: {website}")
+  sendListings    Boolean  @default(true)
+  websiteUrl      String   @default("")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model FacebookBotConversation {
+  id              String   @id @default(cuid())
+  psid            String   @unique
+  pageId          String   @default("")
+  state           String   @default("ASKED_OPTIN")
+  intent          String?
+  firstName       String?
+  email           String?
+  phone           String?
+  sourceCommentId String?
+  contactId       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
 // ─── CMA Report ───────────────────────────────────────────────────────────────
 
 model CMAReport {
