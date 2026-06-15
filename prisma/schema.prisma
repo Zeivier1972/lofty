@@ -671,6 +671,7 @@ model InstagramConversation {
   intent          String?
   contactId       String?
   sourceCommentId String?
+  campaignKeyword String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 }
@@ -736,6 +737,19 @@ model InstagramBotConfig {
   websiteUrl      String   @default("https://catherinegomezrealtor.com")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+}
+
+model InstagramBotCampaign {
+  id        String   @id @default(cuid())
+  keyword   String   @unique
+  name      String
+  pdfUrl    String?
+  pdfName   String?
+  greeting  String?
+  isActive  Boolean  @default(true)
+  leads     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 

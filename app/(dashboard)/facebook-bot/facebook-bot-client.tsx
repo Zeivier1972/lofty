@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Facebook, Zap, Users, CheckCircle2, MessageSquare, Copy, AlertCircle, Plus, Trash2, Link2, FileText } from "lucide-react"
+import { Facebook, Zap, Users, CheckCircle2, MessageSquare, Copy, AlertCircle, Plus, Trash2, Link2, FileText, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -190,6 +190,36 @@ export default function FacebookBotClient() {
               <p>FB_PAGE_ACCESS_TOKEN=<span className="text-amber-600">tu_page_access_token</span></p>
               <p>FB_VERIFY_TOKEN=lofty_fb_verify</p>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Bot Flow Diagram */}
+      <Card className="border-0 shadow-sm">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold">Flujo del Bot</CardTitle>
+          <p className="text-xs text-gray-400">Así funciona el bot paso a paso</p>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col items-center gap-0">
+            {[
+              { icon: "💬", label: "Alguien comenta una palabra clave en tu post de Facebook", color: "bg-blue-100 text-blue-700" },
+              { icon: "📩", label: "Bot envía DM privado por Messenger + respuesta pública al comentario", color: "bg-indigo-100 text-indigo-700" },
+              { icon: "🎯", label: "Pregunta A / B / C → intención del lead", color: "bg-violet-100 text-violet-700" },
+              { icon: "👤", label: "Pide nombre completo", color: "bg-purple-100 text-purple-700" },
+              { icon: "📧", label: "Pide correo electrónico", color: "bg-pink-100 text-pink-700" },
+              { icon: "📱", label: "Pide número de teléfono", color: "bg-rose-100 text-rose-700" },
+              { icon: "📄", label: "Envía PDF de campaña (si aplica) + propiedades del CRM", color: "bg-orange-100 text-orange-700" },
+              { icon: "✅", label: "Lead creado en CRM → SMS + email + llamada automática", color: "bg-green-100 text-green-700" },
+            ].map((step, i, arr) => (
+              <div key={i} className="flex flex-col items-center w-full max-w-sm">
+                <div className={cn("flex items-center gap-3 w-full rounded-xl px-4 py-2.5", step.color)}>
+                  <span className="text-lg">{step.icon}</span>
+                  <span className="text-xs font-medium">{step.label}</span>
+                </div>
+                {i < arr.length - 1 && <div className="w-0.5 h-4 bg-gray-200" />}
+              </div>
+            ))}
           </div>
         </CardContent>
       </Card>
