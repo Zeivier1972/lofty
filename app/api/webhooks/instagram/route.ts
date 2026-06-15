@@ -8,11 +8,19 @@ import {
 } from "@/lib/instagram"
 import { ingestLead } from "@/lib/lead-ingest"
 
-const INTENT_QUICK_REPLIES = [
-  { title: "🏠 Comprar para vivir", payload: "A" },
-  { title: "💰 Invertir (Airbnb/renta)", payload: "B" },
-  { title: "👀 Solo explorando", payload: "C" },
-]
+function greetingQuickReplies(config: any) {
+  return (config.greetingButtons || "Sí, me interesa,Quiero más info")
+    .split(",").map((t: string) => t.trim()).filter(Boolean)
+    .map((title: string) => ({ title, payload: "OPTIN" }))
+}
+
+function intentQuickReplies(config: any) {
+  return [
+    { title: config.intentButtonA || "Comprar para vivir", payload: "A" },
+    { title: config.intentButtonB || "Invertir / Airbnb", payload: "B" },
+    { title: config.intentButtonC || "Solo explorando", payload: "C" },
+  ]
+}
 
 const INTENT_TAG_COLORS: Record<string, string> = {
   comprador_vivienda: "#22C55E",
@@ -90,7 +98,7 @@ export async function POST(req: Request) {
           }
 
           const replied = await replyToComment(commentId, greeting)
-          if (!replied) await sendInstagramDM(igUserId, greeting)
+          if (!replied) await sendInstagramDMWithQuickReplies(igUserId, greeting, greetingQuickReplies(config))
         }
       }
 
@@ -110,7 +118,7 @@ export async function POST(req: Request) {
           convo = await prisma.instagramConversation.create({
             data: { igUserId, state: "ASKED_OPTIN", campaignKeyword: campaign?.keyword || null },
           })
-          await sendInstagramDM(igUserId, campaign?.greeting || config.msgGreeting)
+          await sendInstagramDMWithQuickReplies(igUserId, campaign?.greeting || config.msgGreeting, greetingQuickReplies(config))
           continue
         }
 
@@ -122,7 +130,7 @@ export async function POST(req: Request) {
             where: { igUserId },
             data: { state: "ASKED_OPTIN", intent: null, firstName: null, email: null, phone: null, contactId: null, campaignKeyword: campaign?.keyword || null },
           })
-          await sendInstagramDM(igUserId, campaign?.greeting || config.msgGreeting)
+          await sendInstagramDMWithQuickReplies(igUserId, campaign?.greeting || config.msgGreeting, greetingQuickReplies(config))
           continue
         }
 
@@ -142,7 +150,7 @@ export async function POST(req: Request) {
             where: { igUserId },
             data: { state: "ASKED_INTENT" },
           })
-          await sendInstagramDMWithQuickReplies(igUserId, config.msgAskIntent, INTENT_QUICK_REPLIES)
+          await sendInstagramDMWithQuickReplies(igUserId, config.msgAskIntent, intentQuickReplies(config))
 
         } else if (convo.state === "ASKED_INTENT") {
           const quickReplyPayload: string = (msg.message as any)?.quick_reply?.payload || ""
@@ -152,7 +160,7 @@ export async function POST(req: Request) {
             : null
           const intent = intentFromPayload || parseIntent(text)
           if (!intent) {
-            await sendInstagramDMWithQuickReplies(igUserId, "Por favor elige una opción 🙂", INTENT_QUICK_REPLIES)
+            await sendInstagramDMWithQuickReplies(igUserId, "Por favor elige una opción 🙂", intentQuickReplies(config))
             continue
           }
           await prisma.instagramConversation.update({

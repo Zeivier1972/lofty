@@ -16,11 +16,19 @@ import {
 } from "@/lib/facebook"
 import { ingestLead } from "@/lib/lead-ingest"
 
-const INTENT_QUICK_REPLIES = [
-  { title: "🏠 Comprar para vivir", payload: "A" },
-  { title: "💰 Invertir (Airbnb/renta)", payload: "B" },
-  { title: "👀 Solo explorando", payload: "C" },
-]
+function greetingQuickReplies(config: any) {
+  return (config.greetingButtons || "Sí, me interesa,Quiero más info")
+    .split(",").map((t: string) => t.trim()).filter(Boolean)
+    .map((title: string) => ({ title, payload: "OPTIN" }))
+}
+
+function intentQuickReplies(config: any) {
+  return [
+    { title: config.intentButtonA || "Comprar para vivir", payload: "A" },
+    { title: config.intentButtonB || "Invertir / Airbnb", payload: "B" },
+    { title: config.intentButtonC || "Solo explorando", payload: "C" },
+  ]
+}
 
 const INTENT_TAG_COLORS: Record<string, string> = {
   comprador_vivienda: "#22C55E",
@@ -177,7 +185,7 @@ export async function POST(req: Request) {
 
           const privateSent = await privateReplyToComment(commentId, greeting)
           if (!privateSent) {
-            await sendFacebookMessage(commenterId, greeting)
+            await sendFacebookMessageWithQuickReplies(commenterId, greeting, greetingQuickReplies(botConfig))
           }
 
           await postPublicCommentReply(commentId, "¡Hola! Te enviamos info por mensaje privado 📩")
@@ -220,7 +228,7 @@ export async function POST(req: Request) {
             where: { psid },
             data: { state: "ASKED_OPTIN", intent: null, firstName: null, email: null, phone: null, contactId: null },
           })
-          await sendFacebookMessage(psid, botConfig.msgGreeting)
+          await sendFacebookMessageWithQuickReplies(psid, botConfig.msgGreeting, greetingQuickReplies(botConfig))
           continue
         }
 
@@ -232,7 +240,7 @@ export async function POST(req: Request) {
 
         if (convo.state === "ASKED_OPTIN") {
           await prisma.facebookBotConversation.update({ where: { psid }, data: { state: "ASKED_INTENT" } })
-          await sendFacebookMessageWithQuickReplies(psid, botConfig.msgAskIntent, INTENT_QUICK_REPLIES)
+          await sendFacebookMessageWithQuickReplies(psid, botConfig.msgAskIntent, intentQuickReplies(botConfig))
 
         } else if (convo.state === "ASKED_INTENT") {
           const intentFromPayload = quickReplyPayload === "A" ? "comprador_vivienda"
@@ -241,7 +249,7 @@ export async function POST(req: Request) {
             : null
           const intent = intentFromPayload || parseIntent(text)
           if (!intent) {
-            await sendFacebookMessageWithQuickReplies(psid, "Por favor elige una opción 🙂", INTENT_QUICK_REPLIES)
+            await sendFacebookMessageWithQuickReplies(psid, "Por favor elige una opción 🙂", intentQuickReplies(botConfig))
             continue
           }
           await prisma.facebookBotConversation.update({ where: { psid }, data: { intent, state: "ASKED_NAME" } })
@@ -403,7 +411,7 @@ export async function POST(req: Request) {
               campaignKeyword: matchedCampaign?.keyword || null,
             },
           })
-          await sendFacebookMessage(psid, greeting)
+          await sendFacebookMessageWithQuickReplies(psid, greeting, greetingQuickReplies(botConfig))
         } else {
         // ── Non-bot Messenger DM handling ───────────────────────────────────
         let contact = await prisma.contact.findFirst({ where: { facebookPsid: psid } })

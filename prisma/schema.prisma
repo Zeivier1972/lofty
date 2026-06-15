@@ -735,6 +735,10 @@ model InstagramBotConfig {
   msgAskPhone     String   @default("¡Perfecto! Una última cosa... ¿Podrías compartirme tu número de teléfono con código de país? Ejemplo: +1 786 123 4567 📱 (usa el número correcto, no te vamos a molestar)")
   msgThankYou     String   @default("¡Muchas gracias {name}! 🙌 Ya tenemos tu información. Catherine te contactará muy pronto con las mejores opciones. Mientras tanto puedes visitar nuestra página web: {website}")
   websiteUrl      String   @default("https://catherinegomezrealtor.com")
+  greetingButtons String   @default("Sí, me interesa,Quiero más info")
+  intentButtonA   String   @default("Comprar para vivir")
+  intentButtonB   String   @default("Invertir / Airbnb")
+  intentButtonC   String   @default("Solo explorando")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
@@ -955,6 +959,10 @@ model FacebookBotConfig {
   msgThankYou     String   @default("¡Muchas gracias {name}! 🙌 Catherine te contactará muy pronto. Visita: {website}")
   sendListings    Boolean  @default(true)
   websiteUrl      String   @default("")
+  greetingButtons String   @default("Sí, me interesa,Quiero más info")
+  intentButtonA   String   @default("Comprar para vivir")
+  intentButtonB   String   @default("Invertir / Airbnb")
+  intentButtonC   String   @default("Solo explorando")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }

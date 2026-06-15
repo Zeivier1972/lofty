@@ -386,6 +386,36 @@ export default function InstagramBotClient() {
               />
             </div>
 
+            <div>
+              <label className="text-xs font-semibold text-gray-700 mb-1 block">👆 Botones del saludo (separados por coma)</label>
+              <Input
+                value={config.greetingButtons ?? "Sí, me interesa,Quiero más info"}
+                onChange={e => setConfig({ ...config, greetingButtons: e.target.value })}
+                placeholder="Sí, me interesa,Quiero más info"
+              />
+              <p className="text-xs text-gray-400 mt-1">Aparecen como chips tapables debajo del saludo. Máx. 20 caracteres por botón.</p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-gray-700 block">🎯 Etiquetas de los botones A / B / C</label>
+              {[
+                { key: "intentButtonA", placeholder: "Comprar para vivir" },
+                { key: "intentButtonB", placeholder: "Invertir / Airbnb" },
+                { key: "intentButtonC", placeholder: "Solo explorando" },
+              ].map(({ key, placeholder }, i) => (
+                <div key={key} className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-gray-500 w-5">{String.fromCharCode(65 + i)})</span>
+                  <Input
+                    value={config[key] ?? placeholder}
+                    onChange={e => setConfig({ ...config, [key]: e.target.value })}
+                    placeholder={placeholder}
+                    className="flex-1"
+                  />
+                </div>
+              ))}
+              <p className="text-xs text-gray-400">Máx. 20 caracteres. A = comprar · B = invertir · C = explorando</p>
+            </div>
+
             {[
               { key: "msgGreeting", label: "🤖 1. Mensaje inicial (cuando comenta o escribe)", hint: "Ofrece la lista exclusiva — cualquier respuesta positiva continúa" },
               { key: "msgAskIntent", label: "🎯 2. Pregunta de calificación (A/B/C)", hint: "A = comprar para vivir · B = invertir Airbnb · C = solo explorando. Se guarda como etiqueta en el contacto" },
