@@ -117,6 +117,10 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
   const [showTagPicker, setShowTagPicker] = useState(false)
   const [newTagName, setNewTagName] = useState("")
   const [savingTag, setSavingTag] = useState(false)
+  const [enrollments, setEnrollments] = useState<any[]>(contact.enrollments || [])
+  const [allPlans, setAllPlans] = useState<any[]>([])
+  const [showPlanPicker, setShowPlanPicker] = useState(false)
+  const [enrolling, setEnrolling] = useState(false)
 
   const openTagPicker = async () => {
     if (!allTags.length) {
@@ -125,6 +129,50 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
       setAllTags(data)
     }
     setShowTagPicker(true)
+  }
+
+  const openPlanPicker = async () => {
+    if (!allPlans.length) {
+      const res = await fetch("/api/smart-plans")
+      const data = await res.json()
+      setAllPlans(Array.isArray(data) ? data : [])
+    }
+    setShowPlanPicker(true)
+  }
+
+  const enrollInPlan = async (plan: any) => {
+    setEnrolling(true)
+    try {
+      const res = await fetch(`/api/smart-plans/${plan.id}/enroll`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contactId: contact.id }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast({ title: data.error || "Failed to enroll", variant: "destructive" })
+      } else {
+        setEnrollments(prev => [...prev, { ...data, plan }])
+        toast({ title: `Enrolled in "${plan.name}"` })
+      }
+    } finally {
+      setEnrolling(false)
+      setShowPlanPicker(false)
+    }
+  }
+
+  const unenrollFromPlan = async (planId: string, planName: string) => {
+    try {
+      await fetch(`/api/smart-plans/${planId}/enroll`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contactId: contact.id }),
+      })
+      setEnrollments(prev => prev.filter((e: any) => e.planId !== planId))
+      toast({ title: `Removed from "${planName}"` })
+    } catch {
+      toast({ title: "Failed to unenroll", variant: "destructive" })
+    }
   }
 
   const toggleTag = async (tag: any) => {
@@ -1244,18 +1292,20 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
             {/* Automations Tab */}
             {activeTab === "automations" && (
               <div className="space-y-3">
-                {contact.enrollments?.length === 0 ? (
-                  <div className="text-center py-12">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-gray-700">Smart Plans</p>
+                  <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={openPlanPicker}>
+                    <Plus className="w-3.5 h-3.5" /> Enroll in Plan
+                  </Button>
+                </div>
+
+                {enrollments.length === 0 ? (
+                  <div className="text-center py-10">
                     <Zap className="w-10 h-10 text-gray-200 mx-auto mb-3" />
                     <p className="text-gray-400 text-sm">Not enrolled in any smart plans</p>
-                    <Link href="/smart-plans">
-                      <Button variant="outline" size="sm" className="mt-4 gap-2">
-                        <Zap className="w-4 h-4" /> Browse Smart Plans
-                      </Button>
-                    </Link>
                   </div>
                 ) : (
-                  contact.enrollments.map((enr: any) => (
+                  enrollments.map((enr: any) => (
                     <div key={enr.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
                       <div className="flex items-center gap-3">
                         <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center",
@@ -1263,15 +1313,61 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
                           <Zap className={cn("w-4 h-4", enr.status === "ACTIVE" ? "text-green-600" : "text-gray-400")} />
                         </div>
                         <div className="flex-1">
-                          <p className="font-medium text-gray-900 text-sm">{enr.plan.name}</p>
+                          <p className="font-medium text-gray-900 text-sm">{enr.plan?.name}</p>
                           <p className="text-xs text-gray-400">Step {enr.currentStep} · {enr.status}</p>
                         </div>
                         <Badge className={cn("text-xs", enr.status === "ACTIVE" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600")}>
                           {enr.status === "ACTIVE" ? "Running" : enr.status}
                         </Badge>
+                        <button
+                          onClick={() => unenrollFromPlan(enr.planId, enr.plan?.name)}
+                          className="text-gray-300 hover:text-red-400 transition-colors ml-1"
+                          title="Remove from plan"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </div>
                   ))
+                )}
+
+                {/* Plan picker dropdown */}
+                {showPlanPicker && (
+                  <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 px-4" onClick={() => setShowPlanPicker(false)}>
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5 space-y-3" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center justify-between">
+                        <p className="font-semibold text-gray-900">Choose a Smart Plan</p>
+                        <button onClick={() => setShowPlanPicker(false)} className="text-gray-400 hover:text-gray-600 text-xl font-light">×</button>
+                      </div>
+                      {allPlans.length === 0 ? (
+                        <p className="text-sm text-gray-400 text-center py-4">No plans available. <Link href="/smart-plans" className="text-blue-600 underline">Create one</Link></p>
+                      ) : (
+                        <div className="space-y-2 max-h-72 overflow-y-auto">
+                          {allPlans.map((plan: any) => {
+                            const alreadyEnrolled = enrollments.some((e: any) => e.planId === plan.id && e.status === "ACTIVE")
+                            return (
+                              <button
+                                key={plan.id}
+                                disabled={alreadyEnrolled || enrolling}
+                                onClick={() => enrollInPlan(plan)}
+                                className={cn(
+                                  "w-full text-left p-3 rounded-xl border transition-colors",
+                                  alreadyEnrolled
+                                    ? "border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed"
+                                    : "border-gray-200 hover:border-blue-300 hover:bg-blue-50 cursor-pointer"
+                                )}
+                              >
+                                <p className="font-medium text-sm text-gray-900">{plan.name}</p>
+                                {plan.description && <p className="text-xs text-gray-400 mt-0.5">{plan.description}</p>}
+                                <p className="text-xs text-gray-300 mt-1">{plan.steps?.length ?? 0} steps</p>
+                                {alreadyEnrolled && <p className="text-xs text-green-600 mt-0.5">Already enrolled</p>}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
             )}
