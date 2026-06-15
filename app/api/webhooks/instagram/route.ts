@@ -41,13 +41,18 @@ export async function POST(req: Request) {
     const config = await prisma.instagramBotConfig.findFirst()
     if (!config?.isEnabled) return NextResponse.json({ ok: true })
 
+    const igCampaigns = await prisma.instagramBotCampaign.findMany({ where: { isActive: true } })
+
+    const findCampaign = (text: string) =>
+      igCampaigns.find(c => text.toLowerCase().includes(c.keyword.toLowerCase()))
+
     const keywords = config.triggerKeywords
       .split(",")
       .map((k: string) => k.trim().toLowerCase())
       .filter(Boolean)
 
     const matchesKeyword = (text: string) =>
-      keywords.some(k => text.toLowerCase().includes(k))
+      keywords.some(k => text.toLowerCase().includes(k)) || !!findCampaign(text)
 
     for (const entry of body.entry || []) {
       // ── Comment event ─────────────────────────────────────────────────────
@@ -62,26 +67,24 @@ export async function POST(req: Request) {
           if (!igUserId || !commentId) continue
           if (!matchesKeyword(commentText)) continue
 
-          // Check if we already have an active conversation
-          const existing = await prisma.instagramConversation.findUnique({
-            where: { igUserId },
-          })
+          const campaign = findCampaign(commentText)
+          const greeting = campaign?.greeting || config.msgGreeting
 
-          // Re-trigger: reset completed/opted-out conversations so repeat commenters restart the flow
+          const existing = await prisma.instagramConversation.findUnique({ where: { igUserId } })
+
           if (existing && (existing.state === "COMPLETE" || existing.state === "OPTED_OUT")) {
             await prisma.instagramConversation.update({
               where: { igUserId },
-              data: { state: "ASKED_OPTIN", sourceCommentId: commentId, intent: null, firstName: null, email: null, phone: null, contactId: null },
+              data: { state: "ASKED_OPTIN", sourceCommentId: commentId, intent: null, firstName: null, email: null, phone: null, contactId: null, campaignKeyword: campaign?.keyword || null },
             })
           } else if (!existing) {
             await prisma.instagramConversation.create({
-              data: { igUserId, igUsername, state: "ASKED_OPTIN", sourceCommentId: commentId },
+              data: { igUserId, igUsername, state: "ASKED_OPTIN", sourceCommentId: commentId, campaignKeyword: campaign?.keyword || null },
             })
           }
 
-          // Send greeting DM — try private reply first, fall back to direct DM
-          const replied = await replyToComment(commentId, config.msgGreeting)
-          if (!replied) await sendInstagramDM(igUserId, config.msgGreeting)
+          const replied = await replyToComment(commentId, greeting)
+          if (!replied) await sendInstagramDM(igUserId, greeting)
         }
       }
 
@@ -91,32 +94,29 @@ export async function POST(req: Request) {
         const text: string = msg.message?.text || ""
         const accountId = process.env.INSTAGRAM_ACCOUNT_ID
 
-        // Ignore echoes (messages sent by us)
         if (!igUserId || igUserId === accountId || msg.message?.is_echo || !text) continue
 
-        let convo = await prisma.instagramConversation.findUnique({
-          where: { igUserId },
-        })
+        let convo = await prisma.instagramConversation.findUnique({ where: { igUserId } })
 
-        // New DM containing a trigger keyword starts a conversation (like ManyChat's DM trigger)
         if (!convo) {
           if (!matchesKeyword(text)) continue
+          const campaign = findCampaign(text)
           convo = await prisma.instagramConversation.create({
-            data: { igUserId, state: "ASKED_OPTIN" },
+            data: { igUserId, state: "ASKED_OPTIN", campaignKeyword: campaign?.keyword || null },
           })
-          await sendInstagramDM(igUserId, config.msgGreeting)
+          await sendInstagramDM(igUserId, campaign?.greeting || config.msgGreeting)
           continue
         }
 
-        // Re-trigger: OPTED_OUT stays blocked; COMPLETE re-starts if they send a keyword again
         if (convo.state === "OPTED_OUT") continue
         if (convo.state === "COMPLETE") {
           if (!matchesKeyword(text)) continue
+          const campaign = findCampaign(text)
           convo = await prisma.instagramConversation.update({
             where: { igUserId },
-            data: { state: "ASKED_OPTIN", intent: null, firstName: null, email: null, phone: null, contactId: null },
+            data: { state: "ASKED_OPTIN", intent: null, firstName: null, email: null, phone: null, contactId: null, campaignKeyword: campaign?.keyword || null },
           })
-          await sendInstagramDM(igUserId, config.msgGreeting)
+          await sendInstagramDM(igUserId, campaign?.greeting || config.msgGreeting)
           continue
         }
 
@@ -235,6 +235,25 @@ export async function POST(req: Request) {
             .replace("{name}", convo.firstName?.split(" ")[0] || "")
             .replace("{website}", config.websiteUrl || "")
           await sendInstagramDM(igUserId, thankYou)
+
+          // Send campaign PDF if this conversation was triggered by a campaign keyword
+          if (convo.campaignKeyword) {
+            try {
+              const campaign = await prisma.instagramBotCampaign.findUnique({
+                where: { keyword: convo.campaignKeyword },
+              })
+              if (campaign?.pdfUrl) {
+                const pdfMsg = `📄 ${campaign.pdfName || "Documento exclusivo"}:\n${campaign.pdfUrl}`
+                await sendInstagramDM(igUserId, pdfMsg)
+                await prisma.instagramBotCampaign.update({
+                  where: { keyword: convo.campaignKeyword },
+                  data: { leads: { increment: 1 } },
+                })
+              }
+            } catch (e) {
+              console.error("[IG bot] campaign PDF send error:", e)
+            }
+          }
         }
       }
     }

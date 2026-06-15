@@ -1,10 +1,11 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Instagram, Zap, Users, CheckCircle2, MessageSquare, Copy, ExternalLink, AlertCircle } from "lucide-react"
+import { Instagram, Zap, Users, CheckCircle2, MessageSquare, Copy, ExternalLink, AlertCircle, Plus, Trash2, Link2, FileText, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/components/ui/use-toast"
 import { cn } from "@/lib/utils"
 
@@ -16,13 +17,60 @@ export default function InstagramBotClient() {
   const [saving, setSaving] = useState(false)
   const [config, setConfig] = useState<any>(null)
   const [stats, setStats] = useState<any>(null)
+  const [campaigns, setCampaigns] = useState<any[]>([])
+  const [showNewCampaign, setShowNewCampaign] = useState(false)
+  const [newCampaign, setNewCampaign] = useState({ keyword: "", name: "", pdfUrl: "", pdfName: "", greeting: "" })
+  const [savingCampaign, setSavingCampaign] = useState(false)
 
   useEffect(() => {
-    fetch("/api/instagram/config")
-      .then(r => r.json())
-      .then(d => { setConfig(d.config); setStats(d.stats) })
-      .finally(() => setLoading(false))
+    Promise.all([
+      fetch("/api/instagram/config").then(r => r.json()),
+      fetch("/api/instagram/campaigns").then(r => r.json()),
+    ]).then(([cfg, camps]) => {
+      setConfig(cfg.config)
+      setStats(cfg.stats)
+      setCampaigns(Array.isArray(camps) ? camps : [])
+    }).finally(() => setLoading(false))
   }, [])
+
+  const addCampaign = async () => {
+    if (!newCampaign.keyword.trim() || !newCampaign.name.trim()) {
+      toast({ title: "Keyword y nombre son requeridos", variant: "destructive" })
+      return
+    }
+    setSavingCampaign(true)
+    try {
+      const res = await fetch("/api/instagram/campaigns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newCampaign),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setCampaigns(prev => [data, ...prev])
+      setNewCampaign({ keyword: "", name: "", pdfUrl: "", pdfName: "", greeting: "" })
+      setShowNewCampaign(false)
+      toast({ title: "✅ Campaña creada" })
+    } catch (e: any) {
+      toast({ title: e.message || "Error al crear campaña", variant: "destructive" })
+    } finally {
+      setSavingCampaign(false)
+    }
+  }
+
+  const deleteCampaign = async (id: string) => {
+    try {
+      await fetch("/api/instagram/campaigns", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      })
+      setCampaigns(prev => prev.filter(c => c.id !== id))
+      toast({ title: "Campaña eliminada" })
+    } catch {
+      toast({ title: "Error al eliminar", variant: "destructive" })
+    }
+  }
 
   const save = async () => {
     setSaving(true)
@@ -138,6 +186,115 @@ export default function InstagramBotClient() {
               <p>INSTAGRAM_WEBHOOK_VERIFY_TOKEN=lofty_ig_verify</p>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Bot Flow Diagram */}
+      <Card className="border-0 shadow-sm">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold">Flujo del Bot</CardTitle>
+          <p className="text-xs text-gray-400">Así funciona el bot paso a paso</p>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col items-center gap-0">
+            {[
+              { icon: "💬", label: "Alguien comenta una palabra clave en tu post", color: "bg-purple-100 text-purple-700" },
+              { icon: "📩", label: "Bot envía DM privado + respuesta pública al comentario", color: "bg-blue-100 text-blue-700" },
+              { icon: "🎯", label: "Pregunta A / B / C → intención del lead", color: "bg-indigo-100 text-indigo-700" },
+              { icon: "👤", label: "Pide nombre completo", color: "bg-violet-100 text-violet-700" },
+              { icon: "📧", label: "Pide correo electrónico", color: "bg-pink-100 text-pink-700" },
+              { icon: "📱", label: "Pide número de teléfono", color: "bg-rose-100 text-rose-700" },
+              { icon: "🏠", label: "Envía PDF de campaña (si aplica) + propiedades del CRM", color: "bg-orange-100 text-orange-700" },
+              { icon: "✅", label: "Lead creado en CRM → SMS + email + llamada automática", color: "bg-green-100 text-green-700" },
+            ].map((step, i, arr) => (
+              <div key={i} className="flex flex-col items-center w-full max-w-sm">
+                <div className={cn("flex items-center gap-3 w-full rounded-xl px-4 py-2.5", step.color)}>
+                  <span className="text-lg">{step.icon}</span>
+                  <span className="text-xs font-medium">{step.label}</span>
+                </div>
+                {i < arr.length - 1 && <div className="w-0.5 h-4 bg-gray-200" />}
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Campaigns */}
+      <Card className="border-0 shadow-sm">
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <FileText className="w-4 h-4 text-purple-600" /> Campañas — Keyword → PDF/Brochure
+            </CardTitle>
+            <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={() => setShowNewCampaign(true)}>
+              <Plus className="w-3.5 h-3.5" /> Nueva campaña
+            </Button>
+          </div>
+          <p className="text-xs text-gray-400 mt-1">Cuando alguien escribe la palabra clave, el bot envía el PDF específico al final del flujo.</p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {campaigns.length === 0 && !showNewCampaign && (
+            <div className="text-center py-6">
+              <FileText className="w-8 h-8 text-gray-200 mx-auto mb-2" />
+              <p className="text-sm text-gray-400">No hay campañas. Ej: keyword "INVEST" → brochure de inversión</p>
+            </div>
+          )}
+          {campaigns.map(c => (
+            <div key={c.id} className="flex items-start gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge className="bg-purple-100 text-purple-700 text-xs font-mono uppercase">{c.keyword}</Badge>
+                  <span className="text-sm font-medium text-gray-900">{c.name}</span>
+                  <Badge className={cn("text-xs", c.isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500")}>
+                    {c.isActive ? "Activa" : "Inactiva"}
+                  </Badge>
+                </div>
+                {c.pdfUrl && (
+                  <a href={c.pdfUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-purple-600 hover:underline mt-1">
+                    <Link2 className="w-3 h-3" />{c.pdfName || "Ver PDF"}
+                  </a>
+                )}
+                <p className="text-xs text-gray-300 mt-1">{c.leads} leads</p>
+              </div>
+              <button onClick={() => deleteCampaign(c.id)} className="text-gray-300 hover:text-red-400 transition-colors mt-0.5">
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+          {showNewCampaign && (
+            <div className="border border-purple-200 rounded-xl p-4 bg-purple-50 space-y-3">
+              <p className="text-sm font-semibold text-purple-900">Nueva campaña</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 mb-1 block">Palabra clave *</label>
+                  <Input placeholder="INVEST" value={newCampaign.keyword} onChange={e => setNewCampaign(p => ({ ...p, keyword: e.target.value }))} className="bg-white uppercase placeholder:normal-case" />
+                  <p className="text-xs text-gray-400 mt-0.5">Ej: INVEST, BRICKELL, HOMESTEAD</p>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 mb-1 block">Nombre *</label>
+                  <Input placeholder="Inversión Miami 2025" value={newCampaign.name} onChange={e => setNewCampaign(p => ({ ...p, name: e.target.value }))} className="bg-white" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-700 mb-1 block">URL del PDF / Brochure</label>
+                <Input placeholder="https://... (Cloudinary, Google Drive, etc.)" value={newCampaign.pdfUrl} onChange={e => setNewCampaign(p => ({ ...p, pdfUrl: e.target.value }))} className="bg-white" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 mb-1 block">Nombre del archivo</label>
+                  <Input placeholder="Portafolio de Inversión" value={newCampaign.pdfName} onChange={e => setNewCampaign(p => ({ ...p, pdfName: e.target.value }))} className="bg-white" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 mb-1 block">Saludo personalizado</label>
+                  <Input placeholder="¡Hola! Vi que te interesa..." value={newCampaign.greeting} onChange={e => setNewCampaign(p => ({ ...p, greeting: e.target.value }))} className="bg-white" />
+                </div>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <Button size="sm" onClick={addCampaign} disabled={savingCampaign}>{savingCampaign ? "Guardando..." : "Crear campaña"}</Button>
+                <Button size="sm" variant="outline" onClick={() => { setShowNewCampaign(false); setNewCampaign({ keyword: "", name: "", pdfUrl: "", pdfName: "", greeting: "" }) }}>Cancelar</Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

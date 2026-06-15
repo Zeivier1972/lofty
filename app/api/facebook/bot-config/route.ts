@@ -9,21 +9,17 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   try {
-    const [config, stats] = await Promise.all([
-      prisma.facebookBotConfig.findFirst(),
-      prisma.facebookBotConversation.groupBy({
-        by: ["state"],
-        _count: { id: true },
-      }),
-    ])
+    let config = await prisma.facebookBotConfig.findFirst()
+    if (!config) config = await prisma.facebookBotConfig.create({ data: {} })
 
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-    const thisWeek = await prisma.facebookBotConversation.count({
-      where: { state: "COMPLETE", updatedAt: { gte: weekAgo } },
-    })
+    const [stateGroups, thisWeek] = await Promise.all([
+      prisma.facebookBotConversation.groupBy({ by: ["state"], _count: { id: true } }),
+      prisma.facebookBotConversation.count({ where: { state: "COMPLETE", updatedAt: { gte: weekAgo } } }),
+    ])
 
-    const totalConversations = stats.reduce((s, g) => s + g._count.id, 0)
-    const captured = stats.find(g => g.state === "COMPLETE")?._count.id || 0
+    const totalConversations = stateGroups.reduce((s, g) => s + g._count.id, 0)
+    const captured = stateGroups.find(g => g.state === "COMPLETE")?._count.id || 0
 
     return NextResponse.json({ config, stats: { totalConversations, captured, thisWeek } })
   } catch (e) {
