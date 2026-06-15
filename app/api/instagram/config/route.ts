@@ -46,6 +46,7 @@ export async function POST(req: Request) {
   for (const key of [
     "isEnabled", "triggerKeywords", "msgGreeting", "msgAskIntent",
     "msgAskName", "msgAskEmail", "msgAskPhone", "msgThankYou", "websiteUrl",
+    "greetingButtons", "intentButtonA", "intentButtonB", "intentButtonC",
   ]) {
     if (body[key] !== undefined) data[key] = body[key]
   }
