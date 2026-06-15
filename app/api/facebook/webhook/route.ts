@@ -120,24 +120,28 @@ export async function POST(req: Request) {
         if (!commentId || !commenterId || !commentText) continue
         if (!botConfig?.isEnabled) continue
 
-        const keywords = botConfig.triggerKeywords
+        // Check campaign keywords first (higher priority), then general keywords
+        const campaigns = await prisma.facebookBotCampaign.findMany({ where: { isActive: true } })
+        const matchedCampaign = campaigns.find(c =>
+          commentText.toLowerCase().includes(c.keyword.toLowerCase())
+        )
+
+        const generalKeywords = botConfig.triggerKeywords
           .split(",")
           .map((k: string) => k.trim().toLowerCase())
           .filter(Boolean)
+        const matchesGeneral = generalKeywords.some(k => commentText.toLowerCase().includes(k))
 
-        const matchesKeyword = (text: string) =>
-          keywords.some(k => text.toLowerCase().includes(k))
+        if (!matchedCampaign && !matchesGeneral) continue
 
-        if (!matchesKeyword(commentText)) continue
+        const greeting = matchedCampaign?.greeting || botConfig.msgGreeting
 
         try {
-          // Upsert conversation — use the Facebook user ID as the psid key until they DM us
           const existing = await prisma.facebookBotConversation.findUnique({
             where: { psid: commenterId },
           })
 
           if (existing && (existing.state === "COMPLETE" || existing.state === "OPTED_OUT")) {
-            // Re-trigger: reset so repeat commenters restart the flow
             await prisma.facebookBotConversation.update({
               where: { psid: commenterId },
               data: {
@@ -148,6 +152,7 @@ export async function POST(req: Request) {
                 email: null,
                 phone: null,
                 contactId: null,
+                campaignKeyword: matchedCampaign?.keyword || null,
                 pageId,
               },
             })
@@ -158,19 +163,16 @@ export async function POST(req: Request) {
                 pageId,
                 state: "ASKED_OPTIN",
                 sourceCommentId: commentId,
+                campaignKeyword: matchedCampaign?.keyword || null,
               },
             })
           }
-          // If conversation already active (ASKED_*), don't reset — just re-send greeting
 
-          // Private reply opens a Messenger thread from the commenter's side
-          const privateSent = await privateReplyToComment(commentId, botConfig.msgGreeting)
+          const privateSent = await privateReplyToComment(commentId, greeting)
           if (!privateSent) {
-            // Fall back: try to send a Messenger DM directly (requires prior opt-in, may fail)
-            await sendFacebookMessage(commenterId, botConfig.msgGreeting)
+            await sendFacebookMessage(commenterId, greeting)
           }
 
-          // Also post a short public reply on the comment
           await postPublicCommentReply(commentId, "¡Hola! Te enviamos info por mensaje privado 📩")
         } catch (e) {
           console.error("[FB webhook feed comment]", e)
@@ -305,6 +307,25 @@ export async function POST(req: Request) {
             .replace("{website}", botConfig.websiteUrl || "")
           await sendFacebookMessage(psid, thankYou)
 
+          // Send campaign PDF if this conversation was triggered by a campaign keyword
+          if (convo.campaignKeyword) {
+            try {
+              const campaign = await prisma.facebookBotCampaign.findUnique({
+                where: { keyword: convo.campaignKeyword },
+              })
+              if (campaign?.pdfUrl) {
+                const pdfMsg = `📄 ${campaign.pdfName || "Documento exclusivo"}:\n${campaign.pdfUrl}`
+                await sendFacebookMessage(psid, pdfMsg)
+                await prisma.facebookBotCampaign.update({
+                  where: { keyword: convo.campaignKeyword },
+                  data: { leads: { increment: 1 } },
+                })
+              }
+            } catch (e) {
+              console.error("[FB bot] campaign PDF send error:", e)
+            }
+          }
+
           // Send matching property listings if enabled
           if (botConfig.sendListings) {
             try {
@@ -350,7 +371,26 @@ export async function POST(req: Request) {
           }
         }
 
-      } else {
+      } else if (botConfig?.isEnabled && !convo) {
+        // ── No active convo: check if DM text matches a campaign or general keyword ──
+        const campaigns = await prisma.facebookBotCampaign.findMany({ where: { isActive: true } })
+        const matchedCampaign = campaigns.find(c => text.toLowerCase().includes(c.keyword.toLowerCase()))
+        const generalKeywords = botConfig.triggerKeywords
+          .split(",").map((k: string) => k.trim().toLowerCase()).filter(Boolean)
+        const matchesGeneral = generalKeywords.some(k => text.toLowerCase().includes(k))
+
+        if (matchedCampaign || matchesGeneral) {
+          const greeting = matchedCampaign?.greeting || botConfig.msgGreeting
+          await prisma.facebookBotConversation.create({
+            data: {
+              psid,
+              pageId,
+              state: "ASKED_OPTIN",
+              campaignKeyword: matchedCampaign?.keyword || null,
+            },
+          })
+          await sendFacebookMessage(psid, greeting)
+        } else {
         // ── Non-bot Messenger DM handling ───────────────────────────────────
         let contact = await prisma.contact.findFirst({ where: { facebookPsid: psid } })
 
@@ -392,6 +432,7 @@ export async function POST(req: Request) {
             data: { lastContacted: new Date() },
           }),
         ])
+        } // end non-bot DM
       }
     }
   }

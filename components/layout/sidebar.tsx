@@ -7,7 +7,7 @@ import {
   CheckSquare, Calendar, FileText,
   Zap, Settings, ChevronLeft, ChevronRight, BarChart3,
   MessageSquare, Bot, Phone, Share2, Key, Globe,
-  BellRing, UserCheck, Send, Inbox, ClipboardList, Plug, X, Instagram, Landmark,
+  BellRing, UserCheck, Send, Inbox, ClipboardList, Plug, X, Instagram, Landmark, Facebook,
   Wand2, ChevronDown, Mail, TrendingUp, Megaphone,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -69,6 +69,7 @@ const navGroups: NavGroup[] = [
       { href: "/property-alerts", icon: BellRing, label: "Property Alerts" },
       { href: "/homeowner-agent", icon: UserCheck, label: "Homeowner Agent" },
       { href: "/instagram-bot", icon: Instagram, label: "Instagram Bot" },
+      { href: "/facebook-bot", icon: Facebook, label: "Facebook Bot" },
     ],
   },
   {

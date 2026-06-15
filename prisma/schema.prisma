@@ -956,8 +956,22 @@ model FacebookBotConversation {
   phone           String?
   sourceCommentId String?
   contactId       String?
+  campaignKeyword String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+}
+
+model FacebookBotCampaign {
+  id        String   @id @default(cuid())
+  keyword   String   @unique
+  name      String
+  pdfUrl    String?
+  pdfName   String?
+  greeting  String?
+  isActive  Boolean  @default(true)
+  leads     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // ─── CMA Report ───────────────────────────────────────────────────────────────
