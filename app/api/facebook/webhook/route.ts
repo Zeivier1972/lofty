@@ -6,6 +6,7 @@ import {
   getFacebookUserProfile,
   getFacebookLeadData,
   sendFacebookMessage,
+  sendFacebookMessageWithQuickReplies,
   privateReplyToComment,
   postPublicCommentReply,
   extractEmail,
@@ -14,6 +15,12 @@ import {
   parseIntent,
 } from "@/lib/facebook"
 import { ingestLead } from "@/lib/lead-ingest"
+
+const INTENT_QUICK_REPLIES = [
+  { title: "🏠 Comprar para vivir", payload: "A" },
+  { title: "💰 Invertir (Airbnb/renta)", payload: "B" },
+  { title: "👀 Solo explorando", payload: "C" },
+]
 
 const INTENT_TAG_COLORS: Record<string, string> = {
   comprador_vivienda: "#22C55E",
@@ -187,6 +194,7 @@ export async function POST(req: Request) {
 
       const psid = event.sender.id as string
       const text = (event.message.text as string) || ""
+      const quickReplyPayload: string = event.message.quick_reply?.payload || ""
       const fbMid = event.message.mid as string | undefined
 
       if (!text) continue
@@ -224,12 +232,16 @@ export async function POST(req: Request) {
 
         if (convo.state === "ASKED_OPTIN") {
           await prisma.facebookBotConversation.update({ where: { psid }, data: { state: "ASKED_INTENT" } })
-          await sendFacebookMessage(psid, botConfig.msgAskIntent)
+          await sendFacebookMessageWithQuickReplies(psid, botConfig.msgAskIntent, INTENT_QUICK_REPLIES)
 
         } else if (convo.state === "ASKED_INTENT") {
-          const intent = parseIntent(text)
+          const intentFromPayload = quickReplyPayload === "A" ? "comprador_vivienda"
+            : quickReplyPayload === "B" ? "inversionista"
+            : quickReplyPayload === "C" ? "explorando"
+            : null
+          const intent = intentFromPayload || parseIntent(text)
           if (!intent) {
-            await sendFacebookMessage(psid, "Por favor responde con A, B o C 🙂")
+            await sendFacebookMessageWithQuickReplies(psid, "Por favor elige una opción 🙂", INTENT_QUICK_REPLIES)
             continue
           }
           await prisma.facebookBotConversation.update({ where: { psid }, data: { intent, state: "ASKED_NAME" } })

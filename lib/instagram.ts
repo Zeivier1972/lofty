@@ -36,6 +36,40 @@ export async function sendInstagramDM(igUserId: string, text: string): Promise<b
   }
 }
 
+type QuickReply = { title: string; payload: string }
+
+export async function sendInstagramDMWithQuickReplies(
+  igUserId: string,
+  text: string,
+  quickReplies: QuickReply[],
+): Promise<boolean> {
+  const token = getToken()
+  if (!token) return false
+  try {
+    const res = await fetch(`${IG_API}/me/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+      body: JSON.stringify({
+        recipient: { id: igUserId },
+        message: {
+          text,
+          quick_replies: quickReplies.map(qr => ({
+            content_type: "text",
+            title: qr.title,
+            payload: qr.payload,
+          })),
+        },
+      }),
+    })
+    const data = await res.json()
+    if (!res.ok) console.error("[INSTAGRAM] DM with quick replies error:", data)
+    return res.ok
+  } catch (e) {
+    console.error("[INSTAGRAM] sendDMWithQuickReplies exception:", e)
+    return false
+  }
+}
+
 // Private reply to a comment (sends a DM to the commenter, allowed even if they never DM'd us)
 export async function replyToComment(commentId: string, text: string): Promise<boolean> {
   const token = getToken()

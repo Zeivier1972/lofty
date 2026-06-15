@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Instagram, Zap, Users, CheckCircle2, MessageSquare, Copy, ExternalLink, AlertCircle, Plus, Trash2, Link2, FileText, ChevronDown, Upload } from "lucide-react"
+import { Instagram, Zap, Users, CheckCircle2, MessageSquare, Copy, ExternalLink, AlertCircle, Plus, Trash2, Link2, FileText, ChevronDown, Upload, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -22,15 +22,19 @@ export default function InstagramBotClient() {
   const [newCampaign, setNewCampaign] = useState({ keyword: "", name: "", pdfUrl: "", pdfName: "", greeting: "" })
   const [savingCampaign, setSavingCampaign] = useState(false)
   const [uploadingPdf, setUploadingPdf] = useState(false)
+  const [conversations, setConversations] = useState<any[]>([])
+  const [resettingConvo, setResettingConvo] = useState<string | null>(null)
 
   useEffect(() => {
     Promise.all([
       fetch("/api/instagram/config").then(r => r.json()),
       fetch("/api/instagram/campaigns").then(r => r.json()),
-    ]).then(([cfg, camps]) => {
+      fetch("/api/instagram/bot-conversations").then(r => r.json()),
+    ]).then(([cfg, camps, convos]) => {
       setConfig(cfg.config)
       setStats(cfg.stats)
       setCampaigns(Array.isArray(camps) ? camps : [])
+      setConversations(Array.isArray(convos) ? convos : [])
     }).finally(() => setLoading(false))
   }, [])
 
@@ -87,6 +91,23 @@ export default function InstagramBotClient() {
       toast({ title: "Campaña eliminada" })
     } catch {
       toast({ title: "Error al eliminar", variant: "destructive" })
+    }
+  }
+
+  const resetConversation = async (igUserId: string) => {
+    setResettingConvo(igUserId)
+    try {
+      await fetch("/api/instagram/bot-conversations", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ igUserId }),
+      })
+      setConversations(prev => prev.filter(c => c.igUserId !== igUserId))
+      toast({ title: "Conversación reiniciada" })
+    } catch {
+      toast({ title: "Error al reiniciar", variant: "destructive" })
+    } finally {
+      setResettingConvo(null)
     }
   }
 
@@ -388,6 +409,74 @@ export default function InstagramBotClient() {
             <Button onClick={save} disabled={saving} className="bg-purple-600 hover:bg-purple-700 w-full">
               {saving ? "Guardando..." : "Guardar configuración"}
             </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Active conversations */}
+      {conversations.length > 0 && (
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <MessageSquare className="w-4 h-4 text-purple-600" /> Conversaciones activas
+            </CardTitle>
+            <p className="text-xs text-gray-400">Reinicia una conversación para que el usuario pueda empezar desde cero.</p>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="divide-y divide-gray-100">
+              {conversations.map(c => {
+                const stateLabel: Record<string, string> = {
+                  ASKED_OPTIN: "Esperando resp.",
+                  ASKED_INTENT: "Pregunta A/B/C",
+                  ASKED_NAME: "Esperando nombre",
+                  ASKED_EMAIL: "Esperando email",
+                  ASKED_PHONE: "Esperando teléfono",
+                  COMPLETE: "Completado",
+                  OPTED_OUT: "Desuscrito",
+                }
+                const stateColor: Record<string, string> = {
+                  ASKED_OPTIN: "bg-yellow-100 text-yellow-700",
+                  ASKED_INTENT: "bg-blue-100 text-blue-700",
+                  ASKED_NAME: "bg-purple-100 text-purple-700",
+                  ASKED_EMAIL: "bg-pink-100 text-pink-700",
+                  ASKED_PHONE: "bg-orange-100 text-orange-700",
+                  COMPLETE: "bg-green-100 text-green-700",
+                  OPTED_OUT: "bg-gray-100 text-gray-500",
+                }
+                const displayName = c.firstName || (c.igUsername ? `@${c.igUsername}` : c.igUserId.slice(0, 10) + "…")
+                return (
+                  <div key={c.igUserId} className="flex items-center gap-3 px-5 py-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium text-gray-900">{displayName}</span>
+                        <Badge className={cn("text-xs", stateColor[c.state] || "bg-gray-100 text-gray-500")}>
+                          {stateLabel[c.state] || c.state}
+                        </Badge>
+                        {c.campaignKeyword && (
+                          <Badge className="bg-purple-100 text-purple-700 text-xs font-mono uppercase">{c.campaignKeyword}</Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {c.email || c.phone || `ID: ${c.igUserId.slice(0, 12)}…`} · {new Date(c.updatedAt).toLocaleString("es")}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {c.contactId && (
+                        <a href={`/contacts/${c.contactId}`} className="text-xs text-purple-600 hover:underline">Ver contacto</a>
+                      )}
+                      <button
+                        onClick={() => resetConversation(c.igUserId)}
+                        disabled={resettingConvo === c.igUserId}
+                        title="Reiniciar conversación"
+                        className="text-gray-300 hover:text-red-400 transition-colors"
+                      >
+                        <RefreshCw className={cn("w-4 h-4", resettingConvo === c.igUserId && "animate-spin")} />
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           </CardContent>
         </Card>
       )}

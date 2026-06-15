@@ -109,6 +109,37 @@ export async function sendFacebookMessage(psid: string, text: string): Promise<s
   } catch { return null }
 }
 
+type QuickReply = { title: string; payload: string }
+
+export async function sendFacebookMessageWithQuickReplies(
+  psid: string,
+  text: string,
+  quickReplies: QuickReply[],
+): Promise<string | null> {
+  if (!token()) return null
+  try {
+    const res = await fetch(`${GRAPH}/me/messages?access_token=${token()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        recipient: { id: psid },
+        message: {
+          text,
+          quick_replies: quickReplies.map(qr => ({
+            content_type: "text",
+            title: qr.title,
+            payload: qr.payload,
+          })),
+        },
+        messaging_type: "RESPONSE",
+      }),
+    })
+    const data = await res.json()
+    if (!res.ok) console.error("[FB] sendWithQuickReplies error:", data)
+    return data.message_id || null
+  } catch { return null }
+}
+
 export async function getFacebookUserProfile(psid: string): Promise<{ firstName: string; lastName: string } | null> {
   if (!token()) return null
   try {
