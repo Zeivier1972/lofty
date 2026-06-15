@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Facebook, Zap, Users, CheckCircle2, MessageSquare, Copy, AlertCircle, Plus, Trash2, Link2, FileText, ChevronDown } from "lucide-react"
+import { Facebook, Zap, Users, CheckCircle2, MessageSquare, Copy, AlertCircle, Plus, Trash2, Link2, FileText, ChevronDown, Upload } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -21,6 +21,7 @@ export default function FacebookBotClient() {
   const [showNewCampaign, setShowNewCampaign] = useState(false)
   const [newCampaign, setNewCampaign] = useState({ keyword: "", name: "", pdfUrl: "", pdfName: "", greeting: "" })
   const [savingCampaign, setSavingCampaign] = useState(false)
+  const [uploadingPdf, setUploadingPdf] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -78,6 +79,23 @@ export default function FacebookBotClient() {
       toast({ title: e.message || "Error al crear campaña", variant: "destructive" })
     } finally {
       setSavingCampaign(false)
+    }
+  }
+
+  const uploadPdf = async (file: File, target: "fb") => {
+    setUploadingPdf(true)
+    try {
+      const fd = new FormData()
+      fd.append("file", file)
+      const res = await fetch("/api/upload/pdf", { method: "POST", body: fd })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setNewCampaign(p => ({ ...p, pdfUrl: data.url, pdfName: p.pdfName || file.name }))
+      toast({ title: "✅ PDF subido" })
+    } catch (e: any) {
+      toast({ title: e.message || "Error al subir PDF", variant: "destructive" })
+    } finally {
+      setUploadingPdf(false)
     }
   }
 
@@ -303,13 +321,29 @@ export default function FacebookBotClient() {
                 </div>
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-700 mb-1 block">URL del PDF / Brochure (opcional)</label>
-                <Input
-                  placeholder="https://res.cloudinary.com/... o cualquier URL pública"
-                  value={newCampaign.pdfUrl}
-                  onChange={e => setNewCampaign(p => ({ ...p, pdfUrl: e.target.value }))}
-                  className="bg-white"
-                />
+                <label className="text-xs font-semibold text-gray-700 mb-1 block">PDF / Brochure (opcional)</label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="URL del PDF o sube un archivo →"
+                    value={newCampaign.pdfUrl}
+                    onChange={e => setNewCampaign(p => ({ ...p, pdfUrl: e.target.value }))}
+                    className="bg-white flex-1"
+                  />
+                  <label className={cn(
+                    "flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-xs font-medium cursor-pointer transition-colors flex-shrink-0",
+                    uploadingPdf ? "bg-gray-100 text-gray-400 cursor-not-allowed" : "bg-white hover:bg-blue-50 hover:border-blue-300 text-gray-600"
+                  )}>
+                    <Upload className="w-3.5 h-3.5" />
+                    {uploadingPdf ? "Subiendo..." : "Subir PDF"}
+                    <input type="file" accept=".pdf,application/pdf" className="hidden" disabled={uploadingPdf}
+                      onChange={e => { const f = e.target.files?.[0]; if (f) uploadPdf(f, "fb"); e.target.value = "" }} />
+                  </label>
+                </div>
+                {newCampaign.pdfUrl && (
+                  <a href={newCampaign.pdfUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-blue-600 hover:underline mt-1">
+                    <Link2 className="w-3 h-3" /> Ver PDF subido
+                  </a>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
