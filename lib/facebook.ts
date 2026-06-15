@@ -5,6 +5,88 @@ function token() {
   return process.env.FB_PAGE_ACCESS_TOKEN || process.env.FACEBOOK_PAGE_ACCESS_TOKEN || ""
 }
 
+// Send a private Messenger reply to a Facebook page post commenter
+export async function privateReplyToComment(commentId: string, message: string): Promise<boolean> {
+  const tok = token()
+  if (!tok) return false
+  try {
+    const res = await fetch(`${GRAPH}/${commentId}/private_replies?access_token=${tok}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message }),
+    })
+    const data = await res.json()
+    if (!res.ok) {
+      console.error("[FB] privateReplyToComment error:", data)
+      return false
+    }
+    return true
+  } catch (e) {
+    console.error("[FB] privateReplyToComment exception:", e)
+    return false
+  }
+}
+
+// Post a public comment reply on a Facebook post comment
+export async function postPublicCommentReply(commentId: string, message: string): Promise<boolean> {
+  const tok = token()
+  if (!tok) return false
+  try {
+    const res = await fetch(`${GRAPH}/${commentId}/comments?access_token=${tok}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message }),
+    })
+    const data = await res.json()
+    if (!res.ok) {
+      console.error("[FB] postPublicCommentReply error:", data)
+      return false
+    }
+    return true
+  } catch (e) {
+    console.error("[FB] postPublicCommentReply exception:", e)
+    return false
+  }
+}
+
+// Extract a valid email address from free-form text
+export function extractEmail(text: string): string | null {
+  const match = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/)
+  return match ? match[0].toLowerCase() : null
+}
+
+// Extract a phone number from text and normalise to +1XXXXXXXXXX
+export function extractPhone(text: string): string | null {
+  const cleaned = text.replace(/[^\d+\s()-]/g, " ")
+  const match = cleaned.match(/(\+?1?\s?)?(\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/)
+  if (!match) return null
+  const digits = match[0].replace(/\D/g, "").slice(-10)
+  if (digits.length !== 10) return null
+  return `+1${digits}`
+}
+
+// Check if message is an opt-out request
+export function isOptOut(text: string): boolean {
+  const lower = text.toLowerCase().trim()
+  if (lower === "no" || lower === "no gracias" || lower === "no, gracias") return true
+  return ["stop", "unsubscribe", "detener", "parar", "basta", "remove"].some(w =>
+    new RegExp(`\\b${w}\\b`).test(lower)
+  )
+}
+
+// Parse buyer intent from an A/B/C qualification reply
+export function parseIntent(text: string): string | null {
+  const lower = text.toLowerCase().trim()
+  const first = lower.charAt(0)
+  if (first === "a" && lower.length <= 3) return "comprador_vivienda"
+  if (first === "b" && lower.length <= 3) return "inversionista"
+  if (first === "c" && lower.length <= 3) return "explorando"
+  if (/vivir|comprar para|para vivir|vivienda/.test(lower)) return "comprador_vivienda"
+  if (/airbnb|invertir|inversi[oó]n|renta/.test(lower)) return "inversionista"
+  if (/explorando|explorar|curios|solo/.test(lower)) return "explorando"
+  return null
+}
+
 // User Access Token — required for ad account operations (campaigns, ad sets, creatives, ads)
 function userToken() {
   return process.env.FB_USER_ACCESS_TOKEN || token()
