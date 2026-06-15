@@ -243,7 +243,9 @@ export async function POST(req: Request) {
                 where: { keyword: convo.campaignKeyword },
               })
               if (campaign?.pdfUrl) {
-                const pdfMsg = `📄 ${campaign.pdfName || "Documento exclusivo"}:\n${campaign.pdfUrl}`
+                const appUrl = process.env.NEXT_PUBLIC_APP_URL || ""
+                const brochureUrl = `${appUrl}/brochure/${convo.campaignKeyword}`
+                const pdfMsg = `📄 ${campaign.pdfName || "Documento exclusivo"}:\n${brochureUrl}`
                 await sendInstagramDM(igUserId, pdfMsg)
                 await prisma.instagramBotCampaign.update({
                   where: { keyword: convo.campaignKeyword },
