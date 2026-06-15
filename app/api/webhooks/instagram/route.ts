@@ -3,10 +3,16 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import {
-  sendInstagramDM, replyToComment, verifyWebhookToken,
+  sendInstagramDM, sendInstagramDMWithQuickReplies, replyToComment, verifyWebhookToken,
   extractEmail, extractPhone, isOptOut, parseIntent,
 } from "@/lib/instagram"
 import { ingestLead } from "@/lib/lead-ingest"
+
+const INTENT_QUICK_REPLIES = [
+  { title: "🏠 Comprar para vivir", payload: "A" },
+  { title: "💰 Invertir (Airbnb/renta)", payload: "B" },
+  { title: "👀 Solo explorando", payload: "C" },
+]
 
 const INTENT_TAG_COLORS: Record<string, string> = {
   comprador_vivienda: "#22C55E",
@@ -136,12 +142,17 @@ export async function POST(req: Request) {
             where: { igUserId },
             data: { state: "ASKED_INTENT" },
           })
-          await sendInstagramDM(igUserId, config.msgAskIntent)
+          await sendInstagramDMWithQuickReplies(igUserId, config.msgAskIntent, INTENT_QUICK_REPLIES)
 
         } else if (convo.state === "ASKED_INTENT") {
-          const intent = parseIntent(text)
+          const quickReplyPayload: string = (msg.message as any)?.quick_reply?.payload || ""
+          const intentFromPayload = quickReplyPayload === "A" ? "comprador_vivienda"
+            : quickReplyPayload === "B" ? "inversionista_airbnb"
+            : quickReplyPayload === "C" ? "solo_explorando"
+            : null
+          const intent = intentFromPayload || parseIntent(text)
           if (!intent) {
-            await sendInstagramDM(igUserId, "Por favor responde con A, B o C 🙂")
+            await sendInstagramDMWithQuickReplies(igUserId, "Por favor elige una opción 🙂", INTENT_QUICK_REPLIES)
             continue
           }
           await prisma.instagramConversation.update({
