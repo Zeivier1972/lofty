@@ -386,7 +386,7 @@ export default function FacebookBotClient() {
                 </div>
                 <div className="flex flex-col gap-1.5 flex-shrink-0">
                   <a
-                    href={`/dashboard/content-studio?tab=video&campaign=${encodeURIComponent(c.keyword)}`}
+                    href={`/dashboard/content-studio?tab=video&campaign=${encodeURIComponent(c.keyword.split(",")[0].trim())}`}
                     title="Generar video ad"
                     className="text-gray-300 hover:text-purple-500 transition-colors">
                     <Clapperboard className="w-4 h-4" />
