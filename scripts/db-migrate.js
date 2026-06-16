@@ -411,8 +411,14 @@ async function seedFirstTimeBuyersPlan(db) {
 // ─── Colombia investor smart plan seed ───────────────────────────────────────
 
 async function seedColombiaPlan(db) {
-  // Always ensure the tag exists
+  // Upsert the primary UTM campaign tag (matches Facebook tracking parameter utm_campaign)
   const tag = await db.tag.upsert({
+    where: { name: "Inversionista Bogota" },
+    update: {},
+    create: { name: "Inversionista Bogota", color: "#10B981" },
+  })
+  // Keep legacy tag for backwards compatibility
+  await db.tag.upsert({
     where: { name: "Investor_colombia" },
     update: {},
     create: { name: "Investor_colombia", color: "#10B981" },
@@ -422,13 +428,14 @@ async function seedColombiaPlan(db) {
     where: { name: "Invierte en Florida desde Colombia" },
   })
   if (exists) {
-    // Update trigger from MANUAL to CONTACT_TAGGED if needed
-    if (exists.trigger === "MANUAL") {
+    // Update trigger to use the UTM-based tag if it's still pointing to the old tag or MANUAL
+    const expectedTrigger = `CONTACT_TAGGED:${tag.id}`
+    if (exists.trigger === "MANUAL" || !exists.trigger.includes(tag.id)) {
       await db.smartPlan.update({
         where: { id: exists.id },
-        data: { trigger: `CONTACT_TAGGED:${tag.id}` },
+        data: { trigger: expectedTrigger },
       })
-      console.log("[db-migrate] Colombia plan trigger updated to CONTACT_TAGGED")
+      console.log("[db-migrate] Colombia plan trigger updated to Inversionista Bogota tag")
     }
     return
   }
