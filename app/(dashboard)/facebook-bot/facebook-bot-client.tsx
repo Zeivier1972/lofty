@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Facebook, Zap, Users, CheckCircle2, MessageSquare, Copy, AlertCircle, Plus, Trash2, Link2, FileText, ChevronDown, Upload, RefreshCw } from "lucide-react"
+import { Facebook, Zap, Users, CheckCircle2, MessageSquare, Copy, AlertCircle, Plus, Trash2, Link2, FileText, ChevronDown, Upload, RefreshCw, Clapperboard } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -384,9 +384,17 @@ export default function FacebookBotClient() {
                   )}
                   <p className="text-xs text-gray-300 mt-1">{c.leads} leads capturados</p>
                 </div>
-                <button onClick={() => deleteCampaign(c.id)} className="text-gray-300 hover:text-red-400 transition-colors flex-shrink-0 mt-0.5">
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                <div className="flex flex-col gap-1.5 flex-shrink-0">
+                  <a
+                    href={`/dashboard/content-studio?tab=video&campaign=${encodeURIComponent(c.keyword)}`}
+                    title="Generar video ad"
+                    className="text-gray-300 hover:text-purple-500 transition-colors">
+                    <Clapperboard className="w-4 h-4" />
+                  </a>
+                  <button onClick={() => deleteCampaign(c.id)} title="Eliminar campaña" className="text-gray-300 hover:text-red-400 transition-colors">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             </div>
             )
