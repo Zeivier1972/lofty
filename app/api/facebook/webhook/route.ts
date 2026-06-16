@@ -161,9 +161,10 @@ export async function POST(req: Request) {
 
         // Check campaign keywords first (higher priority), then general keywords
         const campaigns = await prisma.facebookBotCampaign.findMany({ where: { isActive: true } })
-        const matchedCampaign = campaigns.find(c =>
-          commentText.toLowerCase().includes(c.keyword.toLowerCase())
-        )
+        const matchedCampaign = campaigns.find(c => {
+          const allKws = c.keywords ? c.keywords.split(",").map((k: string) => k.trim()).filter(Boolean) : [c.keyword]
+          return allKws.some((kw: string) => commentText.toLowerCase().includes(kw.toLowerCase()))
+        })
 
         const generalKeywords = botConfig.triggerKeywords
           .split(",")
@@ -420,7 +421,10 @@ export async function POST(req: Request) {
       } else if (botConfig?.isEnabled && !convo) {
         // ── No active convo: check if DM text matches a campaign or general keyword ──
         const campaigns = await prisma.facebookBotCampaign.findMany({ where: { isActive: true } })
-        const matchedCampaign = campaigns.find(c => text.toLowerCase().includes(c.keyword.toLowerCase()))
+        const matchedCampaign = campaigns.find(c => {
+          const allKws = c.keywords ? c.keywords.split(",").map((k: string) => k.trim()).filter(Boolean) : [c.keyword]
+          return allKws.some((kw: string) => text.toLowerCase().includes(kw.toLowerCase()))
+        })
         const generalKeywords = botConfig.triggerKeywords
           .split(",").map((k: string) => k.trim().toLowerCase()).filter(Boolean)
         const matchesGeneral = generalKeywords.some(k => text.toLowerCase().includes(k))
