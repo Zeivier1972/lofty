@@ -777,6 +777,99 @@ const RATIO_OPTIONS = [
   { id: "1:1",  label: "Cuadrado",   desc: "Instagram Square", w: 24, h: 24 },
 ]
 
+const VIDEO_STYLES = [
+  {
+    id: "none",
+    name: "Auto",
+    desc: "Fondo neutro por defecto",
+    bg: "bg-gray-100",
+    border: "border-gray-300",
+    text: "text-gray-600",
+    dot: "bg-gray-400",
+  },
+  {
+    id: "cinematic",
+    name: "Cinematic",
+    desc: "Primer plano, fondo negro",
+    bg: "bg-gray-950",
+    border: "border-gray-700",
+    text: "text-gray-100",
+    dot: "bg-gray-100",
+  },
+  {
+    id: "thriller",
+    name: "Thriller",
+    desc: "Azul oscuro y dramático",
+    bg: "bg-[#1A1A2E]",
+    border: "border-[#3A3A6E]",
+    text: "text-blue-200",
+    dot: "bg-blue-400",
+  },
+  {
+    id: "retro_tech",
+    name: "Retro Tech",
+    desc: "Estético tech oscuro",
+    bg: "bg-[#0D1117]",
+    border: "border-green-700",
+    text: "text-green-400",
+    dot: "bg-green-400",
+  },
+  {
+    id: "iconic",
+    name: "Iconic Artist",
+    desc: "Primer plano, morado vibrante",
+    bg: "bg-violet-700",
+    border: "border-violet-400",
+    text: "text-white",
+    dot: "bg-yellow-300",
+  },
+  {
+    id: "pop_culture",
+    name: "Pop Culture",
+    desc: "Fondo magenta vibrante",
+    bg: "bg-[#FF006E]",
+    border: "border-pink-300",
+    text: "text-white",
+    dot: "bg-white",
+  },
+  {
+    id: "modern",
+    name: "Modern",
+    desc: "Fondo azul profesional",
+    bg: "bg-blue-600",
+    border: "border-blue-300",
+    text: "text-white",
+    dot: "bg-sky-200",
+  },
+  {
+    id: "warm",
+    name: "Warm",
+    desc: "Naranja cálido — familias",
+    bg: "bg-orange-500",
+    border: "border-orange-200",
+    text: "text-white",
+    dot: "bg-amber-200",
+  },
+  {
+    id: "handmade",
+    name: "Handmade",
+    desc: "Crema artesanal",
+    bg: "bg-amber-50",
+    border: "border-amber-300",
+    text: "text-amber-800",
+    dot: "bg-amber-600",
+  },
+  {
+    id: "print",
+    name: "Print",
+    desc: "Negro editorial y elegante",
+    bg: "bg-stone-950",
+    border: "border-stone-600",
+    text: "text-stone-100",
+    dot: "bg-stone-300",
+  },
+]
+
 const SCRIPT_TEMPLATES = [
   {
     label: "Inversión desde Colombia",
@@ -803,6 +896,7 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
   const [voiceId, setVoiceId] = useState("")
   const [script, setScript] = useState("")
   const [ratio, setRatio] = useState("16:9")
+  const [styleId, setStyleId] = useState("none")
   const [loadingData, setLoadingData] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [status, setStatus] = useState<"idle" | "processing" | "completed" | "failed">("idle")
@@ -885,7 +979,7 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
       const res = await fetch("/api/heygen/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ avatarId, voiceId, script, ratio }),
+        body: JSON.stringify({ avatarId, voiceId, script, ratio, styleId: styleId !== "none" ? styleId : undefined }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
@@ -963,10 +1057,38 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
         </div>
       </div>
 
+      {/* Style / Brand System */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+        <h2 className="text-base font-semibold text-gray-800 mb-1">3. Estilo visual</h2>
+        <p className="text-xs text-gray-400 mb-4">Elige el look del video — fondo, iluminación y encuadre del avatar</p>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+          {VIDEO_STYLES.map(s => (
+            <button
+              key={s.id}
+              onClick={() => setStyleId(s.id)}
+              className={cn(
+                "relative flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all text-center",
+                s.bg,
+                styleId === s.id ? "border-purple-500 ring-2 ring-purple-400 ring-offset-1 scale-[1.03]" : s.border + " opacity-85 hover:opacity-100 hover:scale-[1.01]"
+              )}
+            >
+              <span className={cn("w-3 h-3 rounded-full flex-shrink-0", s.dot)} />
+              <span className={cn("text-xs font-semibold leading-tight", s.text)}>{s.name}</span>
+              <span className={cn("text-[10px] leading-tight opacity-80", s.text)}>{s.desc}</span>
+              {styleId === s.id && (
+                <span className="absolute top-1 right-1 bg-purple-500 rounded-full p-0.5">
+                  <Check className="w-2.5 h-2.5 text-white" />
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Script */}
       <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold text-gray-800">3. Guión del video</h2>
+          <h2 className="text-base font-semibold text-gray-800">4. Guión del video</h2>
           <span className="text-xs text-gray-400">{script.length} / 1500 caracteres</span>
         </div>
 
