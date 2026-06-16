@@ -521,13 +521,14 @@ async function seedColombiaPlan(db) {
 // ─── Booking URL seed ─────────────────────────────────────────────────────────
 
 async function seedBookingUrl(db) {
+  // Clear the self-referencing URL that caused an infinite redirect loop
   const config = await db.aIConfig.findFirst()
-  if (config && !config.calendlyUrl) {
+  if (config && config.calendlyUrl && config.calendlyUrl.includes("/book")) {
     await db.aIConfig.update({
       where: { id: config.id },
-      data: { calendlyUrl: "https://lofty-production.up.railway.app/book" },
+      data: { calendlyUrl: null },
     })
-    console.log("[db-migrate] AIConfig calendlyUrl set to booking page")
+    console.log("[db-migrate] Cleared bad self-referencing calendlyUrl")
   }
 }
 
