@@ -227,8 +227,8 @@ export async function handleCallOutcome(
   })
 }
 
-// ── Called when lead replies via SMS, email, or any channel ──────────────────
-export async function handleLeadEngaged(contactId: string, channel: string) {
+// ── Called when lead replies via SMS, email, WhatsApp, or any channel ────────
+export async function handleLeadEngaged(contactId: string, channel: string, messageSnippet?: string) {
   const contact = await prisma.contact.findUnique({ where: { id: contactId } })
   if (!contact) return
 
@@ -236,30 +236,44 @@ export async function handleLeadEngaged(contactId: string, channel: string) {
   if (!pipeline) return
 
   const currentStage = await getCurrentStage(contactId)
-  if (currentStage?.name === "Warm" || currentStage?.name === "Hot" ||
-      currentStage?.name === "Appointment Set" || currentStage?.name === "Showing") return
+  const alreadyWarm = ["Warm", "Hot", "Appointment Set", "Showing"].includes(currentStage?.name ?? "")
 
-  const warmStage = pipeline.stages.find(s => s.name === "Warm")
-  if (!warmStage) return
+  if (!alreadyWarm) {
+    const warmStage = pipeline.stages.find(s => s.name === "Warm")
+    if (warmStage) await moveToStage(contactId, warmStage.id, "Warm")
+  }
 
-  await moveToStage(contactId, warmStage.id, "Warm")
-
-  // Cancel pending Sofia retries — lead is now engaged
+  // Cancel pending Sofia retries
   await prisma.scheduledCall.updateMany({
     where: { contactId, status: "PENDING" },
     data: { status: "CANCELLED" },
   })
 
-  await createCatherineTask(
-    contactId,
-    `🔥 Seguimiento urgente — ${contact.firstName} ${contact.lastName || ""}`,
-    `El lead respondió via ${channel}. Moverlo a caliente y hacer seguimiento inmediato.`
-  )
+  // Pause all active smart plan (drip) enrollments — lead is now engaged
+  const paused = await prisma.smartPlanEnrollment.updateMany({
+    where: { contactId, status: "ACTIVE" },
+    data: { status: "PAUSED" },
+  })
+
+  const drippingNote = paused.count > 0
+    ? ` Paused ${paused.count} active drip sequence(s).`
+    : ""
+
+  const snippet = messageSnippet ? ` Mensaje: "${messageSnippet.slice(0, 80)}${messageSnippet.length > 80 ? "…" : ""}"` : ""
+
+  if (!alreadyWarm) {
+    await createCatherineTask(
+      contactId,
+      `🔥 Seguimiento urgente — ${contact.firstName} ${contact.lastName || ""}`,
+      `El lead respondió via ${channel}.${drippingNote} Hacer seguimiento inmediato.`
+    )
+  }
+
   await prisma.aINotification.create({
     data: {
       type: "MESSAGE_RECEIVED",
-      title: `🔥 Lead respondió via ${channel}: ${contact.firstName} ${contact.lastName || ""}`,
-      body: "Movido a Warm. Tarea de seguimiento creada para Catherine.",
+      title: `🔥 ${contact.firstName} ${contact.lastName || ""} respondió via ${channel}`,
+      body: `${alreadyWarm ? "Ya estaba en pipeline caliente." : "Movido a Warm pipeline."}${drippingNote}${snippet}`,
       priority: "HIGH",
       contactId,
     },

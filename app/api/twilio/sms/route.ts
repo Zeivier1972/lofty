@@ -101,8 +101,8 @@ export async function POST(req: Request) {
     // Update score on inbound SMS reply
     scoreContact(contact.id).catch(() => {})
 
-    // Lead replied → move to Warm pipeline automatically
-    handleLeadEngaged(contact.id, "SMS").catch(() => {})
+    // Move to Warm pipeline, pause drip enrollments, notify Catherine
+    handleLeadEngaged(contact.id, "SMS", body).catch(() => {})
 
     // Notify Catherine
     await prisma.aINotification.create({
