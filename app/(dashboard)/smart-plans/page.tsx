@@ -14,7 +14,7 @@ export default async function SmartPlansPage() {
 
     ;[plans, tags] = await Promise.all([
       prisma.smartPlan.findMany({
-        where: { ...(userId && { userId }) },
+        where: userId ? { OR: [{ userId }, { userId: null }] } : {},
         include: {
           steps: { orderBy: { order: "asc" } },
           _count: { select: { enrollments: true } },
