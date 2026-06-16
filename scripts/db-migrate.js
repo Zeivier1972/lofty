@@ -531,6 +531,28 @@ async function seedBookingUrl(db) {
   }
 }
 
+// ─── AIConfig fix: remove stale "Alex" prompt ────────────────────────────────
+
+async function seedAIConfig(db) {
+  const config = await db.aIConfig.findFirst()
+  if (!config) return
+
+  const needsFix = (config.systemPrompt && config.systemPrompt.includes("Alex")) ||
+                   !config.agentName || config.agentName === "Alex"
+
+  if (needsFix) {
+    await db.aIConfig.update({
+      where: { id: config.id },
+      data: {
+        systemPrompt: null,  // Let it be built dynamically
+        agentName: config.agentName === "Alex" || !config.agentName ? "Sofia" : config.agentName,
+        realtorName: !config.realtorName || config.realtorName === "Alex" ? "Catherine" : config.realtorName,
+      },
+    })
+    console.log("[db-migrate] AIConfig prompt fixed (removed Alex reference)")
+  }
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -538,6 +560,7 @@ async function main() {
   for (const sql of STMTS) {
     await db.$executeRawUnsafe(sql).catch(e => console.warn("[db-migrate] skip:", e.message))
   }
+  await seedAIConfig(db).catch(e => console.warn("[db-migrate] AIConfig fix skip:", e.message))
   await seedFirstTimeBuyersPlan(db).catch(e => console.warn("[db-migrate] First-time buyers plan skip:", e.message))
   await seedColombiaPlan(db).catch(e => console.warn("[db-migrate] Colombia plan skip:", e.message))
   await seedBookingUrl(db).catch(e => console.warn("[db-migrate] booking url skip:", e.message))

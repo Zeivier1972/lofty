@@ -37,6 +37,7 @@ interface SettingsClientProps {
   user: any
   tags: any[]
   pipelines: any[]
+  websiteConfig?: any
 }
 
 // ─── Integration connect modal ────────────────────────────────────────────────
@@ -298,7 +299,7 @@ function AvailabilitySettings() {
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export default function SettingsClient({ user, tags: initialTags, pipelines: initialPipelines }: SettingsClientProps) {
+export default function SettingsClient({ user, tags: initialTags, pipelines: initialPipelines, websiteConfig: initialWebsiteConfig }: SettingsClientProps) {
   const { toast } = useToast()
 
   // Tags
@@ -354,6 +355,27 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
       if (d.activeListings !== undefined) setIdxPropertyCount(d.activeListings)
     }).catch(() => {})
   })
+
+  // Website config
+  const [websiteForm, setWebsiteForm] = useState<Record<string, any>>(initialWebsiteConfig || {})
+  const [websiteSaving, setWebsiteSaving] = useState(false)
+
+  const saveWebsite = async () => {
+    setWebsiteSaving(true)
+    try {
+      const res = await fetch("/api/settings/website", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(websiteForm),
+      })
+      if (!res.ok) throw new Error("Failed")
+      toast({ title: "Website settings saved" })
+    } catch {
+      toast({ title: "Error saving website settings", variant: "destructive" })
+    } finally {
+      setWebsiteSaving(false)
+    }
+  }
 
   const { register, handleSubmit, formState: { isSubmitting } } = useForm({
     resolver: zodResolver(profileSchema),
@@ -581,6 +603,7 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
               { value: "pipeline", label: "Pipeline", icon: GitBranch },
               { value: "idx", label: "IDX / MLS", icon: Database },
               { value: "integrations", label: "Integrations", icon: Globe },
+              { value: "website", label: "Website", icon: Globe },
               { value: "security", label: "Security", icon: Shield },
             ].map(({ value, label, icon: Icon }) => (
               <TabsTrigger key={value} value={value}
@@ -945,6 +968,28 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
           {/* Availability */}
           <TabsContent value="availability">
             <AvailabilitySettings />
+          </TabsContent>
+
+          {/* Website */}
+          <TabsContent value="website">
+            <Card className="border-0 shadow-sm">
+              <CardHeader><CardTitle className="text-base">Website Settings</CardTitle></CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label>Agent Photo URL</Label>
+                  <Input
+                    placeholder="https://example.com/catherine-photo.jpg"
+                    value={websiteForm.agentPhotoUrl || ""}
+                    onChange={e => setWebsiteForm(prev => ({ ...prev, agentPhotoUrl: e.target.value }))}
+                    className="mt-1"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Photo shown on the public website</p>
+                </div>
+                <Button onClick={saveWebsite} disabled={websiteSaving} className="bg-lofty-600 hover:bg-lofty-700">
+                  {websiteSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving...</> : <><Save className="w-4 h-4 mr-2" />Save Website Settings</>}
+                </Button>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* Security */}
