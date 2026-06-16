@@ -24,6 +24,8 @@ export default function FacebookBotClient() {
   const [uploadingPdf, setUploadingPdf] = useState(false)
   const [conversations, setConversations] = useState<any[]>([])
   const [resettingConvo, setResettingConvo] = useState<string | null>(null)
+  const [addingKeyword, setAddingKeyword] = useState<string | null>(null) // campaign id
+  const [newKeywordInput, setNewKeywordInput] = useState("")
 
   useEffect(() => {
     Promise.all([
@@ -131,6 +133,28 @@ export default function FacebookBotClient() {
       toast({ title: "Campaña eliminada" })
     } catch {
       toast({ title: "Error al eliminar", variant: "destructive" })
+    }
+  }
+
+  const updateKeyword = async (id: string, action: "add" | "remove", keyword: string) => {
+    try {
+      const res = await fetch("/api/facebook/bot-campaigns", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, action, keyword }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setCampaigns(prev => prev.map(c => c.id === id ? data : c))
+      if (action === "add") {
+        setNewKeywordInput("")
+        setAddingKeyword(null)
+        toast({ title: `Keyword "${keyword.toUpperCase()}" agregada` })
+      } else {
+        toast({ title: `Keyword eliminada` })
+      }
+    } catch (e: any) {
+      toast({ title: e.message || "Error al actualizar keyword", variant: "destructive" })
     }
   }
 
@@ -287,35 +311,86 @@ export default function FacebookBotClient() {
             </div>
           )}
 
-          {campaigns.map(c => (
-            <div key={c.id} className="flex items-start gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Badge className="bg-blue-100 text-blue-700 text-xs font-mono uppercase">{c.keyword}</Badge>
-                  <span className="text-sm font-medium text-gray-900">{c.name}</span>
-                  {c.isActive ? (
-                    <Badge className="bg-green-100 text-green-700 text-xs">Activa</Badge>
-                  ) : (
-                    <Badge className="bg-gray-100 text-gray-500 text-xs">Inactiva</Badge>
+          {campaigns.map(c => {
+            const allKeywords = c.keywords
+              ? c.keywords.split(",").map((k: string) => k.trim().toUpperCase()).filter(Boolean)
+              : [c.keyword.toUpperCase()]
+            return (
+            <div key={c.id} className="p-3 rounded-xl border border-gray-100 bg-gray-50">
+              <div className="flex items-start gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <span className="text-sm font-medium text-gray-900">{c.name}</span>
+                    {c.isActive ? (
+                      <Badge className="bg-green-100 text-green-700 text-xs">Activa</Badge>
+                    ) : (
+                      <Badge className="bg-gray-100 text-gray-500 text-xs">Inactiva</Badge>
+                    )}
+                  </div>
+                  {/* Keyword tags */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {allKeywords.map((kw: string) => (
+                      <span key={kw} className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-mono rounded-full">
+                        {kw}
+                        <button
+                          onClick={() => updateKeyword(c.id, "remove", kw)}
+                          className="hover:text-red-500 transition-colors ml-0.5"
+                          title="Eliminar keyword"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                    {addingKeyword === c.id ? (
+                      <div className="flex items-center gap-1">
+                        <input
+                          autoFocus
+                          value={newKeywordInput}
+                          onChange={e => setNewKeywordInput(e.target.value.toUpperCase())}
+                          onKeyDown={e => {
+                            if (e.key === "Enter" && newKeywordInput.trim()) updateKeyword(c.id, "add", newKeywordInput.trim())
+                            if (e.key === "Escape") { setAddingKeyword(null); setNewKeywordInput("") }
+                          }}
+                          placeholder="KEYWORD"
+                          className="w-24 px-2 py-0.5 text-xs font-mono border border-blue-300 rounded-full outline-none focus:ring-1 focus:ring-blue-400 bg-white uppercase"
+                        />
+                        <button
+                          onClick={() => { if (newKeywordInput.trim()) updateKeyword(c.id, "add", newKeywordInput.trim()) }}
+                          className="text-xs text-blue-600 font-medium hover:text-blue-800"
+                        >✓</button>
+                        <button
+                          onClick={() => { setAddingKeyword(null); setNewKeywordInput("") }}
+                          className="text-xs text-gray-400 hover:text-gray-600"
+                        >✕</button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => { setAddingKeyword(c.id); setNewKeywordInput("") }}
+                        className="inline-flex items-center gap-0.5 px-2 py-0.5 border border-dashed border-blue-300 text-blue-500 text-xs rounded-full hover:border-blue-500 hover:text-blue-700 transition-colors"
+                      >
+                        <Plus className="w-3 h-3" /> keyword
+                      </button>
+                    )}
+                  </div>
+                  {c.pdfUrl && (
+                    <a href={c.pdfUrl} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-xs text-blue-600 hover:underline mt-1.5">
+                      <Link2 className="w-3 h-3" />
+                      {c.pdfName || "Ver PDF"}
+                    </a>
                   )}
+                  {c.greeting && (
+                    <p className="text-xs text-gray-400 mt-1 line-clamp-1">Saludo: {c.greeting}</p>
+                  )}
+                  <p className="text-xs text-gray-300 mt-1">{c.leads} leads capturados</p>
                 </div>
-                {c.pdfUrl && (
-                  <a href={c.pdfUrl} target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-xs text-blue-600 hover:underline mt-1">
-                    <Link2 className="w-3 h-3" />
-                    {c.pdfName || "Ver PDF"}
-                  </a>
-                )}
-                {c.greeting && (
-                  <p className="text-xs text-gray-400 mt-1 line-clamp-1">Saludo: {c.greeting}</p>
-                )}
-                <p className="text-xs text-gray-300 mt-1">{c.leads} leads capturados</p>
+                <button onClick={() => deleteCampaign(c.id)} className="text-gray-300 hover:text-red-400 transition-colors flex-shrink-0 mt-0.5">
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
-              <button onClick={() => deleteCampaign(c.id)} className="text-gray-300 hover:text-red-400 transition-colors flex-shrink-0 mt-0.5">
-                <Trash2 className="w-4 h-4" />
-              </button>
             </div>
-          ))}
+            )
+          })}
 
           {showNewCampaign && (
             <div className="border border-blue-200 rounded-xl p-4 bg-blue-50 space-y-3">
