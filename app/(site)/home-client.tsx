@@ -180,11 +180,10 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
             ))}
           </nav>
 
-          {/* Right: auth links */}
-          <div className="hidden lg:flex items-center gap-4 text-xs font-semibold text-gray-600">
-            <Link href="/login" className="hover:text-[#c9a84c] transition-colors">SIGN IN</Link>
-            <Link href="/login" className="px-4 py-1.5 border border-[#c9a84c] text-[#c9a84c] rounded hover:bg-[#c9a84c] hover:text-white transition-colors">
-              REGISTER
+          {/* Right: CTA */}
+          <div className="hidden lg:flex items-center gap-4">
+            <Link href="/book" className="bg-[#c9a84c] text-white px-5 py-2 rounded-full font-semibold text-sm hover:bg-[#b8943f] transition-colors">
+              Agenda tu cita
             </Link>
           </div>
 
@@ -203,6 +202,12 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
                 {l.label}
               </Link>
             ))}
+            <div className="px-4 py-3">
+              <Link href="/book" onClick={() => setMobileMenuOpen(false)}
+                className="block w-full text-center bg-[#c9a84c] text-white px-5 py-2 rounded-full font-semibold text-sm hover:bg-[#b8943f] transition-colors">
+                Agenda tu cita
+              </Link>
+            </div>
           </div>
         )}
       </header>

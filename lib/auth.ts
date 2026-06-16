@@ -28,13 +28,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const valid = await bcrypt.compare(parsed.data.password, user.password)
         if (!valid) return null
 
-        return {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          image: user.avatar,
-        }
+        // Only ADMIN users can access the CRM
+        if (user.role !== "ADMIN") return null
+
+        return { id: user.id, name: user.name, email: user.email, role: user.role, image: user.avatar }
       },
     }),
   ],
