@@ -102,6 +102,8 @@ export async function POST(req: Request) {
             fields["message"] || fields["comments"] || fields["notes"] || "",
           ].filter(Boolean).join(" | ") || undefined
 
+          const hiddenTag = fields["tag"] || fields["source_tag"] || fields["hidden_tag"] || fields["custom_tag"] || undefined
+
           await ingestLead({
             firstName,
             lastName,
@@ -116,6 +118,7 @@ export async function POST(req: Request) {
             notes,
             facebookLeadId: leadgen_id,
             smsConsent: !!phone,
+            tags: hiddenTag ? [hiddenTag] : undefined,
           })
         } catch (e) {
           console.error("[FB webhook leadgen]", e)

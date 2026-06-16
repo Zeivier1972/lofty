@@ -199,11 +199,25 @@ const emailConsultaGratuita = `<div style="max-width:600px;margin:0 auto;font-fa
 // ─── Colombia investor smart plan seed ───────────────────────────────────────
 
 async function seedColombiaPlan(db) {
+  // Always ensure the tag exists
+  const tag = await db.tag.upsert({
+    where: { name: "Investor_colombia" },
+    update: {},
+    create: { name: "Investor_colombia", color: "#10B981" },
+  })
+
   const exists = await db.smartPlan.findFirst({
     where: { name: "Invierte en Florida desde Colombia" },
   })
   if (exists) {
-    console.log("[db-migrate] Colombia plan already exists, skipping")
+    // Update trigger from MANUAL to CONTACT_TAGGED if needed
+    if (exists.trigger === "MANUAL") {
+      await db.smartPlan.update({
+        where: { id: exists.id },
+        data: { trigger: `CONTACT_TAGGED:${tag.id}` },
+      })
+      console.log("[db-migrate] Colombia plan trigger updated to CONTACT_TAGGED")
+    }
     return
   }
 
@@ -211,7 +225,7 @@ async function seedColombiaPlan(db) {
     data: {
       name: "Invierte en Florida desde Colombia",
       description: "Secuencia educativa en español para inversionistas colombianos — WhatsApp prioritario + Emails con diseño (28 días, 11 pasos)",
-      trigger: "MANUAL",
+      trigger: `CONTACT_TAGGED:${tag.id}`,
       isActive: true,
       steps: {
         create: [
