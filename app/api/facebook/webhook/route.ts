@@ -104,21 +104,42 @@ export async function POST(req: Request) {
 
           const hiddenTag = fields["tag"] || fields["source_tag"] || fields["hidden_tag"] || fields["custom_tag"] || undefined
 
+          // UTM / tracking parameters (set in Facebook form → Settings → Tracking parameters)
+          const utmCampaign = fields["utm_campaign"] || undefined
+          const utmSource = fields["utm_source"] || undefined
+          const utmMedium = fields["utm_medium"] || undefined
+          const utmContent = fields["utm_content"] || undefined
+
+          // Apply utm_campaign as a CRM tag so smart plans can trigger on it
+          const tags: string[] = []
+          if (utmCampaign) tags.push(utmCampaign)
+          if (hiddenTag) tags.push(hiddenTag)
+
+          // Append UTM data to notes for visibility in the contact timeline
+          const utmNote = [
+            utmSource   ? `Source: ${utmSource}`     : "",
+            utmCampaign ? `Campaign: ${utmCampaign}` : "",
+            utmMedium   ? `Medium: ${utmMedium}`     : "",
+            utmContent  ? `Content: ${utmContent}`   : "",
+          ].filter(Boolean).join(" | ")
+
+          const allNotes = [notes, utmNote].filter(Boolean).join(" | ") || undefined
+
           await ingestLead({
             firstName,
             lastName,
             email,
             phone,
             source: "FACEBOOK",
-            campaign: campaign_name || ad_name || undefined,
+            campaign: campaign_name || ad_name || utmCampaign || undefined,
             budget,
             location,
             bedroomsMin,
             propertyType,
-            notes,
+            notes: allNotes,
             facebookLeadId: leadgen_id,
             smsConsent: !!phone,
-            tags: hiddenTag ? [hiddenTag] : undefined,
+            tags: tags.length > 0 ? tags : undefined,
           })
         } catch (e) {
           console.error("[FB webhook leadgen]", e)
