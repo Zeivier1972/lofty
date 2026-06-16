@@ -35,8 +35,14 @@ async function getCurrentStage(contactId: string) {
   const lead = await prisma.pipelineLead.findFirst({
     where: { contactId },
     include: { stage: true },
+    orderBy: { updatedAt: "desc" },
   })
   return lead?.stage ?? null
+}
+
+async function getPipelineIdForStage(stageId: string): Promise<string | null> {
+  const stage = await prisma.pipelineStage.findUnique({ where: { id: stageId }, select: { pipelineId: true } })
+  return stage?.pipelineId ?? null
 }
 
 async function checkPipelineStageSmartPlans(contactId: string, stageName: string) {
@@ -59,7 +65,15 @@ async function checkPipelineStageSmartPlans(contactId: string, stageName: string
 }
 
 async function moveToStage(contactId: string, stageId: string, stageName: string) {
-  const existing = await prisma.pipelineLead.findFirst({ where: { contactId } })
+  // Scope to the pipeline this stage belongs to so we never update a stale duplicate record
+  const pipelineId = await getPipelineIdForStage(stageId)
+  const existing = await prisma.pipelineLead.findFirst({
+    where: {
+      contactId,
+      ...(pipelineId ? { stage: { pipelineId } } : {}),
+    },
+    orderBy: { updatedAt: "desc" },
+  })
   if (existing) {
     await prisma.pipelineLead.update({ where: { id: existing.id }, data: { stageId } })
   } else {

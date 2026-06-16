@@ -13,12 +13,13 @@ export async function POST(req: Request) {
     const { contactId, stageId, pipelineId } = await req.json()
     if (!contactId || !stageId) return NextResponse.json({ error: "contactId and stageId required" }, { status: 400 })
 
-    // Find existing lead entry in this pipeline
-    const existing = pipelineId
-      ? await prisma.pipelineLead.findFirst({
-          where: { contactId, stage: { pipelineId } },
-        })
-      : null
+    // Find existing lead — scope to pipeline when known, otherwise get the most recent
+    const existing = await prisma.pipelineLead.findFirst({
+      where: pipelineId
+        ? { contactId, stage: { pipelineId } }
+        : { contactId },
+      orderBy: { updatedAt: "desc" },
+    })
 
     let lead
     if (existing) {

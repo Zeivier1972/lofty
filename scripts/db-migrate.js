@@ -871,6 +871,36 @@ async function seedReIgniteDrip(db) {
   console.log("[db-migrate] Re-Ignite drip seeded (15 pasos, 90 días, español)")
 }
 
+// ─── Dedup PipelineLeads — keep only the most recently updated per contact ────
+
+async function dedupPipelineLeads(db) {
+  // Find contacts with more than one PipelineLead record
+  const groups = await db.$queryRaw`
+    SELECT "contactId", COUNT(*) as cnt
+    FROM "PipelineLead"
+    GROUP BY "contactId"
+    HAVING COUNT(*) > 1
+  `
+  if (!groups.length) {
+    console.log("[db-migrate] No duplicate PipelineLeads found")
+    return
+  }
+
+  let removed = 0
+  for (const { contactId } of groups) {
+    // Get all records for this contact ordered by most recent first
+    const records = await db.pipelineLead.findMany({
+      where: { contactId },
+      orderBy: { updatedAt: "desc" },
+    })
+    // Keep the first (most recent), delete the rest
+    const toDelete = records.slice(1).map(r => r.id)
+    await db.pipelineLead.deleteMany({ where: { id: { in: toDelete } } })
+    removed += toDelete.length
+  }
+  console.log(`[db-migrate] Removed ${removed} duplicate PipelineLead record(s)`)
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -883,6 +913,7 @@ async function main() {
   await seedColombiaPlan(db).catch(e => console.warn("[db-migrate] Colombia plan skip:", e.message))
   await seedBookingUrl(db).catch(e => console.warn("[db-migrate] booking url skip:", e.message))
   await seedReIgniteDrip(db).catch(e => console.warn("[db-migrate] Re-Ignite drip skip:", e.message))
+  await dedupPipelineLeads(db).catch(e => console.warn("[db-migrate] dedup pipeline leads skip:", e.message))
   await db.$disconnect()
   console.log("[db-migrate] done")
 }
