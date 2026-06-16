@@ -196,6 +196,218 @@ const emailConsultaGratuita = `<div style="max-width:600px;margin:0 auto;font-fa
 </div>
 </div>`
 
+// ─── First-Time Buyers smart plan seed ───────────────────────────────────────
+
+async function seedFirstTimeBuyersPlan(db) {
+  const exists = await db.smartPlan.findFirst({
+    where: { name: "Compradores de Primera Vez — Guía Educativa" },
+  })
+  if (exists) {
+    console.log("[db-migrate] First-Time Buyers plan already exists, skipping")
+    return
+  }
+
+  await db.smartPlan.create({
+    data: {
+      name: "Compradores de Primera Vez — Guía Educativa",
+      description: "Plan educativo de 30 días en español para compradores de primera vez. Guía paso a paso: crédito, pago inicial, pre-aprobación, búsqueda y cierre.",
+      trigger: "NEW_LEAD",
+      isActive: true,
+      steps: {
+        create: [
+          {
+            order: 0,
+            type: "EMAIL",
+            delay: 0,
+            subject: "¡Bienvenido(a) a tu viaje hacia tu primera casa!",
+            content: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;">
+<div style="background:linear-gradient(135deg,#4F46E5 0%,#7C3AED 100%);padding:36px 30px;text-align:center;">
+  <h1 style="color:#fff;margin:0;font-size:24px;font-weight:700;">Catherine Gomez Realtor</h1>
+  <p style="color:rgba(255,255,255,0.85);margin:6px 0 0;font-size:13px;">Tu asesora de bienes raíces en Miami</p>
+</div>
+<img src="https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=600&q=80" style="width:100%;height:200px;object-fit:cover;display:block;" alt="New Home"/>
+<div style="padding:36px 30px;">
+  <h2 style="color:#4F46E5;font-size:20px;margin:0 0 14px;">¡Hola {first_name}! 🏠</h2>
+  <p style="color:#555;line-height:1.7;margin:0 0 14px;">¡Felicidades por dar el primer paso hacia tu hogar propio! Vamos a guiarte paso a paso en este emocionante proceso.</p>
+  <div style="background:#EEF2FF;border-radius:8px;padding:18px;margin:18px 0;">
+    <p style="margin:0 0 10px;font-weight:700;color:#4F46E5;">¿Qué aprenderás en las próximas semanas?</p>
+    <p style="margin:0;color:#555;font-size:13px;line-height:2;">✅ Cómo mejorar tu crédito<br>✅ El proceso de pre-aprobación<br>✅ Cómo ahorrar para el pago inicial<br>✅ Qué buscar en una propiedad<br>✅ El proceso de cierre</p>
+  </div>
+  <div style="text-align:center;margin:28px 0;">
+    <a href="{calendly_url}" style="background:#4F46E5;color:#fff;padding:14px 32px;border-radius:50px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block;">📅 Agenda tu consulta gratuita</a>
+    <p style="color:#888;font-size:11px;margin:8px 0 0;">Sin costo · Sin compromiso · En español</p>
+  </div>
+</div>
+<div style="background:#4F46E5;padding:20px 30px;text-align:center;">
+  <p style="color:#fff;margin:0 0 4px;font-weight:700;">Catherine Gomez, Realtor</p>
+  <p style="color:rgba(255,255,255,0.8);margin:0;font-size:12px;">📞 {agent_phone} · catherinegomezrealtor.com</p>
+</div>
+</div>`,
+          },
+          {
+            order: 1,
+            type: "SMS",
+            delay: 2,
+            content: "Hola {first_name}! Soy Sofía, asistente de Catherine Gomez Realtor 🏠 ¿Sabías que puedes calificar para hasta $15,000 en asistencia para comprador de primera vez? Catherine te explica todo: {calendly_url}",
+          },
+          {
+            order: 2,
+            type: "EMAIL",
+            delay: 5,
+            subject: "Paso 1: Conoce tu puntaje de crédito 💳",
+            content: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;">
+<div style="background:linear-gradient(135deg,#4F46E5 0%,#7C3AED 100%);padding:36px 30px;text-align:center;">
+  <h1 style="color:#fff;margin:0;font-size:24px;">Catherine Gomez Realtor</h1>
+</div>
+<div style="padding:36px 30px;">
+  <h2 style="color:#4F46E5;font-size:20px;margin:0 0 14px;">Tu Crédito es tu Poder 💳</h2>
+  <p style="color:#555;line-height:1.7;margin:0 0 14px;">Hola {first_name}, el primer paso para comprar una casa es conocer tu puntaje de crédito.</p>
+  <div style="background:#F8FAFC;border-radius:8px;padding:18px;margin:18px 0;border:1px solid #E2E8F0;">
+    <p style="margin:0 0 8px;font-weight:700;color:#1E3A5F;">¿Qué necesitas saber?</p>
+    <p style="margin:0;color:#555;font-size:13px;line-height:2;">📊 Puntaje de 620+ → préstamos convencionales<br>📊 Puntaje de 580+ → préstamos FHA (ideal para primera vez)<br>💡 Ve tu crédito gratis en AnnualCreditReport.com</p>
+  </div>
+  <p style="color:#555;line-height:1.7;">¿Tienes preguntas sobre tu crédito? Catherine puede conectarte con prestamistas de confianza que hablan español.</p>
+  <div style="text-align:center;margin:24px 0;">
+    <a href="{calendly_url}" style="background:#4F46E5;color:#fff;padding:14px 32px;border-radius:50px;text-decoration:none;font-weight:700;display:inline-block;">Hablar con Catherine →</a>
+  </div>
+</div>
+<div style="background:#4F46E5;padding:20px 30px;text-align:center;">
+  <p style="color:#fff;margin:0 0 4px;font-weight:700;">Catherine Gomez, Realtor</p>
+  <p style="color:rgba(255,255,255,0.8);margin:0;font-size:12px;">📞 {agent_phone} · catherinegomezrealtor.com</p>
+</div>
+</div>`,
+          },
+          {
+            order: 3,
+            type: "EMAIL",
+            delay: 10,
+            subject: "Paso 2: ¿Cuánto necesitas para el pago inicial? 💰",
+            content: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;">
+<div style="background:linear-gradient(135deg,#4F46E5 0%,#7C3AED 100%);padding:36px 30px;text-align:center;">
+  <h1 style="color:#fff;margin:0;font-size:24px;">Catherine Gomez Realtor</h1>
+</div>
+<div style="padding:36px 30px;">
+  <h2 style="color:#4F46E5;font-size:20px;margin:0 0 14px;">El Pago Inicial — Más Fácil de lo que Crees 💰</h2>
+  <p style="color:#555;line-height:1.7;margin:0 0 14px;">Hola {first_name}, uno de los mitos más comunes es que necesitas el 20% de pago inicial. ¡Hay opciones mucho más accesibles!</p>
+  <div style="background:#F0FFF4;border:1px solid #A7F3D0;border-radius:8px;padding:18px;margin:18px 0;">
+    <p style="margin:0;color:#555;font-size:13px;line-height:2;">🏦 <strong>FHA:</strong> Solo 3.5% de pago inicial<br>🏦 <strong>Convencional:</strong> Desde 3% para primera vez<br>🏦 <strong>VA:</strong> 0% si eres veterano o militar<br>🎁 <strong>Asistencia:</strong> Hasta $25,000 en algunos programas</p>
+  </div>
+  <p style="color:#555;line-height:1.7;">Catherine trabaja con prestamistas especializados en compradores de primera vez.</p>
+  <div style="text-align:center;margin:24px 0;">
+    <a href="{calendly_url}" style="background:#4F46E5;color:#fff;padding:14px 32px;border-radius:50px;text-decoration:none;font-weight:700;display:inline-block;">📅 Agenda tu consulta gratuita</a>
+  </div>
+</div>
+<div style="background:#4F46E5;padding:20px 30px;text-align:center;">
+  <p style="color:#fff;margin:0 0 4px;font-weight:700;">Catherine Gomez, Realtor</p>
+  <p style="color:rgba(255,255,255,0.8);margin:0;font-size:12px;">📞 {agent_phone} · catherinegomezrealtor.com</p>
+</div>
+</div>`,
+          },
+          {
+            order: 4,
+            type: "SMS",
+            delay: 14,
+            content: "Hola {first_name}! Ya tienes pre-aprobación? 🔑 Es el paso más importante. Catherine puede conectarte con prestamistas de confianza hoy — llámala: {agent_phone} o agenda: {calendly_url}",
+          },
+          {
+            order: 5,
+            type: "EMAIL",
+            delay: 18,
+            subject: "Paso 3: Pre-aprobación — Tu llave maestra 🔑",
+            content: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;">
+<div style="background:linear-gradient(135deg,#4F46E5 0%,#7C3AED 100%);padding:36px 30px;text-align:center;">
+  <h1 style="color:#fff;margin:0;font-size:24px;">Catherine Gomez Realtor</h1>
+</div>
+<div style="padding:36px 30px;">
+  <h2 style="color:#4F46E5;font-size:20px;margin:0 0 14px;">La Pre-aprobación te da Poder de Negociación 🔑</h2>
+  <p style="color:#555;line-height:1.7;margin:0 0 14px;">Hola {first_name}, tener una carta de pre-aprobación es como tener una llave maestra — los vendedores te toman más en serio y puedes negociar mejor.</p>
+  <div style="background:#F8FAFC;border-radius:8px;padding:18px;margin:18px 0;border:1px solid #E2E8F0;">
+    <p style="margin:0 0 8px;font-weight:700;color:#1E3A5F;">Documentos típicamente necesarios:</p>
+    <p style="margin:0;color:#555;font-size:13px;line-height:2;">📄 Últimas 2 declaraciones de impuestos<br>📄 Últimos 2 meses de estados de cuenta<br>📄 Comprobantes de ingreso (últimas 2 quincenas)<br>📄 Identificación oficial</p>
+  </div>
+  <div style="text-align:center;margin:24px 0;">
+    <a href="{calendly_url}" style="background:#4F46E5;color:#fff;padding:14px 32px;border-radius:50px;text-decoration:none;font-weight:700;display:inline-block;">🚀 Agenda tu cita hoy — Es gratis</a>
+  </div>
+</div>
+<div style="background:#4F46E5;padding:20px 30px;text-align:center;">
+  <p style="color:#fff;margin:0 0 4px;font-weight:700;">Catherine Gomez, Realtor</p>
+  <p style="color:rgba(255,255,255,0.8);margin:0;font-size:12px;">📞 {agent_phone} · catherinegomezrealtor.com</p>
+</div>
+</div>`,
+          },
+          {
+            order: 6,
+            type: "TASK",
+            delay: 21,
+            taskType: "CALL",
+            taskTitle: "Llamar a {first_name} — Revisión de Pre-calificación",
+            content: "Verificar si el cliente ha revisado su crédito y tiene preguntas sobre el pago inicial. Ofrecer conectar con prestamistas de confianza.",
+          },
+          {
+            order: 7,
+            type: "EMAIL",
+            delay: 25,
+            subject: "Paso 4: Encontrando tu hogar ideal en Miami 🏡",
+            content: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;">
+<div style="background:linear-gradient(135deg,#4F46E5 0%,#7C3AED 100%);padding:36px 30px;text-align:center;">
+  <h1 style="color:#fff;margin:0;font-size:24px;">Catherine Gomez Realtor</h1>
+</div>
+<img src="https://images.unsplash.com/photo-1533106497176-45ae19e68ba2?w=600&q=80" style="width:100%;height:200px;object-fit:cover;display:block;" alt="Miami"/>
+<div style="padding:36px 30px;">
+  <h2 style="color:#4F46E5;font-size:20px;margin:0 0 14px;">¿Qué buscar en tu primera casa? 🏡</h2>
+  <p style="color:#555;line-height:1.7;margin:0 0 14px;">Hola {first_name}, ahora viene la parte emocionante — ¡buscar tu hogar! Aquí lo que Catherine recomienda considerar:</p>
+  <div style="background:#F8FAFC;border-radius:8px;padding:18px;margin:18px 0;border:1px solid #E2E8F0;">
+    <p style="margin:0;color:#555;font-size:13px;line-height:2.2;">📍 <strong>Ubicación:</strong> Escuelas, transporte, seguridad<br>🏠 <strong>Estado:</strong> ¿Qué tan nuevo es el techo y los sistemas?<br>💹 <strong>Valor de reventa:</strong> ¿El vecindario está en crecimiento?<br>📐 <strong>Espacio:</strong> ¿Tiene cuartos suficientes para tu familia?</p>
+  </div>
+  <div style="text-align:center;margin:24px 0;">
+    <a href="{calendly_url}" style="background:#4F46E5;color:#fff;padding:14px 32px;border-radius:50px;text-decoration:none;font-weight:700;display:inline-block;">🔍 Iniciar búsqueda con Catherine</a>
+  </div>
+</div>
+<div style="background:#4F46E5;padding:20px 30px;text-align:center;">
+  <p style="color:#fff;margin:0 0 4px;font-weight:700;">Catherine Gomez, Realtor</p>
+  <p style="color:rgba(255,255,255,0.8);margin:0;font-size:12px;">📞 {agent_phone} · catherinegomezrealtor.com</p>
+</div>
+</div>`,
+          },
+          {
+            order: 8,
+            type: "SMS",
+            delay: 28,
+            content: "Hola {first_name}! ¿Listo para ver propiedades? 🏠 Catherine tiene acceso a listings exclusivos en Miami que no están en Zillow. Agenda aquí: {calendly_url} · {agent_phone}",
+          },
+          {
+            order: 9,
+            type: "EMAIL",
+            delay: 30,
+            subject: "¡El paso final — hacer una oferta! 🎉",
+            content: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;">
+<div style="background:linear-gradient(135deg,#4F46E5 0%,#7C3AED 100%);padding:36px 30px;text-align:center;">
+  <h1 style="color:#fff;margin:0;font-size:24px;">Catherine Gomez Realtor</h1>
+</div>
+<div style="padding:36px 30px;">
+  <h2 style="color:#4F46E5;font-size:20px;margin:0 0 14px;">¡El Paso Final — Hacer una Oferta! 🎉</h2>
+  <p style="color:#555;line-height:1.7;margin:0 0 14px;">Hola {first_name}, cuando encuentres la propiedad perfecta, Catherine te guiará para hacer una oferta competitiva.</p>
+  <div style="background:#F8FAFC;border-radius:8px;padding:18px;margin:18px 0;border:1px solid #E2E8F0;">
+    <p style="margin:0;color:#555;font-size:13px;line-height:2.2;">✍️ <strong>La oferta:</strong> Catherine negocia en tu nombre<br>🔍 <strong>Inspección:</strong> Un inspector revisa la propiedad<br>🏦 <strong>Tasación:</strong> El banco confirma el valor<br>📝 <strong>Cierre:</strong> ¡Firmas y recibes las llaves!</p>
+  </div>
+  <p style="color:#555;line-height:1.7;">Los costos de cierre típicamente son del 2-5% del precio. Catherine te explicará cada detalle.</p>
+  <div style="text-align:center;margin:28px 0;">
+    <a href="{calendly_url}" style="background:#4F46E5;color:#fff;padding:15px 36px;border-radius:50px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block;">📅 Agenda tu cita con Catherine — Es gratis</a>
+  </div>
+</div>
+<div style="background:#4F46E5;padding:20px 30px;text-align:center;">
+  <p style="color:#fff;margin:0 0 4px;font-weight:700;">Catherine Gomez, Realtor</p>
+  <p style="color:rgba(255,255,255,0.8);margin:0;font-size:12px;">📞 {agent_phone} · catherinegomezrealtor.com</p>
+</div>
+</div>`,
+          },
+        ],
+      },
+    },
+  })
+  console.log("[db-migrate] First-Time Buyers smart plan created (10 steps, 30 days)")
+}
+
 // ─── Colombia investor smart plan seed ───────────────────────────────────────
 
 async function seedColombiaPlan(db) {
@@ -326,6 +538,7 @@ async function main() {
   for (const sql of STMTS) {
     await db.$executeRawUnsafe(sql).catch(e => console.warn("[db-migrate] skip:", e.message))
   }
+  await seedFirstTimeBuyersPlan(db).catch(e => console.warn("[db-migrate] First-time buyers plan skip:", e.message))
   await seedColombiaPlan(db).catch(e => console.warn("[db-migrate] Colombia plan skip:", e.message))
   await seedBookingUrl(db).catch(e => console.warn("[db-migrate] booking url skip:", e.message))
   await db.$disconnect()
