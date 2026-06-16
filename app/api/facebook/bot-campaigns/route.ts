@@ -9,7 +9,7 @@ function parseKeywords(keywords: string): string[] {
 }
 
 function serializeKeywords(arr: string[]): string {
-  return [...new Set(arr.map(k => k.trim().toUpperCase()).filter(Boolean))].join(",")
+  return Array.from(new Set(arr.map(k => k.trim().toUpperCase()).filter(Boolean))).join(",")
 }
 
 export async function GET() {

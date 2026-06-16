@@ -4,6 +4,7 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { chatWithAI } from "@/lib/ai-agent"
 import { sendWhatsApp } from "@/lib/sms"
+import { handleLeadEngaged } from "@/lib/lead-flow"
 
 export async function POST(req: Request) {
   const formData = await req.formData()
@@ -68,15 +69,8 @@ export async function POST(req: Request) {
       },
     })
 
-    await prisma.aINotification.create({
-      data: {
-        type: "WHATSAPP_RECEIVED",
-        title: `WhatsApp from ${contact.firstName} ${contact.lastName}`,
-        body: body.slice(0, 120),
-        priority: "HIGH",
-        contactId: contact.id,
-      },
-    })
+    // Move to Warm pipeline, pause drip enrollments, notify Catherine
+    handleLeadEngaged(contact.id, "WhatsApp", body).catch(() => {})
   }
 
   return new NextResponse(
