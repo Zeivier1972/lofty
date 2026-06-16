@@ -544,7 +544,7 @@ async function seedAIConfig(db) {
     await db.aIConfig.update({
       where: { id: config.id },
       data: {
-        systemPrompt: null,  // Let it be built dynamically
+        systemPrompt: null,
         agentName: config.agentName === "Alex" || !config.agentName ? "Sofia" : config.agentName,
         realtorName: !config.realtorName || config.realtorName === "Alex" ? "Catherine" : config.realtorName,
       },
