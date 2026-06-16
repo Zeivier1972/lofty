@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import {
-  Zap, Plus, Mail, MessageSquare, CheckSquare, Clock,
+  Zap, Plus, Mail, MessageSquare, MessageCircle, CheckSquare, Clock,
   Play, Pause, Users, MoreVertical, ArrowDown,
   Edit, Trash2, X, Save, ChevronDown,
 } from "lucide-react"
@@ -16,7 +16,7 @@ import { useToast } from "@/components/ui/use-toast"
 interface Step {
   id?: string
   order: number
-  type: "EMAIL" | "SMS" | "WAIT" | "TASK"
+  type: "EMAIL" | "SMS" | "WHATSAPP" | "WAIT" | "TASK"
   delay: number
   subject?: string
   content?: string
@@ -42,6 +42,7 @@ const TRIGGERS = [
 ]
 
 const STEP_TYPES = [
+  { type: "WHATSAPP" as const, label: "WhatsApp", icon: MessageCircle, color: "bg-[#25D366]", textColor: "text-[#128C7E]", bg: "bg-green-50 border-green-300" },
   { type: "SMS" as const, label: "Auto Text", icon: MessageSquare, color: "bg-green-500", textColor: "text-green-700", bg: "bg-green-50 border-green-200" },
   { type: "EMAIL" as const, label: "Auto Email", icon: Mail, color: "bg-blue-500", textColor: "text-blue-700", bg: "bg-blue-50 border-blue-200" },
   { type: "WAIT" as const, label: "Wait", icon: Clock, color: "bg-amber-500", textColor: "text-amber-700", bg: "bg-amber-50 border-amber-200" },
@@ -75,7 +76,7 @@ function StepNode({ step, index, onEdit, onDelete }: {
                 Wait for <span className="font-semibold text-amber-600">{step.delay} day{step.delay !== 1 ? "s" : ""}</span>
               </p>
             )}
-            {step.type === "SMS" && step.content && (
+            {(step.type === "SMS" || step.type === "WHATSAPP") && step.content && (
               <p className="text-sm text-gray-600 mt-1 truncate">{step.content}</p>
             )}
             {step.type === "EMAIL" && (
@@ -147,13 +148,18 @@ function StepEditor({ step, onChange, onSave, onCancel }: {
             </div>
           </>
         )}
-        {step.type === "SMS" && (
+        {(step.type === "SMS" || step.type === "WHATSAPP") && (
           <div>
-            <label className="text-xs text-gray-500 mb-1 block">Text Message</label>
+            <label className="text-xs text-gray-500 mb-1 block">
+              {step.type === "WHATSAPP" ? "WhatsApp Message" : "Text Message"}
+            </label>
             <textarea value={step.content || ""}
               onChange={e => onChange({ ...step, content: e.target.value })}
-              rows={3} placeholder="Message text..."
+              rows={4} placeholder="Message text... Use {first_name}, {calendly_url}, {agent_phone}"
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-lofty-500 outline-none resize-none" />
+            {step.type === "WHATSAPP" && (
+              <p className="text-xs text-[#128C7E] mt-1">Sent via WhatsApp · Supports line breaks &amp; emojis</p>
+            )}
           </div>
         )}
         {step.type === "TASK" && (
@@ -205,7 +211,7 @@ function PlanBuilder({ initial, tags, onSave, onClose }: {
       type,
       delay: type === "WAIT" ? 1 : 0,
       subject: type === "EMAIL" ? "" : undefined,
-      content: type === "SMS" || type === "EMAIL" ? "" : undefined,
+      content: type === "SMS" || type === "WHATSAPP" || type === "EMAIL" ? "" : undefined,
       taskTitle: type === "TASK" ? "" : undefined,
     }
     setSteps(prev => [...prev, newStep])

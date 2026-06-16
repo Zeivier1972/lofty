@@ -19,10 +19,45 @@ export interface LeadData {
   notes?: string          // extra context from form answers
   smsConsent?: boolean
   facebookLeadId?: string
+  tags?: string[]        // tag names to apply on creation (triggers smart plan enrollment)
+}
+
+export async function checkAndEnrollSmartPlans(contactId: string, tagId: string): Promise<void> {
+  const plans = await prisma.smartPlan.findMany({
+    where: { isActive: true, trigger: `CONTACT_TAGGED:${tagId}` },
+    include: { steps: { where: { order: 0 }, take: 1 } },
+  })
+  for (const plan of plans) {
+    const already = await prisma.smartPlanEnrollment.findFirst({
+      where: { contactId, planId: plan.id, status: "ACTIVE" },
+    })
+    if (!already) {
+      const delay = plan.steps[0]?.delay ?? 0
+      const nextStepAt = new Date(Date.now() + delay * 86400000)
+      await prisma.smartPlanEnrollment.create({
+        data: { contactId, planId: plan.id, status: "ACTIVE", currentStep: 0, nextStepAt },
+      })
+      console.log(`[SMART PLAN] Auto-enrolled ${contactId} in "${plan.name}" via tag ${tagId}`)
+    }
+  }
+}
+
+export async function applyTagAndEnroll(contactId: string, tagName: string): Promise<void> {
+  const tag = await prisma.tag.upsert({
+    where: { name: tagName },
+    update: {},
+    create: { name: tagName, color: "#10B981" },
+  })
+  await prisma.contactTag.upsert({
+    where: { contactId_tagId: { contactId, tagId: tag.id } },
+    create: { contactId, tagId: tag.id },
+    update: {},
+  })
+  await checkAndEnrollSmartPlans(contactId, tag.id)
 }
 
 export async function ingestLead(data: LeadData): Promise<{ contactId: string; isNew: boolean }> {
-  const { firstName, lastName, email, phone, source, campaign, budget, location, bedroomsMin, propertyType, message, notes, smsConsent, facebookLeadId } = data
+  const { firstName, lastName, email, phone, source, campaign, budget, location, bedroomsMin, propertyType, message, notes, smsConsent, facebookLeadId, tags } = data
 
   const phoneDigits = phone ? phone.replace(/\D/g, "").slice(-10) : null
 
@@ -151,6 +186,13 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
   // Score (fire and forget)
   scoreContact(contact.id).catch(() => {})
 
+  // Apply tags and auto-enroll in matching CONTACT_TAGGED smart plans
+  if (tags?.length) {
+    for (const tagName of tags) {
+      applyTagAndEnroll(contact.id, tagName).catch(e => console.error("[INGEST] Tag apply error:", e))
+    }
+  }
+
   // Direct outreach — works without Anthropic API key
   const cfg = await prisma.aIConfig.findFirst()
   const autoSMS   = cfg?.autoRespondSMS   !== false
@@ -206,6 +248,7 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
       bedrooms: bedroomsMin ?? null,
       campaign: campaign ?? null,
       propertyType: propertyType ?? null,
+      investorProfile: tags?.includes("Investor_colombia") ? "colombia" as const : undefined,
     }
 
     // Check if we're in business hours (8am–9pm ET, Mon–Sat)

@@ -18,6 +18,29 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     update: {},
   })
 
+  // Auto-enroll in any CONTACT_TAGGED smart plans matching this tag
+  const plans = await prisma.smartPlan.findMany({
+    where: { isActive: true, trigger: `CONTACT_TAGGED:${tagId}` },
+    include: { steps: { where: { order: 0 }, take: 1 } },
+  })
+  for (const plan of plans) {
+    const already = await prisma.smartPlanEnrollment.findFirst({
+      where: { contactId: params.id, planId: plan.id, status: "ACTIVE" },
+    })
+    if (!already) {
+      const delay = plan.steps[0]?.delay ?? 0
+      await prisma.smartPlanEnrollment.create({
+        data: {
+          contactId: params.id,
+          planId: plan.id,
+          status: "ACTIVE",
+          currentStep: 0,
+          nextStepAt: new Date(Date.now() + delay * 86400000),
+        },
+      })
+    }
+  }
+
   return NextResponse.json({ success: true })
 }
 

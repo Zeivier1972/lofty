@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { sendEmail } from "@/lib/email"
-import { sendSMS } from "@/lib/sms"
+import { sendSMS, sendWhatsApp } from "@/lib/sms"
 
 // GET /api/cron/smart-plans
 // Called by Railway cron every hour.
@@ -121,6 +121,21 @@ export async function GET(req: Request) {
             data: {
               type: "SMS",
               title: `Smart Plan SMS`,
+              description: fill(step.content).slice(0, 120),
+              contactId: contact.id,
+            },
+          })
+        }
+      } else if (step.type === "WHATSAPP" && step.content) {
+        if (!contact.doNotCall && contact.phone) {
+          const toPhone = contact.phone.startsWith("+")
+            ? contact.phone
+            : `+1${contact.phone.replace(/\D/g, "").slice(-10)}`
+          await sendWhatsApp(toPhone, fill(step.content))
+          await prisma.activity.create({
+            data: {
+              type: "SMS",
+              title: "Smart Plan WhatsApp",
               description: fill(step.content).slice(0, 120),
               contactId: contact.id,
             },

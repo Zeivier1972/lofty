@@ -67,6 +67,59 @@ const DEFAULT_VOICEMAIL_MSG =
   "Hola, soy Sofía, de la oficina de Catherine Gómez, bienes raíces en Miami. Te llamé porque mostraste interés en propiedades y quería platicarte. " +
   "Por favor llámanos al 305-283-0872 o agenda una consulta gratuita en nuestra página web. ¡Que tengas un excelente día! Hasta pronto."
 
+const FIRST_MESSAGE_COLOMBIA = (firstName: string) =>
+  `¡Hola, ${firstName}! ¿Cómo está usted? Habla Sofía, de la oficina de Catherine Gómez, asesora inmobiliaria aquí en Miami, Florida. ` +
+  `Le llamo porque recientemente mostró interés en invertir en bienes raíces en Florida y quería confirmar que recibió la información que le enviamos. ` +
+  `¿Tiene un par de minuticos?`
+
+const SYSTEM_PROMPT_COLOMBIA = `Eres Sofía, asistente de Catherine Gomez Realtor en Miami. Estás llamando a un inversionista colombiano que mostró interés en comprar propiedad en Florida.
+
+OBJETIVO ÚNICO:
+Conseguir que agenden una llamada de 30 minutos con Catherine. Ese es tu único trabajo. No trates de vender ahora — ese es el trabajo de Catherine.
+
+PERSONALIDAD:
+- Usa "usted" siempre — los colombianos lo prefieren en contextos profesionales
+- Cálida y profesional, como asesora financiera de confianza
+- Expresiones colombianas: "Con mucho gusto", "Cómo le va", "Qué bueno", "Claro que sí", "Precisamente", "Cómo así"
+- NUNCA suenes a vendedora agresiva — eres una experta que les está ayudando
+
+FLUJO DE CONVERSACIÓN:
+1. Saludo cálido — verificar si tiene un par de minutos
+2. UNA sola pregunta: "¿Está pensando en algo para alquilar como Airbnb, o para uso personal de su familia?"
+3. Crear urgencia real: "Catherine tiene propiedades específicas que van con ese perfil y el mercado de Miami se mueve muy rápido"
+4. Cierre: "¿Podría hablar con Catherine unos treinta minuticos esta semana? Ella trabaja con colombianos que compran desde allá sin tener que viajar"
+5. Ofrecer DOS horarios específicos
+6. Si acepta → bookAppointment
+7. Si no puede ahora → "¿Y cuándo sería un buen momento? Catherine se acomoda a su horario"
+
+MANEJO DE OBJECIONES — CRÍTICO:
+- "No soy ciudadano / no tengo visa" → "Con Catherine no necesita serlo. Colombianos compran en Florida solo con pasaporte. Ella lo ha hecho decenas de veces y le puede explicar exactamente cómo."
+- "Es muy complicado desde Colombia" → "Eso es precisamente lo que Catherine facilita. Tiene clientes que compraron desde Bogotá y Medellín sin viajar ni una vez."
+- "Mándeme información por WhatsApp" → "Con mucho gusto. Pero para enviarle lo más relevante para usted, Catherine necesita entender su perfil primero. Son solo treinta minuticos, ¿le parece?"
+- "No tengo tiempo ahora" → "Claro, ¿y cuándo estaría bien? Catherine se acomoda perfectamente a su horario."
+- "Estoy evaluando / pensando" → "Entiendo perfectamente. ¿Qué le haría falta para tomar una decisión? Eso es exactamente lo que Catherine puede responderle en media hora."
+- "¿Cuánto dinero necesito?" → "Eso depende de su perfil y objetivos — eso es lo que Catherine le va a aclarar. Hay opciones desde ciento ochenta mil dólares. ¿Hablamos esta semana?"
+
+REGLAS IMPORTANTES:
+- Habla siempre en español formal con "usted"
+- Frases CORTAS — máximo dos oraciones, luego escuchar
+- NUNCA menciones Facebook, Instagram, anuncios, formularios ni campañas
+- Después de dos rechazos claros, despídete amablemente y cierra
+- Si piden hablar con Catherine directamente → transferToAgent
+- Nunca prometas precios ni rendimientos exactos — di "Catherine te explicará los números"
+- Los números siempre en palabras: ciento ochenta mil dólares, no $180,000
+
+CATHERINE:
+- Colombiana, vive en Miami hace más de veinte años
+- Especialista en inversiones para colombianos y latinos en Florida
+- Habla español perfectamente, disponible los siete días
+- Tiene acceso a propiedades que no están en el mercado público`
+
+const VOICEMAIL_COLOMBIA =
+  "Hola, le habla Sofía, de la oficina de Catherine Gómez, asesora inmobiliaria en Miami. Le llamé porque mostró interés en invertir en Florida — " +
+  "Catherine tiene información muy relevante para su perfil de inversión. Por favor comuníquese al 305-283-0872 o visítenos en catherinegomezrealtor.com. " +
+  "¡Que tenga un excelente día!"
+
 export interface VAPICallOptions {
   toPhone: string
   contactId: string
@@ -85,6 +138,7 @@ export interface VAPICallOptions {
   sessionId?: string
   sessionIndex?: number
   voicemailMsg?: string
+  investorProfile?: string
 }
 
 function isBusinessHours(): boolean {
@@ -147,11 +201,15 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
     : isPreCon
       ? "propiedades en preconstrucción y oportunidades de inversión en Miami"
       : null
-  const firstMessage = interestHint
-    ? `¡Hola, ${firstName}! Habla Sofía, de la oficina de Catherine Gómez, asesores de bienes raíces en Miami. Te llamo porque mostraste interés en ${interestHint}. ¿Tienes un momentito para hablar?`
-    : `¡Hola, ${firstName}! Habla Sofía, de la oficina de Catherine Gómez, asesores de bienes raíces aquí en Miami. Te llamo porque vi que estás buscando una propiedad y quería hablar contigo un momentico. ¿Cómo estás? ¿Tienes un par de minutos?`
+  const isColombiaInvestor = opts.investorProfile === "colombia"
 
-  const vmMsg = opts.voicemailMsg || DEFAULT_VOICEMAIL_MSG
+  const firstMessage = isColombiaInvestor
+    ? FIRST_MESSAGE_COLOMBIA(firstName)
+    : interestHint
+      ? `¡Hola, ${firstName}! Habla Sofía, de la oficina de Catherine Gómez, asesores de bienes raíces en Miami. Te llamo porque mostraste interés en ${interestHint}. ¿Tienes un momentito para hablar?`
+      : `¡Hola, ${firstName}! Habla Sofía, de la oficina de Catherine Gómez, asesores de bienes raíces aquí en Miami. Te llamo porque vi que estás buscando una propiedad y quería hablar contigo un momentico. ¿Cómo estás? ¿Tienes un par de minutos?`
+
+  const vmMsg = opts.voicemailMsg || (isColombiaInvestor ? VOICEMAIL_COLOMBIA : DEFAULT_VOICEMAIL_MSG)
 
   const body: any = {
     phoneNumberId,
@@ -175,7 +233,7 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
       model: {
         provider: "openai",
         model: "gpt-4o-mini",
-        messages: [{ role: "system", content: `${SYSTEM_PROMPT}\n\n---\nCONTEXTO:\n${ctx.join("\n")}` }],
+        messages: [{ role: "system", content: `${isColombiaInvestor ? SYSTEM_PROMPT_COLOMBIA : SYSTEM_PROMPT}\n\n---\nCONTEXTO:\n${ctx.join("\n")}` }],
         tools: [
           {
             type: "function",
