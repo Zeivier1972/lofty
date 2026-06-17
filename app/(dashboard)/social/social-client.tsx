@@ -7,7 +7,7 @@ import {
   Plus, Settings, Eye, Heart, MessageCircle, Share2,
   BarChart3, Pencil, Trash2, Calendar, Globe,
   TrendingUp, Image, FileText, DollarSign, Home, Users,
-  RefreshCw, ExternalLink,
+  RefreshCw, ExternalLink, AlertCircle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -100,6 +100,34 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
   // Account connect state
   const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null)
   const [connectForm, setConnectForm] = useState({ accountName: "", accessToken: "", pageId: "" })
+  const [youtubeBanner, setYoutubeBanner] = useState<{ type: "success" | "error"; msg: string } | null>(null)
+
+  // Read YouTube OAuth result from URL params on mount
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const params = new URLSearchParams(window.location.search)
+    const tab = params.get("tab")
+    const connected = params.get("youtube_connected")
+    const err = params.get("youtube_error")
+    if (connected === "1") {
+      setActiveTab("accounts")
+      setYoutubeBanner({ type: "success", msg: "YouTube connected successfully! Videos will now be uploaded automatically." })
+      // Clean the URL
+      window.history.replaceState({}, "", window.location.pathname)
+    } else if (err) {
+      setActiveTab("accounts")
+      const messages: Record<string, string> = {
+        no_refresh_token: "Google didn't return a refresh token. Please revoke app access in your Google account and try again.",
+        not_configured: "YOUTUBE_CLIENT_ID or YOUTUBE_CLIENT_SECRET is not set in Railway environment variables.",
+        server_error: "A server error occurred during YouTube authorization.",
+        cancelled: "YouTube authorization was cancelled.",
+      }
+      setYoutubeBanner({ type: "error", msg: messages[err] ?? `Authorization failed: ${err}` })
+      window.history.replaceState({}, "", window.location.pathname)
+    } else if (tab === "accounts") {
+      setActiveTab("accounts")
+    }
+  }, [])
 
   const connectedPlatforms = new Set(accounts.filter(a => a.isConnected).map(a => a.platform))
 
@@ -645,6 +673,20 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
         {/* ── ACCOUNTS ── */}
         {activeTab === "accounts" && (
           <div className="max-w-3xl mx-auto space-y-4">
+            {youtubeBanner && (
+              <div className={cn(
+                "flex items-start gap-3 rounded-xl p-4 text-sm border",
+                youtubeBanner.type === "success"
+                  ? "bg-green-50 border-green-200 text-green-800"
+                  : "bg-red-50 border-red-200 text-red-800"
+              )}>
+                {youtubeBanner.type === "success"
+                  ? <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  : <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />}
+                <span>{youtubeBanner.msg}</span>
+                <button onClick={() => setYoutubeBanner(null)} className="ml-auto text-xs underline">Dismiss</button>
+              </div>
+            )}
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-700">
               <strong>Setup required:</strong> Connect your social accounts using their API credentials. Each platform requires an access token from their developer portal.
             </div>
@@ -702,7 +744,7 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
                     </div>
                   </div>
 
-                  {isConnecting && (
+                  {isConnecting && platform.id !== "YOUTUBE" && (
                     <div className="mt-4 pt-4 border-t space-y-3">
                       <div className="grid grid-cols-2 gap-3">
                         <div>
@@ -745,6 +787,30 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
                       >
                         Save & Connect
                       </button>
+                    </div>
+                  )}
+
+                  {/* YouTube uses OAuth — show expanded info panel instead of manual form */}
+                  {isConnecting && platform.id === "YOUTUBE" && (
+                    <div className="mt-4 pt-4 border-t">
+                      <div className="bg-red-50 border border-red-100 rounded-xl p-4 mb-4">
+                        <p className="text-sm font-semibold text-red-700 mb-1">YouTube requires Google OAuth2</p>
+                        <p className="text-xs text-red-600 leading-relaxed">
+                          Clicking below will redirect you to Google&apos;s consent screen. Grant access to upload videos on your behalf. Make sure <strong>YOUTUBE_CLIENT_ID</strong> and <strong>YOUTUBE_CLIENT_SECRET</strong> are set in Railway env vars.
+                        </p>
+                        <ul className="mt-2 text-xs text-red-600 list-disc list-inside space-y-0.5">
+                          <li>Permissions requested: <code>youtube.upload</code> + <code>youtube.readonly</code></li>
+                          <li>Videos will be published as public YouTube Shorts</li>
+                          <li>Titles, descriptions &amp; tags are AI-generated in Spanish, SEO-optimized</li>
+                        </ul>
+                      </div>
+                      <a
+                        href="/api/social/youtube-auth"
+                        className="flex items-center justify-center gap-2 w-full px-5 py-3 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700"
+                      >
+                        <Youtube className="w-4 h-4" />
+                        Authorize with Google
+                      </a>
                     </div>
                   )}
                 </div>

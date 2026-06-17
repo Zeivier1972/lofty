@@ -4,12 +4,17 @@
  * Runs twice daily via Railway cron:
  *   Morning slot (9 AM ET)  — image + text posts on all connected platforms
  *   Evening slot (6 PM ET)  — HeyGen video on Tue/Fri, otherwise image + text
+ *
+ * Before every post, researches viral South Florida real estate formats
+ * via YouTube Data API + Claude, then optimizes content for SEO + AIO.
  */
 
 import Anthropic from "@anthropic-ai/sdk"
 import OpenAI from "openai"
 import { v2 as cloudinary } from "cloudinary"
 import { prisma } from "@/lib/prisma"
+import { researchViralContent, buildAIOSystemPrompt, ResearchBrief } from "./content-research"
+import { uploadVideoToYouTube } from "./youtube-upload"
 
 // ─── SDK init ────────────────────────────────────────────────────────────────
 
@@ -23,7 +28,7 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 })
 
-// ─── Weekly theme rotation ────────────────────────────────────────────────────
+// ─── Weekly theme rotation (fallback when research unavailable) ───────────────
 
 const WEEKLY_THEMES: Record<number, string> = {
   0: "actualización del mercado inmobiliario de Miami",
@@ -52,7 +57,6 @@ const SEO_KEYWORDS = [
 ]
 
 function pickKeywords(dayOfWeek: number): string[] {
-  // Rotate 2-3 keywords deterministically per day
   const start = (dayOfWeek * 3) % SEO_KEYWORDS.length
   return [
     SEO_KEYWORDS[start % SEO_KEYWORDS.length],
@@ -74,27 +78,50 @@ const PLATFORM_GUIDES: Record<string, string> = {
     "Formato TikTok: 80-100 palabras, gancho inmediato en las primeras palabras, hashtags cortos al final: #Miami #RealEstate #Invertir #BieneRaices #MiamiRealtor",
   TWITTER:
     "Formato Twitter/X: máximo 260 caracteres, mensaje impactante y directo, 3 hashtags relevantes.",
+  YOUTUBE:
+    "Formato YouTube Shorts: descripción optimizada para SEO (300-400 palabras), incluye el año 2026, menciona Brickell Miami y Catherine Gomez Realtor, termina con CTA de suscripción y hashtags relevantes.",
+  GOOGLE_BUSINESS:
+    "Formato Google Business: 150-250 palabras, tono profesional, menciona servicios y área de cobertura (Miami, Homestead, Orlando, South Florida).",
 }
 
-// ─── Content generation with Claude ──────────────────────────────────────────
+// ─── Content generation with Claude + AIO optimization ───────────────────────
 
-async function generateContent(platform: string, dayOfWeek: number): Promise<string> {
-  const theme = WEEKLY_THEMES[dayOfWeek] ?? WEEKLY_THEMES[0]
-  const keywords = pickKeywords(dayOfWeek)
+async function generateContent(
+  platform: string,
+  dayOfWeek: number,
+  research?: ResearchBrief
+): Promise<string> {
+  // For YouTube, use pre-built SEO description from research brief
+  if (platform === "YOUTUBE" && research?.youtubeDescription) {
+    return research.youtubeDescription
+  }
+
+  const theme = research?.trendingTopic ?? WEEKLY_THEMES[dayOfWeek] ?? WEEKLY_THEMES[0]
+  const keywords = research?.additionalKeywords?.length
+    ? research.additionalKeywords
+    : pickKeywords(dayOfWeek)
   const platformGuide = PLATFORM_GUIDES[platform] ?? PLATFORM_GUIDES.FACEBOOK
 
-  const systemPrompt = `Eres Catherine Gomez, Realtor en Miami con más de 15 años de experiencia en el mercado inmobiliario de South Florida. Escribes en primera persona, siempre en español, con autenticidad y expertise. Nunca usas frases genéricas o de relleno. Tu audiencia son compradores e inversores hispanohablantes.`
+  const systemPrompt = research
+    ? buildAIOSystemPrompt()
+    : `Eres Catherine Gomez, Realtor en Miami con más de 15 años de experiencia en el mercado inmobiliario de South Florida. Escribes en primera persona, siempre en español, con autenticidad y expertise. Nunca usas frases genéricas o de relleno. Tu audiencia son compradores e inversores hispanohablantes.`
 
-  const userPrompt = `Escribe un post de redes sociales sobre el tema del día: ${theme}.
+  const hookInstruction = research?.viralHook
+    ? `\n\nGancho de apertura (usa esta primera línea exactamente o adáptala mínimamente): "${research.viralHook}"\nÁngulo de engagement: ${research.engagementAngle}`
+    : ""
 
-Palabras clave SEO que DEBES incluir de forma natural en el post (2-3 de ellas): ${keywords.join(", ")}.
+  const userPrompt = `Escribe un post de redes sociales sobre el tema del día: ${theme}.${hookInstruction}
+
+Palabras clave SEO que DEBES incluir de forma natural (2-3 de ellas): ${keywords.join(", ")}.
+
+Audiencia objetivo: ${research?.targetAudience ?? "compradores e inversores hispanohablantes en South Florida"}.
 
 ${platformGuide}
 
 Escribe SOLO el contenido del post, listo para publicar. Sin explicaciones, sin preámbulos, sin etiquetas como "Post:" o "Caption:". Solo el texto del post.`
 
   const message = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
+    model: "claude-haiku-4-5-20251001",
     max_tokens: 1024,
     system: systemPrompt,
     messages: [{ role: "user", content: userPrompt }],
@@ -106,8 +133,8 @@ Escribe SOLO el contenido del post, listo para publicar. Sin explicaciones, sin 
 
 // ─── Image generation with DALL-E → Cloudinary ───────────────────────────────
 
-async function generateAndUploadImage(dayOfWeek: number): Promise<string | null> {
-  const theme = WEEKLY_THEMES[dayOfWeek] ?? WEEKLY_THEMES[0]
+async function generateAndUploadImage(dayOfWeek: number, research?: ResearchBrief): Promise<string | null> {
+  const theme = research?.trendingTopic ?? WEEKLY_THEMES[dayOfWeek] ?? WEEKLY_THEMES[0]
 
   try {
     const imagePrompt = `Professional Miami real estate photography, theme: ${theme}. Luxury properties, blue sky, palm trees, modern architecture. Photorealistic, bright daylight, no text or watermarks.`
@@ -123,13 +150,11 @@ async function generateAndUploadImage(dayOfWeek: number): Promise<string | null>
     const imageUrl = response.data?.[0]?.url
     if (!imageUrl) return null
 
-    // Download the image bytes
     const fetchRes = await fetch(imageUrl)
     if (!fetchRes.ok) return null
     const buffer = await fetchRes.arrayBuffer()
     const base64 = Buffer.from(buffer).toString("base64")
 
-    // Upload to Cloudinary
     const uploadResult = await cloudinary.uploader.upload(
       `data:image/png;base64,${base64}`,
       { folder: "lofty-social" }
@@ -144,19 +169,23 @@ async function generateAndUploadImage(dayOfWeek: number): Promise<string | null>
 
 // ─── HeyGen video generation ──────────────────────────────────────────────────
 
-async function generateVideoScript(dayOfWeek: number): Promise<string> {
-  const theme = WEEKLY_THEMES[dayOfWeek] ?? WEEKLY_THEMES[0]
-  const keywords = pickKeywords(dayOfWeek)
+async function generateVideoScript(dayOfWeek: number, research?: ResearchBrief): Promise<string> {
+  const theme = research?.trendingTopic ?? WEEKLY_THEMES[dayOfWeek] ?? WEEKLY_THEMES[0]
+  const keywords = research?.additionalKeywords?.slice(0, 2) ?? pickKeywords(dayOfWeek).slice(0, 2)
+  const hook = research?.viralHook
+
+  const hookLine = hook ? `\n\nCOMIENZA con esta línea exacta o muy parecida: "${hook}"` : ""
 
   const message = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
+    model: "claude-haiku-4-5-20251001",
     max_tokens: 512,
-    system: `Eres Catherine Gomez, Realtor en Miami. Escribes scripts de video cortos en español, naturales para hablar en cámara.`,
+    system: `Eres Catherine Gomez, Realtor en Miami. Escribes scripts de video cortos en español, naturales para hablar en cámara. Tu objetivo es viralidad y retención máxima.`,
     messages: [
       {
         role: "user",
-        content: `Escribe un script de video de 50 segundos (aproximadamente 120-130 palabras) sobre: ${theme}.
-Incluye de forma natural: ${keywords.slice(0, 2).join(", ")}.
+        content: `Escribe un script de video de 50 segundos (aproximadamente 120-130 palabras) sobre: ${theme}.${hookLine}
+
+Incluye de forma natural: ${keywords.join(", ")}.
 El tono es cercano, profesional y directo. Termina con una CTA hablada (ej: "escríbeme al…" o "visita mi perfil").
 Escribe SOLO el texto que dirá la persona en el video. Sin acotaciones de escena, sin instrucciones, sin corchetes.`,
       },
@@ -183,7 +212,6 @@ async function getHeyGenAvatar(): Promise<{ avatarId: string; voiceId: string } 
     const avatarsData = await avatarsRes.json()
     const voicesData = await voicesRes.json()
 
-    // Get first available avatar (avatars + talking_photos combined)
     const avatars: Array<{ avatar_id: string }> = [
       ...(avatarsData?.data?.avatars ?? []),
       ...(avatarsData?.data?.talking_photos ?? []),
@@ -191,7 +219,6 @@ async function getHeyGenAvatar(): Promise<{ avatarId: string; voiceId: string } 
     const avatarId = avatars[0]?.avatar_id
     if (!avatarId) return null
 
-    // Filter for Spanish voices, fallback to first available
     const voices: Array<{ voice_id: string; language?: string; locale?: string }> =
       voicesData?.data?.voices ?? []
     const spanishVoice = voices.find(
@@ -309,6 +336,7 @@ type AccountLike = {
   platform: string
   accountId: string | null
   accessToken: string | null
+  refreshToken: string | null
   pageId: string | null
 }
 
@@ -317,6 +345,7 @@ type PostLike = {
   platform: string
   content: string
   mediaUrl: string | null
+  prompt: string | null
 }
 
 async function publishToFacebook(account: AccountLike, post: PostLike): Promise<string> {
@@ -450,6 +479,36 @@ async function publishToLinkedIn(account: AccountLike, post: PostLike): Promise<
   return data.id as string
 }
 
+async function publishToYouTube(account: AccountLike, post: PostLike): Promise<string> {
+  if (!account.refreshToken) throw new Error("YouTube: missing refresh token — re-authorize via Accounts tab")
+  if (!post.mediaUrl) throw new Error("YouTube: no video URL to upload")
+
+  // Parse YouTube metadata stored in the prompt field
+  let youtubeTitle = `Mercado Inmobiliario Miami ${new Date().getFullYear()} — Catherine Gomez Realtor`
+  let youtubeDescription = post.content
+  let youtubeTags: string[] = ["miami real estate", "catherine gomez realtor", "brickell miami", "south florida real estate"]
+
+  try {
+    const meta = JSON.parse(post.prompt ?? "{}")
+    if (meta.youtubeTitle) youtubeTitle = meta.youtubeTitle
+    if (meta.youtubeDescription) youtubeDescription = meta.youtubeDescription
+    if (Array.isArray(meta.youtubeTags) && meta.youtubeTags.length > 0) youtubeTags = meta.youtubeTags
+  } catch {
+    // prompt not JSON — use defaults
+  }
+
+  const youtubeUrl = await uploadVideoToYouTube({
+    videoUrl: post.mediaUrl,
+    title: youtubeTitle,
+    description: youtubeDescription,
+    tags: youtubeTags,
+    refreshToken: account.refreshToken,
+  })
+
+  if (!youtubeUrl) throw new Error("YouTube: upload returned null — check credentials and video URL")
+  return youtubeUrl
+}
+
 export async function publishPost(post: PostLike, account: AccountLike): Promise<void> {
   let externalId: string | undefined
 
@@ -462,8 +521,9 @@ export async function publishPost(post: PostLike, account: AccountLike): Promise
       externalId = await publishToTikTok(account, post)
     } else if (post.platform === "LINKEDIN") {
       externalId = await publishToLinkedIn(account, post)
+    } else if (post.platform === "YOUTUBE") {
+      externalId = await publishToYouTube(account, post)
     } else {
-      // TWITTER/X and others — skip
       console.log(`[social-autopilot] Skipping unsupported platform: ${post.platform}`)
       return
     }
@@ -517,51 +577,68 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
   const now = new Date()
   const dayOfWeek = now.getDay() // 0=Sun … 6=Sat
 
-  // 2. Is this a video slot? Evening + (Tuesday=2 or Friday=5)
+  // 2. Research viral formats for today (non-fatal — falls back gracefully)
+  let research: ResearchBrief | undefined
+  try {
+    research = await researchViralContent(dayOfWeek)
+    console.log(`[social-autopilot] Research brief ready — hook: "${research.viralHook}"`)
+  } catch (err) {
+    console.warn("[social-autopilot] Content research failed, using default themes:", err)
+  }
+
+  // 3. Is this a video slot? Evening + (Tuesday=2 or Friday=5)
   const isVideoSlot = slot === "evening" && (dayOfWeek === 2 || dayOfWeek === 5)
   const heygenConfigured = !!process.env.HEYGEN_API_KEY
 
-  // 3. Pre-generate video script once (shared across accounts on video days)
-  let videoScript: string | null = null
+  // 4. Pre-generate shared assets (one script + one HeyGen video for all accounts)
+  let sharedVideoId: string | null = null
+
   if (isVideoSlot && heygenConfigured) {
     try {
-      videoScript = await generateVideoScript(dayOfWeek)
+      const videoScript = await generateVideoScript(dayOfWeek, research)
+      sharedVideoId = await triggerHeyGenVideo(videoScript)
+      if (sharedVideoId) {
+        console.log(`[social-autopilot] HeyGen video queued — videoId: ${sharedVideoId}`)
+      }
     } catch (err) {
-      console.error("[social-autopilot] Video script generation failed:", err)
+      console.error("[social-autopilot] Video script/HeyGen trigger failed:", err)
     }
   }
 
-  // 4. Process each connected account independently
+  // 5. Build prompt metadata to store with each post (YouTube uses this for title/tags)
+  const promptMeta = research
+    ? JSON.stringify({
+        theme: research.trendingTopic,
+        youtubeTitle: research.youtubeTitle,
+        youtubeDescription: research.youtubeDescription,
+        youtubeTags: research.youtubeTags,
+      })
+    : WEEKLY_THEMES[dayOfWeek]
+
+  // 6. Process each connected account independently
   for (const account of accounts) {
     try {
-      // 4a. Generate platform-specific content
-      const content = await generateContent(account.platform, dayOfWeek)
+      // 6a. Generate platform-specific content (research-enriched + AIO optimized)
+      const content = await generateContent(account.platform, dayOfWeek, research)
 
-      // 4b. Determine media handling
+      // 6b. Determine media handling
       let mediaUrl: string | null = null
       let postStatus = "SCHEDULED"
       let externalId: string | null = null
       let useVideoFlow = false
 
-      if (isVideoSlot && heygenConfigured && videoScript) {
-        try {
-          const videoId = await triggerHeyGenVideo(videoScript)
-          if (videoId) {
-            externalId = videoId
-            postStatus = "GENERATING_VIDEO"
-            useVideoFlow = true
-          }
-        } catch (err) {
-          console.error("[social-autopilot] HeyGen trigger failed, falling back to image:", err)
-        }
+      if (isVideoSlot && heygenConfigured && sharedVideoId) {
+        externalId = sharedVideoId
+        postStatus = "GENERATING_VIDEO"
+        useVideoFlow = true
       }
 
       if (!useVideoFlow) {
         // Generate image with DALL-E → Cloudinary (failures are non-fatal)
-        mediaUrl = await generateAndUploadImage(dayOfWeek)
+        mediaUrl = await generateAndUploadImage(dayOfWeek, research)
       }
 
-      // 4c. Create SocialPost record
+      // 6c. Create SocialPost record
       const post = await prisma.socialPost.create({
         data: {
           platform: account.platform,
@@ -573,21 +650,17 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
           aiGenerated: true,
           accountId: account.id,
           externalId,
-          prompt: WEEKLY_THEMES[dayOfWeek],
+          prompt: promptMeta,
         },
       })
 
       if (useVideoFlow) {
-        // Video is being generated async — checkHeygenVideos will publish it later
         result.videoQueued++
-        console.log(
-          `[social-autopilot] Video queued for ${account.platform} (videoId: ${externalId})`
-        )
+        console.log(`[social-autopilot] Video queued for ${account.platform} (videoId: ${externalId})`)
       } else {
         // Publish immediately
         await publishPost(post, account)
 
-        // Re-fetch to check final status
         const updated = await prisma.socialPost.findUnique({ where: { id: post.id } })
         if (updated?.status === "PUBLISHED") {
           result.posted++

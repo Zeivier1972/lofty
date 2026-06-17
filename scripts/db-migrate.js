@@ -10,10 +10,7 @@ const STMTS = [
     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "SocialAutoPilotConfig_pkey" PRIMARY KEY ("id")
   )`,
-  // parallel dialer columns
-  `ALTER TABLE "DialerSession" ADD COLUMN IF NOT EXISTS "activeCallSid" TEXT`,
-  `ALTER TABLE "DialerSession" ADD COLUMN IF NOT EXISTS "agentIdentity" TEXT`,
-  // configurable bot buttons (PR #64)
+  // configurable bot buttons
   `ALTER TABLE "FacebookBotConfig" ADD COLUMN IF NOT EXISTS "greetingButtons" TEXT NOT NULL DEFAULT 'Sí, me interesa,Quiero más info'`,
   `ALTER TABLE "FacebookBotConfig" ADD COLUMN IF NOT EXISTS "intentButtonA" TEXT NOT NULL DEFAULT 'Comprar para vivir'`,
   `ALTER TABLE "FacebookBotConfig" ADD COLUMN IF NOT EXISTS "intentButtonB" TEXT NOT NULL DEFAULT 'Invertir / Airbnb'`,
@@ -25,9 +22,11 @@ const STMTS = [
   // multi-keyword campaigns
   `ALTER TABLE "FacebookBotCampaign" ADD COLUMN IF NOT EXISTS "keywords" TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE "InstagramBotCampaign" ADD COLUMN IF NOT EXISTS "keywords" TEXT NOT NULL DEFAULT ''`,
-  // parallel dialer fields
+  // parallel dialer
   `ALTER TABLE "DialerSession" ADD COLUMN IF NOT EXISTS "activeCallSid" TEXT`,
   `ALTER TABLE "DialerSession" ADD COLUMN IF NOT EXISTS "agentIdentity" TEXT`,
+  // YouTube OAuth refresh token
+  `ALTER TABLE "SocialAccount" ADD COLUMN IF NOT EXISTS "refreshToken" TEXT`,
 ]
 
 // ─── Email templates ─────────────────────────────────────────────────────────

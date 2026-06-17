@@ -837,6 +837,7 @@ model SocialAccount {
   accountId         String?
   accountName       String?
   accessToken       String?
+  refreshToken      String?
   pageId            String?
   isConnected       Boolean      @default(false)
   subscribedToLeads Boolean      @default(false)
