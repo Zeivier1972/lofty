@@ -35,12 +35,45 @@ async function getCurrentStage(contactId: string) {
   const lead = await prisma.pipelineLead.findFirst({
     where: { contactId },
     include: { stage: true },
+    orderBy: { updatedAt: "desc" },
   })
   return lead?.stage ?? null
 }
 
+async function getPipelineIdForStage(stageId: string): Promise<string | null> {
+  const stage = await prisma.pipelineStage.findUnique({ where: { id: stageId }, select: { pipelineId: true } })
+  return stage?.pipelineId ?? null
+}
+
+async function checkPipelineStageSmartPlans(contactId: string, stageName: string) {
+  const plans = await prisma.smartPlan.findMany({
+    where: { isActive: true, trigger: `PIPELINE_STAGE:${stageName}` },
+    include: { steps: { where: { order: 0 }, take: 1 } },
+  })
+  for (const plan of plans) {
+    const already = await prisma.smartPlanEnrollment.findFirst({
+      where: { contactId, planId: plan.id, status: "ACTIVE" },
+    })
+    if (!already) {
+      const delay = plan.steps[0]?.delay ?? 0
+      const nextStepAt = new Date(Date.now() + delay * 86400000)
+      await prisma.smartPlanEnrollment.create({
+        data: { contactId, planId: plan.id, status: "ACTIVE", currentStep: 0, nextStepAt },
+      })
+    }
+  }
+}
+
 async function moveToStage(contactId: string, stageId: string, stageName: string) {
-  const existing = await prisma.pipelineLead.findFirst({ where: { contactId } })
+  // Scope to the pipeline this stage belongs to so we never update a stale duplicate record
+  const pipelineId = await getPipelineIdForStage(stageId)
+  const existing = await prisma.pipelineLead.findFirst({
+    where: {
+      contactId,
+      ...(pipelineId ? { stage: { pipelineId } } : {}),
+    },
+    orderBy: { updatedAt: "desc" },
+  })
   if (existing) {
     await prisma.pipelineLead.update({ where: { id: existing.id }, data: { stageId } })
   } else {
@@ -49,6 +82,7 @@ async function moveToStage(contactId: string, stageId: string, stageName: string
   await prisma.activity.create({
     data: { type: "PIPELINE_MOVED", title: `Movido a ${stageName} (automático)`, contactId },
   })
+  checkPipelineStageSmartPlans(contactId, stageName).catch(() => {})
 }
 
 async function createCatherineTask(contactId: string, title: string, description?: string) {

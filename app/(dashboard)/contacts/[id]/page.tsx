@@ -16,7 +16,7 @@ export default async function ContactDetailPage({ params }: { params: { id: stri
       dialerCalls: { orderBy: { createdAt: "desc" }, take: 20 },
       appointments: { orderBy: { startTime: "desc" }, take: 5 },
       transactions: { orderBy: { createdAt: "desc" } },
-      pipelineLeads: { include: { stage: { include: { pipeline: true } } } },
+      pipelineLeads: { include: { stage: { include: { pipeline: true } } }, orderBy: { updatedAt: "desc" } },
       enrollments: { include: { plan: true } },
       propertyInterests: { include: { property: true } },
       assignedTo: { select: { id: true, name: true, email: true } },

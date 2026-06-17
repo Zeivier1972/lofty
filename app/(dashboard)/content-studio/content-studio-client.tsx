@@ -1,19 +1,20 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
+import { useSearchParams } from "next/navigation"
 import {
   Sparkles, Search, Image, FileText, Loader2,
   Copy, Check, ExternalLink, Download, Globe,
   TrendingUp, Video, BarChart2, Users, Home, DollarSign,
   BookOpen, RefreshCw, Send, ImageIcon, BedDouble, Bath, Maximize2,
-  List, Pencil, Trash2, Eye, EyeOff, X, Save,
+  List, Pencil, Trash2, Eye, EyeOff, X, Save, Clapperboard,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/components/ui/use-toast"
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = "blog" | "images" | "research" | "posts"
+type Tab = "blog" | "images" | "research" | "posts" | "video"
 
 const AUDIENCES = [
   { id: "buyers", label: "Buyers", icon: Home },
@@ -82,7 +83,10 @@ const BLOG_TOPIC_SUGGESTIONS: Record<string, string[]> = {
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export default function ContentStudioClient() {
-  const [tab, setTab] = useState<Tab>("blog")
+  const searchParams = useSearchParams()
+  const initialTab = (searchParams.get("tab") as Tab) || "blog"
+  const campaignParam = searchParams.get("campaign") || ""
+  const [tab, setTab] = useState<Tab>(initialTab)
   const { toast } = useToast()
 
   return (
@@ -94,7 +98,7 @@ export default function ContentStudioClient() {
             <Sparkles className="w-6 h-6 text-purple-600" />
             Content Studio
           </h1>
-          <p className="text-gray-500 mt-1">AI-powered blog writing, image generation, and market research</p>
+          <p className="text-gray-500 mt-1">AI-powered blog writing, image generation, market research, and video ads</p>
         </div>
 
         {/* Tab bar */}
@@ -104,6 +108,7 @@ export default function ContentStudioClient() {
             { id: "images" as Tab, label: "Image Generator", icon: Image },
             { id: "research" as Tab, label: "Research", icon: Search },
             { id: "posts" as Tab, label: "My Posts", icon: List },
+            { id: "video" as Tab, label: "Video Ads", icon: Clapperboard },
           ].map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setTab(id)}
               className={cn("flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all",
@@ -118,6 +123,7 @@ export default function ContentStudioClient() {
         {tab === "images" && <ImageGenerator toast={toast} />}
         {tab === "research" && <ResearchTool toast={toast} />}
         {tab === "posts" && <PostsManager toast={toast} />}
+        {tab === "video" && <VideoStudio toast={toast} campaignKeyword={campaignParam} />}
       </div>
     </div>
   )
@@ -753,6 +759,412 @@ function PostsManager({ toast }: { toast: any }) {
           )}
         </div>
       ))}
+    </div>
+  )
+}
+
+// ── Video Studio ─────────────────────────────────────────────────────────────
+
+const CAMPAIGN_SCRIPTS: Record<string, string> = {
+  BRICKELL: "¡Hola! Soy Catherine Gomez, Realtor en Miami. Brickell es el corazón financiero de Miami — condos de lujo, vida cosmopolita y una de las mejores rentabilidades del mercado. Tengo unidades de preconstrucción disponibles hoy con solo el 10% de depósito. ¿Te interesa invertir en Brickell? El enlace para agendar tu consulta gratuita está en mi perfil. ¡Hablemos!",
+  FAMILIA: "¡Hola! Soy Catherine Gomez, tu Realtor de confianza en Miami. Si buscas el hogar perfecto para tu familia en el Sur de Florida, estás en el lugar correcto. Tengo opciones increíbles en Doral, Miramar y Pembroke Pines — con escuelas A, seguridad y espacio para crecer. Agenda tu consulta gratuita hoy, es en español y sin costo. ¡Nos vemos pronto!",
+  DOLARES: "¡Hola! Soy Catherine Gomez, Realtor en Miami. ¿Quieres proteger tus ahorros de la devaluación y generar ingresos pasivos en dólares? Comprar propiedad en Florida es la respuesta. No necesitas residencia — solo tu pasaporte. Yo te guío en cada paso. Agenda tu consulta gratuita hoy mismo. El enlace está en mi perfil.",
+}
+
+const RATIO_OPTIONS = [
+  { id: "16:9", label: "Horizontal", desc: "Facebook Feed / YouTube", w: 32, h: 18 },
+  { id: "9:16", label: "Vertical",   desc: "Reels / Stories / TikTok", w: 18, h: 32 },
+  { id: "1:1",  label: "Cuadrado",   desc: "Instagram Square", w: 24, h: 24 },
+]
+
+const VIDEO_STYLES = [
+  {
+    id: "none",
+    name: "Auto",
+    desc: "Fondo neutro por defecto",
+    bg: "bg-gray-100",
+    border: "border-gray-300",
+    text: "text-gray-600",
+    dot: "bg-gray-400",
+  },
+  {
+    id: "cinematic",
+    name: "Cinematic",
+    desc: "Primer plano, fondo negro",
+    bg: "bg-gray-950",
+    border: "border-gray-700",
+    text: "text-gray-100",
+    dot: "bg-gray-100",
+  },
+  {
+    id: "thriller",
+    name: "Thriller",
+    desc: "Azul oscuro y dramático",
+    bg: "bg-[#1A1A2E]",
+    border: "border-[#3A3A6E]",
+    text: "text-blue-200",
+    dot: "bg-blue-400",
+  },
+  {
+    id: "retro_tech",
+    name: "Retro Tech",
+    desc: "Estético tech oscuro",
+    bg: "bg-[#0D1117]",
+    border: "border-green-700",
+    text: "text-green-400",
+    dot: "bg-green-400",
+  },
+  {
+    id: "iconic",
+    name: "Iconic Artist",
+    desc: "Primer plano, morado vibrante",
+    bg: "bg-violet-700",
+    border: "border-violet-400",
+    text: "text-white",
+    dot: "bg-yellow-300",
+  },
+  {
+    id: "pop_culture",
+    name: "Pop Culture",
+    desc: "Fondo magenta vibrante",
+    bg: "bg-[#FF006E]",
+    border: "border-pink-300",
+    text: "text-white",
+    dot: "bg-white",
+  },
+  {
+    id: "modern",
+    name: "Modern",
+    desc: "Fondo azul profesional",
+    bg: "bg-blue-600",
+    border: "border-blue-300",
+    text: "text-white",
+    dot: "bg-sky-200",
+  },
+  {
+    id: "warm",
+    name: "Warm",
+    desc: "Naranja cálido — familias",
+    bg: "bg-orange-500",
+    border: "border-orange-200",
+    text: "text-white",
+    dot: "bg-amber-200",
+  },
+  {
+    id: "handmade",
+    name: "Handmade",
+    desc: "Crema artesanal",
+    bg: "bg-amber-50",
+    border: "border-amber-300",
+    text: "text-amber-800",
+    dot: "bg-amber-600",
+  },
+  {
+    id: "print",
+    name: "Print",
+    desc: "Negro editorial y elegante",
+    bg: "bg-stone-950",
+    border: "border-stone-600",
+    text: "text-stone-100",
+    dot: "bg-stone-300",
+  },
+]
+
+const SCRIPT_TEMPLATES = [
+  {
+    label: "Inversión desde Colombia",
+    script: "¡Hola! Soy Catherine Gomez, Realtor en Miami. ¿Sabías que puedes invertir en propiedades en Florida desde Colombia sin necesitar la residencia? Solo necesitas tu pasaporte. Miami ha valorizado más del 60% en los últimos 5 años. Tu dinero seguro en dólares. Yo te guío paso a paso. Agenda tu consulta gratuita — el enlace está en mi perfil.",
+  },
+  {
+    label: "Preconstrucción Sur de Florida",
+    script: "¿Buscas tu próxima inversión en el Sur de Florida? Tengo unidades de preconstrucción disponibles desde $250,000 con solo el 10% de depósito hoy. Los precios siguen subiendo cada trimestre. No esperes más. Escríbeme o agenda una llamada gratuita y te cuento todo sobre las mejores oportunidades disponibles ahora mismo.",
+  },
+  {
+    label: "Compradores de primera vez",
+    script: "¡Hola! Soy Catherine Gomez, tu Realtor en Miami. Si estás pensando en comprar tu primera casa en el Sur de Florida, tengo una noticia increíble — puedes calificar para hasta $25,000 en asistencia para el pago inicial. El proceso es más sencillo de lo que crees. Agenda tu consulta hoy, es gratis y completamente en español.",
+  },
+  {
+    label: "Airbnb en Orlando",
+    script: "¡Hola! Soy Catherine Gomez, Realtor en Florida. Orlando recibe más de 75 millones de turistas al año — y tú puedes generar entre $2,500 y $4,000 al mes con un Airbnb aquí. Lo mejor: puedes manejarlo todo desde Colombia. Yo te ayudo a encontrar la propiedad perfecta. Agenda tu consulta gratuita hoy mismo.",
+  },
+]
+
+function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?: string }) {
+  const [avatars, setAvatars] = useState<any[]>([])
+  const [voices, setVoices] = useState<any[]>([])
+  const [avatarId, setAvatarId] = useState("")
+  const [voiceId, setVoiceId] = useState("")
+  const [script, setScript] = useState("")
+  const [ratio, setRatio] = useState("16:9")
+  const [styleId, setStyleId] = useState("none")
+  const [loadingData, setLoadingData] = useState(true)
+  const [generating, setGenerating] = useState(false)
+  const [status, setStatus] = useState<"idle" | "processing" | "completed" | "failed">("idle")
+  const [videoUrl, setVideoUrl] = useState<string | null>(null)
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null)
+  const pollRef = useRef<NodeJS.Timeout | null>(null)
+
+  useEffect(() => {
+    // Pre-fill script from campaign keyword if navigated from a campaign card
+    if (campaignKeyword) {
+      const kw = campaignKeyword.toUpperCase()
+      const preScript = CAMPAIGN_SCRIPTS[kw] || `¡Hola! Soy Catherine Gomez, Realtor en Miami. Tengo propiedades increíbles relacionadas con ${campaignKeyword}. Agenda tu consulta gratuita hoy — el enlace está en mi perfil.`
+      setScript(preScript)
+    }
+
+    Promise.all([
+      fetch("/api/heygen/avatars").then(r => r.json()),
+      fetch("/api/heygen/voices").then(r => r.json()),
+    ]).then(([avatarData, voiceData]) => {
+      const avatarList: any[] = avatarData?.data?.avatars || []
+      const allVoices: any[] = voiceData?.data?.voices || []
+      const spanishVoices = allVoices.filter((v: any) => {
+        const lang = (v.language || v.locale || "").toLowerCase()
+        return lang.includes("es") || lang.includes("spanish")
+      })
+
+      setAvatars(avatarList)
+      setVoices(spanishVoices.length > 0 ? spanishVoices : allVoices)
+
+      const catherine = avatarList.find((a: any) =>
+        a.avatar_name?.toLowerCase().includes("catherine")
+      )
+      if (catherine) setAvatarId(catherine.avatar_id)
+      else if (avatarList[0]) setAvatarId(avatarList[0].avatar_id)
+
+      const firstSpanish = spanishVoices[0] || allVoices[0]
+      if (firstSpanish) setVoiceId(firstSpanish.voice_id)
+    }).catch(() => {
+      toast({ title: "Error cargando HeyGen", variant: "destructive" })
+    }).finally(() => setLoadingData(false))
+
+    return () => { if (pollRef.current) clearInterval(pollRef.current) }
+  }, [campaignKeyword])
+
+  const pollStatus = (videoId: string) => {
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/heygen/status?videoId=${videoId}`)
+        const data = await res.json()
+        const s = data?.data?.status
+        if (s === "completed") {
+          clearInterval(pollRef.current!)
+          pollRef.current = null
+          setStatus("completed")
+          setVideoUrl(data.data.video_url)
+          setThumbnailUrl(data.data.thumbnail_url || null)
+          toast({ title: "¡Video listo! 🎬" })
+        } else if (s === "failed") {
+          clearInterval(pollRef.current!)
+          pollRef.current = null
+          setStatus("failed")
+          toast({ title: "Error al generar el video", variant: "destructive" })
+        }
+      } catch { /* keep polling */ }
+    }, 6000)
+  }
+
+  const generate = async () => {
+    if (!script.trim()) { toast({ title: "Escribe el guión", variant: "destructive" }); return }
+    if (!avatarId) { toast({ title: "Selecciona un avatar", variant: "destructive" }); return }
+    if (!voiceId) { toast({ title: "Selecciona una voz", variant: "destructive" }); return }
+
+    if (pollRef.current) clearInterval(pollRef.current)
+    setGenerating(true)
+    setStatus("idle")
+    setVideoUrl(null)
+    setThumbnailUrl(null)
+
+    try {
+      const res = await fetch("/api/heygen/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ avatarId, voiceId, script, ratio, styleId: styleId !== "none" ? styleId : undefined }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setStatus("processing")
+      pollStatus(data.videoId)
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" })
+      setStatus("idle")
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  if (loadingData) {
+    return (
+      <div className="flex items-center justify-center py-24 text-gray-400">
+        <Loader2 className="w-6 h-6 animate-spin mr-2" /> Conectando con HeyGen…
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Campaign banner */}
+      {campaignKeyword && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex items-center gap-2 text-sm text-blue-800">
+          <Clapperboard className="w-4 h-4 flex-shrink-0" />
+          Generando video para campaña <strong className="uppercase">{campaignKeyword}</strong> — guión pre-cargado.
+        </div>
+      )}
+
+      {/* Avatar + Voice */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+        <h2 className="text-base font-semibold text-gray-800 mb-4">1. Avatar y voz</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-2 block">Avatar</label>
+            <select value={avatarId} onChange={e => setAvatarId(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white">
+              {avatars.map((a: any) => (
+                <option key={a.avatar_id} value={a.avatar_id}>{a.avatar_name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-2 block">Voz (Español)</label>
+            <select value={voiceId} onChange={e => setVoiceId(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white">
+              {voices.map((v: any) => (
+                <option key={v.voice_id} value={v.voice_id}>
+                  {v.name}{v.language ? ` — ${v.language}` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Format */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+        <h2 className="text-base font-semibold text-gray-800 mb-4">2. Formato</h2>
+        <div className="grid grid-cols-3 gap-3">
+          {RATIO_OPTIONS.map(r => (
+            <button key={r.id} onClick={() => setRatio(r.id)}
+              className={cn("flex flex-col items-center gap-2 px-3 py-4 rounded-xl border text-center transition-all",
+                ratio === r.id ? "border-purple-500 bg-purple-50 text-purple-700" : "border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50")}>
+              <div
+                className={cn("rounded border-2", ratio === r.id ? "bg-purple-200 border-purple-500" : "bg-gray-200 border-gray-400")}
+                style={{ width: r.w, height: r.h }}
+              />
+              <span className="text-xs font-semibold">{r.label} ({r.id})</span>
+              <span className="text-xs text-gray-400">{r.desc}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Style / Brand System */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+        <h2 className="text-base font-semibold text-gray-800 mb-1">3. Estilo visual</h2>
+        <p className="text-xs text-gray-400 mb-4">Elige el look del video — fondo, iluminación y encuadre del avatar</p>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+          {VIDEO_STYLES.map(s => (
+            <button
+              key={s.id}
+              onClick={() => setStyleId(s.id)}
+              className={cn(
+                "relative flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all text-center",
+                s.bg,
+                styleId === s.id ? "border-purple-500 ring-2 ring-purple-400 ring-offset-1 scale-[1.03]" : s.border + " opacity-85 hover:opacity-100 hover:scale-[1.01]"
+              )}
+            >
+              <span className={cn("w-3 h-3 rounded-full flex-shrink-0", s.dot)} />
+              <span className={cn("text-xs font-semibold leading-tight", s.text)}>{s.name}</span>
+              <span className={cn("text-[10px] leading-tight opacity-80", s.text)}>{s.desc}</span>
+              {styleId === s.id && (
+                <span className="absolute top-1 right-1 bg-purple-500 rounded-full p-0.5">
+                  <Check className="w-2.5 h-2.5 text-white" />
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Script */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-base font-semibold text-gray-800">4. Guión del video</h2>
+          <span className="text-xs text-gray-400">{script.length} / 1500 caracteres</span>
+        </div>
+
+        {!campaignKeyword && (
+          <div className="mb-3">
+            <p className="text-xs text-gray-400 mb-2">Plantillas rápidas:</p>
+            <div className="flex flex-wrap gap-2">
+              {SCRIPT_TEMPLATES.map(t => (
+                <button key={t.label} onClick={() => setScript(t.script)}
+                  className="px-3 py-1 bg-purple-50 text-purple-700 text-xs rounded-lg border border-purple-100 hover:bg-purple-100 transition-colors">
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <textarea
+          value={script}
+          onChange={e => setScript(e.target.value.slice(0, 1500))}
+          placeholder="Escribe el guión del video en español. Habla como si estuvieras frente a la cámara..."
+          rows={7}
+          className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none"
+        />
+
+        <button
+          onClick={generate}
+          disabled={generating || !script.trim() || !avatarId || !voiceId || status === "processing"}
+          className="mt-4 w-full flex items-center justify-center gap-2 py-3 bg-purple-600 text-white rounded-xl font-semibold text-sm hover:bg-purple-700 transition-colors disabled:opacity-50">
+          {generating
+            ? <><Loader2 className="w-4 h-4 animate-spin" /> Enviando a HeyGen…</>
+            : status === "processing"
+            ? <><Loader2 className="w-4 h-4 animate-spin" /> Generando video… (2–5 min)</>
+            : <><Clapperboard className="w-4 h-4" /> Generar Video Ad</>}
+        </button>
+      </div>
+
+      {/* Processing */}
+      {status === "processing" && (
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6 text-center">
+          <Loader2 className="w-8 h-8 text-blue-500 animate-spin mx-auto mb-3" />
+          <p className="font-semibold text-blue-800">HeyGen está generando tu video…</p>
+          <p className="text-sm text-blue-600 mt-1">Esto toma entre 2 y 5 minutos. No cierres esta pantalla.</p>
+        </div>
+      )}
+
+      {/* Result */}
+      {status === "completed" && videoUrl && (
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="bg-gray-900 flex items-center justify-center p-4">
+            <video src={videoUrl} controls poster={thumbnailUrl || undefined}
+              className="max-w-full rounded-xl" style={{ maxHeight: 400 }} />
+          </div>
+          <div className="p-4 flex items-center gap-3 flex-wrap">
+            <span className="flex items-center gap-1.5 text-sm font-medium text-green-700">
+              <Check className="w-4 h-4" /> Video listo
+            </span>
+            <div className="ml-auto flex gap-2">
+              <a href={videoUrl} target="_blank"
+                className="flex items-center gap-1.5 px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
+                <ExternalLink className="w-4 h-4" /> Abrir
+              </a>
+              <a href={videoUrl} download="video-ad.mp4"
+                className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors">
+                <Download className="w-4 h-4" /> Descargar
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {status === "failed" && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-6 text-center text-red-700 text-sm">
+          Error al generar el video. Verifica el guión e intenta de nuevo.
+        </div>
+      )}
     </div>
   )
 }
