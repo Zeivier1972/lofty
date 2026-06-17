@@ -27,8 +27,10 @@ const STMTS = [
   `ALTER TABLE "DialerSession" ADD COLUMN IF NOT EXISTS "agentIdentity" TEXT`,
   // YouTube OAuth refresh token
   `ALTER TABLE "SocialAccount" ADD COLUMN IF NOT EXISTS "refreshToken" TEXT`,
-  // WhatsApp link on website config
+  // WhatsApp link, office address, website URL on website config
   `ALTER TABLE "WebsiteConfig" ADD COLUMN IF NOT EXISTS "whatsapp" TEXT`,
+  `ALTER TABLE "WebsiteConfig" ADD COLUMN IF NOT EXISTS "agentAddress" TEXT`,
+  `ALTER TABLE "WebsiteConfig" ADD COLUMN IF NOT EXISTS "agentWebsite" TEXT`,
 ]
 
 // ─── Email templates ─────────────────────────────────────────────────────────

@@ -553,6 +553,8 @@ model WebsiteConfig {
   agentBio          String   @default("With over 15 years of experience in Miami's luxury real estate market, I bring unmatched expertise and dedication to every transaction.")
   agentLicense      String?
   agentBrokerage    String?
+  agentAddress      String?
+  agentWebsite      String?
   // Stats
   yearsFounded      Int      @default(2009)
   homesSold         Int      @default(500)
