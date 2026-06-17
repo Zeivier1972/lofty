@@ -21,6 +21,7 @@ const STMTS = [
   `ALTER TABLE "InstagramBotConfig" ADD COLUMN IF NOT EXISTS "intentButtonC" TEXT NOT NULL DEFAULT 'Solo explorando'`,
   // multi-keyword campaigns
   `ALTER TABLE "FacebookBotCampaign" ADD COLUMN IF NOT EXISTS "keywords" TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE "InstagramBotCampaign" ADD COLUMN IF NOT EXISTS "keywords" TEXT NOT NULL DEFAULT ''`,
 ]
 
 // ─── Email templates ─────────────────────────────────────────────────────────

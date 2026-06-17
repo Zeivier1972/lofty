@@ -746,6 +746,7 @@ model InstagramBotConfig {
 model InstagramBotCampaign {
   id        String   @id @default(cuid())
   keyword   String   @unique
+  keywords  String   @default("")
   name      String
   pdfUrl    String?
   pdfName   String?

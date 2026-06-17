@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Instagram, Zap, Users, CheckCircle2, MessageSquare, Copy, ExternalLink, AlertCircle, Plus, Trash2, Link2, FileText, ChevronDown, Upload, RefreshCw } from "lucide-react"
+import { Instagram, Zap, Users, CheckCircle2, MessageSquare, Copy, ExternalLink, AlertCircle, Plus, Trash2, Link2, FileText, ChevronDown, Upload, RefreshCw, Clapperboard } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -24,6 +24,8 @@ export default function InstagramBotClient() {
   const [uploadingPdf, setUploadingPdf] = useState(false)
   const [conversations, setConversations] = useState<any[]>([])
   const [resettingConvo, setResettingConvo] = useState<string | null>(null)
+  const [addingKeyword, setAddingKeyword] = useState<string | null>(null)
+  const [newKeywordInput, setNewKeywordInput] = useState("")
 
   useEffect(() => {
     Promise.all([
@@ -91,6 +93,23 @@ export default function InstagramBotClient() {
       toast({ title: "Campaña eliminada" })
     } catch {
       toast({ title: "Error al eliminar", variant: "destructive" })
+    }
+  }
+
+  const updateKeyword = async (id: string, action: "add" | "remove", keyword: string) => {
+    try {
+      const res = await fetch("/api/instagram/campaigns", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, action, keyword }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setCampaigns(prev => prev.map(c => c.id === id ? data : c))
+      setAddingKeyword(null)
+      setNewKeywordInput("")
+    } catch (e: any) {
+      toast({ title: e.message || "Error al actualizar keyword", variant: "destructive" })
     }
   }
 
@@ -278,28 +297,93 @@ export default function InstagramBotClient() {
               <p className="text-sm text-gray-400">No hay campañas. Ej: keyword "INVEST" → brochure de inversión</p>
             </div>
           )}
-          {campaigns.map(c => (
-            <div key={c.id} className="flex items-start gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Badge className="bg-purple-100 text-purple-700 text-xs font-mono uppercase">{c.keyword}</Badge>
-                  <span className="text-sm font-medium text-gray-900">{c.name}</span>
-                  <Badge className={cn("text-xs", c.isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500")}>
-                    {c.isActive ? "Activa" : "Inactiva"}
-                  </Badge>
+          {campaigns.map(c => {
+            const allKeywords = c.keywords
+              ? c.keywords.split(",").map((k: string) => k.trim().toUpperCase()).filter(Boolean)
+              : [c.keyword.toUpperCase()]
+            return (
+              <div key={c.id} className="p-3 rounded-xl border border-gray-100 bg-gray-50">
+                <div className="flex items-start gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <span className="text-sm font-medium text-gray-900">{c.name}</span>
+                      {c.isActive ? (
+                        <Badge className="bg-green-100 text-green-700 text-xs">Activa</Badge>
+                      ) : (
+                        <Badge className="bg-gray-100 text-gray-500 text-xs">Inactiva</Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {allKeywords.map((kw: string) => (
+                        <span key={kw} className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-mono rounded-full">
+                          {kw}
+                          <button
+                            onClick={() => updateKeyword(c.id, "remove", kw)}
+                            className="hover:text-red-500 transition-colors ml-0.5"
+                            title="Eliminar keyword"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                      {addingKeyword === c.id ? (
+                        <div className="flex items-center gap-1">
+                          <input
+                            autoFocus
+                            value={newKeywordInput}
+                            onChange={e => setNewKeywordInput(e.target.value.toUpperCase())}
+                            onKeyDown={e => {
+                              if (e.key === "Enter" && newKeywordInput.trim()) updateKeyword(c.id, "add", newKeywordInput.trim())
+                              if (e.key === "Escape") { setAddingKeyword(null); setNewKeywordInput("") }
+                            }}
+                            placeholder="KEYWORD"
+                            className="w-24 px-2 py-0.5 text-xs font-mono border border-purple-300 rounded-full outline-none focus:ring-1 focus:ring-purple-400 bg-white uppercase"
+                          />
+                          <button
+                            onClick={() => { if (newKeywordInput.trim()) updateKeyword(c.id, "add", newKeywordInput.trim()) }}
+                            className="text-xs text-purple-600 font-medium hover:text-purple-800"
+                          >✓</button>
+                          <button
+                            onClick={() => { setAddingKeyword(null); setNewKeywordInput("") }}
+                            className="text-xs text-gray-400 hover:text-gray-600"
+                          >✕</button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => { setAddingKeyword(c.id); setNewKeywordInput("") }}
+                          className="inline-flex items-center gap-0.5 px-2 py-0.5 border border-dashed border-purple-300 text-purple-500 text-xs rounded-full hover:border-purple-500 hover:text-purple-700 transition-colors"
+                        >
+                          <Plus className="w-3 h-3" /> keyword
+                        </button>
+                      )}
+                    </div>
+                    {c.pdfUrl && (
+                      <a href={`/api/brochure/view?url=${encodeURIComponent(c.pdfUrl)}`} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-xs text-purple-600 hover:underline mt-1.5">
+                        <Link2 className="w-3 h-3" />
+                        {c.pdfName || "Ver PDF"}
+                      </a>
+                    )}
+                    {c.greeting && (
+                      <p className="text-xs text-gray-400 mt-1 line-clamp-1">Saludo: {c.greeting}</p>
+                    )}
+                    <p className="text-xs text-gray-300 mt-1">{c.leads} leads capturados</p>
+                  </div>
+                  <div className="flex flex-col gap-1.5 flex-shrink-0">
+                    <a
+                      href={`/content-studio?tab=video&campaign=${encodeURIComponent(c.keyword.split(",")[0].trim())}`}
+                      title="Generar video ad"
+                      className="text-gray-300 hover:text-purple-500 transition-colors">
+                      <Clapperboard className="w-4 h-4" />
+                    </a>
+                    <button onClick={() => deleteCampaign(c.id)} title="Eliminar campaña" className="text-gray-300 hover:text-red-400 transition-colors">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
-                {c.pdfUrl && (
-                  <a href={c.pdfUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-purple-600 hover:underline mt-1">
-                    <Link2 className="w-3 h-3" />{c.pdfName || "Ver PDF"}
-                  </a>
-                )}
-                <p className="text-xs text-gray-300 mt-1">{c.leads} leads</p>
               </div>
-              <button onClick={() => deleteCampaign(c.id)} className="text-gray-300 hover:text-red-400 transition-colors mt-0.5">
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-          ))}
+            )
+          })}
           {showNewCampaign && (
             <div className="border border-purple-200 rounded-xl p-4 bg-purple-50 space-y-3">
               <p className="text-sm font-semibold text-purple-900">Nueva campaña</p>
