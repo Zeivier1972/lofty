@@ -923,13 +923,15 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
         return lang.includes("es") || lang.includes("spanish")
       })
 
-      setAvatars(avatarList)
+      // Catherine's avatars come first (tagged with group:"Catherine Gomez" by the API)
+      const catherineAvatars = avatarList.filter((a: any) => a.group === "Catherine Gomez")
+      const stockAvatars = avatarList.filter((a: any) => a.group !== "Catherine Gomez")
+      // Store grouped for the dropdown
+      setAvatars([...catherineAvatars, ...stockAvatars])
       setVoices(spanishVoices.length > 0 ? spanishVoices : allVoices)
 
-      const catherine = avatarList.find((a: any) =>
-        a.avatar_name?.toLowerCase().includes("catherine")
-      )
-      if (catherine) setAvatarId(catherine.avatar_id)
+      // Auto-select first Catherine avatar (her personal face, not a stock one)
+      if (catherineAvatars[0]) setAvatarId(catherineAvatars[0].avatar_id)
       else if (avatarList[0]) setAvatarId(avatarList[0].avatar_id)
 
       const firstSpanish = spanishVoices[0] || allVoices[0]
@@ -1024,9 +1026,28 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
               onChange={e => setAvatarId(e.target.value)}
               className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
             >
-              {avatars.map((a: any) => (
-                <option key={a.avatar_id} value={a.avatar_id}>{a.avatar_name}</option>
-              ))}
+              {(() => {
+                const catherineGroup = avatars.filter((a: any) => a.group === "Catherine Gomez")
+                const stockGroup = avatars.filter((a: any) => a.group !== "Catherine Gomez")
+                return (
+                  <>
+                    {catherineGroup.length > 0 && (
+                      <optgroup label="— Catherine Gomez (tus avatares) —">
+                        {catherineGroup.map((a: any) => (
+                          <option key={a.avatar_id} value={a.avatar_id}>{a.avatar_name}</option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {stockGroup.length > 0 && (
+                      <optgroup label="— Stock Avatars —">
+                        {stockGroup.map((a: any) => (
+                          <option key={a.avatar_id} value={a.avatar_id}>{a.avatar_name}</option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </>
+                )
+              })()}
             </select>
             {(() => {
               const selected = avatars.find((a: any) => a.avatar_id === avatarId)
