@@ -1015,38 +1015,31 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
       <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
         <h2 className="text-base font-semibold text-gray-800 mb-4">1. Avatar y voz</h2>
 
-        {/* Avatar visual picker */}
+        {/* Avatar dropdown + preview */}
         <div className="mb-4">
           <label className="text-xs font-semibold text-gray-600 mb-2 block">Avatar</label>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {avatars.map((a: any) => {
-              const thumb = a.preview_image_url || a.thumbnail_url || null
-              const selected = avatarId === a.avatar_id
-              return (
-                <button key={a.avatar_id} onClick={() => setAvatarId(a.avatar_id)}
-                  className={cn(
-                    "relative flex flex-col items-center gap-2 p-2 rounded-xl border-2 transition-all text-center",
-                    selected ? "border-purple-500 bg-purple-50 ring-2 ring-purple-400 ring-offset-1" : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
-                  )}>
-                  {thumb ? (
-                    <img src={thumb} alt={a.avatar_name}
-                      className="w-full aspect-square object-cover object-top rounded-lg bg-gray-100" />
-                  ) : (
-                    <div className="w-full aspect-square rounded-lg bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center">
-                      <span className="text-2xl">👤</span>
-                    </div>
-                  )}
-                  <span className={cn("text-xs font-medium leading-tight line-clamp-2", selected ? "text-purple-700" : "text-gray-600")}>
-                    {a.avatar_name}
-                  </span>
-                  {selected && (
-                    <span className="absolute top-1 right-1 bg-purple-500 rounded-full p-0.5">
-                      <Check className="w-2.5 h-2.5 text-white" />
-                    </span>
-                  )}
-                </button>
+          <div className="flex items-start gap-3">
+            <select
+              value={avatarId}
+              onChange={e => setAvatarId(e.target.value)}
+              className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+            >
+              {avatars.map((a: any) => (
+                <option key={a.avatar_id} value={a.avatar_id}>{a.avatar_name}</option>
+              ))}
+            </select>
+            {(() => {
+              const selected = avatars.find((a: any) => a.avatar_id === avatarId)
+              const thumb = selected?.preview_image_url || selected?.thumbnail_url || null
+              return thumb ? (
+                <img src={thumb} alt={selected?.avatar_name}
+                  className="w-16 h-16 rounded-xl object-cover object-top border border-gray-200 flex-shrink-0" />
+              ) : (
+                <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center flex-shrink-0 border border-gray-200">
+                  <span className="text-xl">👤</span>
+                </div>
               )
-            })}
+            })()}
           </div>
         </div>
 
