@@ -1014,27 +1014,46 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
       {/* Avatar + Voice */}
       <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
         <h2 className="text-base font-semibold text-gray-800 mb-4">1. Avatar y voz</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="text-xs font-semibold text-gray-600 mb-2 block">Avatar</label>
-            <select value={avatarId} onChange={e => setAvatarId(e.target.value)}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white">
+
+        {/* Avatar dropdown + preview */}
+        <div className="mb-4">
+          <label className="text-xs font-semibold text-gray-600 mb-2 block">Avatar</label>
+          <div className="flex items-start gap-3">
+            <select
+              value={avatarId}
+              onChange={e => setAvatarId(e.target.value)}
+              className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+            >
               {avatars.map((a: any) => (
                 <option key={a.avatar_id} value={a.avatar_id}>{a.avatar_name}</option>
               ))}
             </select>
+            {(() => {
+              const selected = avatars.find((a: any) => a.avatar_id === avatarId)
+              const thumb = selected?.preview_image_url || selected?.thumbnail_url || null
+              return thumb ? (
+                <img src={thumb} alt={selected?.avatar_name}
+                  className="w-16 h-16 rounded-xl object-cover object-top border border-gray-200 flex-shrink-0" />
+              ) : (
+                <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center flex-shrink-0 border border-gray-200">
+                  <span className="text-xl">👤</span>
+                </div>
+              )
+            })()}
           </div>
-          <div>
-            <label className="text-xs font-semibold text-gray-600 mb-2 block">Voz (Español)</label>
-            <select value={voiceId} onChange={e => setVoiceId(e.target.value)}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white">
-              {voices.map((v: any) => (
-                <option key={v.voice_id} value={v.voice_id}>
-                  {v.name}{v.language ? ` — ${v.language}` : ""}
-                </option>
-              ))}
-            </select>
-          </div>
+        </div>
+
+        {/* Voice dropdown */}
+        <div>
+          <label className="text-xs font-semibold text-gray-600 mb-2 block">Voz (Español)</label>
+          <select value={voiceId} onChange={e => setVoiceId(e.target.value)}
+            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white">
+            {voices.map((v: any) => (
+              <option key={v.voice_id} value={v.voice_id}>
+                {v.name}{v.language ? ` — ${v.language}` : ""}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
