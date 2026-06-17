@@ -497,6 +497,13 @@ export interface AutopilotResult {
 export async function runAutopilot(slot: "morning" | "evening"): Promise<AutopilotResult> {
   const result: AutopilotResult = { posted: 0, failed: 0, videoQueued: 0, skipped: 0 }
 
+  // 0. Check if auto-pilot is enabled
+  const config = await prisma.socialAutoPilotConfig.findFirst()
+  if (!config?.isEnabled) {
+    console.log("[social-autopilot] Auto-pilot is disabled — skipping")
+    return result
+  }
+
   // 1. Get all connected accounts
   const accounts = await prisma.socialAccount.findMany({
     where: { isConnected: true },

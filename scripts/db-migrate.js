@@ -3,6 +3,13 @@
 const { PrismaClient } = require("@prisma/client")
 
 const STMTS = [
+  `CREATE TABLE IF NOT EXISTS "SocialAutoPilotConfig" (
+    "id"        TEXT NOT NULL,
+    "isEnabled" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "SocialAutoPilotConfig_pkey" PRIMARY KEY ("id")
+  )`,
   // configurable bot buttons (PR #64)
   `ALTER TABLE "FacebookBotConfig" ADD COLUMN IF NOT EXISTS "greetingButtons" TEXT NOT NULL DEFAULT 'Sí, me interesa,Quiero más info'`,
   `ALTER TABLE "FacebookBotConfig" ADD COLUMN IF NOT EXISTS "intentButtonA" TEXT NOT NULL DEFAULT 'Comprar para vivir'`,

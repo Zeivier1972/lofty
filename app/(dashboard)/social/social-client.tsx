@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import {
   Facebook, Instagram, Linkedin, Youtube,
   Sparkles, Send, Clock, CheckCircle2, XCircle,
@@ -70,6 +70,16 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
   const [accounts, setAccounts] = useState<SocialAccount[]>(initialAccounts)
   const [posts, setPosts] = useState<SocialPost[]>(initialPosts)
   const [activeTab, setActiveTab] = useState<"composer" | "calendar" | "analytics" | "accounts">("composer")
+  const [autoPilotEnabled, setAutoPilotEnabled] = useState(false)
+  const [autoPilotLoading, setAutoPilotLoading] = useState(false)
+
+  // Load auto-pilot state on mount
+  useEffect(() => {
+    fetch("/api/social/autopilot-config")
+      .then(r => r.json())
+      .then(d => setAutoPilotEnabled(d.isEnabled ?? false))
+      .catch(() => {})
+  }, [])
 
   // Composer state
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(["FACEBOOK"])
@@ -477,24 +487,44 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
         {/* ── SCHEDULED/RECENT POSTS ── */}
         {activeTab === "calendar" && (
           <div className="max-w-4xl mx-auto space-y-4">
-            {/* Auto-Pilot status badge */}
-            {connectedPlatforms.size > 0 ? (
-              <div className="flex items-center gap-3 px-4 py-3 bg-green-50 border border-green-200 rounded-xl">
-                <span className="text-lg">✅</span>
+            {/* Auto-Pilot toggle */}
+            <div className={`flex items-center justify-between gap-3 px-4 py-3 rounded-xl border ${autoPilotEnabled ? "bg-green-50 border-green-200" : "bg-gray-50 border-gray-200"}`}>
+              <div className="flex items-center gap-3">
+                <span className="text-lg">{autoPilotEnabled ? "🤖" : "⏸️"}</span>
                 <div>
-                  <p className="text-sm font-semibold text-green-800">Auto-Pilot Activo</p>
-                  <p className="text-xs text-green-700">2 publicaciones diarias a las 9am y 6pm ET — contenido en español generado automáticamente por IA</p>
+                  <p className={`text-sm font-semibold ${autoPilotEnabled ? "text-green-800" : "text-gray-700"}`}>
+                    Auto-Pilot {autoPilotEnabled ? "Activo" : "Pausado"}
+                  </p>
+                  <p className={`text-xs ${autoPilotEnabled ? "text-green-700" : "text-gray-500"}`}>
+                    {autoPilotEnabled
+                      ? "2 publicaciones diarias a las 9am y 6pm ET — IA genera contenido en español automáticamente"
+                      : connectedPlatforms.size === 0
+                        ? "Conecta una cuenta en la pestaña Accounts para poder activarlo"
+                        : "Actívalo para publicar 2 veces al día automáticamente"}
+                  </p>
                 </div>
               </div>
-            ) : (
-              <div className="flex items-center gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl">
-                <span className="text-lg">⚠️</span>
-                <div>
-                  <p className="text-sm font-semibold text-amber-800">Auto-Pilot Inactivo</p>
-                  <p className="text-xs text-amber-700">Conecta una cuenta para activar Auto-Pilot — ve a la pestaña <strong>Accounts</strong></p>
-                </div>
-              </div>
-            )}
+              <button
+                disabled={autoPilotLoading || connectedPlatforms.size === 0}
+                onClick={async () => {
+                  setAutoPilotLoading(true)
+                  try {
+                    const res = await fetch("/api/social/autopilot-config", {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ isEnabled: !autoPilotEnabled }),
+                    })
+                    const d = await res.json()
+                    setAutoPilotEnabled(d.isEnabled)
+                  } finally {
+                    setAutoPilotLoading(false)
+                  }
+                }}
+                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed ${autoPilotEnabled ? "bg-green-500" : "bg-gray-300"}`}
+              >
+                <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${autoPilotEnabled ? "translate-x-5" : "translate-x-0"}`} />
+              </button>
+            </div>
 
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-lg font-semibold text-gray-900">All Posts ({posts.length})</h2>
