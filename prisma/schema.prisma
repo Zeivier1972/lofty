@@ -748,6 +748,7 @@ model InstagramBotConfig {
 model InstagramBotCampaign {
   id        String   @id @default(cuid())
   keyword   String   @unique
+  keywords  String   @default("")
   name      String
   pdfUrl    String?
   pdfName   String?
@@ -830,6 +831,13 @@ model VideoMessage {
 }
 
 // ─── Social Media ─────────────────────────────────────────────────────────────
+
+model SocialAutoPilotConfig {
+  id        String   @id @default(cuid())
+  isEnabled Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
 
 model SocialAccount {
   id                String       @id @default(cuid())
