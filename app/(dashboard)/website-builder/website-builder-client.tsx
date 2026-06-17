@@ -33,22 +33,26 @@ interface WebsiteConfig {
 }
 
 const DEFAULT_CONFIG: WebsiteConfig = {
-  heroTitle: "Catherine Gomez — Realtor AND Educator\nwho helps Latino families buy smart in Florida.",
-  heroSubtitle: "\"I don't just sell homes—I teach you how to buy smart.\"",
-  heroCta: "View Listings", heroCta2: "Contact Me",
-  agentName: "Catherine Gomez", agentTitle: "CEO / AGENT  |  License ID: 3320405",
-  agentBio: "Catherine Gomez es una agente de bienes raíces con licencia en Florida y una carrera que comenzó en 2004. Está dedicada a ayudar a sus clientes a encontrar la casa de sus sueños, vender propiedades y navegar el mercado inmobiliario.\n\nCon más de dos décadas de experiencia en el mercado de bienes raíces de Florida, Catherine Gomez se compromete a guiar a sus clientes en cada paso de su camino inmobiliario.",
+  heroTitle: "Catherine Gomez — Tu Realtor y Educadora\nque ayuda a familias latinas a comprar inteligente en Florida.",
+  heroSubtitle: "\"No solo vendo casas — te enseño a comprar con inteligencia.\"",
+  heroCta: "Ver Propiedades", heroCta2: "Contáctame",
+  agentName: "Catherine Gomez",
+  agentTitle: "CEO / AGENTE  |  Licencia #: 3320405",
+  agentBio: "Catherine Gomez es una agente de bienes raíces con licencia en Florida, con una trayectoria que comenzó en 2004. Está completamente dedicada a ayudar a sus clientes a encontrar la casa de sus sueños, vender sus propiedades al mejor precio y navegar el mercado inmobiliario con confianza.\n\nCon más de dos décadas de experiencia en el mercado de bienes raíces de Florida, Catherine se especializa en servir a familias latinoamericanas que desean comprar, vender o invertir en propiedades en Miami, Homestead, Orlando y toda la Florida. Su enfoque educativo y personalizado la distingue: no solo cierra negocios, enseña a sus clientes a tomar decisiones inteligentes.",
   agentPhone: "+1(305) 283-0872",
   agentEmail: "info@catherinegomezrealtor.com",
   agentAddress: "14335 SW 120th St. Suite 101, Miami, Florida 33186, USA",
   agentWebsite: "https://catherinegomezrealtor.com",
+  agentLicense: "3320405",
+  agentBrokerage: "My Realty Group LLC.",
   yearsFounded: 2004, homesSold: 500, satisfiedClients: 98, avgDaysOnMarket: 21,
   primaryColor: "#1a3a5c", accentColor: "#c9a84c",
-  facebook: "https://facebook.com/catherinegomezrealtor",
-  instagram: "https://instagram.com/catherinegomezrealtor",
-  linkedin: "https://linkedin.com/in/catherinegomez",
+  facebook: "https://www.facebook.com/catherinegomezrealtors",
+  instagram: "https://www.instagram.com/catherine_gomez_realtor/",
+  youtube: "https://www.youtube.com/@CatherineGomezRealtor",
   whatsapp: "https://wa.me/13052830872",
-  aboutHeading: "Why Work With Me", testimonials: "[]", serviceAreas: "[]",
+  aboutHeading: "¿Por Qué Trabajar Conmigo?",
+  testimonials: "[]", serviceAreas: "[]",
 }
 
 function ImageUpload({ value, onChange, label, aspect = "wide" }: {
@@ -106,15 +110,40 @@ function ImageUpload({ value, onChange, label, aspect = "wide" }: {
       <div className="flex gap-2">
         <Input placeholder="Or paste image URL..." value={urlInput}
           onChange={e => setUrlInput(e.target.value)}
-          onKeyDown={e => { if (e.key === "Enter" && urlInput) { onChange(urlInput); setUrlInput("") } }}
+          onKeyDown={e => { if (e.key === "Enter" && urlInput) handleUseUrl() }}
           className="text-xs h-8" />
         <Button size="sm" variant="outline" className="h-8 px-2 text-xs"
-          onClick={() => { if (urlInput) { onChange(urlInput); setUrlInput("") } }}>
-          Use
+          disabled={uploading}
+          onClick={handleUseUrl}>
+          {uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : "Use"}
         </Button>
       </div>
     </div>
   )
+
+  async function handleUseUrl() {
+    if (!urlInput.trim()) return
+    setUploading(true)
+    try {
+      const res = await fetch("/api/settings/website/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: urlInput.trim() }),
+      })
+      const data = await res.json()
+      if (data.url) {
+        onChange(data.url)
+        setUrlInput("")
+        toast({ title: "Imagen guardada" })
+      } else {
+        toast({ title: data.error ?? "Error al cargar la imagen", variant: "destructive" })
+      }
+    } catch {
+      toast({ title: "Error al cargar la imagen", variant: "destructive" })
+    } finally {
+      setUploading(false)
+    }
+  }
 }
 
 function TestimonialsEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
