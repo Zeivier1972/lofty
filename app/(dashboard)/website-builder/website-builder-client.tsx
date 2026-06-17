@@ -70,9 +70,31 @@ function ImageUpload({ value, onChange, label, aspect = "wide" }: {
       const res = await fetch("/api/settings/website/upload", { method: "POST", body: fd })
       const data = await res.json()
       if (data.url) onChange(data.url)
-      toast({ title: "Image uploaded" })
-    } catch {
-      toast({ title: "Upload failed", variant: "destructive" })
+      else toast({ title: data.error ?? "Upload failed", variant: "destructive" })
+      if (data.url) toast({ title: "Image uploaded" })
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err?.message, variant: "destructive" })
+    } finally {
+      setUploading(false)
+      // reset so same file can be re-selected
+      if (inputRef.current) inputRef.current.value = ""
+    }
+  }
+
+  async function handleUrlUse() {
+    if (!urlInput.trim()) return
+    setUploading(true)
+    try {
+      const res = await fetch("/api/settings/website/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: urlInput.trim() }),
+      })
+      const data = await res.json()
+      if (data.url) { onChange(data.url); setUrlInput("") }
+      else toast({ title: data.error ?? "Upload failed", variant: "destructive" })
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err?.message, variant: "destructive" })
     } finally {
       setUploading(false)
     }
@@ -107,11 +129,11 @@ function ImageUpload({ value, onChange, label, aspect = "wide" }: {
       <div className="flex gap-2">
         <Input placeholder="Or paste image URL..." value={urlInput}
           onChange={e => setUrlInput(e.target.value)}
-          onKeyDown={e => { if (e.key === "Enter" && urlInput) { onChange(urlInput); setUrlInput("") } }}
+          onKeyDown={e => { if (e.key === "Enter" && urlInput) handleUrlUse() }}
           className="text-xs h-8" />
         <Button size="sm" variant="outline" className="h-8 px-2 text-xs"
-          onClick={() => { if (urlInput) { onChange(urlInput); setUrlInput("") } }}>
-          Use
+          onClick={handleUrlUse} disabled={uploading || !urlInput.trim()}>
+          {uploading ? "..." : "Use"}
         </Button>
       </div>
     </div>
