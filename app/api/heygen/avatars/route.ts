@@ -3,20 +3,32 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 
-// Known Catherine Gomez avatar IDs (from /api/social/heygen-avatars debug endpoint).
-// These are always surfaced first regardless of naming variations.
-const CATHERINE_AVATAR_IDS = new Set([
-  "0edfa54de240487f8dc6bcfd68924ab6",
-  "9ceb355150d84ebd86d11d08cec11a6f",
-  "56ccc3395f814ce78925129ebd049430",
-  "ddc38cd2a91b4ab5ae0863a79a7239be",
-  "05b1aacb453e4f1db169f4cd63d32432",
-  "507e27eca7454a00bbbeb740e80d6b01",
+// ── Confirmed talking_photo IDs for Catherine Gomez ──────────────────────────
+// These are photo-realistic avatars created from Catherine's own footage.
+// The OLD v2_avatar "Catherine Gomez" IDs (the 6 stock-style ones) are
+// intentionally excluded — Catherine does not want to use those.
+const CATHERINE_TALKING_PHOTO_IDS = new Set([
+  "701d93d2d1834f2589a987aaf701720d", // Catherine Face Swap Avatar
+  "f2bf0415eb4f4185b37673d3c876423c", // Catherine Gomez Avatar (parent of 13 looks)
+  "a3ec164142604863aa090eee58facf2e", // Catherine Gomez (talking photo)
+  "e386382a4367473aa3c98b1af4129ece", // Catherine the Confident Realtor (1)
+  "663bfeadebbb4d43aa42336af17855da", // Catherine the Confident Realtor (2)
+  "2238f900a2284f5c813fc1460fabb299", // Catherine
+])
+
+// Placeholder for the 13 sub-looks of "Catherine Gomez Avatar" — IDs to be
+// discovered via /api/social/heygen-avatars?mode=looks and added here.
+const CATHERINE_LOOK_IDS = new Set<string>([
+  // e.g. "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", // Look 1
 ])
 
 function isCatherine(a: { avatar_id?: string; avatar_name?: string }): boolean {
-  if (a.avatar_id && CATHERINE_AVATAR_IDS.has(a.avatar_id)) return true
-  return a.avatar_name?.toLowerCase().includes("catherine") ?? false
+  if (!a.avatar_id) return false
+  if (CATHERINE_TALKING_PHOTO_IDS.has(a.avatar_id)) return true
+  if (CATHERINE_LOOK_IDS.has(a.avatar_id)) return true
+  // Fallback: name-based match for any future avatars not yet hard-pinned
+  const n = a.avatar_name?.toLowerCase() ?? ""
+  return n.includes("catherine") || n.includes("confident realtor") || n.includes("swap avatar")
 }
 
 export async function GET() {
@@ -41,27 +53,28 @@ export async function GET() {
       avatar_id: tp.talking_photo_id || tp.id || tp.avatar_id,
       avatar_name: tp.talking_photo_name || tp.name || tp.avatar_name || "Photo Avatar",
       preview_image_url: tp.preview_image_url || tp.preview_url || tp.thumbnail_url || null,
-      is_custom: true,
+      is_talking_photo: true,
     }))
     .filter((tp: any) => tp.avatar_id)
 
-  const allAvatars: any[] = [...rawAvatars, ...talkingPhotos]
-
-  // Tag Catherine's avatars and split into groups
-  const catherineAvatars = allAvatars
+  // Only talking_photos can be Catherine's personal avatars — skip v2_avatars for her group
+  const catherineAvatars = talkingPhotos
     .filter(isCatherine)
-    .map(a => ({ ...a, is_custom: true, group: "Catherine Gomez" }))
+    .map(a => ({ ...a, group: "Catherine Gomez" }))
 
-  const otherAvatars = allAvatars
-    .filter(a => !isCatherine(a))
-    .map(a => ({ ...a, group: "Stock Avatars" }))
+  // Stock avatars: all v2 avatars + talking photos that aren't Catherine's
+  const otherAvatars = [
+    ...rawAvatars.map((a: any) => ({ ...a, group: "Stock Avatars" })),
+    ...talkingPhotos
+      .filter(a => !isCatherine(a))
+      .map(a => ({ ...a, group: "Stock Avatars" })),
+  ]
 
   console.log(
     `[HeyGen] avatars: ${rawAvatars.length}, talking_photos: ${talkingPhotos.length}, ` +
     `catherine: ${catherineAvatars.length}`
   )
 
-  // Catherine's avatars come first so the UI can split on the group field
   return NextResponse.json({
     data: { avatars: [...catherineAvatars, ...otherAvatars] },
     catherine_count: catherineAvatars.length,

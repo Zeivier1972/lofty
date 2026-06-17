@@ -202,46 +202,51 @@ interface HeyGenAvatar {
   preview_image_url?: string
 }
 
-// Pick one of Catherine's personal avatars, rotating by day so different looks appear across videos.
-// Priority: talking_photos named "Catherine" → avatars named "Catherine" → first available.
+// Confirmed talking_photo IDs — Catherine's photo-realistic personal avatars.
+// The old v2_avatar "Catherine Gomez" IDs are excluded per user preference.
+const CATHERINE_TALKING_PHOTO_IDS: string[] = [
+  "701d93d2d1834f2589a987aaf701720d", // Catherine Face Swap Avatar
+  "f2bf0415eb4f4185b37673d3c876423c", // Catherine Gomez Avatar
+  "a3ec164142604863aa090eee58facf2e", // Catherine Gomez (talking photo)
+  "e386382a4367473aa3c98b1af4129ece", // Catherine the Confident Realtor (1)
+  "663bfeadebbb4d43aa42336af17855da", // Catherine the Confident Realtor (2)
+  "2238f900a2284f5c813fc1460fabb299", // Catherine
+  // Sub-looks of "Catherine Gomez Avatar" — add IDs here once discovered
+  // via /api/social/heygen-avatars?mode=looks
+]
+
+// Pick one of Catherine's confirmed talking_photo avatars, rotating by day.
 function pickCatherineAvatar(
-  avatars: HeyGenAvatar[],
   talkingPhotos: HeyGenAvatar[],
   dayOfWeek: number
 ): string | null {
-  const isCatherine = (a: HeyGenAvatar) =>
-    a.avatar_name?.toLowerCase().includes("catherine") ?? false
+  const idSet = new Set(CATHERINE_TALKING_PHOTO_IDS)
 
-  // Personal talking-photo avatars (photo-realistic, her actual face) take highest priority
-  const personalPhotos = talkingPhotos.filter(isCatherine)
-  if (personalPhotos.length > 0) {
-    const pick = personalPhotos[dayOfWeek % personalPhotos.length]
+  // Build ordered list in the order defined above (most preferred first)
+  const personal: HeyGenAvatar[] = []
+  for (const id of CATHERINE_TALKING_PHOTO_IDS) {
+    const found = talkingPhotos.find(tp => tp.avatar_id === id)
+    if (found) personal.push(found)
+  }
+
+  if (personal.length > 0) {
+    const pick = personal[dayOfWeek % personal.length]
     console.log(`[social-autopilot] Using talking_photo avatar: "${pick.avatar_name}" (${pick.avatar_id})`)
     return pick.avatar_id
   }
 
-  // Instant avatars named Catherine (trained avatar groups like "Catherine Gomez Avatars")
-  const namedAvatars = avatars.filter(isCatherine)
-  if (namedAvatars.length > 0) {
-    const pick = namedAvatars[dayOfWeek % namedAvatars.length]
-    console.log(`[social-autopilot] Using named avatar: "${pick.avatar_name}" (${pick.avatar_id})`)
+  // Fallback: any talking_photo whose name contains "catherine" (catches newly added looks)
+  const byName = talkingPhotos.filter(tp =>
+    tp.avatar_name?.toLowerCase().includes("catherine") ||
+    tp.avatar_name?.toLowerCase().includes("confident realtor")
+  )
+  if (byName.length > 0) {
+    const pick = byName[dayOfWeek % byName.length]
+    console.log(`[social-autopilot] Fallback by name: "${pick.avatar_name}" (${pick.avatar_id})`)
     return pick.avatar_id
   }
 
-  // Last resort: any talking photo (still better than a stock avatar)
-  if (talkingPhotos.length > 0) {
-    const pick = talkingPhotos[0]
-    console.log(`[social-autopilot] Fallback to first talking_photo: "${pick.avatar_name}" (${pick.avatar_id})`)
-    return pick.avatar_id
-  }
-
-  // Last resort: first stock avatar
-  const pick = avatars[0]
-  if (pick) {
-    console.log(`[social-autopilot] Fallback to first avatar: "${pick.avatar_name}" (${pick.avatar_id})`)
-    return pick.avatar_id
-  }
-
+  console.warn("[social-autopilot] No Catherine talking_photo found — no video will be generated")
   return null
 }
 
@@ -262,14 +267,19 @@ async function getHeyGenAvatar(dayOfWeek: number): Promise<{ avatarId: string; v
     const avatarsData = await avatarsRes.json()
     const voicesData = await voicesRes.json()
 
-    const avatars: HeyGenAvatar[] = avatarsData?.data?.avatars ?? []
-    const talkingPhotos: HeyGenAvatar[] = avatarsData?.data?.talking_photos ?? []
+    // Normalize talking_photos field names to match HeyGenAvatar interface
+    const rawTalkingPhotos: any[] = avatarsData?.data?.talking_photos ?? []
+    const talkingPhotos: HeyGenAvatar[] = rawTalkingPhotos.map((tp: any) => ({
+      avatar_id: tp.talking_photo_id || tp.id || tp.avatar_id,
+      avatar_name: tp.talking_photo_name || tp.name || tp.avatar_name,
+      preview_image_url: tp.preview_image_url,
+    })).filter((tp: HeyGenAvatar) => tp.avatar_id)
 
     console.log(
-      `[social-autopilot] HeyGen avatars: ${avatars.length} avatars, ${talkingPhotos.length} talking_photos`
+      `[social-autopilot] HeyGen avatars: ${avatarsData?.data?.avatars?.length ?? 0} stock, ${talkingPhotos.length} talking_photos`
     )
 
-    const avatarId = pickCatherineAvatar(avatars, talkingPhotos, dayOfWeek)
+    const avatarId = pickCatherineAvatar(talkingPhotos, dayOfWeek)
     if (!avatarId) return null
 
     // Prefer a Spanish female voice; fall back to any Spanish; then first available
