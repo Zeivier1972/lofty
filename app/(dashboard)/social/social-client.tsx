@@ -10,6 +10,7 @@ import {
   RefreshCw, ExternalLink, AlertCircle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import HelpPanel from "@/components/help-panel"
 
 interface SocialAccount {
   id: string
@@ -247,6 +248,7 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
             <p className="text-sm text-gray-500 mt-0.5">AI-powered content for Facebook, Instagram, TikTok &amp; more</p>
           </div>
           <div className="flex items-center gap-3">
+            <HelpPanel section="social" />
             {/* Connected account pills */}
             {PLATFORMS.filter(p => connectedPlatforms.has(p.id)).map(p => (
               <div key={p.id} className="flex items-center gap-1.5 px-2.5 py-1 bg-green-50 border border-green-200 rounded-full text-xs font-medium text-green-700">

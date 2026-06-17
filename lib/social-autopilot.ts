@@ -355,6 +355,7 @@ interface BlogPostData {
   excerpt: string
   content: string
   tags: string[]
+  sectionImagePrompts: string[]
 }
 
 async function generateBlogPostContent(
@@ -366,39 +367,69 @@ async function generateBlogPostContent(
   const hook = research?.viralHook ?? ""
   const now = new Date()
   const year = now.getFullYear()
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
+  const idxActive = !!(process.env.RETS_LOGIN_URL || process.env.IDX_API_KEY)
 
   const systemPrompt = research
     ? buildAIOSystemPrompt()
-    : `Eres Catherine Gomez, Realtor en Miami con más de 15 años de experiencia. Escribes artículos de blog en español, en primera persona, con autoridad y datos específicos del mercado de South Florida.`
+    : `Eres Catherine Gomez, Realtor en Miami con más de 15 años de experiencia. Escribes artículos de blog en español, en primera persona, con autoridad y datos específicos del mercado de South Florida. Tu objetivo es SEO y AIO (optimización para inteligencia artificial).`
+
+  const idxSection = idxActive
+    ? `- Menciona que los lectores pueden ver propiedades disponibles ahora mismo en: <a href="${appUrl}/search" class="text-[#c9a84c] font-semibold hover:underline">buscar propiedades en Miami</a>`
+    : ""
 
   const userPrompt = `Escribe un artículo de blog completo para el sitio web de Catherine Gomez Realtor sobre: "${theme}".
 
 Gancho de apertura: "${hook}"
 Palabras clave SEO a incluir: ${keywords.join(", ")}
 Año de referencia: ${year}
+URL del sitio: ${appUrl}
 Mercados clave: Brickell Miami, Homestead, Orlando, South Florida
 Audiencia: compradores e inversores hispanohablantes, especialmente colombianos
 
-El artículo debe tener:
-- 600-800 palabras en español
-- Introducción con el gancho
-- 3-4 secciones con subtítulos (usa ## para subtítulos)
-- Al menos UN dato específico (precio, porcentaje, estadística)
-- CTA al final: invitar a contactar a Catherine Gomez al 305.283.0872 o su sitio web
-- Tono: profesional pero cercano, primera persona
+INSTRUCCIONES DE FORMATO — devuelve HTML puro (NO Markdown):
+- Usa <h2> para los subtítulos de cada sección
+- Usa <h3> para sub-secciones si las necesitas
+- Usa <p> para párrafos (texto completo, bien desarrollado)
+- Usa <strong> para énfasis en datos importantes
+- Usa <ul><li> para listas cuando aplique
+- Añade una sección <h2>Preguntas Frecuentes</h2> al final con 2-3 <h3> preguntas y respuestas cortas (esto mejora el ranking en Google y ChatGPT)
+- NO incluyas <html>, <head>, <body> ni <style> — solo el contenido interno del artículo
+
+HIPERVÍNCULOS INTERNOS requeridos — usa estos exactos:
+- En la introducción o sección inicial: <a href="${appUrl}/site#contact" class="text-[#c9a84c] font-semibold hover:underline">agenda una consulta gratuita</a>
+- En al menos una sección de propiedades: <a href="${appUrl}/search" class="text-[#c9a84c] font-semibold hover:underline">ver propiedades disponibles en Miami</a>
+- Al final del artículo: <a href="${appUrl}/site/blog" class="text-[#c9a84c] hover:underline">más artículos sobre bienes raíces en Miami</a>
+${idxSection}
+
+ESTRUCTURA del artículo (600-800 palabras):
+1. Párrafo de introducción con gancho poderoso
+2. [IMG_SECTION_1] — coloca este placeholder exacto aquí (entre la intro y la primera sección)
+3. Sección 1 con <h2> — tendencias/datos de mercado con al menos UN dato numérico
+4. Sección 2 con <h2> — consejos prácticos o pasos de acción
+5. [IMG_SECTION_2] — coloca este placeholder exacto aquí (antes de la sección 3)
+6. Sección 3 con <h2> — oportunidad específica (barrio, tipo de propiedad o inversión)
+7. Sección FAQ con <h2>Preguntas Frecuentes</h2> y 2-3 sub-preguntas
+8. CTA final: párrafo invitando a contactar a Catherine Gomez al <strong>(305) 283-0872</strong>
+
+SEO/AIO: Escribe como responderías a una búsqueda en Google o una pregunta en ChatGPT. Usa el lenguaje natural que usaría alguien buscando "comprar casa en Miami" o "invertir en Miami real estate".
 
 Devuelve SOLO JSON válido con este formato exacto:
 {
   "title": "Título SEO del artículo (máx 70 caracteres, incluye keyword principal)",
-  "excerpt": "Meta descripción de 150-160 caracteres para SEO — resume el artículo con la keyword principal",
-  "content": "El artículo completo en Markdown (usa ## para subtítulos, **negrita** para énfasis)",
-  "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"]
+  "excerpt": "Meta descripción de 150-160 caracteres para SEO — resume con keyword principal y año",
+  "content": "TODO el HTML del artículo con los placeholders [IMG_SECTION_1] y [IMG_SECTION_2] incluidos",
+  "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
+  "sectionImagePrompts": [
+    "Descripción en inglés para imagen 1 (estilo fotorrealista, real estate Miami, sin texto)",
+    "Descripción en inglés para imagen 2 (estilo fotorrealista, real estate Miami, sin texto)"
+  ]
 }`
 
   try {
     const message = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 2048,
+      max_tokens: 3000,
       system: systemPrompt,
       messages: [{ role: "user", content: userPrompt }],
     })
@@ -412,10 +443,73 @@ Devuelve SOLO JSON válido con este formato exacto:
   }
 }
 
+async function generateSectionImage(prompt: string, folder = "lofty-blog"): Promise<string | null> {
+  try {
+    const response = await openai.images.generate({
+      model: "dall-e-3",
+      prompt: `Professional Miami real estate photography. ${prompt}. Luxury properties, blue sky, palm trees, modern architecture. Photorealistic, bright daylight, no text or watermarks.`,
+      n: 1,
+      size: "1024x1024",
+      quality: "standard",
+    })
+
+    const imageUrl = response.data?.[0]?.url
+    if (!imageUrl) return null
+
+    const fetchRes = await fetch(imageUrl)
+    if (!fetchRes.ok) return null
+    const buffer = await fetchRes.arrayBuffer()
+    const base64 = Buffer.from(buffer).toString("base64")
+
+    const uploadResult = await cloudinary.uploader.upload(
+      `data:image/png;base64,${base64}`,
+      { folder }
+    )
+
+    return uploadResult.secure_url
+  } catch (err) {
+    console.error("[social-autopilot] Section image generation failed:", err)
+    return null
+  }
+}
+
 async function publishBlogPost(dayOfWeek: number, research?: ResearchBrief): Promise<boolean> {
   try {
     const data = await generateBlogPostContent(dayOfWeek, research)
     if (!data) return false
+
+    const theme = research?.trendingTopic ?? WEEKLY_THEMES[dayOfWeek] ?? WEEKLY_THEMES[0]
+
+    // Generate cover + up to 2 section images in parallel (non-fatal if any fail)
+    const coverPrompt = `${theme}, luxurious Miami waterfront property, golden hour`
+    const [coverImage, sectionImg1, sectionImg2] = await Promise.all([
+      generateSectionImage(coverPrompt, "lofty-blog"),
+      data.sectionImagePrompts?.[0]
+        ? generateSectionImage(data.sectionImagePrompts[0], "lofty-blog")
+        : Promise.resolve(null),
+      data.sectionImagePrompts?.[1]
+        ? generateSectionImage(data.sectionImagePrompts[1], "lofty-blog")
+        : Promise.resolve(null),
+    ])
+
+    // Embed section images into HTML content
+    let html = data.content
+    if (sectionImg1) {
+      html = html.replace(
+        "[IMG_SECTION_1]",
+        `<figure class="my-8 rounded-2xl overflow-hidden shadow-md"><img src="${sectionImg1}" alt="${data.title}" class="w-full object-cover max-h-80" loading="lazy" /></figure>`
+      )
+    } else {
+      html = html.replace("[IMG_SECTION_1]", "")
+    }
+    if (sectionImg2) {
+      html = html.replace(
+        "[IMG_SECTION_2]",
+        `<figure class="my-8 rounded-2xl overflow-hidden shadow-md"><img src="${sectionImg2}" alt="${data.title}" class="w-full object-cover max-h-80" loading="lazy" /></figure>`
+      )
+    } else {
+      html = html.replace("[IMG_SECTION_2]", "")
+    }
 
     // Generate a unique slug from the title
     const baseSlug = data.title
@@ -426,15 +520,12 @@ async function publishBlogPost(dayOfWeek: number, research?: ResearchBrief): Pro
       .replace(/^-|-$/g, "")
     const slug = `${baseSlug}-${Date.now()}`
 
-    // Use a Cloudinary image or DALL-E for cover
-    const coverImage = await generateAndUploadImage(dayOfWeek, research)
-
     await prisma.blogPost.create({
       data: {
         title: data.title,
         slug,
         excerpt: data.excerpt,
-        content: data.content,
+        content: html,
         coverImage,
         author: "Catherine Gomez",
         tags: JSON.stringify(data.tags),
@@ -445,10 +536,86 @@ async function publishBlogPost(dayOfWeek: number, research?: ResearchBrief): Pro
     })
 
     console.log(`[social-autopilot] Blog post published: "${data.title}"`)
+
+    // Share the blog post on connected social accounts (Facebook / Instagram)
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
+    const blogUrl = `${appUrl}/site/blog/${slug}`
+    await shareBlogOnSocial(data.title, data.excerpt, blogUrl, coverImage, dayOfWeek, research)
+
     return true
   } catch (err) {
     console.error("[social-autopilot] Blog post publish failed:", err)
     return false
+  }
+}
+
+async function shareBlogOnSocial(
+  title: string,
+  excerpt: string,
+  blogUrl: string,
+  coverImage: string | null,
+  dayOfWeek: number,
+  research?: ResearchBrief
+): Promise<void> {
+  try {
+    const accounts = await prisma.socialAccount.findMany({
+      where: { platform: { in: ["FACEBOOK", "INSTAGRAM"] }, isConnected: true },
+    })
+
+    if (accounts.length === 0) return
+
+    for (const account of accounts) {
+      try {
+        const platformGuide = PLATFORM_GUIDES[account.platform] ?? ""
+        const message = await anthropic.messages.create({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 400,
+          system: `Eres Catherine Gomez, Realtor en Miami. Escribes posts de redes sociales en español para compartir artículos de blog. ${platformGuide}`,
+          messages: [
+            {
+              role: "user",
+              content: `Escribe un post para ${account.platform} compartiendo este artículo:\n\nTítulo: ${title}\nResumen: ${excerpt}\nURL: ${blogUrl}\n\nEl post debe invitar a leer el artículo, terminar con el link ${blogUrl} y ser llamativo.`,
+            },
+          ],
+        })
+
+        const postContent =
+          message.content[0].type === "text"
+            ? message.content[0].text.trim()
+            : `📖 Nuevo artículo: ${title}\n\n${excerpt}\n\n👉 Leer más: ${blogUrl}`
+
+        const fakePost: PostLike = {
+          id: `blog-share-${Date.now()}`,
+          platform: account.platform,
+          content: postContent,
+          mediaUrl: coverImage,
+          prompt: null,
+        }
+
+        if (account.platform === "FACEBOOK") {
+          await publishToFacebook(account, fakePost)
+        } else if (account.platform === "INSTAGRAM" && coverImage) {
+          await publishToInstagram(account, fakePost)
+        }
+
+        await prisma.socialPost.create({
+          data: {
+            accountId: account.id,
+            platform: account.platform,
+            content: postContent,
+            mediaUrl: coverImage,
+            status: "POSTED",
+            publishedAt: new Date(),
+          },
+        })
+
+        console.log(`[social-autopilot] Blog shared on ${account.platform}`)
+      } catch (err) {
+        console.error(`[social-autopilot] Blog share on ${account.platform} failed:`, err)
+      }
+    }
+  } catch (err) {
+    console.error("[social-autopilot] shareBlogOnSocial failed:", err)
   }
 }
 

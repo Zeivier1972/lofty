@@ -11,6 +11,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/components/ui/use-toast"
+import HelpPanel from "@/components/help-panel"
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -93,12 +94,15 @@ export default function ContentStudioClient() {
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-5xl mx-auto px-4 py-8">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <Sparkles className="w-6 h-6 text-purple-600" />
-            Content Studio
-          </h1>
-          <p className="text-gray-500 mt-1">AI-powered blog writing, image generation, market research, and video ads</p>
+        <div className="mb-8 flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+              <Sparkles className="w-6 h-6 text-purple-600" />
+              Content Studio
+            </h1>
+            <p className="text-gray-500 mt-1">AI-powered blog writing, image generation, market research, and video ads</p>
+          </div>
+          <HelpPanel section="content-studio" />
         </div>
 
         {/* Tab bar */}

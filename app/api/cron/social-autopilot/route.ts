@@ -31,12 +31,27 @@ export async function GET(req: Request) {
     const videoResult = await checkHeygenVideos()
     const autopilotResult = await runAutopilot(slot)
 
+    // Fetch the last 10 posts so failures show their error context
+    const { prisma } = await import("@/lib/prisma")
+    const recentPosts = await prisma.socialPost.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      select: {
+        platform: true,
+        status: true,
+        content: true,
+        createdAt: true,
+        externalId: true,
+      },
+    })
+
     return NextResponse.json({
       ok: true,
       slot,
       autopilot: autopilotResult,
       heygenVideos: videoResult,
       timestamp: new Date().toISOString(),
+      recent_posts: recentPosts,
     })
   } catch (err) {
     console.error("[cron/social-autopilot] Fatal error:", err)
