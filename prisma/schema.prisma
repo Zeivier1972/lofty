@@ -567,6 +567,7 @@ model WebsiteConfig {
   instagram         String?
   linkedin          String?
   youtube           String?
+  whatsapp          String?
   // Content
   aboutHeading      String   @default("Why Work With Me")
   testimonials      String   @default("[]")
