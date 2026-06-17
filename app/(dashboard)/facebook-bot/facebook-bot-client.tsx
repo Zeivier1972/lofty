@@ -373,7 +373,7 @@ export default function FacebookBotClient() {
                     )}
                   </div>
                   {c.pdfUrl && (
-                    <a href={c.pdfUrl} target="_blank" rel="noopener noreferrer"
+                    <a href={`/api/brochure/view?url=${encodeURIComponent(c.pdfUrl)}`} target="_blank" rel="noopener noreferrer"
                       className="flex items-center gap-1 text-xs text-blue-600 hover:underline mt-1.5">
                       <Link2 className="w-3 h-3" />
                       {c.pdfName || "Ver PDF"}

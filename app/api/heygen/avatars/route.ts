@@ -16,14 +16,22 @@ export async function GET() {
   })
   const data = await res.json()
 
-  // Normalize talking_photos to the same shape as avatars so the client
-  // sees all custom looks (Photo Avatar, Chic Elegance, etc.)
+  // Log structure once so we can see field names in Railway logs
+  const tpSample = data?.data?.talking_photos?.[0]
+  if (tpSample) {
+    console.log("[HeyGen] talking_photo sample keys:", Object.keys(tpSample))
+    console.log("[HeyGen] talking_photo sample:", JSON.stringify(tpSample).slice(0, 300))
+  }
+
+  // Normalize talking_photos — try all known field name variants
   const avatars: any[] = data?.data?.avatars || []
   const talkingPhotos: any[] = (data?.data?.talking_photos || []).map((tp: any) => ({
-    avatar_id: tp.talking_photo_id,
-    avatar_name: tp.talking_photo_name,
-    preview_image_url: tp.preview_image_url || tp.preview_url || null,
-  }))
+    avatar_id: tp.talking_photo_id || tp.id || tp.avatar_id,
+    avatar_name: tp.talking_photo_name || tp.name || tp.avatar_name || "Photo Avatar",
+    preview_image_url: tp.preview_image_url || tp.preview_url || tp.thumbnail_url || null,
+  })).filter((tp: any) => tp.avatar_id)
+
+  console.log(`[HeyGen] avatars: ${avatars.length}, talking_photos: ${talkingPhotos.length}`)
 
   return NextResponse.json({
     data: { avatars: [...avatars, ...talkingPhotos] },
