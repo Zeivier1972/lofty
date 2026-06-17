@@ -11,12 +11,13 @@ cloudinary.config({
 })
 
 function extractPublicId(url: string): string {
+  // Strip Cloudinary analytics query params before parsing
+  const cleanUrl = url.split("?")[0]
   // e.g. https://res.cloudinary.com/{cloud}/raw/upload/v123/{folder}/{file}.pdf
-  // public_id = {folder}/{file}  (no extension for raw uploads)
-  const match = url.match(/\/raw\/upload\/(?:v\d+\/)?(.+)$/)
+  // For raw resources, the .pdf extension IS part of the public_id in the URL
+  const match = cleanUrl.match(/\/raw\/upload\/(?:v\d+\/)?(.+)$/)
   if (!match) return ""
-  // Remove .pdf extension — Cloudinary public_id doesn't include it for raw
-  return match[1].replace(/\.pdf$/i, "")
+  return match[1] // Keep extension — raw public_id includes it
 }
 
 export async function GET(req: NextRequest) {

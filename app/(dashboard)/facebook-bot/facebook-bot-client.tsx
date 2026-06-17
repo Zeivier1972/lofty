@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Facebook, Zap, Users, CheckCircle2, MessageSquare, Copy, AlertCircle, Plus, Trash2, Link2, FileText, ChevronDown, Upload, RefreshCw, Clapperboard } from "lucide-react"
+import { Facebook, Zap, Users, CheckCircle2, MessageSquare, Copy, AlertCircle, Plus, Trash2, Link2, FileText, ChevronDown, Upload, RefreshCw, Clapperboard, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -26,6 +26,9 @@ export default function FacebookBotClient() {
   const [resettingConvo, setResettingConvo] = useState<string | null>(null)
   const [addingKeyword, setAddingKeyword] = useState<string | null>(null) // campaign id
   const [newKeywordInput, setNewKeywordInput] = useState("")
+  const [editingCampaign, setEditingCampaign] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState({ name: "", pdfUrl: "", pdfName: "", greeting: "" })
+  const [savingEdit, setSavingEdit] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -133,6 +136,26 @@ export default function FacebookBotClient() {
       toast({ title: "Campaña eliminada" })
     } catch {
       toast({ title: "Error al eliminar", variant: "destructive" })
+    }
+  }
+
+  const saveCampaignEdit = async (id: string) => {
+    setSavingEdit(true)
+    try {
+      const res = await fetch("/api/facebook/bot-campaigns", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, ...editForm }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setCampaigns(prev => prev.map(c => c.id === id ? data : c))
+      setEditingCampaign(null)
+      toast({ title: "✅ Campaña actualizada" })
+    } catch (e: any) {
+      toast({ title: e.message || "Error al guardar", variant: "destructive" })
+    } finally {
+      setSavingEdit(false)
     }
   }
 
@@ -315,8 +338,39 @@ export default function FacebookBotClient() {
             const allKeywords = c.keywords
               ? c.keywords.split(",").map((k: string) => k.trim().toUpperCase()).filter(Boolean)
               : [c.keyword.toUpperCase()]
+            const isEditing = editingCampaign === c.id
             return (
             <div key={c.id} className="p-3 rounded-xl border border-gray-100 bg-gray-50">
+              {isEditing ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Badge className="bg-blue-100 text-blue-700 text-xs font-mono">{c.keyword.toUpperCase()}</Badge>
+                    <span className="text-xs text-gray-400">Editando campaña</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs font-semibold text-gray-600 mb-1 block">Nombre *</label>
+                      <Input value={editForm.name} onChange={e => setEditForm(p => ({ ...p, name: e.target.value }))} className="bg-white text-sm h-8" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-600 mb-1 block">Nombre del PDF</label>
+                      <Input value={editForm.pdfName} onChange={e => setEditForm(p => ({ ...p, pdfName: e.target.value }))} className="bg-white text-sm h-8" placeholder="Mi brochure.pdf" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600 mb-1 block">URL del PDF</label>
+                    <Input value={editForm.pdfUrl} onChange={e => setEditForm(p => ({ ...p, pdfUrl: e.target.value }))} className="bg-white text-sm h-8" placeholder="https://..." />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600 mb-1 block">Saludo personalizado</label>
+                    <Input value={editForm.greeting} onChange={e => setEditForm(p => ({ ...p, greeting: e.target.value }))} className="bg-white text-sm h-8" placeholder="¡Hola! Vi que te interesa..." />
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <Button size="sm" className="h-7 text-xs" onClick={() => saveCampaignEdit(c.id)} disabled={savingEdit}>{savingEdit ? "Guardando..." : "Guardar"}</Button>
+                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setEditingCampaign(null)}>Cancelar</Button>
+                  </div>
+                </div>
+              ) : (
               <div className="flex items-start gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -391,11 +445,18 @@ export default function FacebookBotClient() {
                     className="text-gray-300 hover:text-purple-500 transition-colors">
                     <Clapperboard className="w-4 h-4" />
                   </a>
+                  <button
+                    onClick={() => { setEditingCampaign(c.id); setEditForm({ name: c.name, pdfUrl: c.pdfUrl || "", pdfName: c.pdfName || "", greeting: c.greeting || "" }) }}
+                    title="Editar campaña"
+                    className="text-gray-300 hover:text-blue-500 transition-colors">
+                    <Pencil className="w-4 h-4" />
+                  </button>
                   <button onClick={() => deleteCampaign(c.id)} title="Eliminar campaña" className="text-gray-300 hover:text-red-400 transition-colors">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
               </div>
+              )}
             </div>
             )
           })}
