@@ -15,5 +15,17 @@ export async function GET() {
     headers: { "X-Api-Key": process.env.HEYGEN_API_KEY },
   })
   const data = await res.json()
-  return NextResponse.json(data)
+
+  // Normalize talking_photos to the same shape as avatars so the client
+  // sees all custom looks (Photo Avatar, Chic Elegance, etc.)
+  const avatars: any[] = data?.data?.avatars || []
+  const talkingPhotos: any[] = (data?.data?.talking_photos || []).map((tp: any) => ({
+    avatar_id: tp.talking_photo_id,
+    avatar_name: tp.talking_photo_name,
+    preview_image_url: tp.preview_image_url || tp.preview_url || null,
+  }))
+
+  return NextResponse.json({
+    data: { avatars: [...avatars, ...talkingPhotos] },
+  })
 }
