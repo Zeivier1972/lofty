@@ -53,6 +53,8 @@ const DEFAULT_CONFIG: WebsiteConfig = {
   whatsapp: "https://wa.me/13052830872",
   aboutHeading: "¿Por Qué Trabajar Conmigo?",
   testimonials: "[]", serviceAreas: "[]",
+  metaTitle: "Catherine Gomez Realtor | Bienes Raíces Miami | Florida",
+  metaDescription: "Compra, vende o invierte en propiedades en Miami, Homestead y Orlando con Catherine Gomez. Agente con licencia en Florida desde 2004. ☎ (305) 283-0872",
 }
 
 function ImageUpload({ value, onChange, label, aspect = "wide" }: {
@@ -221,9 +223,22 @@ function ServiceAreasEditor({ value, onChange }: { value: string; onChange: (v: 
   )
 }
 
+// Merge DB config over defaults, but keep defaults for any field that is null/undefined/empty-string
+function mergeWithDefaults(defaults: WebsiteConfig, saved: any): WebsiteConfig {
+  if (!saved) return defaults
+  const result: any = { ...defaults }
+  for (const key of Object.keys(defaults) as (keyof WebsiteConfig)[]) {
+    const val = saved[key]
+    if (val !== null && val !== undefined && val !== "") {
+      result[key] = val
+    }
+  }
+  return result as WebsiteConfig
+}
+
 export default function WebsiteBuilderClient({ config: initialConfig }: { config: any }) {
   const { toast } = useToast()
-  const [config, setConfig] = useState<WebsiteConfig>({ ...DEFAULT_CONFIG, ...initialConfig })
+  const [config, setConfig] = useState<WebsiteConfig>(mergeWithDefaults(DEFAULT_CONFIG, initialConfig))
   const [saving, setSaving] = useState(false)
   const [activeSection, setActiveSection] = useState("hero")
 
