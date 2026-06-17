@@ -38,6 +38,8 @@ export async function POST(req: Request) {
       const stream = cloudinary.uploader.upload_stream(
         {
           resource_type: "raw",
+          type: "upload",
+          access_mode: "public",
           folder: "lofty-crm/brochures",
           public_id: `${originalName}_${Date.now()}`,
           format: "pdf",
