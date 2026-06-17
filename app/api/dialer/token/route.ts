@@ -16,8 +16,8 @@ export async function GET() {
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const accountSid = process.env.TWILIO_ACCOUNT_SID
-  const apiKey = process.env.TWILIO_API_KEY
-  const apiSecret = process.env.TWILIO_API_SECRET
+  const apiKey = process.env.TWILIO_API_KEY_SID || process.env.TWILIO_API_KEY
+  const apiSecret = process.env.TWILIO_API_KEY_SECRET || process.env.TWILIO_API_SECRET
   const appSid = process.env.TWILIO_TWIML_APP_SID
 
   if (!accountSid || !apiKey || !apiSecret) {
