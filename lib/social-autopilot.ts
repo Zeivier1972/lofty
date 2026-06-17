@@ -202,17 +202,11 @@ interface HeyGenAvatar {
   preview_image_url?: string
 }
 
-// Confirmed talking_photo IDs — Catherine's photo-realistic personal avatars.
-// The old v2_avatar "Catherine Gomez" IDs are excluded per user preference.
+// The 3 confirmed talking_photo avatars — rotate by day of week.
 const CATHERINE_TALKING_PHOTO_IDS: string[] = [
   "701d93d2d1834f2589a987aaf701720d", // Catherine Face Swap Avatar
   "f2bf0415eb4f4185b37673d3c876423c", // Catherine Gomez Avatar
-  "a3ec164142604863aa090eee58facf2e", // Catherine Gomez (talking photo)
-  "e386382a4367473aa3c98b1af4129ece", // Catherine the Confident Realtor (1)
-  "663bfeadebbb4d43aa42336af17855da", // Catherine the Confident Realtor (2)
   "2238f900a2284f5c813fc1460fabb299", // Catherine
-  // Sub-looks of "Catherine Gomez Avatar" — add IDs here once discovered
-  // via /api/social/heygen-avatars?mode=looks
 ]
 
 // Pick one of Catherine's confirmed talking_photo avatars, rotating by day.
@@ -316,25 +310,23 @@ async function triggerHeyGenVideo(script: string, dayOfWeek: number): Promise<st
     const avatarInfo = await getHeyGenAvatar(dayOfWeek)
     if (!avatarInfo) return null
 
+    const talkingPhotoIds = new Set(CATHERINE_TALKING_PHOTO_IDS)
+    const isTalkingPhoto = talkingPhotoIds.has(avatarInfo.avatarId)
+
+    const character: Record<string, unknown> = isTalkingPhoto
+      ? { type: "talking_photo", talking_photo_id: avatarInfo.avatarId }
+      : { type: "avatar", avatar_id: avatarInfo.avatarId, avatar_style: "normal" }
+
+    const videoInput: Record<string, unknown> = {
+      character,
+      voice: { type: "text", input_text: script, voice_id: avatarInfo.voiceId },
+    }
+    if (!isTalkingPhoto) {
+      videoInput.background = { type: "color", value: "#1E3A5F" }
+    }
+
     const payload = {
-      video_inputs: [
-        {
-          character: {
-            type: "avatar",
-            avatar_id: avatarInfo.avatarId,
-            avatar_style: "normal",
-          },
-          voice: {
-            type: "text",
-            input_text: script,
-            voice_id: avatarInfo.voiceId,
-          },
-          background: {
-            type: "color",
-            value: "#1E3A5F",
-          },
-        },
-      ],
+      video_inputs: [videoInput],
       dimension: { width: 1080, height: 1920 },
       aspect_ratio: "9:16",
     }

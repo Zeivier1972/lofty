@@ -9,7 +9,6 @@ const DIMENSIONS: Record<string, { width: number; height: number }> = {
   "1:1":  { width: 720, height: 720 },
 }
 
-// Visual style presets — maps styleId → HeyGen avatar_style + background
 const STYLE_CONFIG: Record<string, { avatar_style: string; background: Record<string, string> }> = {
   cinematic:    { avatar_style: "closeUp", background: { type: "color", value: "#0A0A0A" } },
   thriller:     { avatar_style: "normal",  background: { type: "color", value: "#1A1A2E" } },
@@ -21,6 +20,14 @@ const STYLE_CONFIG: Record<string, { avatar_style: string; background: Record<st
   iconic:       { avatar_style: "closeUp", background: { type: "color", value: "#7C3AED" } },
   print:        { avatar_style: "normal",  background: { type: "color", value: "#1C1917" } },
 }
+
+// HeyGen talking_photo IDs require character.type = "talking_photo" + talking_photo_id.
+// Regular stock avatar IDs use character.type = "avatar" + avatar_id.
+const TALKING_PHOTO_IDS = new Set([
+  "701d93d2d1834f2589a987aaf701720d", // Catherine Face Swap Avatar
+  "f2bf0415eb4f4185b37673d3c876423c", // Catherine Gomez Avatar
+  "2238f900a2284f5c813fc1460fabb299", // Catherine
+])
 
 export async function POST(req: Request) {
   const session = await auth()
@@ -38,17 +45,26 @@ export async function POST(req: Request) {
 
     const dimension = DIMENSIONS[ratio] ?? DIMENSIONS["16:9"]
     const stylePreset = styleId ? (STYLE_CONFIG[styleId] ?? null) : null
+    const isTalkingPhoto = TALKING_PHOTO_IDS.has(avatarId)
+
+    // HeyGen API differs for talking_photos vs stock avatars
+    const character: Record<string, unknown> = isTalkingPhoto
+      ? {
+          type: "talking_photo",
+          talking_photo_id: avatarId,
+        }
+      : {
+          type: "avatar",
+          avatar_id: avatarId,
+          avatar_style: stylePreset?.avatar_style ?? "normal",
+        }
 
     const videoInput: Record<string, unknown> = {
-      character: {
-        type: "avatar",
-        avatar_id: avatarId,
-        avatar_style: stylePreset?.avatar_style ?? "normal",
-      },
+      character,
       voice: { type: "text", input_text: script, voice_id: voiceId },
     }
 
-    if (stylePreset?.background) {
+    if (!isTalkingPhoto && stylePreset?.background) {
       videoInput.background = stylePreset.background
     }
 
