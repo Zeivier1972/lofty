@@ -195,7 +195,57 @@ Escribe SOLO el texto que dirá la persona en el video. Sin acotaciones de escen
   return message.content[0].type === "text" ? message.content[0].text.trim() : ""
 }
 
-async function getHeyGenAvatar(): Promise<{ avatarId: string; voiceId: string } | null> {
+interface HeyGenAvatar {
+  avatar_id: string
+  avatar_name?: string
+  gender?: string
+  preview_image_url?: string
+}
+
+// Pick one of Catherine's personal avatars, rotating by day so different looks appear across videos.
+// Priority: talking_photos named "Catherine" → avatars named "Catherine" → first available.
+function pickCatherineAvatar(
+  avatars: HeyGenAvatar[],
+  talkingPhotos: HeyGenAvatar[],
+  dayOfWeek: number
+): string | null {
+  const isCatherine = (a: HeyGenAvatar) =>
+    a.avatar_name?.toLowerCase().includes("catherine") ?? false
+
+  // Personal talking-photo avatars (photo-realistic, her actual face) take highest priority
+  const personalPhotos = talkingPhotos.filter(isCatherine)
+  if (personalPhotos.length > 0) {
+    const pick = personalPhotos[dayOfWeek % personalPhotos.length]
+    console.log(`[social-autopilot] Using talking_photo avatar: "${pick.avatar_name}" (${pick.avatar_id})`)
+    return pick.avatar_id
+  }
+
+  // Instant avatars named Catherine (trained avatar groups like "Catherine Gomez Avatars")
+  const namedAvatars = avatars.filter(isCatherine)
+  if (namedAvatars.length > 0) {
+    const pick = namedAvatars[dayOfWeek % namedAvatars.length]
+    console.log(`[social-autopilot] Using named avatar: "${pick.avatar_name}" (${pick.avatar_id})`)
+    return pick.avatar_id
+  }
+
+  // Last resort: any talking photo (still better than a stock avatar)
+  if (talkingPhotos.length > 0) {
+    const pick = talkingPhotos[0]
+    console.log(`[social-autopilot] Fallback to first talking_photo: "${pick.avatar_name}" (${pick.avatar_id})`)
+    return pick.avatar_id
+  }
+
+  // Last resort: first stock avatar
+  const pick = avatars[0]
+  if (pick) {
+    console.log(`[social-autopilot] Fallback to first avatar: "${pick.avatar_name}" (${pick.avatar_id})`)
+    return pick.avatar_id
+  }
+
+  return null
+}
+
+async function getHeyGenAvatar(dayOfWeek: number): Promise<{ avatarId: string; voiceId: string } | null> {
   const apiKey = process.env.HEYGEN_API_KEY
   if (!apiKey) return null
 
@@ -212,20 +262,34 @@ async function getHeyGenAvatar(): Promise<{ avatarId: string; voiceId: string } 
     const avatarsData = await avatarsRes.json()
     const voicesData = await voicesRes.json()
 
-    const avatars: Array<{ avatar_id: string }> = [
-      ...(avatarsData?.data?.avatars ?? []),
-      ...(avatarsData?.data?.talking_photos ?? []),
-    ]
-    const avatarId = avatars[0]?.avatar_id
+    const avatars: HeyGenAvatar[] = avatarsData?.data?.avatars ?? []
+    const talkingPhotos: HeyGenAvatar[] = avatarsData?.data?.talking_photos ?? []
+
+    console.log(
+      `[social-autopilot] HeyGen avatars: ${avatars.length} avatars, ${talkingPhotos.length} talking_photos`
+    )
+
+    const avatarId = pickCatherineAvatar(avatars, talkingPhotos, dayOfWeek)
     if (!avatarId) return null
 
-    const voices: Array<{ voice_id: string; language?: string; locale?: string }> =
+    // Prefer a Spanish female voice; fall back to any Spanish; then first available
+    const voices: Array<{ voice_id: string; language?: string; locale?: string; gender?: string; name?: string }> =
       voicesData?.data?.voices ?? []
-    const spanishVoice = voices.find(
+
+    const spanishFemale = voices.find(
+      v =>
+        (v.language?.toLowerCase().includes("es") || v.locale?.toLowerCase().includes("es")) &&
+        v.gender?.toLowerCase() === "female"
+    )
+    const spanishAny = voices.find(
       v => v.language?.toLowerCase().includes("es") || v.locale?.toLowerCase().includes("es")
     )
-    const voiceId = spanishVoice?.voice_id ?? voices[0]?.voice_id
+    const voiceId = (spanishFemale ?? spanishAny ?? voices[0])?.voice_id
     if (!voiceId) return null
+
+    console.log(
+      `[social-autopilot] Using voice: "${(spanishFemale ?? spanishAny ?? voices[0])?.name}" (${voiceId})`
+    )
 
     return { avatarId, voiceId }
   } catch (err) {
@@ -234,12 +298,12 @@ async function getHeyGenAvatar(): Promise<{ avatarId: string; voiceId: string } 
   }
 }
 
-async function triggerHeyGenVideo(script: string): Promise<string | null> {
+async function triggerHeyGenVideo(script: string, dayOfWeek: number): Promise<string | null> {
   const apiKey = process.env.HEYGEN_API_KEY
   if (!apiKey) return null
 
   try {
-    const avatarInfo = await getHeyGenAvatar()
+    const avatarInfo = await getHeyGenAvatar(dayOfWeek)
     if (!avatarInfo) return null
 
     const payload = {
@@ -714,7 +778,7 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
   if (isVideoSlot && heygenConfigured) {
     try {
       const videoScript = await generateVideoScript(dayOfWeek, research)
-      sharedVideoId = await triggerHeyGenVideo(videoScript)
+      sharedVideoId = await triggerHeyGenVideo(videoScript, dayOfWeek)
       if (sharedVideoId) {
         console.log(`[social-autopilot] HeyGen video queued — videoId: ${sharedVideoId}`)
       }
