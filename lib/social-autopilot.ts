@@ -140,23 +140,17 @@ async function generateAndUploadImage(dayOfWeek: number, research?: ResearchBrie
     const imagePrompt = `Professional Miami real estate photography, theme: ${theme}. Luxury properties, blue sky, palm trees, modern architecture. Photorealistic, bright daylight, no text or watermarks.`
 
     const response = await openai.images.generate({
-      model: "dall-e-3",
+      model: "gpt-image-1",
       prompt: imagePrompt,
       n: 1,
       size: "1024x1024",
-      quality: "standard",
-    })
+    } as any)
 
-    const imageUrl = response.data?.[0]?.url
-    if (!imageUrl) return null
-
-    const fetchRes = await fetch(imageUrl)
-    if (!fetchRes.ok) return null
-    const buffer = await fetchRes.arrayBuffer()
-    const base64 = Buffer.from(buffer).toString("base64")
+    const b64 = (response.data as any[])?.[0]?.b64_json
+    if (!b64) return null
 
     const uploadResult = await cloudinary.uploader.upload(
-      `data:image/png;base64,${base64}`,
+      `data:image/png;base64,${b64}`,
       { folder: "lofty-social" }
     )
 
@@ -446,23 +440,17 @@ Devuelve SOLO JSON válido con este formato exacto:
 async function generateSectionImage(prompt: string, folder = "lofty-blog"): Promise<string | null> {
   try {
     const response = await openai.images.generate({
-      model: "dall-e-3",
+      model: "gpt-image-1",
       prompt: `Professional Miami real estate photography. ${prompt}. Luxury properties, blue sky, palm trees, modern architecture. Photorealistic, bright daylight, no text or watermarks.`,
       n: 1,
       size: "1024x1024",
-      quality: "standard",
-    })
+    } as any)
 
-    const imageUrl = response.data?.[0]?.url
-    if (!imageUrl) return null
-
-    const fetchRes = await fetch(imageUrl)
-    if (!fetchRes.ok) return null
-    const buffer = await fetchRes.arrayBuffer()
-    const base64 = Buffer.from(buffer).toString("base64")
+    const b64 = (response.data as any[])?.[0]?.b64_json
+    if (!b64) return null
 
     const uploadResult = await cloudinary.uploader.upload(
-      `data:image/png;base64,${base64}`,
+      `data:image/png;base64,${b64}`,
       { folder }
     )
 
