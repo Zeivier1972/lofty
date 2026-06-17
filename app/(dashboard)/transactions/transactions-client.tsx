@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { cn, formatCurrency, formatDate, getStatusColor } from "@/lib/utils"
+import HelpPanel from "@/components/help-panel"
 
 interface TransactionsClientProps {
   transactions: any[]
@@ -86,9 +87,12 @@ export default function TransactionsClient({ transactions, stats }: Transactions
           <h1 className="text-2xl font-bold text-gray-900">Transactions</h1>
           <p className="text-gray-500 text-sm mt-0.5">{txList.length} total transactions</p>
         </div>
-        <Button size="sm" onClick={() => setShowNew(true)} className="bg-lofty-600 hover:bg-lofty-700 gap-2">
-          <Plus className="w-4 h-4" /> New Transaction
-        </Button>
+        <div className="flex items-center gap-2">
+          <HelpPanel section="transactions" />
+          <Button size="sm" onClick={() => setShowNew(true)} className="bg-lofty-600 hover:bg-lofty-700 gap-2">
+            <Plus className="w-4 h-4" /> New Transaction
+          </Button>
+        </div>
       </div>
 
       {/* Stats */}

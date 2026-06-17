@@ -20,6 +20,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn, formatPhone, getInitials } from "@/lib/utils"
 import { useToast } from "@/components/ui/use-toast"
+import HelpPanel from "@/components/help-panel"
 
 const STATUSES = [
   { value: "LEAD", label: "Lead" },
@@ -1125,7 +1126,8 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
           <h1 className="text-2xl font-bold text-gray-900">Contacts</h1>
           <p className="text-gray-500 text-sm mt-0.5">{total.toLocaleString()} total contacts</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          <HelpPanel section="contacts" />
           <Button variant="outline" size="sm" className="gap-2" onClick={() => setShowImport(true)}>
             <Upload className="w-4 h-4" /> Import
           </Button>

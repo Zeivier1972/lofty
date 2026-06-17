@@ -10,6 +10,7 @@ import { formatCurrency, formatDate, formatRelativeTime, getInitials, cn, getPri
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts"
 import Link from "next/link"
 import { format } from "date-fns"
+import HelpPanel from "@/components/help-panel"
 
 interface DashboardClientProps {
   stats: {
@@ -115,7 +116,8 @@ export default function DashboardClient({
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
           <p className="text-gray-500 text-sm mt-0.5">{format(new Date(), "EEEE, MMMM d, yyyy")}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          <HelpPanel section="dashboard" />
           <Button asChild variant="outline" size="sm">
             <Link href="/contacts/new">Add Contact</Link>
           </Button>

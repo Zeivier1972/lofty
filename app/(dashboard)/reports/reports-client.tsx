@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { BarChart3, TrendingUp, Users, DollarSign, CheckSquare, Target, AlertTriangle, Clock } from "lucide-react"
 import { formatCurrency } from "@/lib/utils"
 import { useState, useEffect } from "react"
+import HelpPanel from "@/components/help-panel"
 
 interface ReportsClientProps {
   contactsByMonth: { month: string; count: number }[]
@@ -63,9 +64,12 @@ export default function ReportsClient({
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Reports & Analytics</h1>
-        <p className="text-gray-500 text-sm mt-0.5">Track your performance over the last 6 months</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Reports & Analytics</h1>
+          <p className="text-gray-500 text-sm mt-0.5">Track your performance over the last 6 months</p>
+        </div>
+        <HelpPanel section="reports" />
       </div>
 
       {/* KPI cards */}
