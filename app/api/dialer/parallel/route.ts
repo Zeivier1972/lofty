@@ -1,93 +1,107 @@
 export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { auth } from "@/lib/auth"
 import twilio from "twilio"
 
-const PARALLEL_LIMIT = 3
-
-function getTwilio() {
-  if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) return null
-  return twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
+function getTwilioClient() {
+  const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN } = process.env
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) return null
+  return twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 }
 
 export async function POST(req: Request) {
   const session = await auth()
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
 
-  const { contactIds, sessionId: existingSessionId } = await req.json()
-  if (!contactIds?.length) return NextResponse.json({ error: "contactIds required" }, { status: 400 })
+  const userId = session.user.id
+  const { contactIds, sessionId } = await req.json()
 
-  const agentId = session.user.id
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
-  const agentIdentity = `agent-${agentId}`
+  if (!Array.isArray(contactIds) || contactIds.length === 0) {
+    return NextResponse.json({ error: "contactIds required" }, { status: 400 })
+  }
 
-  // Fetch contacts (up to 3, must have phone, must not be doNotCall)
+  // Fetch up to 3 contacts with phones (skip doNotCall=true)
   const contacts = await prisma.contact.findMany({
-    where: { id: { in: contactIds.slice(0, PARALLEL_LIMIT) }, doNotCall: false },
-    select: { id: true, firstName: true, lastName: true, phone: true, phone2: true, email: true, status: true, source: true },
+    where: {
+      id: { in: contactIds.slice(0, 3) },
+      doNotCall: false,
+      phone: { not: null },
+    },
+    take: 3,
   })
 
-  const dialable = contactIds
-    .slice(0, PARALLEL_LIMIT)
-    .map((id: string) => contacts.find(c => c.id === id))
-    .filter((c: any) => c?.phone)
+  const agentIdentity = `agent-${userId}`
+  const APP_URL = process.env.NEXT_PUBLIC_APP_URL || ""
 
-  if (!dialable.length) return NextResponse.json({ error: "No dialable contacts (need phone, not doNotCall)" }, { status: 400 })
-
-  // Create or reuse session
-  let dialerSession: any
-  if (existingSessionId) {
-    dialerSession = await prisma.dialerSession.findUnique({ where: { id: existingSessionId } })
+  // Create or use existing DialerSession
+  let dialerSession
+  if (sessionId) {
+    dialerSession = await prisma.dialerSession.findUnique({ where: { id: sessionId } })
   }
   if (!dialerSession) {
     dialerSession = await prisma.dialerSession.create({
       data: {
-        name: `Parallel ${new Date().toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`,
-        agentId,
-        status: "ACTIVE",
+        name: `Parallel Session ${new Date().toLocaleDateString()}`,
+        agentId: userId,
         agentIdentity,
-      } as any,
+      },
+    })
+  } else if (!dialerSession.agentIdentity) {
+    dialerSession = await prisma.dialerSession.update({
+      where: { id: dialerSession.id },
+      data: { agentIdentity },
     })
   }
 
-  const client = getTwilio()
-  const calls: any[] = []
+  const client = getTwilioClient()
+  const calls: Array<{ id: string; contactId: string; phoneNumber: string; twilioSid: string }> = []
 
-  for (const contact of dialable) {
+  for (const contact of contacts) {
+    const phone = contact.phone!
+
+    // Create DialerCall record first
     const dialerCall = await prisma.dialerCall.create({
       data: {
         contactId: contact.id,
-        phoneNumber: contact.phone!,
+        phoneNumber: phone,
         sessionId: dialerSession.id,
-        agentId,
         status: "QUEUED",
         direction: "OUTBOUND",
+        agentId: userId,
       },
     })
 
-    let twilioSid: string | null = null
+    let twilioSid: string
 
-    if (client) {
+    if (!client) {
+      // Mock mode
+      twilioSid = `mock-parallel-sid-${dialerCall.id}`
+      console.log("[PARALLEL DIAL MOCK] To:", phone, "callId:", dialerCall.id)
+    } else {
       try {
         const call = await client.calls.create({
-          to: contact.phone!,
+          to: phone,
           from: process.env.TWILIO_PHONE_NUMBER!,
-          url: `${appUrl}/api/dialer/parallel-twiml`,
-          statusCallback: `${appUrl}/api/dialer/parallel-status?callDbId=${dialerCall.id}&sessionId=${dialerSession.id}&agentId=${agentId}`,
+          url: `${APP_URL}/api/dialer/parallel-twiml?callId=${dialerCall.id}`,
+          statusCallback: `${APP_URL}/api/dialer/parallel-status`,
           statusCallbackEvent: ["initiated", "ringing", "answered", "completed"],
           statusCallbackMethod: "POST",
           machineDetection: "DetectMessageEnd",
           asyncAmd: "true",
-        } as any)
+        })
         twilioSid = call.sid
       } catch (err) {
-        console.error("[Parallel Dial] Twilio error for", contact.phone, err)
+        console.error("[PARALLEL DIAL] Failed to create call:", err)
+        await prisma.dialerCall.update({
+          where: { id: dialerCall.id },
+          data: { status: "FAILED" },
+        })
+        continue
       }
-    } else {
-      twilioSid = `mock-${dialerCall.id}`
-      console.log(`[Parallel Dial MOCK] Calling ${contact.phone} (${contact.firstName} ${contact.lastName})`)
     }
 
     await prisma.dialerCall.update({
@@ -98,10 +112,8 @@ export async function POST(req: Request) {
     calls.push({
       id: dialerCall.id,
       contactId: contact.id,
-      contactName: `${contact.firstName} ${contact.lastName}`,
-      phoneNumber: contact.phone,
+      phoneNumber: phone,
       twilioSid,
-      status: "RINGING",
     })
   }
 

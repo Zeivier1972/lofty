@@ -10,6 +10,9 @@ const STMTS = [
     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "SocialAutoPilotConfig_pkey" PRIMARY KEY ("id")
   )`,
+  // parallel dialer columns
+  `ALTER TABLE "DialerSession" ADD COLUMN IF NOT EXISTS "activeCallSid" TEXT`,
+  `ALTER TABLE "DialerSession" ADD COLUMN IF NOT EXISTS "agentIdentity" TEXT`,
   // configurable bot buttons (PR #64)
   `ALTER TABLE "FacebookBotConfig" ADD COLUMN IF NOT EXISTS "greetingButtons" TEXT NOT NULL DEFAULT 'Sí, me interesa,Quiero más info'`,
   `ALTER TABLE "FacebookBotConfig" ADD COLUMN IF NOT EXISTS "intentButtonA" TEXT NOT NULL DEFAULT 'Comprar para vivir'`,

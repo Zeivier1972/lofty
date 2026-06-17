@@ -1,181 +1,211 @@
 export const dynamic = "force-dynamic"
 
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { sendSSE } from "@/lib/dialer-sse"
 import twilio from "twilio"
 
-function getTwilio() {
-  if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) return null
-  return twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
+function getTwilioClient() {
+  const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN } = process.env
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) return null
+  return twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 }
 
-export async function POST(req: NextRequest) {
-  const params = req.nextUrl.searchParams
-  const callDbId = params.get("callDbId")
-  const sessionId = params.get("sessionId")
-  const agentId = params.get("agentId")
+export async function POST(req: Request) {
+  try {
+    const formData = await req.formData()
+    const CallSid = formData.get("CallSid") as string
+    const CallStatus = formData.get("CallStatus") as string
+    const CallDuration = formData.get("CallDuration") as string | null
 
-  const formData = await req.formData()
-  const callSid = formData.get("CallSid") as string
-  const callStatus = formData.get("CallStatus") as string
-  const answeredBy = formData.get("AnsweredBy") as string | null
-
-  console.log(`[ParallelStatus] call=${callDbId} session=${sessionId} status=${callStatus} answeredBy=${answeredBy}`)
-
-  if (!callDbId || !sessionId || !agentId) {
-    return new NextResponse("OK", { status: 200 })
-  }
-
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
-
-  // Human answered
-  if (callStatus === "in-progress") {
-    // Answering machine detection: skip if voicemail
-    if (answeredBy && answeredBy.startsWith("machine")) {
-      console.log(`[ParallelStatus] Voicemail detected on ${callSid} — hanging up`)
-      const client = getTwilio()
-      if (client) {
-        await client.calls(callSid).update({ status: "completed" } as any).catch(() => {})
-      }
-      await prisma.dialerCall.update({
-        where: { id: callDbId },
-        data: { status: "COMPLETED", disposition: "VOICEMAIL", endedAt: new Date() },
-      }).catch(() => {})
-      return new NextResponse("OK", { status: 200 })
+    if (!CallSid || !CallStatus) {
+      return NextResponse.json({ error: "Missing CallSid or CallStatus" }, { status: 400 })
     }
 
-    // Race-condition-safe first-answer claim:
-    // Only the first call to set activeCallSid wins
-    const claimed = await prisma.$executeRawUnsafe(
-      `UPDATE "DialerSession" SET "activeCallSid" = $1 WHERE id = $2 AND "activeCallSid" IS NULL`,
-      callSid,
-      sessionId
-    )
+    // Look up DialerCall by twilioSid
+    const dialerCall = await prisma.dialerCall.findFirst({
+      where: { twilioSid: CallSid },
+    })
 
-    if (claimed === 1) {
-      // WE WON — this is the first human answer
-      console.log(`[ParallelStatus] First answer! Bridging ${callSid} to agent ${agentId}`)
+    if (!dialerCall) {
+      console.warn("[PARALLEL STATUS] No DialerCall found for SID:", CallSid)
+      return NextResponse.json({ ok: true })
+    }
 
-      // Update this call's status
-      await prisma.dialerCall.update({
-        where: { id: callDbId },
-        data: { status: "COMPLETED", disposition: "REACHED" },
-      }).catch(() => {})
+    const sessionId = dialerCall.sessionId
+    if (!sessionId) {
+      return NextResponse.json({ ok: true })
+    }
 
-      // Redirect the answered call to connect Catherine's browser
-      const client = getTwilio()
-      const agentIdentity = `agent-${agentId}`
-      const connectUrl = `${appUrl}/api/dialer/agent-connect-twiml?identity=${encodeURIComponent(agentIdentity)}`
-      if (client) {
-        await client.calls(callSid).update({ url: connectUrl, method: "POST" } as any).catch(e => {
-          console.error("[ParallelStatus] Failed to redirect call:", e)
+    const dialerSession = await prisma.dialerSession.findUnique({
+      where: { id: sessionId },
+    })
+    if (!dialerSession) {
+      return NextResponse.json({ ok: true })
+    }
+
+    const client = getTwilioClient()
+    const APP_URL = process.env.NEXT_PUBLIC_APP_URL || ""
+
+    // Handle answered call
+    if (CallStatus === "in-progress") {
+      // Atomic first-answer claim
+      const updateResult = await prisma.dialerSession.updateMany({
+        where: { id: sessionId, activeCallSid: null },
+        data: { activeCallSid: CallSid },
+      })
+
+      if (updateResult.count === 1) {
+        // We won the race — connect this call to the agent's browser
+        await prisma.dialerCall.update({
+          where: { id: dialerCall.id },
+          data: { status: "ANSWERED" },
+        })
+
+        // Redirect call TwiML to connect to agent's browser
+        const agentIdentity = dialerSession.agentIdentity || `agent-${dialerSession.agentId}`
+        const agentConnectUrl = `${APP_URL}/api/dialer/agent-connect-twiml?identity=${encodeURIComponent(agentIdentity)}`
+
+        if (client) {
+          try {
+            await (client.calls(CallSid) as any).update({ url: agentConnectUrl })
+          } catch (err) {
+            console.error("[PARALLEL STATUS] Failed to redirect call:", err)
+          }
+        } else {
+          console.log("[PARALLEL STATUS MOCK] Would redirect call to agent:", agentConnectUrl)
+        }
+
+        // Cancel all other QUEUED/RINGING calls in this session
+        const otherCalls = await prisma.dialerCall.findMany({
+          where: {
+            sessionId,
+            status: { in: ["QUEUED", "RINGING"] },
+            id: { not: dialerCall.id },
+          },
+        })
+
+        for (const otherCall of otherCalls) {
+          if (otherCall.twilioSid && client) {
+            try {
+              await (client.calls(otherCall.twilioSid) as any).update({ status: "canceled" })
+            } catch (err) {
+              console.error("[PARALLEL STATUS] Failed to cancel call:", otherCall.twilioSid, err)
+            }
+          } else if (otherCall.twilioSid) {
+            console.log("[PARALLEL STATUS MOCK] Would cancel call:", otherCall.twilioSid)
+          }
+          await prisma.dialerCall.update({
+            where: { id: otherCall.id },
+            data: { status: "NO_ANSWER", endedAt: new Date() },
+          })
+        }
+
+        // Fetch contact details for SSE payload
+        const contact = dialerCall.contactId
+          ? await prisma.contact.findUnique({ where: { id: dialerCall.contactId } })
+          : null
+
+        // Send SSE event to agent
+        sendSSE(dialerSession.agentId, "call-answered", {
+          callId: dialerCall.id,
+          contactId: dialerCall.contactId,
+          sessionId,
+          contact: contact
+            ? {
+                id: contact.id,
+                firstName: contact.firstName,
+                lastName: contact.lastName,
+                phone: contact.phone,
+                email: contact.email,
+                status: contact.status,
+                source: contact.source,
+              }
+            : null,
+        })
+      } else {
+        // Another call already won — cancel this one
+        if (client) {
+          try {
+            await (client.calls(CallSid) as any).update({ status: "completed" })
+          } catch (err) {
+            console.error("[PARALLEL STATUS] Failed to complete losing call:", err)
+          }
+        } else {
+          console.log("[PARALLEL STATUS MOCK] Would complete losing call:", CallSid)
+        }
+        await prisma.dialerCall.update({
+          where: { id: dialerCall.id },
+          data: { status: "NO_ANSWER", endedAt: new Date() },
         })
       }
 
-      // Cancel all other RINGING/QUEUED calls in this session
-      const otherCalls = await prisma.dialerCall.findMany({
+      return NextResponse.json({ ok: true })
+    }
+
+    // Handle no-answer, busy, failed
+    if (["no-answer", "busy", "failed"].includes(CallStatus)) {
+      await prisma.dialerCall.update({
+        where: { id: dialerCall.id },
+        data: {
+          status: CallStatus === "no-answer" ? "NO_ANSWER" : CallStatus.toUpperCase(),
+          endedAt: new Date(),
+        },
+      })
+
+      // Check if ALL calls in session have ended without answer
+      const pendingCalls = await prisma.dialerCall.findMany({
         where: {
           sessionId,
-          id: { not: callDbId },
-          status: { in: ["QUEUED", "RINGING"] },
-        },
-      })
-      const cancelClient = getTwilio()
-      for (const other of otherCalls) {
-        if (other.twilioSid && cancelClient) {
-          cancelClient.calls(other.twilioSid).update({ status: "canceled" } as any).catch(() => {})
-        }
-        await prisma.dialerCall.update({
-          where: { id: other.id },
-          data: { status: "NO_ANSWER", endedAt: new Date() },
-        }).catch(() => {})
-      }
-
-      // Fetch full contact card for SSE payload
-      const dialerCall = await prisma.dialerCall.findUnique({
-        where: { id: callDbId },
-        include: {
-          contact: {
-            select: {
-              id: true, firstName: true, lastName: true, email: true,
-              phone: true, phone2: true, source: true, status: true,
-              lastContacted: true,
-            },
-          },
+          status: { in: ["QUEUED", "RINGING", "ANSWERED"] },
         },
       })
 
-      // Push SSE event to Catherine's browser
-      sendSSE(agentId, "call-answered", {
-        callId: callDbId,
-        sessionId,
-        twilioSid: callSid,
-        contactId: dialerCall?.contactId,
-        contact: dialerCall?.contact || null,
-      })
-
-      // Update session stats
-      await prisma.dialerSession.update({
+      const hasActiveCall = await prisma.dialerSession.findUnique({
         where: { id: sessionId },
-        data: { answered: { increment: 1 }, totalCalls: { increment: 1 } },
-      }).catch(() => {})
+        select: { activeCallSid: true },
+      })
 
-    } else {
-      // Another call already won — drop this one
-      console.log(`[ParallelStatus] Another call already answered for session ${sessionId} — dropping ${callSid}`)
-      const client = getTwilio()
-      if (client) {
-        await client.calls(callSid).update({ status: "completed" } as any).catch(() => {})
+      if (pendingCalls.length === 0 && !hasActiveCall?.activeCallSid) {
+        sendSSE(dialerSession.agentId, "all-missed", { sessionId })
       }
+
+      return NextResponse.json({ ok: true })
+    }
+
+    // Handle completed
+    if (CallStatus === "completed") {
+      const duration = CallDuration ? parseInt(CallDuration, 10) : null
       await prisma.dialerCall.update({
-        where: { id: callDbId },
-        data: { status: "NO_ANSWER", endedAt: new Date() },
-      }).catch(() => {})
-    }
-  }
-
-  // Call ended
-  if (["completed", "no-answer", "busy", "failed", "canceled"].includes(callStatus)) {
-    const statusMap: Record<string, string> = {
-      completed: "COMPLETED",
-      "no-answer": "NO_ANSWER",
-      busy: "BUSY",
-      failed: "FAILED",
-      canceled: "NO_ANSWER",
-    }
-    await prisma.dialerCall.update({
-      where: { id: callDbId },
-      data: {
-        status: statusMap[callStatus] || callStatus.toUpperCase(),
-        endedAt: new Date(),
-      },
-    }).catch(() => {})
-
-    // Check if this was the active call (call ended by contact hanging up)
-    const sess = await prisma.dialerSession.findUnique({ where: { id: sessionId } }).catch(() => null)
-    if (sess && (sess as any).activeCallSid === callSid) {
-      sendSSE(agentId, "call-ended", { callId: callDbId, sessionId })
-      await prisma.dialerSession.update({
-        where: { id: sessionId },
-        data: { status: "IDLE" },
-      }).catch(() => {})
-    }
-
-    // Check if ALL calls in session missed (no active call set)
-    if (!sess || !(sess as any).activeCallSid) {
-      const remainingActive = await prisma.dialerCall.count({
-        where: { sessionId, status: { in: ["QUEUED", "RINGING"] } },
+        where: { id: dialerCall.id },
+        data: {
+          status: "COMPLETED",
+          endedAt: new Date(),
+          ...(duration !== null ? { duration } : {}),
+        },
       })
-      if (remainingActive === 0) {
-        sendSSE(agentId, "all-missed", { sessionId })
-        await prisma.dialerSession.update({
-          where: { id: sessionId },
-          data: { totalCalls: { increment: 1 }, noAnswers: { increment: 1 } },
-        }).catch(() => {})
-      }
-    }
-  }
 
-  return new NextResponse("OK", { status: 200 })
+      // If this was the active (answered) call, notify agent it ended
+      const sessionData = await prisma.dialerSession.findUnique({
+        where: { id: sessionId },
+        select: { activeCallSid: true, agentId: true },
+      })
+
+      if (sessionData?.activeCallSid === CallSid) {
+        sendSSE(sessionData.agentId, "call-ended", {
+          callId: dialerCall.id,
+          contactId: dialerCall.contactId,
+          sessionId,
+          duration,
+        })
+      }
+
+      return NextResponse.json({ ok: true })
+    }
+
+    return NextResponse.json({ ok: true })
+  } catch (err) {
+    console.error("[PARALLEL STATUS] Error:", err)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+  }
 }

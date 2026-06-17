@@ -9,19 +9,20 @@ export async function GET() {
     return new Response("Unauthorized", { status: 401 })
   }
 
-  const agentId = session.user.id
-  let ctrl: ReadableStreamDefaultController<Uint8Array>
+  const userId = session.user.id
 
-  const stream = new ReadableStream<Uint8Array>({
+  let ctrl: ReadableStreamDefaultController
+  const stream = new ReadableStream({
     start(controller) {
       ctrl = controller
-      registerSSE(agentId, ctrl)
-      // Send initial connection confirmation
-      const msg = `event: connected\ndata: ${JSON.stringify({ agentId })}\n\n`
+      registerSSE(userId, ctrl)
+
+      // Send connected event immediately
+      const msg = `event: connected\ndata: ${JSON.stringify({ userId })}\n\n`
       ctrl.enqueue(new TextEncoder().encode(msg))
     },
     cancel() {
-      unregisterSSE(agentId, ctrl)
+      unregisterSSE(userId, ctrl)
     },
   })
 
@@ -29,8 +30,7 @@ export async function GET() {
     headers: {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
-      "Connection": "keep-alive",
-      "X-Accel-Buffering": "no",
+      Connection: "keep-alive",
     },
   })
 }

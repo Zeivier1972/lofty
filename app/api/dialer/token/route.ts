@@ -1,11 +1,11 @@
 export const dynamic = "force-dynamic"
 
-// Required Railway env vars for Twilio Voice SDK browser phone:
-//   TWILIO_ACCOUNT_SID     — from Twilio Console → Account → General Settings
-//   TWILIO_API_KEY         — from Twilio Console → Account → API Keys & Tokens → Create API Key
-//   TWILIO_API_SECRET      — shown once when creating the API Key above
-//   TWILIO_TWIML_APP_SID   — from Twilio Console → Voice → TwiML Apps → Create
-//                            Voice Request URL: https://your-app.railway.app/api/dialer/agent-connect-twiml
+// Railway env vars needed:
+// TWILIO_ACCOUNT_SID - Your Twilio Account SID
+// TWILIO_API_KEY - Twilio API Key (create at console.twilio.com/project/api-keys)
+// TWILIO_API_SECRET - Twilio API Secret
+// TWILIO_TWIML_APP_SID - TwiML App SID (create at console.twilio.com/voice/twiml/apps)
+// TWILIO_PHONE_NUMBER - Your Twilio phone number
 
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
@@ -13,36 +13,41 @@ import twilio from "twilio"
 
 export async function GET() {
   const session = await auth()
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-
-  const accountSid = process.env.TWILIO_ACCOUNT_SID
-  const apiKey = process.env.TWILIO_API_KEY_SID || process.env.TWILIO_API_KEY
-  const apiSecret = process.env.TWILIO_API_KEY_SECRET || process.env.TWILIO_API_SECRET
-  const appSid = process.env.TWILIO_TWIML_APP_SID
-
-  if (!accountSid || !apiKey || !apiSecret) {
-    console.warn("[Dialer Token] Missing Twilio API credentials — returning mock token")
-    return NextResponse.json({
-      token: "mock-token",
-      identity: `agent-${session.user.id}`,
-      mock: true,
-    })
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const identity = `agent-${session.user.id}`
+  const userId = session.user.id
+  const identity = `agent-${userId}`
+
+  const {
+    TWILIO_ACCOUNT_SID,
+    TWILIO_API_KEY,
+    TWILIO_API_SECRET,
+    TWILIO_TWIML_APP_SID,
+  } = process.env
+
+  // Graceful fallback when Twilio credentials are not configured
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_API_KEY || !TWILIO_API_SECRET) {
+    console.log("[DIALER TOKEN MOCK] Returning mock token for identity:", identity)
+    return NextResponse.json({ token: "mock-token", identity })
+  }
+
   const AccessToken = twilio.jwt.AccessToken
   const VoiceGrant = AccessToken.VoiceGrant
 
   const voiceGrant = new VoiceGrant({
-    outgoingApplicationSid: appSid,
+    outgoingApplicationSid: TWILIO_TWIML_APP_SID,
     incomingAllow: true,
   })
 
-  const token = new AccessToken(accountSid, apiKey, apiSecret, {
-    identity,
-    ttl: 3600,
-  })
-  token.addGrant(voiceGrant)
+  const accessToken = new AccessToken(
+    TWILIO_ACCOUNT_SID,
+    TWILIO_API_KEY,
+    TWILIO_API_SECRET,
+    { identity }
+  )
+  accessToken.addGrant(voiceGrant)
 
-  return NextResponse.json({ token: token.toJwt(), identity })
+  return NextResponse.json({ token: accessToken.toJwt(), identity })
 }

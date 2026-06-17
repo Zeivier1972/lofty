@@ -623,19 +623,19 @@ model SearchBehavior {
 // ─── Power Dialer ─────────────────────────────────────────────────────────────
 
 model DialerSession {
-  id             String        @id @default(cuid())
-  name           String
-  agentId        String
-  status         String        @default("ACTIVE")
-  calls          DialerCall[]
-  totalCalls     Int           @default(0)
-  answered       Int           @default(0)
-  voicemails     Int           @default(0)
-  noAnswers      Int           @default(0)
-  activeCallSid  String?
-  agentIdentity  String?
-  createdAt      DateTime      @default(now())
-  endedAt        DateTime?
+  id            String        @id @default(cuid())
+  name          String
+  agentId       String
+  status        String        @default("ACTIVE")
+  calls         DialerCall[]
+  totalCalls    Int           @default(0)
+  answered      Int           @default(0)
+  voicemails    Int           @default(0)
+  noAnswers     Int           @default(0)
+  activeCallSid String?       // Twilio SID of the first answered call
+  agentIdentity String?       // Twilio Client identity for this session
+  createdAt     DateTime      @default(now())
+  endedAt       DateTime?
 }
 
 model DialerCall {
@@ -748,7 +748,6 @@ model InstagramBotConfig {
 model InstagramBotCampaign {
   id        String   @id @default(cuid())
   keyword   String   @unique
-  keywords  String   @default("")
   name      String
   pdfUrl    String?
   pdfName   String?
@@ -831,13 +830,6 @@ model VideoMessage {
 }
 
 // ─── Social Media ─────────────────────────────────────────────────────────────
-
-model SocialAutoPilotConfig {
-  id        String   @id @default(cuid())
-  isEnabled Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
 
 model SocialAccount {
   id                String       @id @default(cuid())

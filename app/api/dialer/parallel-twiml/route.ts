@@ -1,9 +1,5 @@
 export const dynamic = "force-dynamic"
 
-import { NextResponse } from "next/server"
-
-// TwiML served to outbound calls while waiting for first-answer detection.
-// The call stays on hold until parallel-status webhook redirects it.
 export async function POST() {
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -11,11 +7,7 @@ export async function POST() {
   <Pause length="90"/>
 </Response>`
 
-  return new NextResponse(twiml, {
-    headers: { "Content-Type": "application/xml" },
+  return new Response(twiml, {
+    headers: { "Content-Type": "text/xml" },
   })
-}
-
-export async function GET() {
-  return POST()
 }
