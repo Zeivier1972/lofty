@@ -901,6 +901,35 @@ async function dedupPipelineLeads(db) {
   console.log(`[db-migrate] Removed ${removed} duplicate PipelineLead record(s)`)
 }
 
+// ─── Seed keywords for One Twenty Brickell campaign ──────────────────────────
+
+async function seedBrickellKeywords(db) {
+  const campaign = await db.facebookBotCampaign.findFirst({
+    where: { keyword: "BRICKELL" },
+  })
+  if (!campaign) return
+  const current = new Set(
+    (campaign.keywords || campaign.keyword)
+      .split(",")
+      .map(k => k.trim().toUpperCase())
+      .filter(Boolean)
+  )
+  const toAdd = ["BRICKELL", "FAMILIA", "DOLARES"]
+  let changed = false
+  for (const kw of toAdd) {
+    if (!current.has(kw)) { current.add(kw); changed = true }
+  }
+  if (!changed) {
+    console.log("[db-migrate] BRICKELL campaign keywords already up to date")
+    return
+  }
+  await db.facebookBotCampaign.update({
+    where: { id: campaign.id },
+    data: { keywords: Array.from(current).join(",") },
+  })
+  console.log("[db-migrate] BRICKELL campaign keywords updated:", Array.from(current).join(", "))
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -914,6 +943,7 @@ async function main() {
   await seedBookingUrl(db).catch(e => console.warn("[db-migrate] booking url skip:", e.message))
   await seedReIgniteDrip(db).catch(e => console.warn("[db-migrate] Re-Ignite drip skip:", e.message))
   await dedupPipelineLeads(db).catch(e => console.warn("[db-migrate] dedup pipeline leads skip:", e.message))
+  await seedBrickellKeywords(db).catch(e => console.warn("[db-migrate] Brickell keywords skip:", e.message))
   await db.$disconnect()
   console.log("[db-migrate] done")
 }
