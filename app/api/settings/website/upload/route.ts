@@ -1,5 +1,9 @@
 export const dynamic = "force-dynamic"
 
+// Allow up to 10 MB for photo uploads
+export const maxDuration = 30
+export const fetchCache = "force-no-store"
+
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { v2 as cloudinary } from "cloudinary"

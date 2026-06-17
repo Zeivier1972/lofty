@@ -56,6 +56,7 @@ function ImageUpload({ value, onChange, label, aspect = "wide" }: {
   value?: string; onChange: (url: string) => void; label: string; aspect?: "wide" | "square" | "portrait"
 }) {
   const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState("")
   const [urlInput, setUrlInput] = useState("")
   const inputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
@@ -63,26 +64,26 @@ function ImageUpload({ value, onChange, label, aspect = "wide" }: {
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
+    setError("")
     setUploading(true)
     try {
       const fd = new FormData()
       fd.append("file", file)
       const res = await fetch("/api/settings/website/upload", { method: "POST", body: fd })
       const data = await res.json()
-      if (data.url) onChange(data.url)
-      else toast({ title: data.error ?? "Upload failed", variant: "destructive" })
-      if (data.url) toast({ title: "Image uploaded" })
+      if (data.url) { onChange(data.url); toast({ title: "Photo uploaded" }) }
+      else setError(data.error ?? "Upload failed")
     } catch (err: any) {
-      toast({ title: "Upload failed", description: err?.message, variant: "destructive" })
+      setError(err?.message ?? "Upload failed")
     } finally {
       setUploading(false)
-      // reset so same file can be re-selected
       if (inputRef.current) inputRef.current.value = ""
     }
   }
 
   async function handleUrlUse() {
     if (!urlInput.trim()) return
+    setError("")
     setUploading(true)
     try {
       const res = await fetch("/api/settings/website/upload", {
@@ -91,10 +92,10 @@ function ImageUpload({ value, onChange, label, aspect = "wide" }: {
         body: JSON.stringify({ url: urlInput.trim() }),
       })
       const data = await res.json()
-      if (data.url) { onChange(data.url); setUrlInput("") }
-      else toast({ title: data.error ?? "Upload failed", variant: "destructive" })
+      if (data.url) { onChange(data.url); setUrlInput(""); toast({ title: "Photo uploaded" }) }
+      else setError(data.error ?? "Upload failed")
     } catch (err: any) {
-      toast({ title: "Upload failed", description: err?.message, variant: "destructive" })
+      setError(err?.message ?? "Upload failed")
     } finally {
       setUploading(false)
     }
@@ -103,8 +104,10 @@ function ImageUpload({ value, onChange, label, aspect = "wide" }: {
   return (
     <div className="space-y-2">
       <Label>{label}</Label>
+
+      {/* Preview box — no hidden overlay, just shows the image */}
       <div className={cn(
-        "relative border-2 border-dashed border-gray-200 rounded-xl overflow-hidden bg-gray-50 flex items-center justify-center group hover:border-lofty-400 transition-colors",
+        "relative border-2 border-dashed border-gray-200 rounded-xl overflow-hidden bg-gray-50 flex items-center justify-center",
         aspect === "wide" && "h-36",
         aspect === "square" && "h-40 w-40",
         aspect === "portrait" && "h-52 w-40",
@@ -112,30 +115,63 @@ function ImageUpload({ value, onChange, label, aspect = "wide" }: {
         {value ? (
           <>
             <img src={value} alt="" className="w-full h-full object-cover" />
-            <button onClick={() => onChange("")}
-              className="absolute top-2 right-2 bg-black/60 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              type="button"
+              onClick={() => { onChange(""); setError("") }}
+              className="absolute top-2 right-2 z-10 bg-black/60 text-white rounded-full p-1 hover:bg-black/80 transition-colors"
+            >
               <X className="w-3.5 h-3.5" />
             </button>
           </>
         ) : (
-          <div className="text-center p-4">
+          <div className="text-center p-4 pointer-events-none">
             <Image className="w-7 h-7 text-gray-300 mx-auto mb-1.5" />
-            <p className="text-xs text-gray-400">{uploading ? "Uploading..." : "Click to upload or paste URL"}</p>
+            <p className="text-xs text-gray-400">No photo yet</p>
           </div>
         )}
-        <input ref={inputRef} type="file" accept="image/*,video/*" onChange={handleFile}
-          className="absolute inset-0 opacity-0 cursor-pointer" disabled={uploading} />
       </div>
+
+      {/* Hidden file input — triggered explicitly by the button below */}
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleFile}
+        className="hidden"
+        disabled={uploading}
+      />
+
+      {/* Explicit upload button */}
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="w-full h-9 text-xs"
+        disabled={uploading}
+        onClick={() => inputRef.current?.click()}
+      >
+        {uploading
+          ? <><Loader2 className="w-3 h-3 mr-1.5 animate-spin" />Uploading...</>
+          : <><Upload className="w-3 h-3 mr-1.5" />Choose Photo</>}
+      </Button>
+
+      {/* URL paste */}
       <div className="flex gap-2">
-        <Input placeholder="Or paste image URL..." value={urlInput}
+        <Input
+          placeholder="Or paste image URL..."
+          value={urlInput}
           onChange={e => setUrlInput(e.target.value)}
-          onKeyDown={e => { if (e.key === "Enter" && urlInput) handleUrlUse() }}
-          className="text-xs h-8" />
+          onKeyDown={e => { if (e.key === "Enter") handleUrlUse() }}
+          className="text-xs h-8"
+        />
         <Button size="sm" variant="outline" className="h-8 px-2 text-xs"
           onClick={handleUrlUse} disabled={uploading || !urlInput.trim()}>
           {uploading ? "..." : "Use"}
         </Button>
       </div>
+
+      {/* Inline error */}
+      {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
     </div>
   )
 }
