@@ -477,6 +477,25 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
         {/* ── SCHEDULED/RECENT POSTS ── */}
         {activeTab === "calendar" && (
           <div className="max-w-4xl mx-auto space-y-4">
+            {/* Auto-Pilot status badge */}
+            {connectedPlatforms.size > 0 ? (
+              <div className="flex items-center gap-3 px-4 py-3 bg-green-50 border border-green-200 rounded-xl">
+                <span className="text-lg">✅</span>
+                <div>
+                  <p className="text-sm font-semibold text-green-800">Auto-Pilot Activo</p>
+                  <p className="text-xs text-green-700">2 publicaciones diarias a las 9am y 6pm ET — contenido en español generado automáticamente por IA</p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl">
+                <span className="text-lg">⚠️</span>
+                <div>
+                  <p className="text-sm font-semibold text-amber-800">Auto-Pilot Inactivo</p>
+                  <p className="text-xs text-amber-700">Conecta una cuenta para activar Auto-Pilot — ve a la pestaña <strong>Accounts</strong></p>
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-lg font-semibold text-gray-900">All Posts ({posts.length})</h2>
             </div>
