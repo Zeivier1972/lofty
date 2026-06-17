@@ -282,6 +282,110 @@ async function triggerHeyGenVideo(script: string): Promise<string | null> {
   }
 }
 
+// ─── Blog post generation ─────────────────────────────────────────────────────
+
+interface BlogPostData {
+  title: string
+  excerpt: string
+  content: string
+  tags: string[]
+}
+
+async function generateBlogPostContent(
+  dayOfWeek: number,
+  research?: ResearchBrief
+): Promise<BlogPostData | null> {
+  const theme = research?.trendingTopic ?? WEEKLY_THEMES[dayOfWeek] ?? WEEKLY_THEMES[0]
+  const keywords = research?.additionalKeywords ?? pickKeywords(dayOfWeek)
+  const hook = research?.viralHook ?? ""
+  const now = new Date()
+  const year = now.getFullYear()
+
+  const systemPrompt = research
+    ? buildAIOSystemPrompt()
+    : `Eres Catherine Gomez, Realtor en Miami con más de 15 años de experiencia. Escribes artículos de blog en español, en primera persona, con autoridad y datos específicos del mercado de South Florida.`
+
+  const userPrompt = `Escribe un artículo de blog completo para el sitio web de Catherine Gomez Realtor sobre: "${theme}".
+
+Gancho de apertura: "${hook}"
+Palabras clave SEO a incluir: ${keywords.join(", ")}
+Año de referencia: ${year}
+Mercados clave: Brickell Miami, Homestead, Orlando, South Florida
+Audiencia: compradores e inversores hispanohablantes, especialmente colombianos
+
+El artículo debe tener:
+- 600-800 palabras en español
+- Introducción con el gancho
+- 3-4 secciones con subtítulos (usa ## para subtítulos)
+- Al menos UN dato específico (precio, porcentaje, estadística)
+- CTA al final: invitar a contactar a Catherine Gomez al 305.283.0872 o su sitio web
+- Tono: profesional pero cercano, primera persona
+
+Devuelve SOLO JSON válido con este formato exacto:
+{
+  "title": "Título SEO del artículo (máx 70 caracteres, incluye keyword principal)",
+  "excerpt": "Meta descripción de 150-160 caracteres para SEO — resume el artículo con la keyword principal",
+  "content": "El artículo completo en Markdown (usa ## para subtítulos, **negrita** para énfasis)",
+  "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"]
+}`
+
+  try {
+    const message = await anthropic.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 2048,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userPrompt }],
+    })
+
+    const text = message.content[0].type === "text" ? message.content[0].text.trim() : ""
+    const clean = text.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim()
+    return JSON.parse(clean) as BlogPostData
+  } catch (err) {
+    console.error("[social-autopilot] Blog post generation failed:", err)
+    return null
+  }
+}
+
+async function publishBlogPost(dayOfWeek: number, research?: ResearchBrief): Promise<boolean> {
+  try {
+    const data = await generateBlogPostContent(dayOfWeek, research)
+    if (!data) return false
+
+    // Generate a unique slug from the title
+    const baseSlug = data.title
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+    const slug = `${baseSlug}-${Date.now()}`
+
+    // Use a Cloudinary image or DALL-E for cover
+    const coverImage = await generateAndUploadImage(dayOfWeek, research)
+
+    await prisma.blogPost.create({
+      data: {
+        title: data.title,
+        slug,
+        excerpt: data.excerpt,
+        content: data.content,
+        coverImage,
+        author: "Catherine Gomez",
+        tags: JSON.stringify(data.tags),
+        featured: false,
+        published: true,
+        publishedAt: new Date(),
+      },
+    })
+
+    console.log(`[social-autopilot] Blog post published: "${data.title}"`)
+    return true
+  } catch (err) {
+    console.error("[social-autopilot] Blog post publish failed:", err)
+    return false
+  }
+}
+
 // ─── checkHeygenVideos — polls pending video posts ───────────────────────────
 
 export async function checkHeygenVideos(): Promise<{ checked: number; completed: number }> {
@@ -586,11 +690,25 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
     console.warn("[social-autopilot] Content research failed, using default themes:", err)
   }
 
-  // 3. Is this a video slot? Evening + (Tuesday=2 or Friday=5)
+  // 3. Morning slot: auto-publish one blog post per day
+  if (slot === "morning") {
+    try {
+      const blogPublished = await publishBlogPost(dayOfWeek, research)
+      if (blogPublished) {
+        console.log("[social-autopilot] Blog post published successfully")
+      } else {
+        console.warn("[social-autopilot] Blog post publish returned false — check logs")
+      }
+    } catch (err) {
+      console.error("[social-autopilot] Blog post publish threw:", err)
+    }
+  }
+
+  // 4 (was 3). Is this a video slot? Evening + (Tuesday=2 or Friday=5)
   const isVideoSlot = slot === "evening" && (dayOfWeek === 2 || dayOfWeek === 5)
   const heygenConfigured = !!process.env.HEYGEN_API_KEY
 
-  // 4. Pre-generate shared assets (one script + one HeyGen video for all accounts)
+  // 5. Pre-generate shared assets (one script + one HeyGen video for all accounts)
   let sharedVideoId: string | null = null
 
   if (isVideoSlot && heygenConfigured) {
@@ -605,7 +723,7 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
     }
   }
 
-  // 5. Build prompt metadata to store with each post (YouTube uses this for title/tags)
+  // 6. Build prompt metadata to store with each post (YouTube uses this for title/tags)
   const promptMeta = research
     ? JSON.stringify({
         theme: research.trendingTopic,
@@ -615,13 +733,13 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
       })
     : WEEKLY_THEMES[dayOfWeek]
 
-  // 6. Process each connected account independently
+  // 7. Process each connected account independently
   for (const account of accounts) {
     try {
-      // 6a. Generate platform-specific content (research-enriched + AIO optimized)
+      // 7a. Generate platform-specific content (research-enriched + AIO optimized)
       const content = await generateContent(account.platform, dayOfWeek, research)
 
-      // 6b. Determine media handling
+      // 7b. Determine media handling
       let mediaUrl: string | null = null
       let postStatus = "SCHEDULED"
       let externalId: string | null = null
@@ -638,7 +756,7 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
         mediaUrl = await generateAndUploadImage(dayOfWeek, research)
       }
 
-      // 6c. Create SocialPost record
+      // 7c. Create SocialPost record
       const post = await prisma.socialPost.create({
         data: {
           platform: account.platform,
