@@ -623,17 +623,19 @@ model SearchBehavior {
 // ─── Power Dialer ─────────────────────────────────────────────────────────────
 
 model DialerSession {
-  id          String        @id @default(cuid())
-  name        String
-  agentId     String
-  status      String        @default("ACTIVE")
-  calls       DialerCall[]
-  totalCalls  Int           @default(0)
-  answered    Int           @default(0)
-  voicemails  Int           @default(0)
-  noAnswers   Int           @default(0)
-  createdAt   DateTime      @default(now())
-  endedAt     DateTime?
+  id             String        @id @default(cuid())
+  name           String
+  agentId        String
+  status         String        @default("ACTIVE")
+  calls          DialerCall[]
+  totalCalls     Int           @default(0)
+  answered       Int           @default(0)
+  voicemails     Int           @default(0)
+  noAnswers      Int           @default(0)
+  activeCallSid  String?
+  agentIdentity  String?
+  createdAt      DateTime      @default(now())
+  endedAt        DateTime?
 }
 
 model DialerCall {

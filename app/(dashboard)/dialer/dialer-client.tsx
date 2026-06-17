@@ -1,14 +1,31 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import {
   Phone, PhoneOff, PhoneMissed, PhoneCall, PhoneIncoming,
   Play, Pause, SkipForward, Plus, Trash2, Clock,
   CheckCircle2, XCircle, MessageSquare, Voicemail,
   BarChart3, Users, Target, TrendingUp,
   ChevronDown, ChevronUp, Search, User,
+  Zap, Sparkles, Bot, PhoneForwarded, Loader2, Mail, MapPin,
 } from "lucide-react"
 import { cn, formatPhone } from "@/lib/utils"
+import { useToast } from "@/components/ui/use-toast"
+
+interface ParallelSlot {
+  contactId: string
+  callId: string
+  name: string
+  phone: string
+  status: "ringing" | "connected" | "no-answer" | "cancelled" | "voicemail"
+}
+
+interface AIAnalysis {
+  summary: string
+  mlsSearch: Record<string, any> | null
+  tasks: any[]
+  message: string
+}
 
 interface Contact {
   id: string
@@ -66,6 +83,10 @@ const DISPOSITIONS = [
 ]
 
 export default function DialerClient({ contacts, sessions: initialSessions, pipelineStages }: Props) {
+  const { toast } = useToast()
+  const [dialMode, setDialMode] = useState<"standard" | "parallel">("standard")
+
+  // ── Standard mode state ──────────────────────────────────────────────────────
   const [sessions, setSessions] = useState<DialerSession[]>(initialSessions)
   const [activeSession, setActiveSession] = useState<DialerSession | null>(initialSessions[0] || null)
   const [queue, setQueue] = useState<Contact[]>([])
@@ -82,6 +103,145 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
   const [showHistory, setShowHistory] = useState(false)
   const [addingToQueue, setAddingToQueue] = useState(false)
   const [selectedStage, setSelectedStage] = useState<string>("all")
+
+  // ── Parallel mode state ───────────────────────────────────────────────────────
+  const [parallelSlots, setParallelSlots] = useState<ParallelSlot[]>([])
+  const [activeContact, setActiveContact] = useState<any>(null)
+  const [activeParallelCallId, setActiveParallelCallId] = useState<string | null>(null)
+  const [parallelNotes, setParallelNotes] = useState("")
+  const [parallelDisposition, setParallelDisposition] = useState("")
+  const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null)
+  const [analyzingNotes, setAnalyzingNotes] = useState(false)
+  const [deviceReady, setDeviceReady] = useState(false)
+  const [deviceLoading, setDeviceLoading] = useState(false)
+  const [parallelDialing, setParallelDialing] = useState(false)
+  const [parallelCallActive, setParallelCallActive] = useState(false)
+  const twilioDeviceRef = useRef<any>(null)
+  const sseRef = useRef<EventSource | null>(null)
+
+  // SSE connection for real-time parallel dial events
+  useEffect(() => {
+    const es = new EventSource("/api/dialer/events")
+    sseRef.current = es
+
+    es.addEventListener("call-answered", (e: MessageEvent) => {
+      const data = JSON.parse(e.data)
+      setActiveContact(data.contact)
+      setActiveParallelCallId(data.callId)
+      setParallelCallActive(true)
+      setParallelSlots(prev => prev.map(s =>
+        s.contactId === data.contactId
+          ? { ...s, status: "connected" }
+          : s.status === "ringing" ? { ...s, status: "cancelled" } : s
+      ))
+      toast({ title: `📞 Connected: ${data.contact?.firstName || "Contact"} answered!` })
+    })
+
+    es.addEventListener("call-ended", () => {
+      setParallelCallActive(false)
+      toast({ title: "Call ended" })
+    })
+
+    es.addEventListener("all-missed", () => {
+      setParallelSlots(prev => prev.map(s => ({ ...s, status: s.status === "ringing" ? "no-answer" : s.status })))
+      setParallelDialing(false)
+      toast({ title: "No one answered — ready for next batch" })
+    })
+
+    return () => { es.close(); sseRef.current = null }
+  }, [])
+
+  async function initTwilioDevice() {
+    setDeviceLoading(true)
+    try {
+      const res = await fetch("/api/dialer/token")
+      const { token, identity, mock } = await res.json()
+      if (mock) {
+        setDeviceReady(true)
+        toast({ title: "Phone initialized (mock mode — add Twilio API keys to Railway for live calls)" })
+        return
+      }
+      const { Device } = await import("@twilio/voice-sdk")
+      const device = new Device(token, { logLevel: "warn" })
+      device.on("incoming", (call: any) => {
+        call.accept()
+        toast({ title: "Incoming call connected" })
+      })
+      await device.register()
+      twilioDeviceRef.current = device
+      setDeviceReady(true)
+      toast({ title: "✅ Browser phone ready" })
+    } catch (e: any) {
+      toast({ title: e.message || "Failed to initialize phone", variant: "destructive" })
+    } finally {
+      setDeviceLoading(false)
+    }
+  }
+
+  async function dialParallelBatch(batch: Contact[]) {
+    if (!batch.length) return
+    setParallelDialing(true)
+    setAiAnalysis(null)
+    setParallelNotes("")
+    setActiveContact(null)
+    setParallelSlots(batch.map(c => ({
+      contactId: c.id,
+      callId: "",
+      name: `${c.firstName} ${c.lastName}`,
+      phone: c.phone || "",
+      status: "ringing",
+    })))
+
+    try {
+      const res = await fetch("/api/dialer/parallel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contactIds: batch.map(c => c.id), sessionId: activeSession?.id }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      // Update slot callIds from response
+      setParallelSlots(prev => prev.map(s => {
+        const call = data.calls?.find((c: any) => c.contactId === s.contactId)
+        return call ? { ...s, callId: call.id } : s
+      }))
+    } catch (e: any) {
+      toast({ title: e.message || "Failed to start parallel dial", variant: "destructive" })
+      setParallelDialing(false)
+      setParallelSlots([])
+    }
+  }
+
+  async function analyzeNotes() {
+    if (!parallelNotes.trim()) return
+    setAnalyzingNotes(true)
+    try {
+      const res = await fetch("/api/dialer/analyze-notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          callId: activeParallelCallId,
+          notes: parallelNotes,
+          contactId: activeContact?.id,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setAiAnalysis(data)
+    } catch (e: any) {
+      toast({ title: e.message || "AI analysis failed", variant: "destructive" })
+    } finally {
+      setAnalyzingNotes(false)
+    }
+  }
+
+  function endParallelCall() {
+    setParallelCallActive(false)
+    setParallelDialing(false)
+    if (twilioDeviceRef.current?.activeCall) {
+      twilioDeviceRef.current.activeCall.disconnect()
+    }
+  }
 
   const filteredContacts = contacts.filter(c => {
     const name = `${c.firstName} ${c.lastName}`.toLowerCase()
@@ -236,25 +396,349 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
     <div className="flex flex-col h-full bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b px-6 py-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Power Dialer</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Multi-contact calling session management</p>
+        <div className="flex items-center gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Power Dialer</h1>
+            <p className="text-sm text-gray-500 mt-0.5">Multi-contact calling session management</p>
+          </div>
+          {/* Mode tabs */}
+          <div className="flex bg-gray-100 rounded-xl p-1 ml-4">
+            <button
+              onClick={() => setDialMode("standard")}
+              className={cn("px-4 py-1.5 rounded-lg text-sm font-medium transition-colors", dialMode === "standard" ? "bg-white shadow text-gray-900" : "text-gray-500 hover:text-gray-700")}
+            >
+              Standard
+            </button>
+            <button
+              onClick={() => setDialMode("parallel")}
+              className={cn("flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors", dialMode === "parallel" ? "bg-white shadow text-gray-900" : "text-gray-500 hover:text-gray-700")}
+            >
+              <Zap className="w-3.5 h-3.5" /> Parallel x3
+            </button>
+          </div>
         </div>
         <div className="flex items-center gap-3">
-          <div className={cn("px-3 py-1.5 rounded-full text-sm font-medium", statusColor)}>
-            {callStatusLabel}
-            {callStatus === "connected" && (
-              <span className="ml-2 font-mono">{formatDuration(callDuration)}</span>
-            )}
-          </div>
-          <button
-            onClick={createSession}
-            className="flex items-center gap-2 px-4 py-2 bg-lofty-600 text-white rounded-lg hover:bg-lofty-700 text-sm font-medium"
-          >
-            <Plus className="w-4 h-4" /> New Session
-          </button>
+          {dialMode === "standard" && (
+            <>
+              <div className={cn("px-3 py-1.5 rounded-full text-sm font-medium", statusColor)}>
+                {callStatusLabel}
+                {callStatus === "connected" && (
+                  <span className="ml-2 font-mono">{formatDuration(callDuration)}</span>
+                )}
+              </div>
+              <button
+                onClick={createSession}
+                className="flex items-center gap-2 px-4 py-2 bg-lofty-600 text-white rounded-lg hover:bg-lofty-700 text-sm font-medium"
+              >
+                <Plus className="w-4 h-4" /> New Session
+              </button>
+            </>
+          )}
+          {dialMode === "parallel" && (
+            <button
+              onClick={deviceReady ? undefined : initTwilioDevice}
+              disabled={deviceLoading || deviceReady}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors",
+                deviceReady ? "bg-green-100 text-green-700 cursor-default" :
+                "bg-lofty-600 text-white hover:bg-lofty-700 disabled:opacity-60"
+              )}
+            >
+              {deviceLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Phone className="w-4 h-4" />}
+              {deviceReady ? "Phone Ready ✓" : deviceLoading ? "Initializing..." : "Initialize Phone"}
+            </button>
+          )}
         </div>
       </div>
+
+      {/* ── PARALLEL MODE ─────────────────────────────────────────────────────── */}
+      {dialMode === "parallel" && (
+        <div className="flex flex-1 overflow-hidden">
+          {/* Left: Contact queue (reused) */}
+          <div className="w-72 flex flex-col bg-white border-r overflow-hidden">
+            <div className="px-4 py-3 border-b bg-lofty-50">
+              <p className="text-xs font-semibold text-lofty-700 uppercase tracking-wide">Call Queue</p>
+              <p className="text-xs text-gray-500 mt-0.5">Add contacts — dial 3 at once</p>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {queue.map((c, idx) => (
+                <div key={c.id} className="flex items-center gap-3 px-3 py-2.5 border-b hover:bg-gray-50">
+                  <div className="w-7 h-7 bg-lofty-100 rounded-full flex items-center justify-center text-xs font-bold text-lofty-700 flex-shrink-0">{idx + 1}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-900 truncate">{c.firstName} {c.lastName}</div>
+                    <div className="text-xs text-gray-500">{formatPhone(c.phone || "")}</div>
+                  </div>
+                  <button onClick={() => removeFromQueue(c.id)} className="p-1 text-gray-300 hover:text-red-400"><Trash2 className="w-3.5 h-3.5" /></button>
+                </div>
+              ))}
+              {queue.length === 0 && (
+                <div className="flex flex-col items-center justify-center h-32 text-center p-4">
+                  <Users className="w-7 h-7 text-gray-300 mb-2" />
+                  <p className="text-xs text-gray-500">Add contacts below</p>
+                </div>
+              )}
+            </div>
+            {/* Add contacts */}
+            <div className="border-t">
+              <button onClick={() => setAddingToQueue(!addingToQueue)} className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-medium text-lofty-700 hover:bg-lofty-50">
+                <span className="flex items-center gap-2"><Plus className="w-4 h-4" /> Add Contacts</span>
+                {addingToQueue ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+              {addingToQueue && (
+                <div className="border-t">
+                  <div className="p-2">
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder="Buscar..."
+                        value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)}
+                        className="w-full pl-7 pr-3 py-1.5 text-xs border rounded-md focus:outline-none focus:ring-1 focus:ring-lofty-500"
+                      />
+                    </div>
+                  </div>
+                  <div className="max-h-52 overflow-y-auto">
+                    {contacts.filter(c => !queue.some(q => q.id === c.id) && (`${c.firstName} ${c.lastName}`.toLowerCase().includes(searchQuery.toLowerCase()) || (c.phone || "").includes(searchQuery))).slice(0, 30).map(c => (
+                      <button key={c.id} onClick={() => addToQueue(c)} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-left">
+                        <div className="w-6 h-6 bg-lofty-100 rounded-full flex items-center justify-center flex-shrink-0"><User className="w-3 h-3 text-lofty-600" /></div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-medium truncate">{c.firstName} {c.lastName}</div>
+                          <div className="text-xs text-gray-500">{formatPhone(c.phone || "")}</div>
+                        </div>
+                        <Plus className="w-3.5 h-3.5 text-lofty-500 flex-shrink-0" />
+                      </button>
+                    ))}
+                  </div>
+                  {queue.length < 3 && queue.length > 0 && (
+                    <div className="p-2">
+                      <button
+                        onClick={() => dialParallelBatch(queue.slice(0, 3))}
+                        disabled={parallelDialing || !deviceReady}
+                        className="w-full py-2 bg-lofty-600 text-white text-xs font-semibold rounded-lg hover:bg-lofty-700 disabled:opacity-40"
+                      >
+                        <Zap className="w-3.5 h-3.5 inline mr-1" /> Dial {Math.min(queue.length, 3)} Now
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Center: Parallel dialer UI */}
+          <div className="flex-1 flex flex-col overflow-y-auto p-6 gap-5">
+
+            {/* 3 call slots */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-lofty-600" /> Parallel Calls
+                </h3>
+                {queue.length > 0 && !parallelCallActive && (
+                  <button
+                    onClick={() => dialParallelBatch(queue.slice(currentCallIndex, currentCallIndex + 3))}
+                    disabled={parallelDialing || !deviceReady}
+                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-semibold disabled:opacity-40"
+                  >
+                    {parallelDialing ? <Loader2 className="w-4 h-4 animate-spin" /> : <PhoneForwarded className="w-4 h-4" />}
+                    {parallelDialing ? "Dialing..." : `Dial Next 3`}
+                  </button>
+                )}
+                {parallelCallActive && (
+                  <button
+                    onClick={endParallelCall}
+                    className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-semibold"
+                  >
+                    <PhoneOff className="w-4 h-4" /> Hang Up
+                  </button>
+                )}
+              </div>
+
+              {parallelSlots.length === 0 ? (
+                <div className="border-2 border-dashed border-gray-200 rounded-2xl p-8 text-center">
+                  <PhoneCall className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500 font-medium">Add contacts and click "Dial Next 3"</p>
+                  <p className="text-sm text-gray-400 mt-1">All 3 numbers ring simultaneously — first to answer connects to you</p>
+                  {!deviceReady && (
+                    <button onClick={initTwilioDevice} disabled={deviceLoading} className="mt-4 px-4 py-2 bg-lofty-600 text-white text-sm rounded-lg hover:bg-lofty-700 disabled:opacity-60">
+                      {deviceLoading ? "Initializing..." : "Initialize Phone First"}
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 gap-3">
+                  {parallelSlots.map((slot, i) => (
+                    <div key={slot.contactId} className={cn(
+                      "p-4 rounded-2xl border-2 transition-all",
+                      slot.status === "connected" ? "border-green-400 bg-green-50" :
+                      slot.status === "ringing" ? "border-amber-300 bg-amber-50" :
+                      slot.status === "no-answer" ? "border-red-200 bg-red-50" :
+                      slot.status === "voicemail" ? "border-purple-200 bg-purple-50" :
+                      "border-gray-200 bg-gray-50"
+                    )}>
+                      <div className={cn(
+                        "w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold mx-auto mb-2",
+                        slot.status === "connected" ? "bg-green-200 text-green-800" :
+                        slot.status === "ringing" ? "bg-amber-200 text-amber-800 animate-pulse" :
+                        "bg-gray-200 text-gray-600"
+                      )}>
+                        {slot.name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()}
+                      </div>
+                      <p className="text-sm font-semibold text-center text-gray-900 truncate">{slot.name}</p>
+                      <p className="text-xs text-gray-500 text-center">{formatPhone(slot.phone)}</p>
+                      <div className="mt-2 flex items-center justify-center gap-1">
+                        {slot.status === "ringing" && <><div className="w-2 h-2 rounded-full bg-amber-400 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} /><span className="text-xs text-amber-700 font-medium">Ringing...</span></>}
+                        {slot.status === "connected" && <><CheckCircle2 className="w-3.5 h-3.5 text-green-600" /><span className="text-xs text-green-700 font-semibold">Connected</span></>}
+                        {slot.status === "no-answer" && <><PhoneMissed className="w-3.5 h-3.5 text-red-500" /><span className="text-xs text-red-600">No Answer</span></>}
+                        {slot.status === "voicemail" && <><Voicemail className="w-3.5 h-3.5 text-purple-500" /><span className="text-xs text-purple-600">Voicemail</span></>}
+                        {slot.status === "cancelled" && <><XCircle className="w-3.5 h-3.5 text-gray-400" /><span className="text-xs text-gray-500">Cancelled</span></>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Contact card — appears when answer detected */}
+            {activeContact && (
+              <div className="bg-white rounded-2xl border border-green-200 shadow-sm p-5">
+                <div className="flex items-start gap-4">
+                  <div className="w-14 h-14 bg-lofty-100 rounded-full flex items-center justify-center flex-shrink-0">
+                    <span className="text-lg font-bold text-lofty-700">
+                      {activeContact.firstName?.[0]}{activeContact.lastName?.[0]}
+                    </span>
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h2 className="text-xl font-bold text-gray-900">{activeContact.firstName} {activeContact.lastName}</h2>
+                      {activeContact.status && (
+                        <span className={cn(
+                          "text-xs px-2 py-0.5 rounded-full font-medium",
+                          activeContact.status === "HOT_LEAD" ? "bg-red-100 text-red-700" :
+                          activeContact.status === "ACTIVE" ? "bg-green-100 text-green-700" :
+                          "bg-gray-100 text-gray-600"
+                        )}>
+                          {activeContact.status.replace(/_/g, " ")}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-4 mt-2 text-sm text-gray-600">
+                      {activeContact.phone && <span className="flex items-center gap-1.5"><Phone className="w-3.5 h-3.5" />{formatPhone(activeContact.phone)}</span>}
+                      {activeContact.phone2 && <span className="flex items-center gap-1.5 text-gray-400"><Phone className="w-3.5 h-3.5" />{formatPhone(activeContact.phone2)} (alt)</span>}
+                      {activeContact.email && <span className="flex items-center gap-1.5"><Mail className="w-3.5 h-3.5" />{activeContact.email}</span>}
+                      {activeContact.source && <span className="flex items-center gap-1.5 text-gray-400"><MapPin className="w-3.5 h-3.5" />Source: {activeContact.source}</span>}
+                    </div>
+                    {activeContact.lastContacted && (
+                      <p className="text-xs text-gray-400 mt-1.5">Last contacted: {new Date(activeContact.lastContacted).toLocaleDateString()}</p>
+                    )}
+                  </div>
+                  <a
+                    href={`/contacts/${activeContact.id}`}
+                    target="_blank"
+                    className="text-xs text-lofty-600 hover:underline flex-shrink-0"
+                  >
+                    Full Profile →
+                  </a>
+                </div>
+              </div>
+            )}
+
+            {/* Notes + AI Analysis — shown when call is active or just ended */}
+            {(parallelCallActive || (activeContact && parallelSlots.some(s => s.status === "connected"))) && (
+              <div className="bg-white rounded-2xl border p-5">
+                <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-lofty-600" /> Call Notes
+                </h3>
+
+                {/* Disposition */}
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {DISPOSITIONS.map(d => (
+                    <button
+                      key={d.value}
+                      onClick={() => setParallelDisposition(d.value)}
+                      className={cn(
+                        "flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors",
+                        parallelDisposition === d.value ? "bg-lofty-600 text-white border-lofty-600" : "border-gray-200 text-gray-600 hover:border-lofty-300"
+                      )}
+                    >
+                      <d.icon className="w-3 h-3" />{d.label}
+                    </button>
+                  ))}
+                </div>
+
+                <textarea
+                  value={parallelNotes}
+                  onChange={e => setParallelNotes(e.target.value)}
+                  placeholder="Take notes during the call... (e.g. 'Looking for 3BR condo in Brickell, budget $400k-$500k, pre-construction ok, call back Thursday')"
+                  rows={4}
+                  className="w-full border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-lofty-400 resize-none"
+                />
+
+                <div className="flex items-center gap-3 mt-3">
+                  <button
+                    onClick={analyzeNotes}
+                    disabled={analyzingNotes || !parallelNotes.trim()}
+                    className="flex items-center gap-2 px-4 py-2 bg-lofty-600 text-white rounded-lg hover:bg-lofty-700 text-sm font-semibold disabled:opacity-40"
+                  >
+                    {analyzingNotes ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bot className="w-4 h-4" />}
+                    {analyzingNotes ? "Analyzing..." : "Analyze Notes (AI)"}
+                  </button>
+                  <span className="text-xs text-gray-400">AI extracts property criteria and creates follow-up tasks automatically</span>
+                </div>
+              </div>
+            )}
+
+            {/* AI Analysis results */}
+            {aiAnalysis && (
+              <div className="bg-lofty-50 rounded-2xl border border-lofty-200 p-5">
+                <h3 className="font-semibold text-lofty-900 mb-3 flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-lofty-600" /> AI Analysis
+                </h3>
+                <p className="text-sm text-gray-700 mb-4">{aiAnalysis.summary}</p>
+
+                {aiAnalysis.tasks?.length > 0 && (
+                  <div className="mb-4">
+                    <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Tasks Created Automatically</p>
+                    <div className="space-y-2">
+                      {aiAnalysis.tasks.map((task: any, i: number) => (
+                        <div key={i} className="flex items-start gap-2 bg-white rounded-lg px-3 py-2 border">
+                          <CheckCircle2 className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">{task.title}</p>
+                            {task.dueDate && <p className="text-xs text-gray-500">Due: {new Date(task.dueDate).toLocaleDateString()}</p>}
+                          </div>
+                          <span className={cn("ml-auto text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0",
+                            task.priority === "HIGH" ? "bg-red-100 text-red-700" :
+                            task.priority === "MEDIUM" ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-600"
+                          )}>{task.priority}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {aiAnalysis.mlsSearch && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">MLS Search Criteria Saved</p>
+                    <div className="bg-white rounded-lg p-3 border flex flex-wrap gap-2">
+                      {Object.entries(aiAnalysis.mlsSearch).filter(([, v]) => v != null).map(([k, v]) => (
+                        <span key={k} className="text-xs bg-lofty-100 text-lofty-700 px-2 py-1 rounded-full font-medium">
+                          {k}: {String(v)}
+                        </span>
+                      ))}
+                    </div>
+                    <p className="text-xs text-amber-600 mt-2">⏳ Auto-search enabled once IDX API connection is approved by Miami MLS</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── STANDARD MODE ─────────────────────────────────────────────────────── */}
+      {dialMode === "standard" && (
 
       <div className="flex flex-1 overflow-hidden">
         {/* Left: Queue + Contact selector */}
@@ -714,6 +1198,7 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
           </div>
         </div>
       </div>
+      )} {/* end standard mode */}
     </div>
   )
 }

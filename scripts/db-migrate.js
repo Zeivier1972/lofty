@@ -22,6 +22,9 @@ const STMTS = [
   // multi-keyword campaigns
   `ALTER TABLE "FacebookBotCampaign" ADD COLUMN IF NOT EXISTS "keywords" TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE "InstagramBotCampaign" ADD COLUMN IF NOT EXISTS "keywords" TEXT NOT NULL DEFAULT ''`,
+  // parallel dialer fields
+  `ALTER TABLE "DialerSession" ADD COLUMN IF NOT EXISTS "activeCallSid" TEXT`,
+  `ALTER TABLE "DialerSession" ADD COLUMN IF NOT EXISTS "agentIdentity" TEXT`,
 ]
 
 // ─── Email templates ─────────────────────────────────────────────────────────
