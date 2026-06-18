@@ -4,7 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
-  Search, Phone, Mail, Star, Facebook, Instagram, Linkedin,
+  Search, Phone, Mail, Star, Facebook, Instagram, Linkedin, Youtube,
   ChevronRight, MapPin, Bed, Bath, Maximize2, TrendingUp, Award, Shield,
   Menu, X, BarChart2, Calendar, User, ArrowRight, Home, MessageCircle,
   CheckCircle, ChevronDown,
@@ -122,11 +122,11 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
   const heroBgUrl    = websiteConfig?.heroBgUrl    || "https://images.unsplash.com/photo-1613490493576-7fde63acd811?auto=format&fit=crop&w=1920&q=90"
   const testimonials = parseJSON(websiteConfig?.testimonials, DEFAULT_TESTIMONIALS)
   const customStats  = parseJSON<{ value: string; label: string }[] | null>(websiteConfig?.stats, null)
-  const facebookUrl  = websiteConfig?.facebookUrl  || "https://facebook.com/catherinegomezrealtor"
-  const instagramUrl = websiteConfig?.instagramUrl || "https://instagram.com/catherinegomezrealtor"
-  const linkedinUrl  = websiteConfig?.linkedinUrl  || "https://linkedin.com/in/catherinegomez"
-  const youtubeUrl   = websiteConfig?.youtubeUrl   as string | undefined
-  const whatsappUrl  = `https://wa.me/13052830872`
+  const facebookUrl  = websiteConfig?.facebook  || "https://www.facebook.com/catherinegomezrealtors"
+  const instagramUrl = websiteConfig?.instagram || "https://www.instagram.com/catherine_gomez_realtor/"
+  const linkedinUrl  = websiteConfig?.linkedin  as string | undefined
+  const youtubeUrl   = websiteConfig?.youtube   as string | undefined
+  const whatsappUrl  = websiteConfig?.whatsapp  || `https://wa.me/13052830872`
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault()
@@ -210,6 +210,10 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
               className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-[#1a3a5c] transition-colors">
               <Phone className="w-3.5 h-3.5" />{agentPhone}
             </a>
+            <Link href="/portal"
+              className="border border-[#1a3a5c] text-[#1a3a5c] px-4 py-2 rounded-full font-bold text-xs hover:bg-[#1a3a5c] hover:text-white transition-all duration-300">
+              Client Login
+            </Link>
             <Link href="/book"
               className="bg-[#1a3a5c] text-white px-5 py-2.5 rounded-full font-bold text-sm hover:bg-[#c9a84c] transition-all duration-300 shadow-md hover:shadow-[#c9a84c]/30">
               Agenda tu cita
@@ -550,6 +554,7 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
                     { icon: Facebook,  href: facebookUrl,  bg: "#1877F2" },
                     { icon: Instagram, href: instagramUrl, bg: "#E1306C" },
                     { icon: Linkedin,  href: linkedinUrl,  bg: "#0A66C2" },
+                    { icon: Youtube,   href: youtubeUrl,   bg: "#FF0000" },
                   ].map(({ icon: Icon, href, bg }) => href && (
                     <a key={bg} href={href} target="_blank" rel="noopener noreferrer"
                       className="w-12 h-12 rounded-full flex items-center justify-center text-white transition-all hover:scale-110 shadow-md"
@@ -771,8 +776,13 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
                 Más de 20 años ayudando a familias latinas a comprar inteligente en Miami y Florida.
               </p>
               <div className="flex gap-3">
-                {[{ icon: Facebook, url: facebookUrl }, { icon: Instagram, url: instagramUrl }, { icon: Linkedin, url: linkedinUrl }].map(({ icon: Icon, url }, i) => (
-                  <a key={i} href={url || "#"} target={url ? "_blank" : undefined} rel="noopener noreferrer"
+                {[
+                  { icon: Facebook,  url: facebookUrl },
+                  { icon: Instagram, url: instagramUrl },
+                  { icon: Linkedin,  url: linkedinUrl },
+                  { icon: Youtube,   url: youtubeUrl },
+                ].filter(s => s.url).map(({ icon: Icon, url }, i) => (
+                  <a key={i} href={url!} target="_blank" rel="noopener noreferrer"
                     className="w-9 h-9 rounded-full border border-white/10 flex items-center justify-center text-gray-500 hover:text-[#c9a84c] hover:border-[#c9a84c] transition-all duration-300">
                     <Icon className="w-4 h-4" />
                   </a>
