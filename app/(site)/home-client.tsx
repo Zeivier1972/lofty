@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { motion, AnimatePresence, useInView } from "framer-motion"
+import { motion, AnimatePresence } from "framer-motion"
 import {
   Search, Phone, Mail, Star, Facebook, Instagram, Linkedin, Youtube,
   ChevronRight, ChevronLeft, MapPin, Bed, Bath, Maximize2, TrendingUp, Award, Shield,
@@ -73,37 +73,18 @@ function parseJSON<T>(json: string | null | undefined, fallback: T): T {
 
 // ─── Animated stat ────────────────────────────────────────────────────────────
 function AnimatedStat({ value, label, sub }: { value: string; label: string; sub?: string }) {
-  const ref = useRef<HTMLDivElement>(null)
-  const inView = useInView(ref, { once: true, amount: 0.2 })
   return (
-    <div ref={ref} className="text-center py-8 px-4">
-      <motion.p
-        initial={{ opacity: 0, scale: 0.6 }}
-        animate={inView ? { opacity: 1, scale: 1 } : {}}
-        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-        className="text-3xl md:text-4xl font-black text-[#1a3a5c] mb-1"
-      >
-        {value}
-      </motion.p>
-      <motion.p
-        initial={{ opacity: 0 }}
-        animate={inView ? { opacity: 1 } : {}}
-        transition={{ duration: 0.4, delay: 0.3 }}
-        className="text-gray-800 font-bold text-sm"
-      >
-        {label}
-      </motion.p>
-      {sub && (
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={inView ? { opacity: 1 } : {}}
-          transition={{ duration: 0.4, delay: 0.4 }}
-          className="text-gray-400 text-xs mt-0.5"
-        >
-          {sub}
-        </motion.p>
-      )}
-    </div>
+    <motion.div
+      initial={{ opacity: 0, scale: 0.7 }}
+      whileInView={{ opacity: 1, scale: 1 }}
+      viewport={{ once: true, amount: 0.3 }}
+      transition={{ duration: 0.6, ease: "easeOut" }}
+      className="text-center py-8 px-4"
+    >
+      <p className="text-3xl md:text-4xl font-black text-[#1a3a5c] mb-1">{value}</p>
+      <p className="text-gray-800 font-bold text-sm">{label}</p>
+      {sub && <p className="text-gray-400 text-xs mt-0.5">{sub}</p>}
+    </motion.div>
   )
 }
 
