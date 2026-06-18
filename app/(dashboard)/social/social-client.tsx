@@ -783,24 +783,24 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
               </div>
             )}
 
-            {/* Token error warnings — show when recent posts failed with auth errors */}
+            {/* Token error warnings — only when the LATEST post for that platform failed with an auth error */}
             {accounts.filter(a => a.isConnected).map(a => {
-              const recentFail = posts.find(p =>
-                p.platform === a.platform &&
-                p.status === "FAILED" &&
-                p.errorMessage &&
-                (p.errorMessage.toLowerCase().includes("token") ||
-                 p.errorMessage.toLowerCase().includes("oauth") ||
-                 p.errorMessage.toLowerCase().includes("permission") ||
-                 p.errorMessage.toLowerCase().includes("expired"))
+              const platformPosts = posts.filter(p => p.platform === a.platform)
+              if (platformPosts.length === 0) return null
+              const latest = platformPosts[0] // posts are ordered newest-first
+              const isAuthError = latest.status === "FAILED" && !!latest.errorMessage && (
+                latest.errorMessage.toLowerCase().includes("token") ||
+                latest.errorMessage.toLowerCase().includes("oauth") ||
+                latest.errorMessage.toLowerCase().includes("permission") ||
+                latest.errorMessage.toLowerCase().includes("expired")
               )
-              if (!recentFail) return null
+              if (!isAuthError) return null
               return (
                 <div key={a.platform} className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-800">
                   <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
                   <div>
                     <span className="font-semibold">{a.platform} needs to be reconnected.</span>
-                    <span className="ml-1">Error: {recentFail.errorMessage}</span>
+                    <span className="ml-1">Error: {latest.errorMessage}</span>
                     <p className="text-xs mt-0.5 text-red-600">Disconnect and reconnect below to get a fresh token with all required permissions.</p>
                   </div>
                 </div>
