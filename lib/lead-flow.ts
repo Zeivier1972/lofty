@@ -143,7 +143,7 @@ async function sendOutreachMessages(contact: any, stageName: string, config: any
           data: {
             subject,
             body: emailHtml,
-            fromAddress: process.env.RESEND_FROM || "sofia@loftycrm.com",
+            fromAddress: process.env.RESEND_FROM || "sofia@casaicrm.com",
             toAddress: contact.email!,
             status: "SENT",
             sentAt: new Date(),

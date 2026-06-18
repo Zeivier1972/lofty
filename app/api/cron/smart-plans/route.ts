@@ -86,7 +86,7 @@ export async function GET(req: Request) {
             data: {
               subject: fill(step.subject),
               body: fill(step.content),
-              fromAddress: process.env.RESEND_FROM || "sofia@loftycrm.com",
+              fromAddress: process.env.RESEND_FROM || "sofia@casaicrm.com",
               toAddress: contact.email,
               status: "SENT",
               sentAt: now,

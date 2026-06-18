@@ -52,7 +52,7 @@ export default function PortalShell({
               <Building2 className="w-4 h-4 text-white" />
             </div>
             <div className="hidden sm:block">
-              <div className="text-sm font-bold leading-tight">Lofty</div>
+              <div className="text-sm font-bold leading-tight">Casai</div>
               <div className="text-xs text-lofty-400 leading-tight">Client Portal</div>
             </div>
           </Link>

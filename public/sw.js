@@ -1,4 +1,4 @@
-// Lofty CRM Service Worker
+// Casai Service Worker
 const CACHE = "lofty-v1"
 
 // App shell — these load instantly even offline

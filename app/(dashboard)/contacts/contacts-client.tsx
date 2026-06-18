@@ -231,7 +231,7 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
             </div>
             <div>
               <h2 className="font-bold text-gray-900">Importar Leads (CSV)</h2>
-              <p className="text-xs text-gray-500">Compatible con exportaciones de Lofty CRM · Lead Type: Buyer, Seller, Rental</p>
+              <p className="text-xs text-gray-500">Compatible con exportaciones de Casai · Lead Type: Buyer, Seller, Rental</p>
             </div>
           </div>
           <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg">
@@ -262,7 +262,7 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
             <div className="border-2 border-dashed border-gray-200 rounded-xl p-5 text-center hover:border-lofty-400 transition-colors">
               <FileText className="w-8 h-8 text-gray-300 mx-auto mb-2" />
               <p className="text-sm font-medium text-gray-700 mb-1">Arrastra tu CSV aquí o haz clic para seleccionar</p>
-              <p className="text-xs text-gray-400 mb-3">Formatos soportados: exportación Lofty CRM · CSV simple</p>
+              <p className="text-xs text-gray-400 mb-3">Formatos soportados: exportación Casai · CSV simple</p>
               <label className="cursor-pointer">
                 <span className="bg-lofty-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-lofty-700 transition-colors">Seleccionar archivo</span>
                 <input type="file" accept=".csv,.txt" onChange={handleFile} className="hidden" />

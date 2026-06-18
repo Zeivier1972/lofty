@@ -255,7 +255,7 @@ export default function HelpPanel({ section, className }: HelpPanelProps) {
 
           <div className="px-5 py-3 border-t border-gray-100 bg-gray-50">
             <p className="text-xs text-gray-400 text-center">
-              Lofty CRM · Catherine Gomez Realtor
+              Casai · Catherine Gomez Realtor
             </p>
           </div>
         </div>

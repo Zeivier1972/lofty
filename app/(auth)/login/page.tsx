@@ -54,7 +54,7 @@ export default function LoginPage() {
           <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
             <Building2 className="w-6 h-6" />
           </div>
-          <span className="text-2xl font-bold">Lofty CRM</span>
+          <span className="text-2xl font-bold">Casai</span>
         </div>
         <div>
           <h1 className="text-4xl font-bold leading-tight mb-4">
@@ -78,7 +78,7 @@ export default function LoginPage() {
           </div>
         </div>
         <div className="text-lofty-300 text-sm">
-          © 2024 Lofty CRM. Built for real estate professionals.
+          © 2024 Casai. Built for real estate professionals.
         </div>
       </div>
 
@@ -87,7 +87,7 @@ export default function LoginPage() {
         <div className="w-full max-w-md">
           <div className="flex items-center gap-2 mb-8 lg:hidden">
             <Building2 className="w-8 h-8 text-lofty-600" />
-            <span className="text-xl font-bold">Lofty CRM</span>
+            <span className="text-xl font-bold">Casai</span>
           </div>
 
           <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome back</h2>

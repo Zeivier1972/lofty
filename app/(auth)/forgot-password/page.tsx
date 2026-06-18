@@ -36,7 +36,7 @@ export default function ForgotPasswordPage() {
       <div className="w-full max-w-md">
         <div className="flex items-center gap-2 mb-8 justify-center">
           <Building2 className="w-8 h-8 text-lofty-600" />
-          <span className="text-xl font-bold text-gray-900">Lofty CRM</span>
+          <span className="text-xl font-bold text-gray-900">Casai</span>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">

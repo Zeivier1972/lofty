@@ -1,13 +1,13 @@
 {
-  "name": "Lofty CRM — Catherine Gomez",
-  "short_name": "Lofty CRM",
+  "name": "Casai — Catherine Gomez",
+  "short_name": "Casai",
   "description": "CRM y herramientas de marketing para Catherine Gomez Realtor",
   "start_url": "/dashboard",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#1a3a5c",
-  "theme_color": "#1a3a5c",
+  "background_color": "#0f766e",
+  "theme_color": "#0f766e",
   "categories": ["business", "productivity"],
   "icons": [
     {

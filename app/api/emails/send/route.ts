@@ -39,7 +39,7 @@ export async function POST(req: Request) {
     data: {
       subject:     subject.trim(),
       body:        body.trim(),
-      fromAddress: process.env.RESEND_FROM || process.env.SMTP_FROM || "CRM <noreply@loftycrm.com>",
+      fromAddress: process.env.RESEND_FROM || process.env.SMTP_FROM || "CRM <noreply@casaicrm.com>",
       toAddress:   toEmail,
       status,
       contactId:   resolvedContact?.id || null,
