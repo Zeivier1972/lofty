@@ -762,6 +762,31 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
                 <button onClick={() => setYoutubeBanner(null)} className="ml-auto text-xs underline">Dismiss</button>
               </div>
             )}
+
+            {/* Token error warnings — show when recent posts failed with auth errors */}
+            {accounts.filter(a => a.isConnected).map(a => {
+              const recentFail = posts.find(p =>
+                p.platform === a.platform &&
+                p.status === "FAILED" &&
+                p.errorMessage &&
+                (p.errorMessage.toLowerCase().includes("token") ||
+                 p.errorMessage.toLowerCase().includes("oauth") ||
+                 p.errorMessage.toLowerCase().includes("permission") ||
+                 p.errorMessage.toLowerCase().includes("expired"))
+              )
+              if (!recentFail) return null
+              return (
+                <div key={a.platform} className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-800">
+                  <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <span className="font-semibold">{a.platform} needs to be reconnected.</span>
+                    <span className="ml-1">Error: {recentFail.errorMessage}</span>
+                    <p className="text-xs mt-0.5 text-red-600">Disconnect and reconnect below to get a fresh token with all required permissions.</p>
+                  </div>
+                </div>
+              )
+            })}
+
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-700">
               <strong>Setup required:</strong> Connect your social accounts using their API credentials. Each platform requires an access token from their developer portal.
             </div>
