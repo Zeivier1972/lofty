@@ -677,16 +677,24 @@ async function publishToFacebook(account: AccountLike, post: PostLike): Promise<
   if (!account.accessToken || !account.pageId) throw new Error("Facebook: missing credentials")
 
   const isVideo = !!(post.mediaUrl?.includes(".mp4") || post.mediaUrl?.includes("video"))
-  const endpoint = isVideo
-    ? `https://graph.facebook.com/v19.0/${account.pageId}/videos`
-    : `https://graph.facebook.com/v19.0/${account.pageId}/feed`
+  const isImage = !!(post.mediaUrl && !isVideo)
 
-  const body: Record<string, string> = {
-    message: post.content,
-    access_token: account.accessToken,
-  }
-  if (post.mediaUrl) {
-    body[isVideo ? "file_url" : "link"] = post.mediaUrl
+  let endpoint: string
+  const body: Record<string, string> = { access_token: account.accessToken }
+
+  if (isVideo) {
+    endpoint = `https://graph.facebook.com/v19.0/${account.pageId}/videos`
+    body.description = post.content
+    body.file_url = post.mediaUrl!
+  } else if (isImage) {
+    // Photo post — use /photos endpoint with caption + url
+    endpoint = `https://graph.facebook.com/v19.0/${account.pageId}/photos`
+    body.caption = post.content
+    body.url = post.mediaUrl!
+  } else {
+    // Text-only post
+    endpoint = `https://graph.facebook.com/v19.0/${account.pageId}/feed`
+    body.message = post.content
   }
 
   const res = await fetch(endpoint, {
@@ -694,8 +702,8 @@ async function publishToFacebook(account: AccountLike, post: PostLike): Promise<
     body: new URLSearchParams(body),
   })
   const data = await res.json()
-  if (data.error) throw new Error(data.error.message)
-  return data.id as string
+  if (data.error) throw new Error(`Facebook API: ${data.error.message} (code ${data.error.code})`)
+  return (data.post_id ?? data.id) as string
 }
 
 async function publishToInstagram(account: AccountLike, post: PostLike): Promise<string> {
@@ -862,10 +870,11 @@ export async function publishPost(post: PostLike, account: AccountLike): Promise
       },
     })
   } catch (err) {
-    console.error(`[social-autopilot] Publish failed for ${post.platform} (post ${post.id}):`, err)
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error(`[social-autopilot] Publish failed for ${post.platform} (post ${post.id}): ${msg}`)
     await prisma.socialPost.update({
       where: { id: post.id },
-      data: { status: "FAILED" },
+      data: { status: "FAILED", errorMessage: msg.slice(0, 500) },
     })
   }
 }
@@ -973,8 +982,20 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
       }
 
       if (!useVideoFlow) {
-        // Generate image with DALL-E → Cloudinary (failures are non-fatal)
+        // Generate image with gpt-image-1 → Cloudinary
+        // Fall back to a curated Unsplash Miami real estate photo if AI generation fails
         mediaUrl = await generateAndUploadImage(dayOfWeek, research)
+        if (!mediaUrl) {
+          const FALLBACK_IMAGES = [
+            "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1080&q=80",
+            "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1080&q=80",
+            "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1080&q=80",
+            "https://images.unsplash.com/photo-1613977257365-aaae5a9817ff?w=1080&q=80",
+            "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=1080&q=80",
+          ]
+          mediaUrl = FALLBACK_IMAGES[dayOfWeek % FALLBACK_IMAGES.length]
+          console.log("[social-autopilot] Using fallback Unsplash image (AI image generation failed)")
+        }
       }
 
       // 7c. Create SocialPost record

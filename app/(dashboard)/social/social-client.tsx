@@ -35,6 +35,8 @@ interface SocialPost {
   shares: number | null
   aiGenerated: boolean
   createdAt: string
+  externalId: string | null
+  errorMessage: string | null
   account: { accountName: string | null } | null
 }
 
@@ -599,7 +601,18 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
                           {post.likes != null && <span className="flex items-center gap-1"><Heart className="w-3 h-3" /> {post.likes.toLocaleString()}</span>}
                           {post.comments != null && <span className="flex items-center gap-1"><MessageCircle className="w-3 h-3" /> {post.comments.toLocaleString()}</span>}
                           {post.shares != null && <span className="flex items-center gap-1"><Share2 className="w-3 h-3" /> {post.shares.toLocaleString()}</span>}
+                          {post.externalId && (post.externalId.startsWith("http")) && (
+                            <a href={post.externalId} target="_blank" rel="noopener noreferrer"
+                              className="flex items-center gap-1 text-lofty-600 hover:underline ml-auto">
+                              <ExternalLink className="w-3 h-3" /> Ver en {platform?.label}
+                            </a>
+                          )}
                         </div>
+                      )}
+                      {post.status === "FAILED" && post.errorMessage && (
+                        <p className="mt-1.5 text-xs text-red-500 bg-red-50 rounded-lg px-2 py-1">
+                          ⚠ {post.errorMessage}
+                        </p>
                       )}
                     </div>
                     {post.status === "DRAFT" && (

@@ -31,6 +31,7 @@ const STMTS = [
   `ALTER TABLE "WebsiteConfig" ADD COLUMN IF NOT EXISTS "whatsapp" TEXT`,
   `ALTER TABLE "WebsiteConfig" ADD COLUMN IF NOT EXISTS "agentAddress" TEXT`,
   `ALTER TABLE "WebsiteConfig" ADD COLUMN IF NOT EXISTS "agentWebsite" TEXT`,
+  `ALTER TABLE "SocialPost" ADD COLUMN IF NOT EXISTS "errorMessage" TEXT`,
 ]
 
 // ─── Email templates ─────────────────────────────────────────────────────────
