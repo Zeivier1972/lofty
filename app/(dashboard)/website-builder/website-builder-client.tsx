@@ -52,6 +52,32 @@ const DEFAULT_CONFIG: WebsiteConfig = {
   aboutHeading: "Why Work With Me", testimonials: "[]", serviceAreas: "[]",
 }
 
+// Convert any YouTube/Vimeo watch URL to the embeddable version
+function toEmbedUrl(url: string): string {
+  if (!url) return url
+  try {
+    const u = new URL(url)
+    // youtube.com/watch?v=ID  or  youtube.com/shorts/ID
+    if (u.hostname.includes("youtube.com")) {
+      const v = u.searchParams.get("v")
+      if (v) return `https://www.youtube.com/embed/${v}`
+      const shortsMatch = u.pathname.match(/^\/shorts\/([^/?]+)/)
+      if (shortsMatch) return `https://www.youtube.com/embed/${shortsMatch[1]}`
+    }
+    // youtu.be/ID
+    if (u.hostname === "youtu.be") {
+      const id = u.pathname.replace("/", "")
+      if (id) return `https://www.youtube.com/embed/${id}`
+    }
+    // vimeo.com/ID
+    if (u.hostname.includes("vimeo.com")) {
+      const id = u.pathname.replace("/", "")
+      if (id) return `https://player.vimeo.com/video/${id}`
+    }
+  } catch { /* not a valid URL — return as-is */ }
+  return url
+}
+
 function ImageUpload({ value, onChange, label, aspect = "wide" }: {
   value?: string; onChange: (url: string) => void; label: string; aspect?: "wide" | "square" | "portrait"
 }) {
@@ -491,10 +517,10 @@ export default function WebsiteBuilderClient({ config: initialConfig }: { config
               <Card className="border-0 shadow-sm">
                 <CardContent className="p-5 space-y-4">
                   <div>
-                    <Label className="mb-1.5 block">Intro Video URL (YouTube / Vimeo embed URL)</Label>
-                    <Input value={config.videoUrl || ""} onChange={e => set("videoUrl", e.target.value)}
-                      placeholder="https://www.youtube.com/embed/..." />
-                    <p className="text-xs text-gray-400 mt-1">Use the YouTube "embed" URL format for best results</p>
+                    <Label className="mb-1.5 block">Intro Video URL (YouTube / Vimeo)</Label>
+                    <Input value={config.videoUrl || ""} onChange={e => set("videoUrl", toEmbedUrl(e.target.value))}
+                      placeholder="https://www.youtube.com/watch?v=... or embed URL" />
+                    <p className="text-xs text-gray-400 mt-1">Paste any YouTube or Vimeo link — it converts automatically</p>
                   </div>
                   {config.videoUrl && (
                     <div className="aspect-video rounded-xl overflow-hidden border border-gray-200">
