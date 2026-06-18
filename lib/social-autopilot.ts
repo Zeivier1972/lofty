@@ -734,6 +734,23 @@ async function publishToInstagram(account: AccountLike, post: PostLike): Promise
   )
   const container = await containerRes.json()
   if (container.error) throw new Error(container.error.message)
+  if (!container.id) throw new Error("Instagram: container creation returned no ID")
+
+  // Poll until container is FINISHED (Instagram needs time to process the image)
+  let attempts = 0
+  while (attempts < 10) {
+    await new Promise(r => setTimeout(r, 3000))
+    const statusRes = await fetch(
+      `https://graph.facebook.com/v19.0/${container.id}?fields=status_code&access_token=${account.accessToken}`
+    )
+    const statusData = await statusRes.json()
+    if (statusData.status_code === "FINISHED") break
+    if (statusData.status_code === "ERROR" || statusData.status_code === "EXPIRED") {
+      throw new Error(`Instagram container processing failed: ${statusData.status_code}`)
+    }
+    attempts++
+  }
+  if (attempts >= 10) throw new Error("Instagram: container did not finish processing in time")
 
   const publishRes = await fetch(
     `https://graph.facebook.com/v19.0/${account.pageId}/media_publish`,
