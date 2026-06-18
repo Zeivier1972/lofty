@@ -957,6 +957,16 @@ model ScheduledCall {
   createdAt   DateTime @default(now())
 }
 
+// ─── Property Alert Tracking ─────────────────────────────────────────────────
+
+model PropertyAlertSent {
+  id         String   @id @default(cuid())
+  contactId  String
+  propertyId String
+  sentAt     DateTime @default(now())
+  @@unique([contactId, propertyId])
+}
+
 // ─── Key-value settings store ────────────────────────────────────────────────
 
 model Setting {
