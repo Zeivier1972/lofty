@@ -279,7 +279,11 @@ function ServiceAreasEditor({ value, onChange }: { value: string; onChange: (v: 
 
 export default function WebsiteBuilderClient({ config: initialConfig }: { config: any }) {
   const { toast } = useToast()
-  const [config, setConfig] = useState<WebsiteConfig>({ ...DEFAULT_CONFIG, ...initialConfig })
+  const [config, setConfig] = useState<WebsiteConfig>({
+    ...DEFAULT_CONFIG,
+    ...initialConfig,
+    videoUrl: toEmbedUrl(initialConfig?.videoUrl || DEFAULT_CONFIG.videoUrl || ""),
+  })
   const [saving, setSaving] = useState(false)
   const [activeSection, setActiveSection] = useState("hero")
 
