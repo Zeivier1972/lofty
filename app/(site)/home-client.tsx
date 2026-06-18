@@ -74,7 +74,7 @@ function parseJSON<T>(json: string | null | undefined, fallback: T): T {
 // ─── Animated stat ────────────────────────────────────────────────────────────
 function AnimatedStat({ value, label, sub }: { value: string; label: string; sub?: string }) {
   const ref = useRef<HTMLDivElement>(null)
-  const inView = useInView(ref, { once: true, margin: "-50px" })
+  const inView = useInView(ref, { once: true, amount: 0.2 })
   return (
     <div ref={ref} className="text-center py-8 px-4">
       <motion.p
@@ -267,27 +267,6 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
 
   return (
     <div className="font-sans bg-white overflow-x-hidden">
-
-      {/* Shimmer + Ken Burns keyframes */}
-      <style>{`
-        @keyframes shimmer {
-          0%   { background-position: -200% center; }
-          100% { background-position:  200% center; }
-        }
-        .gold-shimmer {
-          background: linear-gradient(90deg, #c9a84c 0%, #f5e09d 35%, #fff8dc 50%, #f5e09d 65%, #c9a84c 100%);
-          background-size: 200% auto;
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          background-clip: text;
-          animation: shimmer 4s linear infinite;
-        }
-        @keyframes kenburns {
-          0%   { transform: scale(1.0) translate(0, 0); }
-          100% { transform: scale(1.08) translate(-1%, 0.5%); }
-        }
-        .ken-burns { animation: kenburns 9s ease-in-out alternate infinite; }
-      `}</style>
 
       {/* ── STICKY WHATSAPP ── */}
       <a href={whatsappUrl} target="_blank" rel="noopener noreferrer"
@@ -541,14 +520,14 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
       {/* ── FEATURED AREAS ── */}
       <section className="py-20 bg-white">
         <div className="max-w-screen-xl mx-auto px-4">
-          <motion.div variants={stagger} initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-80px" }}
+          <motion.div variants={stagger} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.1 }}
             className="text-center mb-12">
             <motion.p variants={fadeUp} className="text-xs font-black uppercase tracking-[0.2em] text-[#c9a84c] mb-3">Explore Florida</motion.p>
             <motion.h2 variants={fadeUp} className="font-serif text-4xl md:text-5xl font-black text-[#1a3a5c]">Nuestras Áreas Destacadas</motion.h2>
             <motion.div variants={fadeUp} className="w-16 h-1 bg-[#c9a84c] mx-auto mt-4 rounded-full" />
           </motion.div>
 
-          <motion.div variants={stagger} initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-50px" }}
+          <motion.div variants={stagger} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.15 }}
             className="grid grid-cols-2 md:grid-cols-3 gap-4">
             {FEATURED_AREAS.map((area, idx) => (
               <motion.div key={area.name} variants={fadeUp}
@@ -585,13 +564,13 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
       {featuredProperties.length > 0 && (
         <section className="py-20 bg-gray-50">
           <div className="max-w-screen-xl mx-auto px-4">
-            <motion.div variants={stagger} initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-80px" }}
+            <motion.div variants={stagger} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.1 }}
               className="text-center mb-12">
               <motion.p variants={fadeUp} className="text-xs font-black uppercase tracking-[0.2em] text-[#c9a84c] mb-3">Active Listings</motion.p>
               <motion.h2 variants={fadeUp} className="font-serif text-4xl md:text-5xl font-black text-[#1a3a5c]">Propiedades Destacadas</motion.h2>
               <motion.div variants={fadeUp} className="w-16 h-1 bg-[#c9a84c] mx-auto mt-4 rounded-full" />
             </motion.div>
-            <motion.div variants={stagger} initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-50px" }}
+            <motion.div variants={stagger} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.15 }}
               className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {featuredProperties.map(p => <PropertyCard key={p.id} property={p} />)}
             </motion.div>
@@ -609,13 +588,13 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
       {/* ── WHY ME ── */}
       <section className="py-20 bg-[#1a3a5c] text-white">
         <div className="max-w-screen-xl mx-auto px-4">
-          <motion.div variants={stagger} initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-80px" }}
+          <motion.div variants={stagger} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.1 }}
             className="text-center mb-14">
             <motion.p variants={fadeUp} className="text-xs font-black uppercase tracking-[0.2em] text-[#c9a84c] mb-3">La Diferencia Catherine</motion.p>
             <motion.h2 variants={fadeUp} className="font-serif text-4xl md:text-5xl font-black text-white">¿Por qué elegirme?</motion.h2>
             <motion.div variants={fadeUp} className="w-16 h-1 bg-[#c9a84c] mx-auto mt-4 rounded-full" />
           </motion.div>
-          <motion.div variants={stagger} initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-50px" }}
+          <motion.div variants={stagger} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.15 }}
             className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
               { icon: TrendingUp, title: "Experta en el Mercado de Miami", desc: "20+ años especializándome en Miami-Dade. Conozco cada vecindario, tendencia de precios y oportunidad oculta en este mercado." },
@@ -640,7 +619,7 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
         <div className="max-w-screen-xl mx-auto px-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
             {/* Photo with parallax hover */}
-            <motion.div variants={fadeLeft} initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-80px" }}
+            <motion.div variants={fadeLeft} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.1 }}
               className="relative max-w-md mx-auto lg:mx-0">
               <div className="absolute -top-4 -left-4 right-4 bottom-4 rounded-3xl border-2 border-[#c9a84c] opacity-50" />
               <div className="absolute -top-2 -left-2 right-2 bottom-2 rounded-3xl border border-[#c9a84c]/30 opacity-30" />
@@ -668,7 +647,7 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
             </motion.div>
 
             {/* Info */}
-            <motion.div variants={fadeRight} initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-80px" }}>
+            <motion.div variants={fadeRight} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.1 }}>
               <p className="text-xs font-black tracking-[0.2em] text-[#c9a84c] uppercase mb-2">{agentTitle}</p>
               <h2 className="font-serif text-4xl md:text-5xl font-black text-[#1a3a5c] mb-6">{agentName}</h2>
               <div className="w-12 h-1 bg-[#c9a84c] mb-8 rounded-full" />
@@ -722,7 +701,7 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
       {/* ── TESTIMONIALS CAROUSEL ── */}
       <section className="py-20 bg-gray-50 overflow-hidden">
         <div className="max-w-screen-xl mx-auto px-4">
-          <motion.div variants={stagger} initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-80px" }}
+          <motion.div variants={stagger} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.1 }}
             className="text-center mb-14">
             <motion.p variants={fadeUp} className="text-xs font-black uppercase tracking-[0.2em] text-[#c9a84c] mb-3">Historias de Éxito</motion.p>
             <motion.h2 variants={fadeUp} className="font-serif text-4xl md:text-5xl font-black text-[#1a3a5c]">Lo Que Dicen Mis Clientes</motion.h2>
@@ -800,7 +779,7 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
             </Link>
           </motion.div>
 
-          <motion.div variants={stagger} initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-50px" }}
+          <motion.div variants={stagger} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.15 }}
             className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             {[
               { label: "Active Listings",     value: snapshot?.activeListings ?? "—", sub: snapshot?.newListings30d ? `+${snapshot.newListings30d} this month` : "Miami Market", icon: Home, color: "from-blue-500 to-blue-600" },
@@ -849,7 +828,7 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
             </Link>
           </motion.div>
 
-          <motion.div variants={stagger} initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-50px" }}
+          <motion.div variants={stagger} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.15 }}
             className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {(blogPosts.length > 0 ? blogPosts.slice(0, 3) : [
               { title: "5 cosas que todo comprador en Miami debe saber", tag: "Educación", img: "https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=800&q=90", excerpt: "Antes de empezar tu búsqueda, hay cinco cosas que les enseño a todos mis clientes." },
