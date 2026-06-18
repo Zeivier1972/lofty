@@ -7,7 +7,8 @@ import { initiateCall } from "@/lib/sms"
 import { handleCallOutcome } from "@/lib/lead-flow"
 
 // Map Twilio/dialer statuses to VAPI-compatible end reasons
-const TWILIO_NO_ANSWER_MAP: Record<string, string> = {
+const TWILIO_STATUS_MAP: Record<string, string> = {
+  COMPLETED: "completed",            // answered — NOT in NO_ANSWER_REASONS → triggers Warm stage
   NO_ANSWER: "customer-did-not-answer",
   BUSY: "customer-busy",
   FAILED: "pipeline-error",
@@ -97,7 +98,7 @@ export async function PATCH(req: Request) {
 
   // Advance the lead pipeline stage — same logic as Sofia, but flagged as agent call
   if (call.contactId && ["COMPLETED", "NO_ANSWER", "BUSY", "FAILED"].includes(status)) {
-    const endedReason = TWILIO_NO_ANSWER_MAP[status] ?? "customer-did-not-answer"
+    const endedReason = TWILIO_STATUS_MAP[status] ?? "customer-did-not-answer"
     const durationSecs = typeof duration === "number" ? duration : 0
     try {
       await handleCallOutcome(call.contactId, endedReason, durationSecs, true)

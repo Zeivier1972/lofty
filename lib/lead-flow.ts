@@ -184,7 +184,8 @@ export async function handleCallOutcome(
   const config = await prisma.aIConfig.findFirst()
   const stageByName = (name: string) => pipeline.stages.find(s => s.name === name)
 
-  const engaged = !NO_ANSWER_REASONS.includes(endedReason) && durationSeconds > 30
+  const engaged = !NO_ANSWER_REASONS.includes(endedReason) &&
+    (calledByAgent ? true : durationSeconds > 30)
 
   if (engaged) {
     const warmStage = stageByName("Warm")
@@ -261,12 +262,10 @@ export async function handleCallOutcome(
   }
 
   // Contacted 1–4: send outreach text/email to lead + schedule Sofia's next call
+  // Sofia always keeps the 24h retry cycle going, regardless of who last called
   const attemptNum = CONTACTED_STAGES.indexOf(nextStageName) + 1
   await sendOutreachMessages(contact, nextStageName, config)
-  // Only schedule Sofia retry if this wasn't Catherine's call — Catherine manages her own follow-up
-  if (!calledByAgent) {
-    await scheduleRetryCall(contactId, attemptNum + 1)
-  }
+  await scheduleRetryCall(contactId, attemptNum + 1)
   await prisma.aINotification.create({
     data: {
       type: "FOLLOW_UP",
