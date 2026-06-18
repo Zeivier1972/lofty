@@ -107,17 +107,20 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
   const [connectForm, setConnectForm] = useState({ accountName: "", accessToken: "", pageId: "" })
   const [youtubeBanner, setYoutubeBanner] = useState<{ type: "success" | "error"; msg: string } | null>(null)
 
-  // Read YouTube OAuth result from URL params on mount
+  // Read OAuth result from URL params on mount
   useEffect(() => {
     if (typeof window === "undefined") return
     const params = new URLSearchParams(window.location.search)
     const tab = params.get("tab")
     const connected = params.get("youtube_connected")
     const err = params.get("youtube_error")
+    const fbConnected = params.get("fb_connected")
+    const igConnected = params.get("ig_connected")
+    const fbError = params.get("fb_error")
+
     if (connected === "1") {
       setActiveTab("accounts")
       setYoutubeBanner({ type: "success", msg: "YouTube connected successfully! Videos will now be uploaded automatically." })
-      // Clean the URL
       window.history.replaceState({}, "", window.location.pathname)
     } else if (err) {
       setActiveTab("accounts")
@@ -128,6 +131,23 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
         cancelled: "YouTube authorization was cancelled.",
       }
       setYoutubeBanner({ type: "error", msg: messages[err] ?? `Authorization failed: ${err}` })
+      window.history.replaceState({}, "", window.location.pathname)
+    } else if (fbConnected) {
+      setActiveTab("accounts")
+      const msg = igConnected
+        ? "✅ Facebook + Instagram connected! Posts will publish automatically."
+        : "✅ Facebook connected! (No Instagram Business Account found on this page.)"
+      setYoutubeBanner({ type: "success", msg })
+      window.history.replaceState({}, "", window.location.pathname)
+      window.location.reload()
+    } else if (fbError) {
+      setActiveTab("accounts")
+      const messages: Record<string, string> = {
+        not_configured: "FACEBOOK_APP_ID or FACEBOOK_APP_SECRET is not set in Railway environment variables.",
+        no_pages_found: "No Facebook Pages found. Make sure you manage at least one Facebook Page.",
+        cancelled: "Facebook authorization was cancelled.",
+      }
+      setYoutubeBanner({ type: "error", msg: messages[fbError] ?? `Facebook error: ${fbError}` })
       window.history.replaceState({}, "", window.location.pathname)
     } else if (tab === "accounts") {
       setActiveTab("accounts")
@@ -844,7 +864,7 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
                     </div>
                   </div>
 
-                  {isConnecting && platform.id !== "YOUTUBE" && (
+                  {isConnecting && platform.id !== "YOUTUBE" && platform.id !== "FACEBOOK" && platform.id !== "INSTAGRAM" && (
                     <div className="mt-4 pt-4 border-t space-y-3">
                       <div className="grid grid-cols-2 gap-3">
                         <div>
@@ -857,18 +877,6 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
                             className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-lofty-500"
                           />
                         </div>
-                        {(platform.id === "FACEBOOK" || platform.id === "INSTAGRAM") && (
-                          <div>
-                            <label className="text-xs font-semibold text-gray-600 mb-1 block">Page ID</label>
-                            <input
-                              type="text"
-                              value={connectForm.pageId}
-                              onChange={e => setConnectForm(f => ({ ...f, pageId: e.target.value }))}
-                              placeholder="123456789"
-                              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-lofty-500"
-                            />
-                          </div>
-                        )}
                       </div>
                       <div>
                         <label className="text-xs font-semibold text-gray-600 mb-1 block">Access Token</label>
@@ -887,6 +895,35 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
                       >
                         Save & Connect
                       </button>
+                    </div>
+                  )}
+
+                  {/* Facebook & Instagram use Meta OAuth — single button, no manual form */}
+                  {isConnecting && (platform.id === "FACEBOOK" || platform.id === "INSTAGRAM") && (
+                    <div className="mt-4 pt-4 border-t">
+                      <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-4">
+                        <p className="text-sm font-semibold text-blue-800 mb-1">
+                          {platform.id === "INSTAGRAM" ? "Instagram connects through Facebook" : "Facebook requires Meta OAuth"}
+                        </p>
+                        <p className="text-xs text-blue-700 leading-relaxed">
+                          {platform.id === "INSTAGRAM"
+                            ? "Click below and log in to Facebook. The system will automatically detect the Instagram Business Account linked to your Facebook Page and connect both at once."
+                            : "Click below to log in with Facebook. The system will request permission to manage your Page posts and auto-detect any linked Instagram Business Account."}
+                        </p>
+                        <ul className="mt-2 text-xs text-blue-700 list-disc list-inside space-y-0.5">
+                          <li>Permissions: <code>pages_manage_posts</code>, <code>pages_read_engagement</code></li>
+                          {platform.id === "INSTAGRAM" && <li>Instagram permissions: <code>instagram_basic</code>, <code>instagram_content_publish</code></li>}
+                          <li>Page token does not expire — no need to reconnect</li>
+                          <li>Make sure <strong>FACEBOOK_APP_ID</strong> and <strong>FACEBOOK_APP_SECRET</strong> are set in Railway</li>
+                        </ul>
+                      </div>
+                      <a
+                        href="/api/social/facebook-auth"
+                        className="flex items-center justify-center gap-2 w-full px-5 py-3 bg-[#1877F2] text-white rounded-xl text-sm font-semibold hover:bg-blue-700"
+                      >
+                        <Facebook className="w-4 h-4" />
+                        {platform.id === "INSTAGRAM" ? "Connect via Facebook" : "Authorize with Facebook"}
+                      </a>
                     </div>
                   )}
 
