@@ -99,8 +99,13 @@ model Contact {
   buyerBudgetMin Float?
   buyerBudgetMax Float?
   buyerBedroomsMin Int?
+  buyerBathroomsMin Float?
   buyerPropertyType String?
+  buyerMustHaves    String?
   buyerLocation String?
+  buyerTimelineMonths   Int?
+  buyerPurpose          String?
+  matchPrefsCompletedAt DateTime?
   sellerAddress String?
   sellerEstimatedValue Float?
   notes         Note[]

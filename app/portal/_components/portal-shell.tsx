@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
   Building2, LayoutDashboard, Home, FileText,
-  MessageSquare, Map, LogOut, Menu, X,
+  MessageSquare, Map, LogOut, Menu, X, Sparkles,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
@@ -19,8 +19,17 @@ const NAV = [
   { href: "/portal/dashboard", icon: LayoutDashboard, label: "Dashboard", labelEs: "Inicio" },
   { href: "/portal/timeline", icon: Map, label: "Timeline", labelEs: "Progreso" },
   { href: "/portal/properties", icon: Home, label: "Properties", labelEs: "Propiedades" },
+  { href: "/portal/matches", icon: Sparkles, label: "AI Matches", labelEs: "Mis Matches", highlight: true },
   { href: "/portal/documents", icon: FileText, label: "Documents", labelEs: "Documentos" },
   { href: "/portal/messages", icon: MessageSquare, label: "Messages", labelEs: "Mensajes" },
+]
+
+const MOBILE_NAV = [
+  { href: "/portal/dashboard", icon: LayoutDashboard, label: "Inicio" },
+  { href: "/portal/properties", icon: Home, label: "Casas" },
+  { href: "/portal/matches", icon: Sparkles, label: "Matches", highlight: true },
+  { href: "/portal/documents", icon: FileText, label: "Docs" },
+  { href: "/portal/messages", icon: MessageSquare, label: "Chat" },
 ]
 
 export default function PortalShell({
@@ -59,8 +68,8 @@ export default function PortalShell({
 
           {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-1">
-            {NAV.map(({ href, icon: Icon, label }) => {
-              const isActive = pathname === href
+            {NAV.map(({ href, icon: Icon, label, highlight }) => {
+              const isActive = pathname === href || (href === "/portal/matches" && pathname === "/portal/preferences")
               const badge = href === "/portal/messages" && unreadMessages > 0
               return (
                 <Link
@@ -68,7 +77,9 @@ export default function PortalShell({
                   href={href}
                   className={cn(
                     "relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-                    isActive ? "bg-lofty-600 text-white" : "text-lofty-300 hover:text-white hover:bg-lofty-800"
+                    isActive ? "bg-lofty-600 text-white" :
+                    highlight ? "text-purple-300 hover:text-white hover:bg-purple-800/50" :
+                    "text-lofty-300 hover:text-white hover:bg-lofty-800"
                   )}
                 >
                   <Icon className="w-4 h-4" />
@@ -111,7 +122,7 @@ export default function PortalShell({
         {/* Mobile nav dropdown */}
         {mobileMenuOpen && (
           <div className="md:hidden border-t border-lofty-800 px-4 py-3 space-y-1">
-            {NAV.map(({ href, icon: Icon, label, labelEs }) => {
+            {NAV.map(({ href, icon: Icon, label, labelEs, highlight }) => {
               const isActive = pathname === href
               const badge = href === "/portal/messages" && unreadMessages > 0
               return (
@@ -121,7 +132,8 @@ export default function PortalShell({
                   onClick={() => setMobileMenuOpen(false)}
                   className={cn(
                     "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium",
-                    isActive ? "bg-lofty-600 text-white" : "text-lofty-300"
+                    isActive ? "bg-lofty-600 text-white" :
+                    highlight ? "text-purple-300" : "text-lofty-300"
                   )}
                 >
                   <Icon className="w-4 h-4" />
@@ -153,8 +165,8 @@ export default function PortalShell({
       {/* Mobile bottom tab bar */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-40">
         <div className="grid grid-cols-5 h-14">
-          {NAV.map(({ href, icon: Icon, labelEs }) => {
-            const isActive = pathname === href
+          {MOBILE_NAV.map(({ href, icon: Icon, label, highlight }) => {
+            const isActive = pathname === href || (href === "/portal/matches" && pathname === "/portal/preferences")
             const badge = href === "/portal/messages" && unreadMessages > 0
             return (
               <Link
@@ -162,11 +174,12 @@ export default function PortalShell({
                 href={href}
                 className={cn(
                   "relative flex flex-col items-center justify-center gap-0.5 text-xs font-medium",
-                  isActive ? "text-lofty-600" : "text-gray-400"
+                  isActive ? "text-lofty-600" :
+                  highlight ? "text-purple-500" : "text-gray-400"
                 )}
               >
                 <Icon className="w-5 h-5" />
-                <span>{labelEs}</span>
+                <span>{label}</span>
                 {badge && (
                   <span className="absolute top-1 right-4 w-3.5 h-3.5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold text-[9px]">
                     {unreadMessages}

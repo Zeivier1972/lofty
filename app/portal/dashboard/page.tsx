@@ -27,6 +27,7 @@ export default async function PortalDashboardPage() {
         agentEmail={aiConfig?.realtorEmail || ""}
         agentName={aiConfig?.realtorName || "Catherine"}
       />
+
     </PortalShell>
   )
 }
