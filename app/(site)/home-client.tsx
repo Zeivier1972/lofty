@@ -164,8 +164,10 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
   const agentPhotoUrl = websiteConfig?.agentPhotoUrl as string | undefined
   const heroTitle    = websiteConfig?.heroTitle    || "Tu Hogar en Miami\nEmpieza Aquí."
   const heroSubtitle = websiteConfig?.heroSubtitle || "Catherine Gomez — Realtor, Educadora y Experta en el mercado de Florida durante más de 20 años."
-  const testimonials = parseJSON(websiteConfig?.testimonials, DEFAULT_TESTIMONIALS)
-  const customStats  = parseJSON<{ value: string; label: string; sub?: string }[] | null>(websiteConfig?.stats, null)
+  const _parsedTestimonials = parseJSON(websiteConfig?.testimonials, DEFAULT_TESTIMONIALS)
+  const testimonials = (Array.isArray(_parsedTestimonials) && _parsedTestimonials.length > 0) ? _parsedTestimonials : DEFAULT_TESTIMONIALS
+  const _parsedStats = parseJSON<{ value: string; label: string; sub?: string }[] | null>(websiteConfig?.stats, null)
+  const customStats = (Array.isArray(_parsedStats) && _parsedStats.length > 0) ? _parsedStats : null
   const facebookUrl  = websiteConfig?.facebook  || "https://www.facebook.com/catherinegomezrealtors"
   const instagramUrl = websiteConfig?.instagram || "https://www.instagram.com/catherine_gomez_realtor/"
   const linkedinUrl  = websiteConfig?.linkedin  as string | undefined
