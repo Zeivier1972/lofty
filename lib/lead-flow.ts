@@ -220,6 +220,13 @@ export async function handleCallOutcome(
   const currentStage = await getCurrentStage(contactId)
   const currentName = currentStage?.name ?? ""
 
+  // Don't touch leads already past the calling flow (Drip, Warm, Hot, etc.)
+  const PAST_CALLING_STAGES = ["Drip Campaign", "Warm", "Hot", "Appointment Set", "Showing", "Under Contract", "Closed"]
+  if (currentName && PAST_CALLING_STAGES.includes(currentName)) {
+    console.log(`[lead-flow] Skipping stage advance — ${contact.firstName} is already at "${currentName}"`)
+    return
+  }
+
   let nextStageName: string
   if (!currentName || !CONTACTED_STAGES.includes(currentName)) {
     nextStageName = "Contacted 1"
