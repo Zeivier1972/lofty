@@ -815,6 +815,9 @@ async function publishToLinkedIn(account: AccountLike, post: PostLike): Promise<
 async function publishToYouTube(account: AccountLike, post: PostLike): Promise<string> {
   if (!account.refreshToken) throw new Error("YouTube: missing refresh token — re-authorize via Accounts tab")
   if (!post.mediaUrl) throw new Error("YouTube: no video URL to upload")
+  // Guard: only upload actual video files — reject images passed by mistake
+  const looksLikeImage = /\.(png|jpg|jpeg|webp|gif|svg)(\?|$)/i.test(post.mediaUrl)
+  if (looksLikeImage) throw new Error("YouTube: mediaUrl is an image, not a video — skipping to avoid failed upload")
 
   // Parse YouTube metadata stored in the prompt field
   let youtubeTitle = `Mercado Inmobiliario Miami ${new Date().getFullYear()} — Catherine Gomez Realtor`
@@ -966,6 +969,12 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
   // 7. Process each connected account independently
   for (const account of accounts) {
     try {
+      // YouTube only gets real HeyGen MP4 videos — skip it on non-video slots
+      if (account.platform === "YOUTUBE" && !isVideoSlot) {
+        console.log("[social-autopilot] Skipping YouTube — no video today (use Tue/Fri evening slot)")
+        result.skipped++
+        continue
+      }
       // 7a. Generate platform-specific content (research-enriched + AIO optimized)
       const content = await generateContent(account.platform, dayOfWeek, research)
 
