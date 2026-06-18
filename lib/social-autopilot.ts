@@ -28,17 +28,49 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 })
 
-// ─── Weekly theme rotation (fallback when research unavailable) ───────────────
+// ─── Daily theme rotation — 28 topics covering all buyer/seller/investor needs ─
 
-const WEEKLY_THEMES: Record<number, string> = {
-  0: "actualización del mercado inmobiliario de Miami",
-  1: "consejos para compradores de primera vez en Miami",
-  2: "inversión en pre-construcción en Brickell y South Florida",
-  3: "barrio destacado — Homestead, Orlando o Brickell",
-  4: "generar ingresos con Airbnb en Miami — inversión inteligente",
-  5: "historia de éxito — cómo ayudé a un cliente a comprar en Miami",
-  6: "consejo del fin de semana para compradores e inversores",
+// Returns day-of-year (1-365) so themes don't repeat for ~4 weeks
+function getDayIndex(): number {
+  const now = new Date()
+  const start = new Date(now.getFullYear(), 0, 0)
+  return Math.floor((now.getTime() - start.getTime()) / 86400000)
 }
+
+const DAILY_THEMES: string[] = [
+  // Week 1 — Buyer education
+  "guía paso a paso para compradores de primera vez en Miami",
+  "cómo calificar para una hipoteca en Miami en 2026",
+  "FHA vs préstamo convencional — cuál te conviene para comprar en Miami",
+  "costos de cierre en Florida — todo lo que nadie te dice",
+  "programas de ayuda para el pago inicial en Florida",
+  "la inspección de vivienda en Miami — qué revisar antes de firmar",
+  "qué crédito necesitas para comprar casa en Miami",
+  // Week 2 — Investment & ROI
+  "inversión en pre-construcción en Brickell y South Florida 2026",
+  "Airbnb vs renta a largo plazo en Miami — los números reales",
+  "cómo generar ingresos pasivos con propiedades en Miami",
+  "cuánto ha valorizado tu propiedad en South Florida en 5 años",
+  "invertir en Orlando Florida — guía para compradores hispanos",
+  "el 1031 Exchange — cómo diferir impuestos al vender propiedades en Florida",
+  "ROI de bienes raíces en Homestead — por qué todos están invirtiendo aquí",
+  // Week 3 — Sellers & resale
+  "cómo preparar tu casa para venderla rápido en Miami",
+  "estrategia de precio al vender — cómo obtener el mejor precio en Miami",
+  "renovaciones que aumentan el valor de tu casa en Florida",
+  "el mercado de reventa en Miami — cuándo es el mejor momento para vender",
+  "cómo negociar ofertas al vender tu casa en South Florida",
+  "por qué vender sin Realtor te puede costar miles de dólares en Miami",
+  "documentos que necesitas para vender tu propiedad en Florida",
+  // Week 4 — Families, lifestyle & special topics
+  "los mejores vecindarios de Miami para familias hispanas en 2026",
+  "cómo comprar en Miami sin ser ciudadano americano",
+  "Doral vs Kendall — cuál es mejor para vivir con familia en Miami",
+  "seguros de hogar en Florida — cuánto cuestan y qué cubren",
+  "HOA en Florida — qué es y cómo afecta tu compra de vivienda",
+  "¿alquilar o comprar en Miami? La respuesta honesta en 2026",
+  "historia de éxito — cómo ayudé a una familia hispana a comprar su primera casa",
+]
 
 const SEO_KEYWORDS = [
   "Catherine Gomez Realtor",
@@ -54,10 +86,25 @@ const SEO_KEYWORDS = [
   "condos Miami",
   "Airbnb Miami investment",
   "luxury real estate Miami",
+  "primera casa Miami",
+  "FHA loan Florida",
+  "costos cierre Florida",
+  "hipoteca Miami",
+  "Doral Miami",
+  "Kendall Florida",
+  "Coral Gables real estate",
+  "Aventura condos",
+  "Miami Beach propiedades",
+  "vender casa Miami",
+  "familias hispanas Miami",
+  "compradores colombianos Miami",
+  "HOA Florida",
+  "seguros hogar Florida",
+  "crédito hipoteca Miami",
 ]
 
 function pickKeywords(dayOfWeek: number): string[] {
-  const start = (dayOfWeek * 3) % SEO_KEYWORDS.length
+  const start = (getDayIndex() * 3) % SEO_KEYWORDS.length
   return [
     SEO_KEYWORDS[start % SEO_KEYWORDS.length],
     SEO_KEYWORDS[(start + 1) % SEO_KEYWORDS.length],
@@ -96,7 +143,7 @@ async function generateContent(
     return research.youtubeDescription
   }
 
-  const theme = research?.trendingTopic ?? WEEKLY_THEMES[dayOfWeek] ?? WEEKLY_THEMES[0]
+  const theme = research?.trendingTopic ?? DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
   const keywords = research?.additionalKeywords?.length
     ? research.additionalKeywords
     : pickKeywords(dayOfWeek)
@@ -134,7 +181,7 @@ Escribe SOLO el contenido del post, listo para publicar. Sin explicaciones, sin 
 // ─── Image generation with DALL-E → Cloudinary ───────────────────────────────
 
 async function generateAndUploadImage(dayOfWeek: number, research?: ResearchBrief): Promise<string | null> {
-  const theme = research?.trendingTopic ?? WEEKLY_THEMES[dayOfWeek] ?? WEEKLY_THEMES[0]
+  const theme = research?.trendingTopic ?? DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
 
   try {
     const imagePrompt = `Professional Miami real estate photography, theme: ${theme}. Luxury properties, blue sky, palm trees, modern architecture. Photorealistic, bright daylight, no text or watermarks.`
@@ -164,7 +211,7 @@ async function generateAndUploadImage(dayOfWeek: number, research?: ResearchBrie
 // ─── HeyGen video generation ──────────────────────────────────────────────────
 
 async function generateVideoScript(dayOfWeek: number, research?: ResearchBrief): Promise<string> {
-  const theme = research?.trendingTopic ?? WEEKLY_THEMES[dayOfWeek] ?? WEEKLY_THEMES[0]
+  const theme = research?.trendingTopic ?? DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
   const keywords = research?.additionalKeywords?.slice(0, 2) ?? pickKeywords(dayOfWeek).slice(0, 2)
   const hook = research?.viralHook
 
@@ -356,7 +403,7 @@ async function generateBlogPostContent(
   dayOfWeek: number,
   research?: ResearchBrief
 ): Promise<BlogPostData | null> {
-  const theme = research?.trendingTopic ?? WEEKLY_THEMES[dayOfWeek] ?? WEEKLY_THEMES[0]
+  const theme = research?.trendingTopic ?? DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
   const keywords = research?.additionalKeywords ?? pickKeywords(dayOfWeek)
   const hook = research?.viralHook ?? ""
   const now = new Date()
@@ -378,8 +425,17 @@ Gancho de apertura: "${hook}"
 Palabras clave SEO a incluir: ${keywords.join(", ")}
 Año de referencia: ${year}
 URL del sitio: ${appUrl}
-Mercados clave: Brickell Miami, Homestead, Orlando, South Florida
-Audiencia: compradores e inversores hispanohablantes, especialmente colombianos
+
+Catherine Gomez es la experta educadora de bienes raíces en South Florida para TODAS las familias hispanas.
+Cubre TODOS los temas según el tema del día:
+- Compradores de primera vez: proceso, financiamiento, errores comunes, programas de ayuda
+- Inversores: pre-construcción, Airbnb, multi-family, ROI, apreciación
+- Vendedores: staging, precio, timing, renovaciones
+- Familias: vecindarios, escuelas, calidad de vida
+- Compradores internacionales: proceso para no ciudadanos, ITIN
+- Educación financiera: crédito, seguros, HOA, impuestos
+Mercados: Brickell, Homestead, Doral, Kendall, Coral Gables, Aventura, Miami Beach, Orlando, South Florida
+Audiencia: familias hispanas, especialmente colombianos, venezolanos, cubanos y todos los latinoamericanos
 
 INSTRUCCIONES DE FORMATO — devuelve HTML puro (NO Markdown):
 - Usa <h2> para los subtítulos de cada sección
@@ -466,7 +522,7 @@ async function publishBlogPost(dayOfWeek: number, research?: ResearchBrief): Pro
     const data = await generateBlogPostContent(dayOfWeek, research)
     if (!data) return false
 
-    const theme = research?.trendingTopic ?? WEEKLY_THEMES[dayOfWeek] ?? WEEKLY_THEMES[0]
+    const theme = research?.trendingTopic ?? DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
 
     // Generate cover + up to 2 section images in parallel (non-fatal if any fail)
     const coverPrompt = `${theme}, luxurious Miami waterfront property, golden hour`
@@ -981,7 +1037,7 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
         youtubeDescription: research.youtubeDescription,
         youtubeTags: research.youtubeTags,
       })
-    : WEEKLY_THEMES[dayOfWeek]
+    : DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
 
   // 7. Process each connected account independently
   for (const account of accounts) {
