@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import {
   Globe, Save, Eye, Loader2, Upload, Plus, Trash2, X,
   Image, Video, User, Home, Star, Phone, Mail, MapPin,
@@ -45,8 +45,8 @@ const DEFAULT_CONFIG: WebsiteConfig = {
   agentWebsite: "https://catherinegomezrealtor.com",
   yearsFounded: 2004, homesSold: 500, satisfiedClients: 98, avgDaysOnMarket: 21,
   primaryColor: "#1a3a5c", accentColor: "#c9a84c",
-  facebook: "https://facebook.com/catherinegomezrealtor",
-  instagram: "https://instagram.com/catherinegomezrealtor",
+  facebook: "https://www.facebook.com/catherinegomezrealtors",
+  instagram: "https://www.instagram.com/catherine_gomez_realtor/",
   linkedin: "https://linkedin.com/in/catherinegomez",
   whatsapp: "https://wa.me/13052830872",
   aboutHeading: "Why Work With Me", testimonials: "[]", serviceAreas: "[]",
@@ -279,15 +279,34 @@ function ServiceAreasEditor({ value, onChange }: { value: string; onChange: (v: 
 
 export default function WebsiteBuilderClient({ config: initialConfig }: { config: any }) {
   const { toast } = useToast()
-  const [config, setConfig] = useState<WebsiteConfig>({
-    ...DEFAULT_CONFIG,
-    ...initialConfig,
-    videoUrl: toEmbedUrl(initialConfig?.videoUrl || DEFAULT_CONFIG.videoUrl || ""),
+  const [config, setConfig] = useState<WebsiteConfig>(() => {
+    const merged: WebsiteConfig = { ...DEFAULT_CONFIG, ...initialConfig, videoUrl: toEmbedUrl(initialConfig?.videoUrl || DEFAULT_CONFIG.videoUrl || "") }
+    // Correct old wrong URLs that may have been saved to DB
+    if (merged.facebook === "https://facebook.com/catherinegomezrealtor") merged.facebook = "https://www.facebook.com/catherinegomezrealtors"
+    if (merged.instagram === "https://instagram.com/catherinegomezrealtor") merged.instagram = "https://www.instagram.com/catherine_gomez_realtor/"
+    return merged
   })
   const [saving, setSaving] = useState(false)
   const [activeSection, setActiveSection] = useState("hero")
 
   const set = (key: keyof WebsiteConfig, value: any) => setConfig(c => ({ ...c, [key]: value }))
+
+  // Auto-fix wrong social URLs in DB on first load
+  useEffect(() => {
+    const wrongFb = initialConfig?.facebook === "https://facebook.com/catherinegomezrealtor"
+    const wrongIg = initialConfig?.instagram === "https://instagram.com/catherinegomezrealtor"
+    if (wrongFb || wrongIg) {
+      fetch("/api/settings/website", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...initialConfig,
+          ...(wrongFb ? { facebook: "https://www.facebook.com/catherinegomezrealtors" } : {}),
+          ...(wrongIg ? { instagram: "https://www.instagram.com/catherine_gomez_realtor/" } : {}),
+        }),
+      }).catch(() => {})
+    }
+  }, [])
 
   async function save() {
     setSaving(true)
