@@ -75,6 +75,8 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
   const [activeTab, setActiveTab] = useState<"composer" | "calendar" | "analytics" | "accounts">("composer")
   const [autoPilotEnabled, setAutoPilotEnabled] = useState(false)
   const [autoPilotLoading, setAutoPilotLoading] = useState(false)
+  const [runningNow, setRunningNow] = useState(false)
+  const [runResult, setRunResult] = useState<{ ok: boolean; posted: number; failed: number; blogPublished?: boolean; error?: string } | null>(null)
 
   // Load auto-pilot state on mount
   useEffect(() => {
@@ -557,6 +559,64 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
                 <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${autoPilotEnabled ? "translate-x-5" : "translate-x-0"}`} />
               </button>
             </div>
+
+            {/* Manual Run Now */}
+            <div className="flex items-center gap-3">
+              {(["morning", "evening"] as const).map(slot => (
+                <button
+                  key={slot}
+                  disabled={runningNow}
+                  onClick={async () => {
+                    setRunningNow(true)
+                    setRunResult(null)
+                    try {
+                      const res = await fetch(`/api/cron/social-autopilot?slot=${slot}`)
+                      const data = await res.json()
+                      setRunResult({
+                        ok: data.ok,
+                        posted: data.autopilot?.posted ?? 0,
+                        failed: data.autopilot?.failed ?? 0,
+                        blogPublished: data.autopilot?.blogPublished,
+                        error: data.error,
+                      })
+                      // Refresh page to show new posts
+                      setTimeout(() => window.location.reload(), 2000)
+                    } catch (e: any) {
+                      setRunResult({ ok: false, posted: 0, failed: 0, error: e.message })
+                    } finally {
+                      setRunningNow(false)
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-lofty-200 text-lofty-700 hover:bg-lofty-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {runningNow
+                    ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    : <RefreshCw className="w-3.5 h-3.5" />}
+                  Run {slot} now
+                </button>
+              ))}
+              <span className="text-xs text-gray-400">Runs the full research + post cycle immediately</span>
+            </div>
+
+            {/* Run result banner */}
+            {runResult && (
+              <div className={`flex items-start gap-2 px-4 py-3 rounded-xl text-sm ${runResult.ok ? "bg-green-50 border border-green-200 text-green-800" : "bg-red-50 border border-red-200 text-red-800"}`}>
+                {runResult.ok
+                  ? <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  : <XCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />}
+                <div>
+                  {runResult.ok
+                    ? <>
+                        <span className="font-semibold">Done! </span>
+                        {runResult.blogPublished && <span>📝 Blog post published. </span>}
+                        <span>{runResult.posted} post{runResult.posted !== 1 ? "s" : ""} published</span>
+                        {runResult.failed > 0 && <span>, {runResult.failed} failed — check error messages below</span>}
+                        <span className="text-green-600 text-xs"> (refreshing...)</span>
+                      </>
+                    : <><span className="font-semibold">Error: </span>{runResult.error ?? "Unknown error"}</>}
+                </div>
+              </div>
+            )}
 
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-lg font-semibold text-gray-900">All Posts ({posts.length})</h2>
