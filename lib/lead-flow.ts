@@ -172,7 +172,8 @@ async function sendOutreachMessages(contact: any, stageName: string, config: any
 export async function handleCallOutcome(
   contactId: string,
   endedReason: string,
-  durationSeconds: number
+  durationSeconds: number,
+  calledByAgent?: boolean  // true = Catherine called manually, false/undefined = Sofía
 ) {
   const contact = await prisma.contact.findUnique({ where: { id: contactId } })
   if (!contact) return
@@ -234,12 +235,25 @@ export async function handleCallOutcome(
   await moveToStage(contactId, nextStage.id, nextStageName)
 
   if (nextStageName === "Drip Campaign") {
+    // Check whether Catherine has EVER personally called this lead
+    const catherineCallCount = await prisma.dialerCall.count({
+      where: {
+        contactId,
+        agentId: { not: null },
+        status: { in: ["COMPLETED", "NO_ANSWER", "BUSY"] },
+      },
+    })
+    const neverCalledPersonally = catherineCallCount === 0
+    const name = `${contact.firstName} ${contact.lastName ?? ""}`.trim()
+
     await prisma.aINotification.create({
       data: {
         type: "FOLLOW_UP",
-        title: `${contact.firstName} movido a Drip Campaign`,
-        body: "4 intentos de Sofía sin respuesta. Agregar a secuencia automatizada.",
-        priority: "MEDIUM",
+        title: `⚠️ ${name} movido a Drip Campaign`,
+        body: neverCalledPersonally
+          ? `Sofía llamó 4 veces sin respuesta. TÚ NUNCA HAS LLAMADO A ESTE LEAD PERSONALMENTE. Considera hacer una llamada personal antes de que entre a la secuencia automática.`
+          : `Sofía y tú han intentado contactar a ${name} sin éxito (${catherineCallCount} llamada${catherineCallCount > 1 ? "s" : ""} tuya${catherineCallCount > 1 ? "s" : ""}). Movido a secuencia automática.`,
+        priority: neverCalledPersonally ? "HIGH" : "MEDIUM",
         contactId,
       },
     })
@@ -249,12 +263,17 @@ export async function handleCallOutcome(
   // Contacted 1–4: send outreach text/email to lead + schedule Sofia's next call
   const attemptNum = CONTACTED_STAGES.indexOf(nextStageName) + 1
   await sendOutreachMessages(contact, nextStageName, config)
-  await scheduleRetryCall(contactId, attemptNum + 1)
+  // Only schedule Sofia retry if this wasn't Catherine's call — Catherine manages her own follow-up
+  if (!calledByAgent) {
+    await scheduleRetryCall(contactId, attemptNum + 1)
+  }
   await prisma.aINotification.create({
     data: {
       type: "FOLLOW_UP",
       title: `Sin respuesta: ${contact.firstName} (intento ${attemptNum})`,
-      body: `Movido a ${nextStageName}. SMS y email enviados. Sofía volverá a llamar en ${RETRY_DELAY_HOURS}h.`,
+      body: calledByAgent
+        ? `Tú llamaste a ${contact.firstName} — sin respuesta. Movido a ${nextStageName}. SMS y email enviados.`
+        : `Movido a ${nextStageName}. SMS y email enviados. Sofía volverá a llamar en ${RETRY_DELAY_HOURS}h.`,
       priority: "MEDIUM",
       contactId,
     },
