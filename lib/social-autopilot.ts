@@ -250,27 +250,37 @@ const CATHERINE_TALKING_PHOTO_IDS: string[] = [
   "2238f900a2284f5c813fc1460fabb299", // Catherine
 ]
 
-// Pick one of Catherine's confirmed talking_photo avatars, rotating by day.
+// Pick one of Catherine's talking_photo avatars. Prefers "8 looks" (user-preferred),
+// then falls back to hardcoded IDs, then any avatar with "catherine" in the name.
 function pickCatherineAvatar(
   talkingPhotos: HeyGenAvatar[],
   dayOfWeek: number
 ): string | null {
-  const idSet = new Set(CATHERINE_TALKING_PHOTO_IDS)
+  // 1st priority: "Catherine Gomez 8 looks" (preferred by user)
+  const eightLooks = talkingPhotos.filter(tp =>
+    tp.avatar_name?.toLowerCase().includes("8 looks") ||
+    tp.avatar_name?.toLowerCase().includes("8looks")
+  )
+  if (eightLooks.length > 0) {
+    const pick = eightLooks[dayOfWeek % eightLooks.length]
+    console.log(`[social-autopilot] Using "8 looks" avatar: "${pick.avatar_name}" (${pick.avatar_id})`)
+    return pick.avatar_id
+  }
 
-  // Build ordered list in the order defined above (most preferred first)
+  // 2nd priority: hardcoded confirmed IDs
+  const idSet = new Set(CATHERINE_TALKING_PHOTO_IDS)
   const personal: HeyGenAvatar[] = []
   for (const id of CATHERINE_TALKING_PHOTO_IDS) {
     const found = talkingPhotos.find(tp => tp.avatar_id === id)
     if (found) personal.push(found)
   }
-
   if (personal.length > 0) {
     const pick = personal[dayOfWeek % personal.length]
     console.log(`[social-autopilot] Using talking_photo avatar: "${pick.avatar_name}" (${pick.avatar_id})`)
     return pick.avatar_id
   }
 
-  // Fallback: any talking_photo whose name contains "catherine" (catches newly added looks)
+  // 3rd priority: any avatar whose name contains "catherine"
   const byName = talkingPhotos.filter(tp =>
     tp.avatar_name?.toLowerCase().includes("catherine") ||
     tp.avatar_name?.toLowerCase().includes("confident realtor")
@@ -281,7 +291,7 @@ function pickCatherineAvatar(
     return pick.avatar_id
   }
 
-  // Last resort: use whatever talking_photo is available (any custom avatar is better than none)
+  // Last resort: any available talking_photo
   if (talkingPhotos.length > 0) {
     const pick = talkingPhotos[dayOfWeek % talkingPhotos.length]
     console.warn(`[social-autopilot] No Catherine avatar matched — using first available: "${pick.avatar_name}" (${pick.avatar_id}). Add its ID to CATHERINE_TALKING_PHOTO_IDS to confirm it.`)
