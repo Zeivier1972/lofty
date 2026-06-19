@@ -899,8 +899,9 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
   const [avatarId, setAvatarId] = useState("")
   const [voiceId, setVoiceId] = useState("")
   const [script, setScript] = useState("")
-  const [ratio, setRatio] = useState("16:9")
+  const [ratio, setRatio] = useState("9:16")
   const [styleId, setStyleId] = useState("none")
+  const [broll, setBroll] = useState(true)
   const [loadingData, setLoadingData] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [researchingScript, setResearchingScript] = useState(false)
@@ -1008,7 +1009,7 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
       const res = await fetch("/api/heygen/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ avatarId, voiceId, script, ratio, styleId: styleId !== "none" ? styleId : undefined }),
+        body: JSON.stringify({ avatarId, voiceId, script, ratio, styleId: styleId !== "none" ? styleId : undefined, broll }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
@@ -1152,10 +1153,53 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
         </div>
       </div>
 
+      {/* B-Roll toggle */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-gray-800">4. B-Roll (multi-escena)</h2>
+            <p className="text-xs text-gray-400 mt-1">
+              {broll
+                ? "El guión se divide en 2–4 escenas, cada una con una imagen de propiedad diferente — como en HeyGen Studio"
+                : "Video de una sola escena con el fondo seleccionado arriba"}
+            </p>
+          </div>
+          <button
+            onClick={() => setBroll(b => !b)}
+            className={cn(
+              "relative inline-flex h-7 w-12 items-center rounded-full transition-colors flex-shrink-0",
+              broll ? "bg-purple-600" : "bg-gray-200"
+            )}
+          >
+            <span
+              className={cn(
+                "inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform",
+                broll ? "translate-x-6" : "translate-x-1"
+              )}
+            />
+          </button>
+        </div>
+        {broll && (
+          <div className="mt-3 grid grid-cols-3 sm:grid-cols-5 gap-1.5">
+            {[
+              { label: "Lujo Miami", color: "bg-amber-800" },
+              { label: "High-Rise", color: "bg-slate-800" },
+              { label: "Moderna", color: "bg-zinc-700" },
+              { label: "Miami Beach", color: "bg-cyan-600" },
+              { label: "Piscina", color: "bg-emerald-700" },
+            ].map(s => (
+              <div key={s.label} className={cn("rounded-lg h-8 flex items-center justify-center text-white text-[10px] font-medium", s.color)}>
+                {s.label}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Script */}
       <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold text-gray-800">4. Guión del video</h2>
+          <h2 className="text-base font-semibold text-gray-800">5. Guión del video</h2>
           <span className="text-xs text-gray-400">{script.length} / 1500 caracteres</span>
         </div>
 

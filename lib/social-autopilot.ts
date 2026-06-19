@@ -352,6 +352,32 @@ async function getHeyGenAvatar(dayOfWeek: number): Promise<{ avatarId: string; v
   }
 }
 
+// Real estate image pool for B-Roll scene backgrounds
+const BROLL_IMAGE_POOL = [
+  "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1280&q=80",
+  "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=1280&q=80",
+  "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1280&q=80",
+  "https://images.unsplash.com/photo-1533106497176-45ae19e68ba2?w=1280&q=80",
+  "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1280&q=80",
+  "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=1280&q=80",
+  "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=1280&q=80",
+  "https://images.unsplash.com/photo-1613977257365-aaae5a9817ff?w=1280&q=80",
+  "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1280&q=80",
+]
+
+function splitScriptForBRoll(script: string): string[] {
+  const sentences = script.split(/(?<=[.!?¡¿])\s+/).filter(s => s.trim().length > 0)
+  if (sentences.length <= 2) return [script]
+  const sceneCount = Math.min(4, Math.max(2, Math.ceil(sentences.length / 2)))
+  const perScene = Math.ceil(sentences.length / sceneCount)
+  const scenes: string[] = []
+  for (let i = 0; i < sceneCount; i++) {
+    const chunk = sentences.slice(i * perScene, (i + 1) * perScene).join(" ").trim()
+    if (chunk) scenes.push(chunk)
+  }
+  return scenes.length > 1 ? scenes : [script]
+}
+
 async function triggerHeyGenVideo(script: string, dayOfWeek: number): Promise<string | null> {
   const apiKey = process.env.HEYGEN_API_KEY
   if (!apiKey) return null
@@ -367,18 +393,21 @@ async function triggerHeyGenVideo(script: string, dayOfWeek: number): Promise<st
       ? { type: "talking_photo", talking_photo_id: avatarInfo.avatarId }
       : { type: "avatar", avatar_id: avatarInfo.avatarId, avatar_style: "normal" }
 
-    const videoInput: Record<string, unknown> = {
+    // B-Roll: split script into scenes, each with a different real estate background
+    const scenes = splitScriptForBRoll(script)
+    const videoInputs = scenes.map((sceneText, i) => ({
       character,
-      voice: { type: "text", input_text: script, voice_id: avatarInfo.voiceId },
-      background: { type: "color", value: "#1E3A5F" },
-    }
+      voice: { type: "text", input_text: sceneText, voice_id: avatarInfo.voiceId },
+      background: { type: "image", url: BROLL_IMAGE_POOL[i % BROLL_IMAGE_POOL.length] },
+    }))
 
     const payload = {
-      video_inputs: [videoInput],
+      video_inputs: videoInputs,
       dimension: { width: 720, height: 1280 },
+      caption: true,
     }
 
-    console.log("[social-autopilot] HeyGen generate payload:", JSON.stringify(payload).slice(0, 300))
+    console.log(`[social-autopilot] HeyGen B-Roll payload — ${scenes.length} scenes, avatar: ${avatarInfo.avatarId}`)
 
     const res = await fetch("https://api.heygen.com/v2/video/generate", {
       method: "POST",
@@ -394,7 +423,7 @@ async function triggerHeyGenVideo(script: string, dayOfWeek: number): Promise<st
     if (!data?.data?.video_id) {
       console.error(`[social-autopilot] HeyGen generate failed (HTTP ${res.status}):`, JSON.stringify(data))
     } else {
-      console.log(`[social-autopilot] HeyGen generate success — video_id: ${data.data.video_id}`)
+      console.log(`[social-autopilot] HeyGen generate success — video_id: ${data.data.video_id}, scenes: ${scenes.length}`)
     }
 
     return (data?.data?.video_id as string) ?? null
