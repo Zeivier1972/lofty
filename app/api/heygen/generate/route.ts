@@ -10,15 +10,16 @@ const DIMENSIONS: Record<string, { width: number; height: number }> = {
 }
 
 const STYLE_CONFIG: Record<string, { avatar_style: string; background: Record<string, string> }> = {
-  cinematic:    { avatar_style: "closeUp", background: { type: "color", value: "#0A0A0A" } },
-  thriller:     { avatar_style: "normal",  background: { type: "color", value: "#1A1A2E" } },
-  retro_tech:   { avatar_style: "normal",  background: { type: "color", value: "#0D1117" } },
-  pop_culture:  { avatar_style: "normal",  background: { type: "color", value: "#FF006E" } },
-  modern:       { avatar_style: "normal",  background: { type: "color", value: "#2563EB" } },
-  warm:         { avatar_style: "normal",  background: { type: "color", value: "#F97316" } },
-  handmade:     { avatar_style: "normal",  background: { type: "color", value: "#FDF6E3" } },
-  iconic:       { avatar_style: "closeUp", background: { type: "color", value: "#7C3AED" } },
-  print:        { avatar_style: "normal",  background: { type: "color", value: "#1C1917" } },
+  // Real estate themed backgrounds — all use image type for visual richness
+  cinematic:  { avatar_style: "closeUp", background: { type: "image", url: "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1280&q=80" } },  // Miami luxury home, golden hour
+  thriller:   { avatar_style: "normal",  background: { type: "image", url: "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=1280&q=80" } },  // High-rise luxury building at night
+  retro_tech: { avatar_style: "normal",  background: { type: "image", url: "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1280&q=80" } },  // Modern minimalist architecture
+  pop_culture:{ avatar_style: "normal",  background: { type: "image", url: "https://images.unsplash.com/photo-1533106497176-45ae19e68ba2?w=1280&q=80" } },  // Miami Beach waterfront
+  modern:     { avatar_style: "normal",  background: { type: "image", url: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1280&q=80" } },  // Clean modern white house
+  warm:       { avatar_style: "normal",  background: { type: "image", url: "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=1280&q=80" } },  // Warm suburban family home
+  handmade:   { avatar_style: "normal",  background: { type: "image", url: "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=1280&q=80" } },  // Luxury pool home, natural feel
+  iconic:     { avatar_style: "closeUp", background: { type: "image", url: "https://images.unsplash.com/photo-1613977257365-aaae5a9817ff?w=1280&q=80" } },  // Luxury penthouse interior
+  print:      { avatar_style: "normal",  background: { type: "image", url: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1280&q=80" } },  // Architectural exterior, dramatic
 }
 
 // Catherine Gomez "8 looks" talking_photo IDs — confirmed by user
