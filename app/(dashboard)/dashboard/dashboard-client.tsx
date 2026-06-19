@@ -1,6 +1,6 @@
 "use client"
 
-import { Users, TrendingUp, FileText, CheckSquare, Calendar, DollarSign, Home, AlertCircle } from "lucide-react"
+import { Users, TrendingUp, FileText, CheckSquare, Sparkles, Flame, Mail, UserPlus, MessageCircle, ArrowRight } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -28,6 +28,135 @@ interface DashboardClientProps {
   recentActivities: any[]
   pipelineData: any[]
   contactsByStatus: any[]
+  hotAlerts: any[]
+  matchAlertsSentToday: number
+  newLeadsToday: number
+  portalUnread: number
+}
+
+function SofiaBriefing({ hotAlerts, matchAlertsSentToday, newLeadsToday, portalUnread, tasksDueToday, upcomingAppointments }: {
+  hotAlerts: any[]
+  matchAlertsSentToday: number
+  newLeadsToday: number
+  portalUnread: number
+  tasksDueToday: number
+  upcomingAppointments: number
+}) {
+  const hour = new Date().getHours()
+  const greeting = hour < 12 ? "Buenos días" : hour < 18 ? "Buenas tardes" : "Buenas noches"
+
+  const items = [
+    hotAlerts.length > 0 && {
+      icon: Flame,
+      iconBg: "bg-red-100",
+      iconColor: "text-red-600",
+      label: `${hotAlerts.length} hot alert${hotAlerts.length > 1 ? "s" : ""} — client${hotAlerts.length > 1 ? "s" : ""} showing strong interest`,
+      sub: hotAlerts.slice(0, 2).map((a: any) => a.contact ? `${a.contact.firstName} ${a.contact.lastName}` : "").filter(Boolean).join(", "),
+      href: "/property-alerts",
+      urgent: true,
+    },
+    portalUnread > 0 && {
+      icon: MessageCircle,
+      iconBg: "bg-purple-100",
+      iconColor: "text-purple-600",
+      label: `${portalUnread} unread portal message${portalUnread > 1 ? "s" : ""} from client${portalUnread > 1 ? "s" : ""}`,
+      sub: "Reply before noon",
+      href: "/messages",
+      urgent: true,
+    },
+    tasksDueToday > 0 && {
+      icon: CheckSquare,
+      iconBg: "bg-orange-100",
+      iconColor: "text-orange-600",
+      label: `${tasksDueToday} task${tasksDueToday > 1 ? "s" : ""} due today`,
+      sub: "Follow-ups, calls, and commitments",
+      href: "/tasks",
+      urgent: false,
+    },
+    upcomingAppointments > 0 && {
+      icon: FileText,
+      iconBg: "bg-blue-100",
+      iconColor: "text-blue-600",
+      label: `${upcomingAppointments} upcoming appointment${upcomingAppointments > 1 ? "s" : ""}`,
+      sub: "Check your calendar",
+      href: "/calendar",
+      urgent: false,
+    },
+    newLeadsToday > 0 && {
+      icon: UserPlus,
+      iconBg: "bg-green-100",
+      iconColor: "text-green-600",
+      label: `${newLeadsToday} new lead${newLeadsToday > 1 ? "s" : ""} today`,
+      sub: "Add to pipeline and enroll in Smart Plan",
+      href: "/contacts?tab=all",
+      urgent: false,
+    },
+    {
+      icon: Mail,
+      iconBg: matchAlertsSentToday > 0 ? "bg-emerald-100" : "bg-gray-100",
+      iconColor: matchAlertsSentToday > 0 ? "text-emerald-600" : "text-gray-400",
+      label: matchAlertsSentToday > 0
+        ? `${matchAlertsSentToday} match alert email${matchAlertsSentToday > 1 ? "s" : ""} sent this morning`
+        : "Match alert emails — scheduled for 8:00 AM",
+      sub: matchAlertsSentToday > 0 ? "Clients are seeing their matches now" : "Cron job will run automatically",
+      href: "/property-alerts",
+      urgent: false,
+      done: matchAlertsSentToday > 0,
+    },
+  ].filter(Boolean) as any[]
+
+  const allClear = hotAlerts.length === 0 && portalUnread === 0 && tasksDueToday === 0
+
+  return (
+    <div className="rounded-2xl overflow-hidden shadow-md border border-white/10">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-[#0a1628] via-[#1a2f50] to-[#0e2240] px-6 py-5 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center">
+            <Sparkles className="w-5 h-5 text-yellow-300" />
+          </div>
+          <div>
+            <p className="text-yellow-300 text-xs font-semibold tracking-widest uppercase">Sofia · AI Assistant</p>
+            <h2 className="text-white font-bold text-lg leading-tight">{greeting}, Catherine 👋</h2>
+          </div>
+        </div>
+        <p className="text-blue-300 text-sm hidden sm:block">{format(new Date(), "EEEE, MMMM d")}</p>
+      </div>
+
+      {/* Body */}
+      <div className="bg-white divide-y divide-gray-100">
+        {allClear ? (
+          <div className="px-6 py-6 text-center">
+            <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+              <CheckSquare className="w-6 h-6 text-green-600" />
+            </div>
+            <p className="font-semibold text-gray-800">All clear! No urgent actions.</p>
+            <p className="text-sm text-gray-400 mt-1">Sofia is handling the follow-ups automatically.</p>
+          </div>
+        ) : (
+          items.map((item, i) => (
+            <Link key={i} href={item.href} className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50 transition-colors group">
+              <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0", item.iconBg)}>
+                <item.icon className={cn("w-4 h-4", item.iconColor)} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className={cn("text-sm font-semibold", item.urgent ? "text-gray-900" : "text-gray-700")}>
+                  {item.label}
+                  {item.urgent && <span className="ml-2 inline-block w-1.5 h-1.5 rounded-full bg-red-500 align-middle" />}
+                </p>
+                {item.sub && <p className="text-xs text-gray-400 mt-0.5 truncate">{item.sub}</p>}
+              </div>
+              {item.done ? (
+                <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full flex-shrink-0">✓ Done</span>
+              ) : (
+                <ArrowRight className="w-4 h-4 text-gray-300 group-hover:text-gray-500 transition-colors flex-shrink-0" />
+              )}
+            </Link>
+          ))
+        )}
+      </div>
+    </div>
+  )
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -60,6 +189,7 @@ const ACTIVITY_ICONS: Record<string, string> = {
 
 export default function DashboardClient({
   stats, tasks, appointments, recentActivities, pipelineData, contactsByStatus,
+  hotAlerts, matchAlertsSentToday, newLeadsToday, portalUnread,
 }: DashboardClientProps) {
   const statCards = [
     {
@@ -126,6 +256,16 @@ export default function DashboardClient({
           </Button>
         </div>
       </div>
+
+      {/* Sofia Daily Briefing */}
+      <SofiaBriefing
+        hotAlerts={hotAlerts}
+        matchAlertsSentToday={matchAlertsSentToday}
+        newLeadsToday={newLeadsToday}
+        portalUnread={portalUnread}
+        tasksDueToday={stats.tasksDueToday}
+        upcomingAppointments={stats.upcomingAppointments}
+      />
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

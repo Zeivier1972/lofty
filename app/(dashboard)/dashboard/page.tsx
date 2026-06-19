@@ -15,15 +15,22 @@ export default async function DashboardPage() {
   let recentActivities: any[] = []
   let pipelineData: any[] = []
   let contactsByStatus: any[] = []
+  let hotAlerts: any[] = []
+  let matchAlertsSentToday = 0
+  let newLeadsToday = 0
+  let portalUnread = 0
 
   try {
     const session = await auth()
     const userId = session?.user?.id
 
+    const todayStart = new Date(new Date().setHours(0, 0, 0, 0))
+
     const [
       totalContacts, newLeadsThisMonth, activeTransactions,
       tasksData, appointmentsData, recentActivitiesData,
       pipelineDataRaw, contactsByStatusData, tasksDueToday,
+      hotAlertsData, matchAlertsTodayCount, newLeadsTodayCount, portalUnreadCount,
     ] = await Promise.all([
       prisma.contact.count({ where: { isArchived: false } }),
       prisma.contact.count({ where: { createdAt: { gte: new Date(new Date().setDate(1)) }, isArchived: false } }),
@@ -54,6 +61,15 @@ export default async function DashboardPage() {
           ...(userId && { assignedToId: userId }),
         },
       }),
+      prisma.aINotification.findMany({
+        where: { type: "HOT_ALERT", isRead: false },
+        include: { contact: { select: { id: true, firstName: true, lastName: true } } },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+      }),
+      prisma.propertyAlertSent.count({ where: { sentAt: { gte: todayStart } } }),
+      prisma.contact.count({ where: { createdAt: { gte: todayStart }, isArchived: false } }),
+      prisma.portalMessage.count({ where: { isRead: false, fromClient: true } }),
     ])
 
     tasks = tasksData
@@ -61,6 +77,10 @@ export default async function DashboardPage() {
     recentActivities = recentActivitiesData
     pipelineData = pipelineDataRaw
     contactsByStatus = contactsByStatusData
+    hotAlerts = hotAlertsData
+    matchAlertsSentToday = matchAlertsTodayCount
+    newLeadsToday = newLeadsTodayCount
+    portalUnread = portalUnreadCount
 
     const pipelineValue = pipelineDataRaw.reduce((sum, stage) =>
       sum + stage.leads.reduce((s: number, lead: any) => s + (lead.value || 0), 0), 0)
@@ -88,6 +108,10 @@ export default async function DashboardPage() {
       recentActivities={JSON.parse(JSON.stringify(recentActivities))}
       pipelineData={JSON.parse(JSON.stringify(pipelineData))}
       contactsByStatus={JSON.parse(JSON.stringify(contactsByStatus))}
+      hotAlerts={JSON.parse(JSON.stringify(hotAlerts))}
+      matchAlertsSentToday={matchAlertsSentToday}
+      newLeadsToday={newLeadsToday}
+      portalUnread={portalUnread}
     />
   )
 }

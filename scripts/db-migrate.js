@@ -32,6 +32,21 @@ const STMTS = [
   `ALTER TABLE "WebsiteConfig" ADD COLUMN IF NOT EXISTS "agentAddress" TEXT`,
   `ALTER TABLE "WebsiteConfig" ADD COLUMN IF NOT EXISTS "agentWebsite" TEXT`,
   `ALTER TABLE "SocialPost" ADD COLUMN IF NOT EXISTS "errorMessage" TEXT`,
+  // buyer match preference fields (migration 20260618000000)
+  `ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "buyerBathroomsMin" DOUBLE PRECISION`,
+  `ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "buyerMustHaves" TEXT`,
+  `ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "buyerTimelineMonths" INTEGER`,
+  `ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "buyerPurpose" TEXT`,
+  `ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "matchPrefsCompletedAt" TIMESTAMP(3)`,
+  // property alert dedup table (migration 20260618010000)
+  `CREATE TABLE IF NOT EXISTS "PropertyAlertSent" (
+    "id" TEXT NOT NULL,
+    "contactId" TEXT NOT NULL,
+    "propertyId" TEXT NOT NULL,
+    "sentAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "PropertyAlertSent_pkey" PRIMARY KEY ("id")
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "PropertyAlertSent_contactId_propertyId_key" ON "PropertyAlertSent"("contactId", "propertyId")`,
 ]
 
 // ─── Email templates ─────────────────────────────────────────────────────────
