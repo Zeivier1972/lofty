@@ -152,15 +152,25 @@ export async function getFacebookUserProfile(psid: string): Promise<{ firstName:
 
 // Fetch a submitted lead's field data from Meta
 export async function getFacebookLeadData(leadgenId: string): Promise<Record<string, string> | null> {
-  if (!token()) return null
+  if (!token()) {
+    console.error("[FB] getFacebookLeadData: FB_PAGE_ACCESS_TOKEN is not set")
+    return null
+  }
   try {
     const res = await fetch(`${GRAPH}/${leadgenId}?fields=field_data&access_token=${token()}`)
-    if (!res.ok) return null
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}))
+      console.error("[FB] getFacebookLeadData failed — likely expired token:", res.status, JSON.stringify(errData))
+      return null
+    }
     const d = await res.json()
     const result: Record<string, string> = {}
     for (const f of d.field_data || []) result[f.name] = f.values?.[0] || ""
     return result
-  } catch { return null }
+  } catch (e) {
+    console.error("[FB] getFacebookLeadData exception:", e)
+    return null
+  }
 }
 
 // ─── Meta Marketing API ───────────────────────────────────────────────────────
