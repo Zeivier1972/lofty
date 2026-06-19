@@ -175,7 +175,7 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
     return null
   }
 
-  const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/vapi/webhook`
+  const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://lofty-production.up.railway.app"}/api/vapi/webhook`
 
   // Transfer destination must be E.164 (+1XXXXXXXXXX) or VAPI rejects/fails the transfer
   const realtorPhoneE164 = aiConfig?.realtorPhone

@@ -80,7 +80,7 @@ export default async function ContactsPage({
         include: {
           tags: { include: { tag: true } },
           assignedTo: { select: { id: true, name: true } },
-          pipelineLeads: { include: { stage: true }, take: 1 },
+          pipelineLeads: { include: { stage: true }, take: 1, orderBy: { updatedAt: "desc" } },
           enrollments: { include: { plan: true }, take: 1 },
           _count: { select: { tasks: true, notes: true, activities: true } },
         },
