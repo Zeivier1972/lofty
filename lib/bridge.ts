@@ -83,7 +83,10 @@ export async function fetchListings(params: {
   query.set("$orderby", "OnMarketDate desc")
 
   const url = `${BRIDGE_BASE}/listings?${query.toString()}`
-  const res = await fetch(url, { next: { revalidate: 300 } }) // cache 5 min
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+    next: { revalidate: 300 },
+  })
 
   if (!res.ok) {
     const err = await res.text()
