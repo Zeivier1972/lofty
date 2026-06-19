@@ -25,11 +25,13 @@ export async function GET(req: Request) {
   }
 
   const slotParam = searchParams.get("slot")
+  // "check" = only poll HeyGen for completed videos, don't post new content
+  const checkOnly = slotParam === "check"
   const slot = slotParam === "evening" ? "evening" : "morning"
 
   try {
     const videoResult = await checkHeygenVideos()
-    const autopilotResult = await runAutopilot(slot)
+    const autopilotResult = checkOnly ? { posted: 0, failed: 0, videoQueued: 0, skipped: 0 } : await runAutopilot(slot)
 
     // Fetch the last 10 posts so failures show their error context
     const { prisma } = await import("@/lib/prisma")

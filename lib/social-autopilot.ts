@@ -187,7 +187,7 @@ async function generateAndUploadImage(dayOfWeek: number, research?: ResearchBrie
     const imagePrompt = `Professional Miami real estate photography, theme: ${theme}. Luxury properties, blue sky, palm trees, modern architecture. Photorealistic, bright daylight, no text or watermarks.`
 
     const response = await openai.images.generate({
-      model: "gpt-image-1",
+      model: "dall-e-3",
       prompt: imagePrompt,
       n: 1,
       size: "1024x1024",
@@ -519,7 +519,7 @@ Devuelve SOLO JSON válido con este formato exacto:
 async function generateSectionImage(prompt: string, folder = "lofty-blog"): Promise<string | null> {
   try {
     const response = await openai.images.generate({
-      model: "gpt-image-1",
+      model: "dall-e-3",
       prompt: `Professional Miami real estate photography. ${prompt}. Luxury properties, blue sky, palm trees, modern architecture. Photorealistic, bright daylight, no text or watermarks.`,
       n: 1,
       size: "1024x1024",

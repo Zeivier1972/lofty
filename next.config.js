@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
+    instrumentationHook: true,
     serverComponentsExternalPackages: ["@prisma/client", "bcryptjs", "rets-client", "node-expat"],
     serverActions: {
       bodySizeLimit: "10mb",
