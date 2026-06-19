@@ -11,15 +11,18 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const channel = searchParams.get("channel") || "all"
 
-  const [smsMessages, waMessages, fbMessages] = await Promise.all([
-    channel !== "whatsapp" && channel !== "facebook"
+  const [smsMessages, waMessages, fbMessages, portalMessages] = await Promise.all([
+    channel !== "whatsapp" && channel !== "facebook" && channel !== "portal"
       ? prisma.sMSMessage.findMany({ where: { contactId: { not: null } }, orderBy: { createdAt: "desc" }, take: 500 })
       : [],
-    channel !== "sms" && channel !== "facebook"
+    channel !== "sms" && channel !== "facebook" && channel !== "portal"
       ? prisma.whatsAppMessage.findMany({ where: { contactId: { not: null } }, orderBy: { createdAt: "desc" }, take: 500 })
       : [],
-    channel !== "sms" && channel !== "whatsapp"
+    channel !== "sms" && channel !== "whatsapp" && channel !== "portal"
       ? prisma.facebookMessage.findMany({ where: { contactId: { not: null } }, orderBy: { createdAt: "desc" }, take: 500 })
+      : [],
+    channel !== "sms" && channel !== "whatsapp" && channel !== "facebook"
+      ? prisma.portalMessage.findMany({ where: { fromClient: true }, orderBy: { createdAt: "desc" }, take: 500 })
       : [],
   ])
 
@@ -61,6 +64,19 @@ export async function GET(req: Request) {
     }
   }
 
+  for (const msg of portalMessages as any[]) {
+    if (!msg.contactId) continue
+    const existing = threadMap.get(msg.contactId)
+    if (!existing) {
+      threadMap.set(msg.contactId, {
+        contactId: msg.contactId, lastMessage: msg.content, lastMessageAt: msg.createdAt,
+        lastDirection: "INBOUND", channel: "portal", unread: !msg.isRead,
+      })
+    } else if (msg.createdAt > existing.lastMessageAt) {
+      Object.assign(existing, { lastMessage: msg.content, lastMessageAt: msg.createdAt, lastDirection: "INBOUND", channel: "portal", unread: !msg.isRead })
+    }
+  }
+
   const contactIds = Array.from(threadMap.keys())
   const contacts = contactIds.length > 0
     ? await prisma.contact.findMany({
@@ -79,6 +95,7 @@ export async function GET(req: Request) {
   const unreadSms = (smsMessages as any[]).filter(m => m.direction === "INBOUND").length
   const unreadWa = (waMessages as any[]).filter(m => m.direction === "INBOUND").length
   const unreadFb = (fbMessages as any[]).filter(m => m.direction === "INBOUND").length
+  const unreadPortal = (portalMessages as any[]).filter(m => !m.isRead).length
 
-  return NextResponse.json({ threads, unreadSms, unreadWa, unreadFb })
+  return NextResponse.json({ threads, unreadSms, unreadWa, unreadFb, unreadPortal })
 }

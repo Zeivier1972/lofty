@@ -84,7 +84,7 @@ export default async function ContactsPage({
           enrollments: { include: { plan: true }, take: 1 },
           _count: { select: { tasks: true, notes: true, activities: true } },
         },
-        orderBy: [{ leadScore: "desc" }, { updatedAt: "desc" }],
+        orderBy: [{ createdAt: "desc" }],
         skip,
         take: pageSize,
       }),
