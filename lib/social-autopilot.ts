@@ -243,7 +243,7 @@ interface HeyGenAvatar {
   preview_image_url?: string
 }
 
-// The 3 confirmed talking_photo avatars — rotate by day of week.
+// Catherine's 9 preferred talking_photo avatar IDs — rotate by day of week.
 const CATHERINE_TALKING_PHOTO_IDS: string[] = [
   "ab393d45f3044a89b92fc77d17f321b7",
   "28e35d5f82f64101a2584fb29e841a88",
