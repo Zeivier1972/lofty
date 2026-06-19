@@ -333,14 +333,31 @@ async function getHeyGenAvatar(dayOfWeek: number): Promise<{ avatarId: string; v
       preview_image_url: tp.preview_image_url,
     })).filter((tp: HeyGenAvatar) => tp.avatar_id)
 
+    // Also collect regular (non-talking-photo) avatars as fallback
+    const regularAvatars: HeyGenAvatar[] = (avatarsData?.data?.avatars ?? []).map((a: any) => ({
+      avatar_id: a.avatar_id,
+      avatar_name: a.avatar_name,
+      gender: a.gender,
+      preview_image_url: a.preview_image_url,
+    })).filter((a: HeyGenAvatar) => a.avatar_id)
+
     console.log(
-      `[social-autopilot] HeyGen avatars: ${avatarsData?.data?.avatars?.length ?? 0} stock, ${talkingPhotos.length} talking_photos`
+      `[social-autopilot] HeyGen avatars: ${regularAvatars.length} regular, ${talkingPhotos.length} talking_photos`
     )
 
-    const avatarId = pickCatherineAvatar(talkingPhotos, dayOfWeek)
+    // Try talking_photos first; fall back to regular avatars (Catherine lives there in this account)
+    let avatarId = pickCatherineAvatar(talkingPhotos, dayOfWeek)
+    if (!avatarId) {
+      avatarId = pickCatherineAvatar(regularAvatars, dayOfWeek)
+      if (!avatarId && regularAvatars.length > 0) {
+        avatarId = regularAvatars[dayOfWeek % regularAvatars.length].avatar_id
+        console.warn(`[social-autopilot] No Catherine avatar by name — using first available regular avatar: ${regularAvatars[dayOfWeek % regularAvatars.length].avatar_name}`)
+      }
+    }
     if (!avatarId) return null
 
-    // Prefer a Spanish female voice; fall back to any Spanish; then first available
+    // Prefer a Spanish female voice — use exact language match to avoid false positives
+    // (.includes("es") incorrectly matches "Portuguese", "Vietnamese", "Japanese")
     const voices: Array<{ voice_id: string; language?: string; locale?: string; gender?: string; name?: string }> =
       voicesData?.data?.voices ?? []
 
@@ -348,14 +365,11 @@ async function getHeyGenAvatar(dayOfWeek: number): Promise<{ avatarId: string; v
       console.error("[social-autopilot] HeyGen voices response empty:", JSON.stringify(voicesData))
     }
 
-    const spanishFemale = voices.find(
-      v =>
-        (v.language?.toLowerCase().includes("es") || v.locale?.toLowerCase().includes("es")) &&
-        v.gender?.toLowerCase() === "female"
-    )
-    const spanishAny = voices.find(
-      v => v.language?.toLowerCase().includes("es") || v.locale?.toLowerCase().includes("es")
-    )
+    const isSpanish = (v: { language?: string; locale?: string }) =>
+      v.language === "es" || v.locale?.startsWith("es-") || v.locale === "es"
+
+    const spanishFemale = voices.find(v => isSpanish(v) && v.gender?.toLowerCase() === "female")
+    const spanishAny = voices.find(v => isSpanish(v))
     const voiceId = (spanishFemale ?? spanishAny ?? voices[0])?.voice_id
     if (!voiceId) return null
 
