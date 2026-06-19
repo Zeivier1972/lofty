@@ -2,15 +2,15 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { checkAndEnrollSmartPlans } from "@/lib/lead-ingest"
 
-// POST: apply a tag to multiple contacts
+// POST: apply a tag to multiple contacts (and trigger smart plan enrollment)
 // body: { ids: string[], tagId: string }
 export async function POST(req: Request) {
   try {
     const { ids, tagId } = await req.json()
     if (!ids?.length || !tagId) return NextResponse.json({ error: "ids and tagId required" }, { status: 400 })
 
-    // upsert to avoid duplicates
     await Promise.all(
       ids.map((contactId: string) =>
         prisma.contactTag.upsert({
@@ -20,6 +20,10 @@ export async function POST(req: Request) {
         })
       )
     )
+
+    // Trigger smart plan enrollment for each contact (same as single-contact tag)
+    await Promise.all(ids.map((contactId: string) => checkAndEnrollSmartPlans(contactId, tagId)))
+
     return NextResponse.json({ tagged: ids.length })
   } catch (e) {
     console.error("Bulk tag error:", e)
