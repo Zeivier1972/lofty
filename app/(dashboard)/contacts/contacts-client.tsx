@@ -1501,10 +1501,16 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
                       <div className="flex items-center gap-2">
                         <div className="flex items-center gap-1 text-xs text-gray-500">
                           <Phone className="w-3.5 h-3.5 text-gray-400" />
-                          <span>{contact._count?.activities ?? 0}</span>
+                          <span>{contact._count?.dialerCalls ?? 0}</span>
                         </div>
-                        {contact.email && <div className="flex items-center gap-1 text-xs text-gray-500"><Mail className="w-3.5 h-3.5 text-gray-400" /></div>}
-                        {contact.phone && <div className="flex items-center gap-1 text-xs text-gray-500"><MessageSquare className="w-3.5 h-3.5 text-gray-400" /></div>}
+                        <div className="flex items-center gap-1 text-xs text-gray-500">
+                          <Mail className="w-3.5 h-3.5 text-gray-400" />
+                          <span>{contact._count?.emails ?? 0}</span>
+                        </div>
+                        <div className="flex items-center gap-1 text-xs text-gray-500">
+                          <MessageSquare className="w-3.5 h-3.5 text-gray-400" />
+                          <span>{contact._count?.notes ?? 0}</span>
+                        </div>
                       </div>
 
                       {/* Smart Plan */}
