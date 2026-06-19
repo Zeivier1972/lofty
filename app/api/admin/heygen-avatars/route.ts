@@ -63,6 +63,13 @@ export async function GET(req: Request) {
     avatarsStatus: avatarsRes.status,
     talkingPhotos,
     talkingPhotosCount: talkingPhotos.length,
+    regularAvatars: (avatarsData?.data?.avatars ?? []).map((a: any) => ({
+      id: a.avatar_id,
+      name: a.avatar_name,
+      gender: a.gender,
+      preview: a.preview_image_url,
+    })),
+    regularAvatarsCount: (avatarsData?.data?.avatars ?? []).length,
     spanishVoices,
     firstSelectedAvatar: firstAvatar ?? null,
     firstSelectedVoice: spanishFemale ? { id: spanishFemale.voice_id, name: spanishFemale.name } : (firstSpanishVoice ?? null),

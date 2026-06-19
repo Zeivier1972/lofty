@@ -48,9 +48,10 @@ export async function GET() {
   const catherineAvatars = [...catherineFromPhotos, ...catherineFromRegular]
     .map((a: any) => ({ ...a, group: "Catherine Gomez" }))
 
-  // Stock avatars: regular avatars that are NOT Catherine
+  // All remaining regular avatars — shown so user can find the right one
+  const seenIds = new Set(catherineAvatars.map((a: any) => a.avatar_id))
   const stockAvatars = rawAvatars
-    .filter((a: any) => !CATHERINE_IDS.has(a.avatar_id) && !a.avatar_name?.toLowerCase().includes("catherine"))
+    .filter((a: any) => !seenIds.has(a.avatar_id))
     .map((a: any) => ({ ...a, group: "Stock Avatars" }))
 
   console.log(
