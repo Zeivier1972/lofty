@@ -9,33 +9,32 @@ const DIMENSIONS: Record<string, { width: number; height: number }> = {
   "1:1":  { width: 720, height: 720 },
 }
 
-const STYLE_CONFIG: Record<string, { avatar_style: string; background: Record<string, string> }> = {
-  // Real estate themed backgrounds — all use image type for visual richness
-  cinematic:  { avatar_style: "normal", background: { type: "image", url: "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1280&q=80" } },  // Miami luxury home, golden hour
-  thriller:   { avatar_style: "normal", background: { type: "image", url: "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=1280&q=80" } },  // High-rise luxury building at night
-  retro_tech: { avatar_style: "normal", background: { type: "image", url: "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1280&q=80" } },  // Modern minimalist architecture
-  pop_culture:{ avatar_style: "normal", background: { type: "image", url: "https://images.unsplash.com/photo-1533106497176-45ae19e68ba2?w=1280&q=80" } },  // Miami Beach waterfront
-  modern:     { avatar_style: "normal", background: { type: "image", url: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1280&q=80" } },  // Clean modern white house
-  warm:       { avatar_style: "normal", background: { type: "image", url: "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=1280&q=80" } },  // Warm suburban family home
-  handmade:   { avatar_style: "normal", background: { type: "image", url: "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=1280&q=80" } },  // Luxury pool home, natural feel
-  iconic:     { avatar_style: "normal", background: { type: "image", url: "https://images.unsplash.com/photo-1613977257365-aaae5a9817ff?w=1280&q=80" } },  // Luxury penthouse interior
-  print:      { avatar_style: "normal", background: { type: "image", url: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1280&q=80" } },  // Architectural exterior, dramatic
+const STYLE_CONFIG: Record<string, { background: Record<string, string> }> = {
+  cinematic:  { background: { type: "image", url: "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1280&q=80" } },
+  thriller:   { background: { type: "image", url: "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=1280&q=80" } },
+  retro_tech: { background: { type: "image", url: "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1280&q=80" } },
+  pop_culture:{ background: { type: "image", url: "https://images.unsplash.com/photo-1533106497176-45ae19e68ba2?w=1280&q=80" } },
+  modern:     { background: { type: "image", url: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1280&q=80" } },
+  warm:       { background: { type: "image", url: "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=1280&q=80" } },
+  handmade:   { background: { type: "image", url: "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=1280&q=80" } },
+  iconic:     { background: { type: "image", url: "https://images.unsplash.com/photo-1613977257365-aaae5a9817ff?w=1280&q=80" } },
+  print:      { background: { type: "image", url: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1280&q=80" } },
 }
 
-// Rotating pool of real estate backgrounds used for B-Roll scenes
+// Rotating pool of real estate backgrounds for B-Roll scenes
 const BROLL_IMAGE_POOL = [
-  "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1280&q=80",  // Miami luxury home, golden hour
-  "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=1280&q=80",  // High-rise at night
-  "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1280&q=80",  // Modern minimalist
-  "https://images.unsplash.com/photo-1533106497176-45ae19e68ba2?w=1280&q=80",  // Miami Beach waterfront
-  "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1280&q=80",  // Clean modern house
-  "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=1280&q=80",  // Suburban family home
-  "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=1280&q=80",  // Luxury pool
-  "https://images.unsplash.com/photo-1613977257365-aaae5a9817ff?w=1280&q=80",  // Penthouse interior
-  "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1280&q=80",  // Architectural exterior
+  "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1280&q=80",
+  "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=1280&q=80",
+  "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1280&q=80",
+  "https://images.unsplash.com/photo-1533106497176-45ae19e68ba2?w=1280&q=80",
+  "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1280&q=80",
+  "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=1280&q=80",
+  "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=1280&q=80",
+  "https://images.unsplash.com/photo-1613977257365-aaae5a9817ff?w=1280&q=80",
+  "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1280&q=80",
 ]
 
-// Catherine Gomez "8 looks" talking_photo IDs — confirmed by user
+// Catherine Gomez talking_photo IDs — confirmed by user
 const TALKING_PHOTO_IDS = new Set([
   "ab393d45f3044a89b92fc77d17f321b7",
   "28e35d5f82f64101a2584fb29e841a88",
@@ -48,38 +47,39 @@ const TALKING_PHOTO_IDS = new Set([
   "310728040e89413aa1c5b04ebb8bb9d3",
 ])
 
-// Split script into 2-4 scenes on sentence boundaries for B-Roll multi-scene video
+// Split on blank lines first (structured scripts from AI use blank lines between scenes),
+// fall back to sentence-boundary splitting.
 function splitScriptForBRoll(script: string): string[] {
-  const sentences = script.split(/(?<=[.!?¡¿])\s+/).filter(s => s.trim().length > 0)
-  if (sentences.length <= 2) return [script]
+  const byBlankLine = script
+    .split(/\n\n+/)
+    .map(s => s.replace(/\n/g, " ").trim())
+    .filter(s => s.length > 10)
+  if (byBlankLine.length >= 2 && byBlankLine.length <= 5) return byBlankLine.slice(0, 4)
 
+  const sentences = script.split(/(?<=[.!?¡])\s+/).filter(s => s.trim().length > 0)
+  if (sentences.length <= 2) return [script]
   const sceneCount = Math.min(4, Math.max(2, Math.ceil(sentences.length / 2)))
   const perScene = Math.ceil(sentences.length / sceneCount)
   const scenes: string[] = []
-
   for (let i = 0; i < sceneCount; i++) {
     const chunk = sentences.slice(i * perScene, (i + 1) * perScene).join(" ").trim()
     if (chunk) scenes.push(chunk)
   }
-
   return scenes.length > 1 ? scenes : [script]
 }
 
-// Pick a contextually relevant real estate background based on what the script segment mentions
+// Match scene text keywords → contextually relevant real estate background
 function pickSceneBackground(sceneText: string, index: number): Record<string, string> {
   const t = sceneText.toLowerCase()
-
-  if (/piscina|pool|jardín|jardin|garden/.test(t)) return STYLE_CONFIG.handmade.background
-  if (/familia|family|niños|ninos|children|hogar|doral|kendall|suburban/.test(t)) return STYLE_CONFIG.warm.background
-  if (/playa|beach|mar\b|ocean|waterfront|biscayne/.test(t)) return STYLE_CONFIG.pop_culture.background
-  if (/noche|night|highrise|rascacielos|brickell|downtown/.test(t)) return STYLE_CONFIG.thriller.background
-  if (/penthouse|loft|interior|sala|cocina|kitchen/.test(t)) return STYLE_CONFIG.iconic.background
-  if (/moderno|modern|minimalista|minimalist|contemporáneo/.test(t)) return STYLE_CONFIG.retro_tech.background
-  if (/blanca|white|clean|limpia|elegante|lujo|luxury/.test(t)) return STYLE_CONFIG.modern.background
-  if (/inversi|invest|dólares|dolares|capital|ingreso|renta/.test(t)) return STYLE_CONFIG.cinematic.background
-  if (/vendedor|seller|vender|precio|staging/.test(t)) return STYLE_CONFIG.print.background
-
-  // Default: rotate through pool for variety
+  if (/piscina|pool|jardín|jardin|garden/.test(t))                            return STYLE_CONFIG.handmade.background
+  if (/familia|family|niños|ninos|children|hogar|doral|kendall/.test(t))      return STYLE_CONFIG.warm.background
+  if (/playa|beach|mar\b|ocean|waterfront|biscayne/.test(t))                  return STYLE_CONFIG.pop_culture.background
+  if (/noche|night|highrise|rascacielos|brickell|downtown/.test(t))           return STYLE_CONFIG.thriller.background
+  if (/penthouse|loft|interior|sala|cocina|kitchen/.test(t))                  return STYLE_CONFIG.iconic.background
+  if (/moderno|modern|minimalista|contemporáneo/.test(t))                     return STYLE_CONFIG.retro_tech.background
+  if (/blanca|white|elegante|lujo|luxury|millón|millon/.test(t))              return STYLE_CONFIG.modern.background
+  if (/inversi|invest|dólares|dolares|capital|ingreso|renta|retorno/.test(t)) return STYLE_CONFIG.cinematic.background
+  if (/vendedor|seller|vender|precio|staging|fachada/.test(t))               return STYLE_CONFIG.print.background
   return { type: "image", url: BROLL_IMAGE_POOL[index % BROLL_IMAGE_POOL.length] }
 }
 
@@ -92,23 +92,30 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { avatarId, voiceId, script, ratio = "16:9", styleId, broll = false } = await req.json()
+    const { avatarId, voiceId, script, ratio = "9:16", styleId, broll = true } = await req.json()
     if (!avatarId || !voiceId || !script?.trim()) {
       return NextResponse.json({ error: "avatarId, voiceId, and script are required" }, { status: 400 })
     }
 
-    const dimension = DIMENSIONS[ratio] ?? DIMENSIONS["16:9"]
+    const dimension = DIMENSIONS[ratio] ?? DIMENSIONS["9:16"]
     const stylePreset = styleId ? (STYLE_CONFIG[styleId] ?? null) : null
     const isTalkingPhoto = TALKING_PHOTO_IDS.has(avatarId)
 
+    // talking_photo_style "circle" renders Catherine as a portrait circle OVER the background.
+    // Without it, talking_photo fills the entire frame and completely hides the background.
+    const hasBackground = broll || !!stylePreset?.background
+
     const character: Record<string, unknown> = isTalkingPhoto
-      ? { type: "talking_photo", talking_photo_id: avatarId }
+      ? {
+          type: "talking_photo",
+          talking_photo_id: avatarId,
+          ...(hasBackground ? { talking_photo_style: "circle" } : {}),
+        }
       : { type: "avatar", avatar_id: avatarId, avatar_style: "normal" }
 
     let videoInputs: Record<string, unknown>[]
 
     if (broll) {
-      // Multi-scene B-Roll: split script, each scene gets a contextually matched background
       const scenes = splitScriptForBRoll(script)
       videoInputs = scenes.map((sceneText, i) => ({
         character,
@@ -116,22 +123,22 @@ export async function POST(req: Request) {
         background: pickSceneBackground(sceneText, i),
       }))
     } else {
-      // Single scene — apply selected style background if any
       const videoInput: Record<string, unknown> = {
         character,
         voice: { type: "text", input_text: script, voice_id: voiceId },
       }
-      if (stylePreset?.background) {
-        videoInput.background = stylePreset.background
-      }
+      if (stylePreset?.background) videoInput.background = stylePreset.background
       videoInputs = [videoInput]
     }
 
     const payload: Record<string, unknown> = {
       video_inputs: videoInputs,
       dimension,
+      // Auto-captions rendered on every scene
       caption: true,
     }
+
+    console.log(`[heygen/generate] ${broll ? `B-Roll ${videoInputs.length} scenes` : "single scene"}, ratio=${ratio}, avatar=${avatarId.slice(0, 8)}, circle=${hasBackground && isTalkingPhoto}`)
 
     const res = await fetch("https://api.heygen.com/v2/video/generate", {
       method: "POST",

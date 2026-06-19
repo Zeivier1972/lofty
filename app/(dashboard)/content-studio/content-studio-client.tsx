@@ -876,20 +876,44 @@ const VIDEO_STYLES = [
 
 const SCRIPT_TEMPLATES = [
   {
-    label: "Inversión desde Colombia",
-    script: "¡Hola! Soy Catherine Gomez, Realtor en Miami. ¿Sabías que puedes invertir en propiedades en Florida desde Colombia sin necesitar la residencia? Solo necesitas tu pasaporte. Miami ha valorizado más del 60% en los últimos 5 años. Tu dinero seguro en dólares. Yo te guío paso a paso. Agenda tu consulta gratuita — el enlace está en mi perfil.",
+    label: "Hook: $0 inicial — Miami",
+    script: `¿Sabías que hay un programa del gobierno de Florida que te da hasta $25,000 para tu pago inicial — y el 90% de las familias hispanas no lo sabe?
+
+Cada mes que sigues pagando renta, estás pagando la hipoteca de tu casero. Mientras tanto, las propiedades en South Florida siguen subiendo y tu oportunidad se va reduciendo.
+
+Soy Catherine Gomez, Realtor en Miami con más de 15 años ayudando a familias hispanas a comprar su primera casa en Florida. He cerrado más de 200 transacciones con compradores colombianos, venezolanos y cubanos usando exactamente este programa.
+
+Comenta 'CASA' abajo y te mando GRATIS los requisitos para calificar hoy mismo.`,
   },
   {
-    label: "Preconstrucción Sur de Florida",
-    script: "¿Buscas tu próxima inversión en el Sur de Florida? Tengo unidades de preconstrucción disponibles desde $250,000 con solo el 10% de depósito hoy. Los precios siguen subiendo cada trimestre. No esperes más. Escríbeme o agenda una llamada gratuita y te cuento todo sobre las mejores oportunidades disponibles ahora mismo.",
+    label: "Hook: Inversión desde Colombia",
+    script: `El 70% de los colombianos que compraron en Brickell hace 5 años ya duplicaron su inversión — sin salir de Colombia.
+
+El error más grande que cometen los inversores latinoamericanos es esperar a tener la residencia para comprar. Solo necesitas tu pasaporte y el dinero de entrada — yo me encargo del resto.
+
+Soy Catherine Gomez, Realtor en Miami. He ayudado a más de 150 familias colombianas a invertir en propiedades en South Florida. Miami ha valorizado más del 60% en los últimos 5 años y los precios siguen subiendo cada trimestre.
+
+Comenta 'COLOMBIA' abajo y te mando el paso a paso de cómo comprar en Miami desde el exterior.`,
   },
   {
-    label: "Compradores de primera vez",
-    script: "¡Hola! Soy Catherine Gomez, tu Realtor en Miami. Si estás pensando en comprar tu primera casa en el Sur de Florida, tengo una noticia increíble — puedes calificar para hasta $25,000 en asistencia para el pago inicial. El proceso es más sencillo de lo que crees. Agenda tu consulta hoy, es gratis y completamente en español.",
+    label: "Hook: Airbnb Orlando $4K/mes",
+    script: `Orlando recibe 75 millones de turistas al año — y una sola propiedad puede generarte entre $3,000 y $5,000 al mes con Airbnb.
+
+La mayoría cree que necesita estar físicamente en Florida para manejar un Airbnb. La realidad: con los servicios de administración correctos, puedes generar ingresos pasivos en dólares desde Colombia, sin pisar el país.
+
+Soy Catherine Gomez, Realtor en Florida. Especializada en propiedades de renta vacacional en Orlando y South Florida. El retorno de inversión promedio supera el 12% anual — más que cualquier banco o CDT.
+
+Comenta 'ORLANDO' abajo y te mando los números reales: precio, renta mensual y ROI de propiedades disponibles hoy.`,
   },
   {
-    label: "Airbnb en Orlando",
-    script: "¡Hola! Soy Catherine Gomez, Realtor en Florida. Orlando recibe más de 75 millones de turistas al año — y tú puedes generar entre $2,500 y $4,000 al mes con un Airbnb aquí. Lo mejor: puedes manejarlo todo desde Colombia. Yo te ayudo a encontrar la propiedad perfecta. Agenda tu consulta gratuita hoy mismo.",
+    label: "Hook: Por qué no esperar",
+    script: `Cada mes que esperas para comprar en Miami, estás perdiendo dinero. Las propiedades en South Florida subieron 9% en promedio este año — eso es $36,000 más en una propiedad de $400,000.
+
+El mercado no espera. Y las tasas de interés, aunque altas hoy, bajarán — y cuando bajen, todos van a querer comprar al mismo tiempo.
+
+Soy Catherine Gomez, Realtor en Miami. He visto este ciclo tres veces en 15 años. Los que compraron cuando todos tenían miedo son los que hoy tienen patrimonio real en dólares.
+
+Comenta 'LISTO' abajo y agendamos tu consulta gratuita esta semana — completamente en español.`,
   },
 ]
 
@@ -1261,8 +1285,8 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
               disabled={researchingScript}
               className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl text-sm font-semibold hover:from-purple-700 hover:to-indigo-700 transition-all disabled:opacity-60">
               {researchingScript
-                ? <><Loader2 className="w-4 h-4 animate-spin" /> Investigando tendencias y generando guión…</>
-                : <><Sparkles className="w-4 h-4" /> Generar guión con IA (investiga tendencias virales)</>}
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> Investigando tendencias virales y generando guión…</>
+                : <><Sparkles className="w-4 h-4" /> Generar guión viral con IA — 4 escenas + SEO + CTA</>}
             </button>
 
             {researchBrief && (
@@ -1272,11 +1296,18 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
               </div>
             )}
 
-            <p className="text-xs text-gray-400">O usa una plantilla:</p>
-            <div className="flex flex-wrap gap-2">
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-800 space-y-1">
+              <p className="font-semibold">Estructura de 4 escenas (separa con línea en blanco):</p>
+              <p>🎯 <strong>Escena 1 — Hook:</strong> Dato sorprendente o pregunta que para el scroll</p>
+              <p>💥 <strong>Escena 2 — Problema:</strong> El dolor real del espectador (crea urgencia)</p>
+              <p>✅ <strong>Escena 3 — Solución:</strong> Catherine como experta + dato de mercado + keywords SEO</p>
+              <p>📣 <strong>Escena 4 — CTA:</strong> "Comenta 'PALABRA' abajo" + qué van a recibir</p>
+            </div>
+            <p className="text-xs text-gray-400">O usa una plantilla lista:</p>
+            <div className="grid grid-cols-2 gap-2">
               {SCRIPT_TEMPLATES.map(t => (
                 <button key={t.label} onClick={() => setScript(t.script)}
-                  className="px-3 py-1 bg-purple-50 text-purple-700 text-xs rounded-lg border border-purple-100 hover:bg-purple-100 transition-colors">
+                  className="text-left px-3 py-2 bg-purple-50 text-purple-700 text-xs rounded-lg border border-purple-100 hover:bg-purple-100 transition-colors leading-snug">
                   {t.label}
                 </button>
               ))}

@@ -212,23 +212,49 @@ async function generateAndUploadImage(dayOfWeek: number, research?: ResearchBrie
 
 export async function generateVideoScript(dayOfWeek: number, research?: ResearchBrief): Promise<string> {
   const theme = research?.trendingTopic ?? DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
-  const keywords = research?.additionalKeywords?.slice(0, 2) ?? pickKeywords(dayOfWeek).slice(0, 2)
+  const keywords = research?.additionalKeywords?.slice(0, 3) ?? pickKeywords(dayOfWeek)
   const hook = research?.viralHook
 
-  const hookLine = hook ? `\n\nCOMIENZA con esta línea exacta o muy parecida: "${hook}"` : ""
+  // Rotate comment keyword so CTAs vary each week
+  const CTA_KEYWORDS = ["MIAMI", "CASA", "INFO", "QUIERO", "GRATIS", "INVERSIÓN", "LISTO"]
+  const ctaWord = CTA_KEYWORDS[getDayIndex() % CTA_KEYWORDS.length]
+
+  const hookLine = hook
+    ? `\nUSA ESTA PRIMERA LÍNEA EXACTA o muy similar (es el hook viral): "${hook}"`
+    : ""
 
   const message = await anthropic.messages.create({
     model: "claude-haiku-4-5-20251001",
-    max_tokens: 512,
-    system: `Eres Catherine Gomez, Realtor en Miami. Escribes scripts de video cortos en español, naturales para hablar en cámara. Tu objetivo es viralidad y retención máxima.`,
+    max_tokens: 600,
+    system: `Eres la estratega de contenido viral de Catherine Gomez, Realtor en Miami con 15 años en South Florida.
+Escribes scripts de video SHORT-FORM (TikTok/Reels/YouTube Shorts) que:
+1. PARAN el scroll en los primeros 3 segundos — hook impactante, pregunta o dato que nadie espera
+2. Crean tensión narrativa que retiene al espectador hasta el CTA final
+3. Incluyen keywords habladas para SEO de audio (YouTube transcribe cada palabra)
+4. Responden preguntas específicas que ChatGPT y Perplexity listarían como respuesta experta (AIO)
+5. Terminan con un CTA de comentario muy específico que genera engagement medible
+
+Catherine habla en español natural, primera persona, tono cercano y de autoridad real. Nunca genérica.`,
     messages: [
       {
         role: "user",
-        content: `Escribe un script de video de 50 segundos (aproximadamente 120-130 palabras) sobre: ${theme}.${hookLine}
+        content: `Escribe un script de video de EXACTAMENTE 4 escenas sobre: "${theme}".${hookLine}
 
-Incluye de forma natural: ${keywords.join(", ")}.
-El tono es cercano, profesional y directo. Termina con una CTA hablada (ej: "escríbeme al…" o "visita mi perfil").
-Escribe SOLO el texto que dirá la persona en el video. Sin acotaciones de escena, sin instrucciones, sin corchetes.`,
+ESTRUCTURA OBLIGATORIA — separa cada escena con una línea en blanco:
+
+ESCENA 1 - HOOK (20-25 palabras):
+Pregunta impactante O dato sorprendente O afirmación contraintuitiva. Ejemplo: "¿Sabías que el 70% de los colombianos que compraron en Miami hace 5 años ya duplicaron su inversión?" — la primera oración decide si el espectador se queda o hace scroll.
+
+ESCENA 2 - PROBLEMA/TENSIÓN (25-30 palabras):
+El dolor real: por qué este problema le está costando dinero al espectador AHORA MISMO. Crea urgencia.
+
+ESCENA 3 - SOLUCIÓN + CREDENCIAL (45-55 palabras):
+Empieza con "Soy Catherine Gomez, Realtor en Miami." + dato específico del mercado de South Florida que demuestra expertise + exactamente cómo ella resuelve este problema para familias hispanas. Incluye naturalmente: ${keywords.join(", ")}.
+
+ESCENA 4 - CTA ESPECÍFICO (20-25 palabras):
+"Comenta '${ctaWord}' abajo" + exactamente qué van a recibir (guía gratis, llamada, los números reales, paso a paso).
+
+Devuelve SOLO las 4 escenas en texto corrido. Sin etiquetas "ESCENA X", sin corchetes, sin acotaciones. Solo el texto que Catherine dice, separado por una línea en blanco entre cada escena.`,
       },
     ],
   })
@@ -366,7 +392,15 @@ const BROLL_IMAGE_POOL = [
 ]
 
 function splitScriptForBRoll(script: string): string[] {
-  const sentences = script.split(/(?<=[.!?¡¿])\s+/).filter(s => s.trim().length > 0)
+  // Prefer blank-line splits — the AI script generator separates scenes with blank lines
+  const byBlankLine = script
+    .split(/\n\n+/)
+    .map(s => s.replace(/\n/g, " ").trim())
+    .filter(s => s.length > 10)
+  if (byBlankLine.length >= 2 && byBlankLine.length <= 5) return byBlankLine.slice(0, 4)
+
+  // Fall back to sentence-boundary splitting
+  const sentences = script.split(/(?<=[.!?¡])\s+/).filter(s => s.trim().length > 0)
   if (sentences.length <= 2) return [script]
   const sceneCount = Math.min(4, Math.max(2, Math.ceil(sentences.length / 2)))
   const perScene = Math.ceil(sentences.length / sceneCount)
@@ -389,8 +423,10 @@ async function triggerHeyGenVideo(script: string, dayOfWeek: number): Promise<st
     const talkingPhotoIds = new Set(CATHERINE_TALKING_PHOTO_IDS)
     const isTalkingPhoto = talkingPhotoIds.has(avatarInfo.avatarId)
 
+    // "circle" style renders Catherine as a portrait overlay ON TOP of the real estate background.
+    // Without this, talking_photo fills the entire frame and the background is completely hidden.
     const character: Record<string, unknown> = isTalkingPhoto
-      ? { type: "talking_photo", talking_photo_id: avatarInfo.avatarId }
+      ? { type: "talking_photo", talking_photo_id: avatarInfo.avatarId, talking_photo_style: "circle" }
       : { type: "avatar", avatar_id: avatarInfo.avatarId, avatar_style: "normal" }
 
     // B-Roll: split script into scenes, each with a different real estate background
