@@ -61,7 +61,8 @@ export async function POST(req: Request) {
       voice: { type: "text", input_text: script, voice_id: voiceId },
     }
 
-    if (!isTalkingPhoto && stylePreset?.background) {
+    // Apply background for all avatar types — talking_photo supports backgrounds too
+    if (stylePreset?.background) {
       videoInput.background = stylePreset.background
     }
 

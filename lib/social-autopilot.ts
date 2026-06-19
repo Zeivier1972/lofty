@@ -370,9 +370,7 @@ async function triggerHeyGenVideo(script: string, dayOfWeek: number): Promise<st
     const videoInput: Record<string, unknown> = {
       character,
       voice: { type: "text", input_text: script, voice_id: avatarInfo.voiceId },
-    }
-    if (!isTalkingPhoto) {
-      videoInput.background = { type: "color", value: "#1E3A5F" }
+      background: { type: "color", value: "#1E3A5F" },
     }
 
     const payload = {
