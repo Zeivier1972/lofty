@@ -13,13 +13,15 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const testVideo = searchParams.get("test") === "1"
 
-  const [avatarsRes, voicesRes] = await Promise.all([
+  const [avatarsRes, voicesRes, photoAvatarsRes] = await Promise.all([
     fetch("https://api.heygen.com/v2/avatars", { headers: { "X-Api-Key": apiKey } }),
     fetch("https://api.heygen.com/v2/voices", { headers: { "X-Api-Key": apiKey } }),
+    fetch("https://api.heygen.com/v2/photo_avatar", { headers: { "X-Api-Key": apiKey } }),
   ])
 
   const avatarsData = await avatarsRes.json()
   const voicesData = await voicesRes.json()
+  const photoAvatarsData = await photoAvatarsRes.json().catch(() => null)
 
   const rawTalkingPhotos: any[] = avatarsData?.data?.talking_photos ?? []
   const talkingPhotos = rawTalkingPhotos.map((tp: any) => ({
@@ -75,5 +77,6 @@ export async function GET(req: Request) {
     firstSelectedVoice: spanishFemale ? { id: spanishFemale.voice_id, name: spanishFemale.name } : (firstSpanishVoice ?? null),
     testVideoResult,
     rawAvatarsData: avatarsData,
+    photoAvatarsData,
   })
 }

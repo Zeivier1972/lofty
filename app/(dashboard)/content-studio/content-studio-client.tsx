@@ -940,8 +940,10 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
       if (catherineAvatars[0]) setAvatarId(catherineAvatars[0].avatar_id)
       else if (avatarList[0]) setAvatarId(avatarList[0].avatar_id)
 
-      // Prefer Catherine's natural voice; fall back to first Spanish
-      const catherineVoice = spanishVoices.find((v: any) => v.name?.toLowerCase().includes("catherine"))
+      // Prefer Catalina voice (used in HeyGen for Catherine); fall back to first Spanish
+      const catherineVoice = spanishVoices.find((v: any) =>
+        v.name?.toLowerCase().includes("catalina") || v.name?.toLowerCase().includes("catherine")
+      )
       const firstSpanish = catherineVoice || spanishVoices[0] || allVoices[0]
       if (firstSpanish) setVoiceId(firstSpanish.voice_id)
     }).catch(() => {

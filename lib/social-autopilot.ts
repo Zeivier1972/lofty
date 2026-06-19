@@ -369,6 +369,7 @@ async function getHeyGenAvatar(dayOfWeek: number): Promise<{ avatarId: string; v
       v.language === "es" || v.locale?.startsWith("es-") || v.locale === "es"
 
     const catherineVoice = voices.find(v =>
+      v.name?.toLowerCase().includes("catalina") ||
       v.name?.toLowerCase().includes("catherine")
     )
     const spanishFemale = voices.find(v => isSpanish(v) && v.gender?.toLowerCase() === "female")
