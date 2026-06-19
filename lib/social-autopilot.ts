@@ -245,9 +245,15 @@ interface HeyGenAvatar {
 
 // The 3 confirmed talking_photo avatars — rotate by day of week.
 const CATHERINE_TALKING_PHOTO_IDS: string[] = [
-  "701d93d2d1834f2589a987aaf701720d", // Catherine Face Swap Avatar
-  "f2bf0415eb4f4185b37673d3c876423c", // Catherine Gomez Avatar
-  "2238f900a2284f5c813fc1460fabb299", // Catherine
+  "ab393d45f3044a89b92fc77d17f321b7",
+  "28e35d5f82f64101a2584fb29e841a88",
+  "0215c5d293fb4c89b42130da184ded5b",
+  "7ec891d9cc9f43ffa0f38f67d945d38f",
+  "bb0a60fd40a0457c98e2ca93c822601c",
+  "bc75573c848f42218ee27d37e623a4e6",
+  "701d93d2d1834f2589a987aaf701720d",
+  "f2bf0415eb4f4185b37673d3c876423c",
+  "310728040e89413aa1c5b04ebb8bb9d3",
 ]
 
 // Pick one of Catherine's talking_photo avatars. Prefers "8 looks" (user-preferred),
