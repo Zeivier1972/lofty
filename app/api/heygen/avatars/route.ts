@@ -3,11 +3,14 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 
-// The 3 Catherine Gomez personal avatars to use — all are talking_photos.
+// Catherine's confirmed regular avatar IDs (type: "avatar" — NOT talking_photos)
 const CATHERINE_IDS = new Set([
-  "701d93d2d1834f2589a987aaf701720d", // Catherine Face Swap Avatar
-  "f2bf0415eb4f4185b37673d3c876423c", // Catherine Gomez Avatar
-  "2238f900a2284f5c813fc1460fabb299", // Catherine
+  "0edfa54de240487f8dc6bcfd68924ab6",
+  "9ceb355150d84ebd86d11d08cec11a6f",
+  "56ccc3395f814ce78925129ebd049430",
+  "ddc38cd2a91b4ab5ae0863a79a7239be",
+  "05b1aacb453e4f1db169f4cd63d32432",
+  "507e27eca7454a00bbbeb740e80d6b01",
 ])
 
 export async function GET() {
@@ -36,26 +39,22 @@ export async function GET() {
     }))
     .filter((tp: any) => tp.avatar_id)
 
-  // Catherine's 3 confirmed avatars — shown first, labeled as her group
-  const catherineAvatars = talkingPhotos
-    .filter((tp: any) => CATHERINE_IDS.has(tp.avatar_id))
-    .map((tp: any) => ({ ...tp, group: "Catherine Gomez" }))
+  // Find Catherine in talking_photos first (by ID), then in regular avatars (by ID or name)
+  const catherineFromPhotos = talkingPhotos.filter((tp: any) => CATHERINE_IDS.has(tp.avatar_id))
+  const catherineFromRegular = rawAvatars
+    .filter((a: any) => CATHERINE_IDS.has(a.avatar_id) || a.avatar_name?.toLowerCase().includes("catherine"))
+    .map((a: any) => ({ ...a, is_talking_photo: false }))
 
-  // Sort in preferred order: Swap Avatar, Gomez Avatar, Catherine
-  const order = [
-    "701d93d2d1834f2589a987aaf701720d",
-    "f2bf0415eb4f4185b37673d3c876423c",
-    "2238f900a2284f5c813fc1460fabb299",
-  ]
-  catherineAvatars.sort(
-    (a: any, b: any) => order.indexOf(a.avatar_id) - order.indexOf(b.avatar_id)
-  )
+  const catherineAvatars = [...catherineFromPhotos, ...catherineFromRegular]
+    .map((a: any) => ({ ...a, group: "Catherine Gomez" }))
 
-  // Stock avatars: all v2 avatars (no talking_photos — those aren't stock)
-  const stockAvatars = rawAvatars.map((a: any) => ({ ...a, group: "Stock Avatars" }))
+  // Stock avatars: regular avatars that are NOT Catherine
+  const stockAvatars = rawAvatars
+    .filter((a: any) => !CATHERINE_IDS.has(a.avatar_id) && !a.avatar_name?.toLowerCase().includes("catherine"))
+    .map((a: any) => ({ ...a, group: "Stock Avatars" }))
 
   console.log(
-    `[HeyGen] Catherine avatars found: ${catherineAvatars.length} / 3 expected`
+    `[HeyGen] Catherine avatars found: ${catherineAvatars.length} (${catherineFromPhotos.length} talking_photo, ${catherineFromRegular.length} regular)`
   )
 
   return NextResponse.json({

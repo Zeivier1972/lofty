@@ -903,6 +903,8 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
   const [styleId, setStyleId] = useState("none")
   const [loadingData, setLoadingData] = useState(true)
   const [generating, setGenerating] = useState(false)
+  const [researchingScript, setResearchingScript] = useState(false)
+  const [researchBrief, setResearchBrief] = useState<{ topic?: string; hook?: string } | null>(null)
   const [status, setStatus] = useState<"idle" | "processing" | "completed" | "failed">("idle")
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null)
@@ -922,23 +924,25 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
     ]).then(([avatarData, voiceData]) => {
       const avatarList: any[] = avatarData?.data?.avatars || []
       const allVoices: any[] = voiceData?.data?.voices || []
-      const spanishVoices = allVoices.filter((v: any) => {
-        const lang = (v.language || v.locale || "").toLowerCase()
-        return lang.includes("es") || lang.includes("spanish")
-      })
+      // Use exact language match — .includes("es") incorrectly matches Portuguese/Vietnamese/Japanese
+      const isSpanishVoice = (v: any) =>
+        v.language === "es" || v.locale?.startsWith("es-") || v.locale === "es" ||
+        v.name?.toLowerCase().includes("catherine")
+      const spanishVoices = allVoices.filter(isSpanishVoice)
 
       // Catherine's avatars come first (tagged with group:"Catherine Gomez" by the API)
       const catherineAvatars = avatarList.filter((a: any) => a.group === "Catherine Gomez")
       const stockAvatars = avatarList.filter((a: any) => a.group !== "Catherine Gomez")
-      // Store grouped for the dropdown
       setAvatars([...catherineAvatars, ...stockAvatars])
       setVoices(spanishVoices.length > 0 ? spanishVoices : allVoices)
 
-      // Auto-select first Catherine avatar (her personal face, not a stock one)
+      // Auto-select first Catherine avatar
       if (catherineAvatars[0]) setAvatarId(catherineAvatars[0].avatar_id)
       else if (avatarList[0]) setAvatarId(avatarList[0].avatar_id)
 
-      const firstSpanish = spanishVoices[0] || allVoices[0]
+      // Prefer Catherine's natural voice; fall back to first Spanish
+      const catherineVoice = spanishVoices.find((v: any) => v.name?.toLowerCase().includes("catherine"))
+      const firstSpanish = catherineVoice || spanishVoices[0] || allVoices[0]
       if (firstSpanish) setVoiceId(firstSpanish.voice_id)
     }).catch(() => {
       toast({ title: "Error cargando HeyGen", variant: "destructive" })
@@ -968,6 +972,23 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
         }
       } catch { /* keep polling */ }
     }, 6000)
+  }
+
+  const generateAIScript = async () => {
+    setResearchingScript(true)
+    setResearchBrief(null)
+    try {
+      const res = await fetch("/api/heygen/research")
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      setScript(data.script || "")
+      if (data.topic || data.hook) setResearchBrief({ topic: data.topic, hook: data.hook })
+      toast({ title: "Guión generado con investigación viral ✨" })
+    } catch (e: any) {
+      toast({ title: "Error generando guión", description: e.message, variant: "destructive" })
+    } finally {
+      setResearchingScript(false)
+    }
   }
 
   const generate = async () => {
@@ -1137,8 +1158,25 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
         </div>
 
         {!campaignKeyword && (
-          <div className="mb-3">
-            <p className="text-xs text-gray-400 mb-2">Plantillas rápidas:</p>
+          <div className="mb-3 space-y-3">
+            {/* AI Research Button */}
+            <button
+              onClick={generateAIScript}
+              disabled={researchingScript}
+              className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl text-sm font-semibold hover:from-purple-700 hover:to-indigo-700 transition-all disabled:opacity-60">
+              {researchingScript
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> Investigando tendencias y generando guión…</>
+                : <><Sparkles className="w-4 h-4" /> Generar guión con IA (investiga tendencias virales)</>}
+            </button>
+
+            {researchBrief && (
+              <div className="bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3 text-xs text-indigo-800 space-y-1">
+                {researchBrief.topic && <p><strong>Tema:</strong> {researchBrief.topic}</p>}
+                {researchBrief.hook && <p><strong>Gancho:</strong> {researchBrief.hook}</p>}
+              </div>
+            )}
+
+            <p className="text-xs text-gray-400">O usa una plantilla:</p>
             <div className="flex flex-wrap gap-2">
               {SCRIPT_TEMPLATES.map(t => (
                 <button key={t.label} onClick={() => setScript(t.script)}

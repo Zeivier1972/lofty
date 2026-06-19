@@ -210,7 +210,7 @@ async function generateAndUploadImage(dayOfWeek: number, research?: ResearchBrie
 
 // ─── HeyGen video generation ──────────────────────────────────────────────────
 
-async function generateVideoScript(dayOfWeek: number, research?: ResearchBrief): Promise<string> {
+export async function generateVideoScript(dayOfWeek: number, research?: ResearchBrief): Promise<string> {
   const theme = research?.trendingTopic ?? DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
   const keywords = research?.additionalKeywords?.slice(0, 2) ?? pickKeywords(dayOfWeek).slice(0, 2)
   const hook = research?.viralHook

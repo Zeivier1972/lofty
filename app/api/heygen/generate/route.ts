@@ -22,12 +22,9 @@ const STYLE_CONFIG: Record<string, { avatar_style: string; background: Record<st
 }
 
 // HeyGen talking_photo IDs require character.type = "talking_photo" + talking_photo_id.
-// Regular stock avatar IDs use character.type = "avatar" + avatar_id.
-const TALKING_PHOTO_IDS = new Set([
-  "701d93d2d1834f2589a987aaf701720d", // Catherine Face Swap Avatar
-  "f2bf0415eb4f4185b37673d3c876423c", // Catherine Gomez Avatar
-  "2238f900a2284f5c813fc1460fabb299", // Catherine
-])
+// Regular avatar IDs use character.type = "avatar" + avatar_id.
+// Catherine's avatars are regular type in this account — talking_photos list is empty.
+const TALKING_PHOTO_IDS = new Set<string>([])
 
 export async function POST(req: Request) {
   const session = await auth()
