@@ -742,7 +742,7 @@ export async function checkHeygenVideos(): Promise<{ checked: number; completed:
         })
 
         if (post.account) {
-          await publishPost(post, post.account)
+          await publishPost({ ...post, mediaUrl: videoUrl }, post.account)
         }
 
         completed++
