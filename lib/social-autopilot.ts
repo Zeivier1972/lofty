@@ -356,8 +356,8 @@ async function getHeyGenAvatar(dayOfWeek: number): Promise<{ avatarId: string; v
     }
     if (!avatarId) return null
 
-    // Prefer a Spanish female voice — use exact language match to avoid false positives
-    // (.includes("es") incorrectly matches "Portuguese", "Vietnamese", "Japanese")
+    // Voice priority: 1) Catherine's own cloned voice, 2) Spanish female, 3) any Spanish, 4) first available
+    // Use exact language match — .includes("es") incorrectly matches "Portuguese", "Vietnamese", "Japanese"
     const voices: Array<{ voice_id: string; language?: string; locale?: string; gender?: string; name?: string }> =
       voicesData?.data?.voices ?? []
 
@@ -368,13 +368,17 @@ async function getHeyGenAvatar(dayOfWeek: number): Promise<{ avatarId: string; v
     const isSpanish = (v: { language?: string; locale?: string }) =>
       v.language === "es" || v.locale?.startsWith("es-") || v.locale === "es"
 
+    const catherineVoice = voices.find(v =>
+      v.name?.toLowerCase().includes("catherine")
+    )
     const spanishFemale = voices.find(v => isSpanish(v) && v.gender?.toLowerCase() === "female")
     const spanishAny = voices.find(v => isSpanish(v))
-    const voiceId = (spanishFemale ?? spanishAny ?? voices[0])?.voice_id
+    const selectedVoice = catherineVoice ?? spanishFemale ?? spanishAny ?? voices[0]
+    const voiceId = selectedVoice?.voice_id
     if (!voiceId) return null
 
     console.log(
-      `[social-autopilot] Using voice: "${(spanishFemale ?? spanishAny ?? voices[0])?.name}" (${voiceId})`
+      `[social-autopilot] Using voice: "${selectedVoice?.name}" (${voiceId})${catherineVoice ? " [Catherine natural]" : ""}`
     )
 
     return { avatarId, voiceId }
@@ -397,14 +401,18 @@ async function triggerHeyGenVideo(script: string, dayOfWeek: number): Promise<st
 
     const character: Record<string, unknown> = isTalkingPhoto
       ? { type: "talking_photo", talking_photo_id: avatarInfo.avatarId }
-      : { type: "avatar", avatar_id: avatarInfo.avatarId, avatar_style: "normal" }
+      : { type: "avatar", avatar_id: avatarInfo.avatarId, avatar_style: "closeup" }
 
     const videoInput: Record<string, unknown> = {
       character,
       voice: { type: "text", input_text: script, voice_id: avatarInfo.voiceId },
     }
     if (!isTalkingPhoto) {
-      videoInput.background = { type: "color", value: "#1E3A5F" }
+      // Professional Miami real estate background for cinematic look
+      videoInput.background = {
+        type: "image",
+        url: "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1280&q=80",
+      }
     }
 
     const payload = {
