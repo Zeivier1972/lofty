@@ -395,7 +395,7 @@ async function triggerHeyGenVideo(script: string, dayOfWeek: number): Promise<st
 
     const payload = {
       video_inputs: [videoInput],
-      dimension: { width: 1080, height: 1920 },
+      dimension: { width: 720, height: 1280 },
     }
 
     console.log("[social-autopilot] HeyGen generate payload:", JSON.stringify(payload).slice(0, 300))
