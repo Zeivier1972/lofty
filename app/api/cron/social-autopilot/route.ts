@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
-import { runAutopilot, checkHeygenVideos } from "@/lib/social-autopilot"
+import { runAutopilot, checkHeygenVideos, triggerVideoOnly } from "@/lib/social-autopilot"
 import { auth } from "@/lib/auth"
 
 export async function GET(req: Request) {
@@ -25,9 +25,21 @@ export async function GET(req: Request) {
   }
 
   const slotParam = searchParams.get("slot")
-  // "check" = only poll HeyGen for completed videos, don't post new content
+  // "check"  = only poll HeyGen for completed videos, don't post new content
+  // "video"  = only trigger HeyGen video generation, no social posts
   const checkOnly = slotParam === "check"
+  const videoOnly = slotParam === "video"
   const slot = slotParam === "evening" ? "evening" : "morning"
+
+  // video-only mode: trigger HeyGen without creating any social posts
+  if (videoOnly) {
+    try {
+      const result = await triggerVideoOnly()
+      return NextResponse.json({ ok: !result.error, ...result, timestamp: new Date().toISOString() })
+    } catch (err) {
+      return NextResponse.json({ ok: false, error: String(err) }, { status: 500 })
+    }
+  }
 
   try {
     const videoResult = await checkHeygenVideos()

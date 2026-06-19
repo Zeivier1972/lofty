@@ -1000,6 +1000,51 @@ export interface AutopilotResult {
   heygenError?: string
 }
 
+export async function triggerVideoOnly(): Promise<{ videoId: string | null; error?: string }> {
+  const apiKey = process.env.HEYGEN_API_KEY
+  if (!apiKey) return { videoId: null, error: "HEYGEN_API_KEY not set" }
+
+  try {
+    const now = new Date()
+    const dayOfWeek = now.getDay()
+    let research: ResearchBrief | undefined
+    try { research = await researchViralContent(dayOfWeek) } catch { /* use defaults */ }
+
+    const videoScript = await generateVideoScript(dayOfWeek, research)
+    const videoId = await triggerHeyGenVideo(videoScript, dayOfWeek)
+
+    if (!videoId) return { videoId: null, error: "HeyGen returned no video_id — check Railway logs" }
+
+    // Store a pending SocialPost record for each connected account so checkHeygenVideos can publish it later
+    const accounts = await prisma.socialAccount.findMany({ where: { isConnected: true } })
+    const promptMeta = research ? JSON.stringify({ theme: research.trendingTopic, youtubeTitle: research.youtubeTitle, youtubeDescription: research.youtubeDescription, youtubeTags: research.youtubeTags }) : "manual video trigger"
+
+    for (const account of accounts) {
+      const content = await generateContent(account.platform, dayOfWeek, research)
+      await prisma.socialPost.create({
+        data: {
+          platform: account.platform,
+          content,
+          postType: "POST",
+          status: "GENERATING_VIDEO",
+          scheduledAt: now,
+          aiGenerated: true,
+          accountId: account.id,
+          externalId: videoId,
+          prompt: promptMeta,
+        },
+      })
+    }
+
+    console.log(`[social-autopilot] Manual video trigger — videoId: ${videoId}, pending posts: ${accounts.length}`)
+    return { videoId }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error("[social-autopilot] triggerVideoOnly failed:", err)
+    return { videoId: null, error: msg }
+  }
+}
+
 export async function runAutopilot(slot: "morning" | "evening"): Promise<AutopilotResult> {
   const result: AutopilotResult = { posted: 0, failed: 0, videoQueued: 0, skipped: 0 }
 
