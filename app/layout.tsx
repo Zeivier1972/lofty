@@ -3,6 +3,7 @@ import { Inter } from "next/font/google"
 import Script from "next/script"
 import "./globals.css"
 import { Toaster } from "@/components/ui/toaster"
+import PwaRegister from "@/components/pwa-register"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -11,12 +12,27 @@ const FB_PIXEL_ID = "1180899323373437"
 export const metadata: Metadata = {
   title: "Catherine Gomez Realtor — Miami Real Estate",
   description: "Find your dream home in Miami with Catherine Gomez, your trusted Florida Realtor.",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Casai",
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        <meta name="theme-color" content="#1a3a5c" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="Casai" />
+        <link rel="apple-touch-icon" href="/icons/icon.svg" />
+        <link rel="manifest" href="/manifest.json" />
         <Script id="fb-pixel" strategy="afterInteractive">
           {`
             !function(f,b,e,v,n,t,s)
@@ -42,6 +58,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={inter.className}>
         {children}
         <Toaster />
+        <PwaRegister />
       </body>
     </html>
   )

@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/components/ui/use-toast"
 import { cn } from "@/lib/utils"
+import HelpPanel from "@/components/help-panel"
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || ""
 
@@ -146,20 +147,23 @@ export default function InstagramBotClient() {
             <p className="text-sm text-gray-500">Captura leads automáticamente desde comentarios y DMs</p>
           </div>
         </div>
-        {config && (
-          <button
-            onClick={() => { setConfig({ ...config, isEnabled: !config.isEnabled }); setTimeout(save, 100) }}
-            className={cn(
-              "relative inline-flex h-7 w-12 items-center rounded-full transition-colors",
-              config.isEnabled ? "bg-green-500" : "bg-gray-300"
-            )}
-          >
-            <span className={cn(
-              "inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform",
-              config.isEnabled ? "translate-x-6" : "translate-x-1"
-            )} />
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          <HelpPanel section="instagram-bot" />
+          {config && (
+            <button
+              onClick={() => { setConfig({ ...config, isEnabled: !config.isEnabled }); setTimeout(save, 100) }}
+              className={cn(
+                "relative inline-flex h-7 w-12 items-center rounded-full transition-colors",
+                config.isEnabled ? "bg-green-500" : "bg-gray-300"
+              )}
+            >
+              <span className={cn(
+                "inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform",
+                config.isEnabled ? "translate-x-6" : "translate-x-1"
+              )} />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Stats */}

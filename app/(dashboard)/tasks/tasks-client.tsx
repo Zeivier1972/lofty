@@ -16,6 +16,7 @@ import {
 import { cn, formatDate, formatPhone, getPriorityColor, getStatusColor, TASK_TYPES } from "@/lib/utils"
 import { useToast } from "@/components/ui/use-toast"
 import { format, isToday, isTomorrow, isPast } from "date-fns"
+import HelpPanel from "@/components/help-panel"
 
 const PRIORITIES = ["LOW", "MEDIUM", "HIGH", "URGENT"]
 const STATUSES = ["PENDING", "IN_PROGRESS", "COMPLETED", "CANCELLED"]
@@ -75,9 +76,12 @@ export default function TasksClient({ tasks: initialTasks, counts, filters }: Ta
           <h1 className="text-2xl font-bold text-gray-900">Tasks</h1>
           <p className="text-gray-500 text-sm mt-0.5">{pendingCount} pending · {completedCount} completed</p>
         </div>
-        <Button asChild size="sm" className="bg-lofty-600 hover:bg-lofty-700 gap-2">
-          <Link href="/tasks/new"><Plus className="w-4 h-4" />New Task</Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <HelpPanel section="tasks" />
+          <Button asChild size="sm" className="bg-lofty-600 hover:bg-lofty-700 gap-2">
+            <Link href="/tasks/new"><Plus className="w-4 h-4" />New Task</Link>
+          </Button>
+        </div>
       </div>
 
       {/* Stats */}

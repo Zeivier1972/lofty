@@ -35,6 +35,62 @@ export async function POST(req: Request) {
   }
 }
 
+export async function PUT(req: Request) {
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  try {
+    const { id, name, pdfUrl, pdfName, greeting, isActive } = await req.json()
+    if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 })
+
+    const updated = await prisma.instagramBotCampaign.update({
+      where: { id },
+      data: {
+        ...(name !== undefined && { name }),
+        ...(pdfUrl !== undefined && { pdfUrl }),
+        ...(pdfName !== undefined && { pdfName }),
+        ...(greeting !== undefined && { greeting }),
+        ...(isActive !== undefined && { isActive }),
+      },
+    })
+    return NextResponse.json(updated)
+  } catch (e) {
+    return NextResponse.json({ error: "Failed to update campaign" }, { status: 500 })
+  }
+}
+
+export async function PATCH(req: Request) {
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  try {
+    const { id, action, keyword } = await req.json()
+    const campaign = await prisma.instagramBotCampaign.findUnique({ where: { id } })
+    if (!campaign) return NextResponse.json({ error: "Not found" }, { status: 404 })
+
+    const existing = campaign.keywords
+      ? campaign.keywords.split(",").map((k: string) => k.trim().toUpperCase()).filter(Boolean)
+      : [campaign.keyword.toUpperCase()]
+
+    let updated: string[]
+    if (action === "add") {
+      const kw = keyword.trim().toUpperCase()
+      updated = existing.includes(kw) ? existing : [...existing, kw]
+    } else {
+      updated = existing.filter((k: string) => k !== keyword.trim().toUpperCase())
+      if (updated.length === 0) updated = [campaign.keyword.toUpperCase()]
+    }
+
+    const result = await prisma.instagramBotCampaign.update({
+      where: { id },
+      data: { keywords: updated.join(",") },
+    })
+    return NextResponse.json(result)
+  } catch {
+    return NextResponse.json({ error: "Failed to update keywords" }, { status: 500 })
+  }
+}
+
 export async function DELETE(req: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })

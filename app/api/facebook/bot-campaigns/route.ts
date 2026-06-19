@@ -44,6 +44,31 @@ export async function POST(req: Request) {
   }
 }
 
+// PUT: edit campaign fields (name, pdfUrl, pdfName, greeting, isActive)
+export async function PUT(req: Request) {
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  try {
+    const { id, name, pdfUrl, pdfName, greeting, isActive } = await req.json()
+    if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 })
+
+    const updated = await prisma.facebookBotCampaign.update({
+      where: { id },
+      data: {
+        ...(name !== undefined && { name }),
+        ...(pdfUrl !== undefined && { pdfUrl }),
+        ...(pdfName !== undefined && { pdfName }),
+        ...(greeting !== undefined && { greeting }),
+        ...(isActive !== undefined && { isActive }),
+      },
+    })
+    return NextResponse.json(updated)
+  } catch (e) {
+    return NextResponse.json({ error: "Failed to update campaign" }, { status: 500 })
+  }
+}
+
 // PATCH: add or remove a keyword from an existing campaign
 export async function PATCH(req: Request) {
   const session = await auth()

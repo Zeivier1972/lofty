@@ -3,7 +3,14 @@
 const { PrismaClient } = require("@prisma/client")
 
 const STMTS = [
-  // configurable bot buttons (PR #64)
+  `CREATE TABLE IF NOT EXISTS "SocialAutoPilotConfig" (
+    "id"        TEXT NOT NULL,
+    "isEnabled" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "SocialAutoPilotConfig_pkey" PRIMARY KEY ("id")
+  )`,
+  // configurable bot buttons
   `ALTER TABLE "FacebookBotConfig" ADD COLUMN IF NOT EXISTS "greetingButtons" TEXT NOT NULL DEFAULT 'Sí, me interesa,Quiero más info'`,
   `ALTER TABLE "FacebookBotConfig" ADD COLUMN IF NOT EXISTS "intentButtonA" TEXT NOT NULL DEFAULT 'Comprar para vivir'`,
   `ALTER TABLE "FacebookBotConfig" ADD COLUMN IF NOT EXISTS "intentButtonB" TEXT NOT NULL DEFAULT 'Invertir / Airbnb'`,
@@ -14,6 +21,17 @@ const STMTS = [
   `ALTER TABLE "InstagramBotConfig" ADD COLUMN IF NOT EXISTS "intentButtonC" TEXT NOT NULL DEFAULT 'Solo explorando'`,
   // multi-keyword campaigns
   `ALTER TABLE "FacebookBotCampaign" ADD COLUMN IF NOT EXISTS "keywords" TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE "InstagramBotCampaign" ADD COLUMN IF NOT EXISTS "keywords" TEXT NOT NULL DEFAULT ''`,
+  // parallel dialer
+  `ALTER TABLE "DialerSession" ADD COLUMN IF NOT EXISTS "activeCallSid" TEXT`,
+  `ALTER TABLE "DialerSession" ADD COLUMN IF NOT EXISTS "agentIdentity" TEXT`,
+  // YouTube OAuth refresh token
+  `ALTER TABLE "SocialAccount" ADD COLUMN IF NOT EXISTS "refreshToken" TEXT`,
+  // WhatsApp link, office address, website URL on website config
+  `ALTER TABLE "WebsiteConfig" ADD COLUMN IF NOT EXISTS "whatsapp" TEXT`,
+  `ALTER TABLE "WebsiteConfig" ADD COLUMN IF NOT EXISTS "agentAddress" TEXT`,
+  `ALTER TABLE "WebsiteConfig" ADD COLUMN IF NOT EXISTS "agentWebsite" TEXT`,
+  `ALTER TABLE "SocialPost" ADD COLUMN IF NOT EXISTS "errorMessage" TEXT`,
 ]
 
 // ─── Email templates ─────────────────────────────────────────────────────────

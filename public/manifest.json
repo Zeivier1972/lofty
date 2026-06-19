@@ -1,0 +1,52 @@
+{
+  "name": "Casai — Catherine Gomez",
+  "short_name": "Casai",
+  "description": "CRM y herramientas de marketing para Catherine Gomez Realtor",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1a3a5c",
+  "theme_color": "#1a3a5c",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Contactos",
+      "short_name": "Contactos",
+      "url": "/contacts",
+      "icons": [{ "src": "/icons/icon.svg", "sizes": "any" }]
+    },
+    {
+      "name": "Pipeline",
+      "short_name": "Pipeline",
+      "url": "/pipeline",
+      "icons": [{ "src": "/icons/icon.svg", "sizes": "any" }]
+    },
+    {
+      "name": "Dialer",
+      "short_name": "Dialer",
+      "url": "/dialer",
+      "icons": [{ "src": "/icons/icon.svg", "sizes": "any" }]
+    },
+    {
+      "name": "Tareas",
+      "short_name": "Tareas",
+      "url": "/tasks",
+      "icons": [{ "src": "/icons/icon.svg", "sizes": "any" }]
+    }
+  ]
+}

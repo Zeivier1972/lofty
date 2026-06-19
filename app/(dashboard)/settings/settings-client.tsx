@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -8,7 +8,7 @@ import {
   User, Bell, Shield, Tag, GitBranch, Globe, Save, Loader2,
   Plus, Trash2, Edit, Database, CheckCircle, ExternalLink,
   X, Key, MessageSquare, Mail, Calendar, FileSignature, Home,
-  Check, Clock, Copy, Link,
+  Check, Clock, Copy, Link, Upload,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -17,7 +17,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Switch } from "@/components/ui/switch"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/components/ui/use-toast"
@@ -385,6 +385,41 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
     },
   })
 
+  // ── Profile photo ─────────────────────────────────────────────────────────────
+  const [photoUrl, setPhotoUrl] = useState<string>((user as any)?.avatar || "")
+  const [photoUploading, setPhotoUploading] = useState(false)
+  const [photoError, setPhotoError] = useState("")
+  const photoInputRef = useRef<HTMLInputElement>(null)
+
+  async function handlePhotoFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setPhotoError("")
+    setPhotoUploading(true)
+    try {
+      const fd = new FormData()
+      fd.append("file", file)
+      const res = await fetch("/api/settings/website/upload", { method: "POST", body: fd })
+      const data = await res.json()
+      if (data.url) {
+        setPhotoUrl(data.url)
+        await fetch("/api/users/me", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ avatar: data.url }),
+        })
+        toast({ title: "Photo updated" })
+      } else {
+        setPhotoError(data.error ?? "Upload failed")
+      }
+    } catch (err: any) {
+      setPhotoError(err?.message ?? "Upload failed")
+    } finally {
+      setPhotoUploading(false)
+      if (photoInputRef.current) photoInputRef.current.value = ""
+    }
+  }
+
   // ── Profile ──────────────────────────────────────────────────────────────────
   const saveProfile = async (data: any) => {
     try {
@@ -623,11 +658,33 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
               <CardContent>
                 <div className="flex items-center gap-4 mb-6">
                   <Avatar className="w-16 h-16">
+                    {photoUrl && <AvatarImage src={photoUrl} alt={user?.name || ""} />}
                     <AvatarFallback className="bg-lofty-100 text-lofty-700 text-xl font-bold">
                       {getInitials(user?.name || "U")}
                     </AvatarFallback>
                   </Avatar>
-                  <Button variant="outline" size="sm">Change Photo</Button>
+                  <div>
+                    <input
+                      ref={photoInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handlePhotoFile}
+                      className="hidden"
+                      disabled={photoUploading}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={photoUploading}
+                      onClick={() => photoInputRef.current?.click()}
+                    >
+                      {photoUploading
+                        ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Uploading...</>
+                        : <><Upload className="w-3.5 h-3.5 mr-1.5" />Change Photo</>}
+                    </Button>
+                    {photoError && <p className="text-xs text-red-500 mt-1">{photoError}</p>}
+                  </div>
                 </div>
                 <form onSubmit={handleSubmit(saveProfile)} className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">

@@ -143,7 +143,7 @@ async function sendOutreachMessages(contact: any, stageName: string, config: any
           data: {
             subject,
             body: emailHtml,
-            fromAddress: process.env.RESEND_FROM || "sofia@loftycrm.com",
+            fromAddress: process.env.RESEND_FROM || "sofia@casaicrm.com",
             toAddress: contact.email!,
             status: "SENT",
             sentAt: new Date(),
@@ -172,7 +172,8 @@ async function sendOutreachMessages(contact: any, stageName: string, config: any
 export async function handleCallOutcome(
   contactId: string,
   endedReason: string,
-  durationSeconds: number
+  durationSeconds: number,
+  calledByAgent?: boolean  // true = Catherine called manually, false/undefined = Sofía
 ) {
   const contact = await prisma.contact.findUnique({ where: { id: contactId } })
   if (!contact) return
@@ -183,7 +184,8 @@ export async function handleCallOutcome(
   const config = await prisma.aIConfig.findFirst()
   const stageByName = (name: string) => pipeline.stages.find(s => s.name === name)
 
-  const engaged = !NO_ANSWER_REASONS.includes(endedReason) && durationSeconds > 30
+  const engaged = !NO_ANSWER_REASONS.includes(endedReason) &&
+    (calledByAgent ? true : durationSeconds > 30)
 
   if (engaged) {
     const warmStage = stageByName("Warm")
@@ -218,6 +220,13 @@ export async function handleCallOutcome(
   const currentStage = await getCurrentStage(contactId)
   const currentName = currentStage?.name ?? ""
 
+  // Don't touch leads already past the calling flow (Drip, Warm, Hot, etc.)
+  const PAST_CALLING_STAGES = ["Drip Campaign", "Warm", "Hot", "Appointment Set", "Showing", "Under Contract", "Closed"]
+  if (currentName && PAST_CALLING_STAGES.includes(currentName)) {
+    console.log(`[lead-flow] Skipping stage advance — ${contact.firstName} is already at "${currentName}"`)
+    return
+  }
+
   let nextStageName: string
   if (!currentName || !CONTACTED_STAGES.includes(currentName)) {
     nextStageName = "Contacted 1"
@@ -234,12 +243,25 @@ export async function handleCallOutcome(
   await moveToStage(contactId, nextStage.id, nextStageName)
 
   if (nextStageName === "Drip Campaign") {
+    // Check whether Catherine has EVER personally called this lead
+    const catherineCallCount = await prisma.dialerCall.count({
+      where: {
+        contactId,
+        agentId: { not: null },
+        status: { in: ["COMPLETED", "NO_ANSWER", "BUSY"] },
+      },
+    })
+    const neverCalledPersonally = catherineCallCount === 0
+    const name = `${contact.firstName} ${contact.lastName ?? ""}`.trim()
+
     await prisma.aINotification.create({
       data: {
         type: "FOLLOW_UP",
-        title: `${contact.firstName} movido a Drip Campaign`,
-        body: "4 intentos de Sofía sin respuesta. Agregar a secuencia automatizada.",
-        priority: "MEDIUM",
+        title: `⚠️ ${name} movido a Drip Campaign`,
+        body: neverCalledPersonally
+          ? `Sofía llamó 4 veces sin respuesta. TÚ NUNCA HAS LLAMADO A ESTE LEAD PERSONALMENTE. Considera hacer una llamada personal antes de que entre a la secuencia automática.`
+          : `Sofía y tú han intentado contactar a ${name} sin éxito (${catherineCallCount} llamada${catherineCallCount > 1 ? "s" : ""} tuya${catherineCallCount > 1 ? "s" : ""}). Movido a secuencia automática.`,
+        priority: neverCalledPersonally ? "HIGH" : "MEDIUM",
         contactId,
       },
     })
@@ -247,6 +269,7 @@ export async function handleCallOutcome(
   }
 
   // Contacted 1–4: send outreach text/email to lead + schedule Sofia's next call
+  // Sofia always keeps the 24h retry cycle going, regardless of who last called
   const attemptNum = CONTACTED_STAGES.indexOf(nextStageName) + 1
   await sendOutreachMessages(contact, nextStageName, config)
   await scheduleRetryCall(contactId, attemptNum + 1)
@@ -254,7 +277,9 @@ export async function handleCallOutcome(
     data: {
       type: "FOLLOW_UP",
       title: `Sin respuesta: ${contact.firstName} (intento ${attemptNum})`,
-      body: `Movido a ${nextStageName}. SMS y email enviados. Sofía volverá a llamar en ${RETRY_DELAY_HOURS}h.`,
+      body: calledByAgent
+        ? `Tú llamaste a ${contact.firstName} — sin respuesta. Movido a ${nextStageName}. SMS y email enviados.`
+        : `Movido a ${nextStageName}. SMS y email enviados. Sofía volverá a llamar en ${RETRY_DELAY_HOURS}h.`,
       priority: "MEDIUM",
       contactId,
     },

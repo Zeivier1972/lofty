@@ -99,8 +99,13 @@ model Contact {
   buyerBudgetMin Float?
   buyerBudgetMax Float?
   buyerBedroomsMin Int?
+  buyerBathroomsMin Float?
   buyerPropertyType String?
+  buyerMustHaves    String?
   buyerLocation String?
+  buyerTimelineMonths   Int?
+  buyerPurpose          String?
+  matchPrefsCompletedAt DateTime?
   sellerAddress String?
   sellerEstimatedValue Float?
   notes         Note[]
@@ -553,6 +558,8 @@ model WebsiteConfig {
   agentBio          String   @default("With over 15 years of experience in Miami's luxury real estate market, I bring unmatched expertise and dedication to every transaction.")
   agentLicense      String?
   agentBrokerage    String?
+  agentAddress      String?
+  agentWebsite      String?
   // Stats
   yearsFounded      Int      @default(2009)
   homesSold         Int      @default(500)
@@ -567,6 +574,7 @@ model WebsiteConfig {
   instagram         String?
   linkedin          String?
   youtube           String?
+  whatsapp          String?
   // Content
   aboutHeading      String   @default("Why Work With Me")
   testimonials      String   @default("[]")
@@ -623,17 +631,19 @@ model SearchBehavior {
 // ─── Power Dialer ─────────────────────────────────────────────────────────────
 
 model DialerSession {
-  id          String        @id @default(cuid())
-  name        String
-  agentId     String
-  status      String        @default("ACTIVE")
-  calls       DialerCall[]
-  totalCalls  Int           @default(0)
-  answered    Int           @default(0)
-  voicemails  Int           @default(0)
-  noAnswers   Int           @default(0)
-  createdAt   DateTime      @default(now())
-  endedAt     DateTime?
+  id            String        @id @default(cuid())
+  name          String
+  agentId       String
+  status        String        @default("ACTIVE")
+  calls         DialerCall[]
+  totalCalls    Int           @default(0)
+  answered      Int           @default(0)
+  voicemails    Int           @default(0)
+  noAnswers     Int           @default(0)
+  activeCallSid String?       // Twilio SID of the first answered call
+  agentIdentity String?       // Twilio Client identity for this session
+  createdAt     DateTime      @default(now())
+  endedAt       DateTime?
 }
 
 model DialerCall {
@@ -746,6 +756,7 @@ model InstagramBotConfig {
 model InstagramBotCampaign {
   id        String   @id @default(cuid())
   keyword   String   @unique
+  keywords  String   @default("")
   name      String
   pdfUrl    String?
   pdfName   String?
@@ -829,12 +840,20 @@ model VideoMessage {
 
 // ─── Social Media ─────────────────────────────────────────────────────────────
 
+model SocialAutoPilotConfig {
+  id        String   @id @default(cuid())
+  isEnabled Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model SocialAccount {
   id                String       @id @default(cuid())
   platform          String
   accountId         String?
   accountName       String?
   accessToken       String?
+  refreshToken      String?
   pageId            String?
   isConnected       Boolean      @default(false)
   subscribedToLeads Boolean      @default(false)
@@ -861,6 +880,7 @@ model SocialPost {
   account     SocialAccount? @relation(fields: [accountId], references: [id])
   aiGenerated Boolean        @default(false)
   prompt      String?
+  errorMessage String?
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 }
@@ -935,6 +955,16 @@ model ScheduledCall {
   status      String   @default("PENDING") // PENDING | FIRED | CANCELLED | EXPIRED
   attempt     Int      @default(1)
   createdAt   DateTime @default(now())
+}
+
+// ─── Property Alert Tracking ─────────────────────────────────────────────────
+
+model PropertyAlertSent {
+  id         String   @id @default(cuid())
+  contactId  String
+  propertyId String
+  sentAt     DateTime @default(now())
+  @@unique([contactId, propertyId])
 }
 
 // ─── Key-value settings store ────────────────────────────────────────────────

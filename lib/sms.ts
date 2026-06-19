@@ -30,9 +30,11 @@ export async function initiateCall(to: string, callbackUrl: string): Promise<str
     console.log("[CALL MOCK] To:", to)
     return "mock-call-sid"
   }
+  // Use verified caller ID (Catherine's number) if set, otherwise fall back to Twilio number
+  const callerId = process.env.TWILIO_CALLER_ID || process.env.TWILIO_PHONE_NUMBER!
   const call = await c.calls.create({
     to,
-    from: process.env.TWILIO_PHONE_NUMBER!,
+    from: callerId,
     url: callbackUrl,
     statusCallback: `${process.env.NEXT_PUBLIC_APP_URL}/api/dialer/callback`,
   })

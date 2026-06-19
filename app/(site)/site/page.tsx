@@ -1,7 +1,10 @@
 export const dynamic = "force-dynamic"
 
 import { prisma } from "@/lib/prisma"
-import HomeClient from "../home-client"
+import nextDynamic from "next/dynamic"
+
+// Load with ssr:false so Framer Motion never runs server-side
+const HomeClient = nextDynamic(() => import("../home-client"), { ssr: false })
 
 export default async function SitePage() {
   let config = null

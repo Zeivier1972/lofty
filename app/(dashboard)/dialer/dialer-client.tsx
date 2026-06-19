@@ -9,6 +9,7 @@ import {
   ChevronDown, ChevronUp, Search, User,
 } from "lucide-react"
 import { cn, formatPhone } from "@/lib/utils"
+import HelpPanel from "@/components/help-panel"
 
 interface Contact {
   id: string
@@ -241,6 +242,7 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
           <p className="text-sm text-gray-500 mt-0.5">Multi-contact calling session management</p>
         </div>
         <div className="flex items-center gap-3">
+          <HelpPanel section="dialer" />
           <div className={cn("px-3 py-1.5 rounded-full text-sm font-medium", statusColor)}>
             {callStatusLabel}
             {callStatus === "connected" && (

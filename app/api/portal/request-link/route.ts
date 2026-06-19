@@ -26,7 +26,7 @@ export async function POST(req: Request) {
       <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; background: #f9fafb; padding: 32px 16px;">
         <div style="background: white; border-radius: 16px; padding: 32px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
           <div style="background: linear-gradient(135deg, #1e3a5f, #2563eb); border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 24px;">
-            <h1 style="color: white; margin: 0; font-size: 22px;">🏠 Lofty Client Portal</h1>
+            <h1 style="color: white; margin: 0; font-size: 22px;">🏠 Casai Client Portal</h1>
             <p style="color: #93c5fd; margin: 8px 0 0; font-size: 14px;">Your Real Estate Journey, All in One Place</p>
           </div>
           <p style="color: #374151; font-size: 16px;">Hi ${contact.firstName},</p>

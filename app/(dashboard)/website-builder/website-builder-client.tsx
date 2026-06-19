@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import {
   Globe, Save, Eye, Loader2, Upload, Plus, Trash2, X,
   Image, Video, User, Home, Star, Phone, Mail, MapPin,
@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/components/ui/use-toast"
 import { cn } from "@/lib/utils"
+import HelpPanel from "@/components/help-panel"
 
 interface WebsiteConfig {
   id?: string
@@ -44,17 +45,44 @@ const DEFAULT_CONFIG: WebsiteConfig = {
   agentWebsite: "https://catherinegomezrealtor.com",
   yearsFounded: 2004, homesSold: 500, satisfiedClients: 98, avgDaysOnMarket: 21,
   primaryColor: "#1a3a5c", accentColor: "#c9a84c",
-  facebook: "https://facebook.com/catherinegomezrealtor",
-  instagram: "https://instagram.com/catherinegomezrealtor",
+  facebook: "https://www.facebook.com/catherinegomezrealtors",
+  instagram: "https://www.instagram.com/catherine_gomez_realtor/",
   linkedin: "https://linkedin.com/in/catherinegomez",
   whatsapp: "https://wa.me/13052830872",
   aboutHeading: "Why Work With Me", testimonials: "[]", serviceAreas: "[]",
+}
+
+// Convert any YouTube/Vimeo watch URL to the embeddable version
+function toEmbedUrl(url: string): string {
+  if (!url) return url
+  try {
+    const u = new URL(url)
+    // youtube.com/watch?v=ID  or  youtube.com/shorts/ID
+    if (u.hostname.includes("youtube.com")) {
+      const v = u.searchParams.get("v")
+      if (v) return `https://www.youtube.com/embed/${v}`
+      const shortsMatch = u.pathname.match(/^\/shorts\/([^/?]+)/)
+      if (shortsMatch) return `https://www.youtube.com/embed/${shortsMatch[1]}`
+    }
+    // youtu.be/ID
+    if (u.hostname === "youtu.be") {
+      const id = u.pathname.replace("/", "")
+      if (id) return `https://www.youtube.com/embed/${id}`
+    }
+    // vimeo.com/ID
+    if (u.hostname.includes("vimeo.com")) {
+      const id = u.pathname.replace("/", "")
+      if (id) return `https://player.vimeo.com/video/${id}`
+    }
+  } catch { /* not a valid URL — return as-is */ }
+  return url
 }
 
 function ImageUpload({ value, onChange, label, aspect = "wide" }: {
   value?: string; onChange: (url: string) => void; label: string; aspect?: "wide" | "square" | "portrait"
 }) {
   const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState("")
   const [urlInput, setUrlInput] = useState("")
   const inputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
@@ -62,16 +90,38 @@ function ImageUpload({ value, onChange, label, aspect = "wide" }: {
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
+    setError("")
     setUploading(true)
     try {
       const fd = new FormData()
       fd.append("file", file)
       const res = await fetch("/api/settings/website/upload", { method: "POST", body: fd })
       const data = await res.json()
-      if (data.url) onChange(data.url)
-      toast({ title: "Image uploaded" })
-    } catch {
-      toast({ title: "Upload failed", variant: "destructive" })
+      if (data.url) { onChange(data.url); toast({ title: "Photo uploaded" }) }
+      else setError(data.error ?? "Upload failed")
+    } catch (err: any) {
+      setError(err?.message ?? "Upload failed")
+    } finally {
+      setUploading(false)
+      if (inputRef.current) inputRef.current.value = ""
+    }
+  }
+
+  async function handleUrlUse() {
+    if (!urlInput.trim()) return
+    setError("")
+    setUploading(true)
+    try {
+      const res = await fetch("/api/settings/website/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: urlInput.trim() }),
+      })
+      const data = await res.json()
+      if (data.url) { onChange(data.url); setUrlInput(""); toast({ title: "Photo uploaded" }) }
+      else setError(data.error ?? "Upload failed")
+    } catch (err: any) {
+      setError(err?.message ?? "Upload failed")
     } finally {
       setUploading(false)
     }
@@ -80,8 +130,10 @@ function ImageUpload({ value, onChange, label, aspect = "wide" }: {
   return (
     <div className="space-y-2">
       <Label>{label}</Label>
+
+      {/* Preview box — no hidden overlay, just shows the image */}
       <div className={cn(
-        "relative border-2 border-dashed border-gray-200 rounded-xl overflow-hidden bg-gray-50 flex items-center justify-center group hover:border-lofty-400 transition-colors",
+        "relative border-2 border-dashed border-gray-200 rounded-xl overflow-hidden bg-gray-50 flex items-center justify-center",
         aspect === "wide" && "h-36",
         aspect === "square" && "h-40 w-40",
         aspect === "portrait" && "h-52 w-40",
@@ -89,30 +141,63 @@ function ImageUpload({ value, onChange, label, aspect = "wide" }: {
         {value ? (
           <>
             <img src={value} alt="" className="w-full h-full object-cover" />
-            <button onClick={() => onChange("")}
-              className="absolute top-2 right-2 bg-black/60 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              type="button"
+              onClick={() => { onChange(""); setError("") }}
+              className="absolute top-2 right-2 z-10 bg-black/60 text-white rounded-full p-1 hover:bg-black/80 transition-colors"
+            >
               <X className="w-3.5 h-3.5" />
             </button>
           </>
         ) : (
-          <div className="text-center p-4">
+          <div className="text-center p-4 pointer-events-none">
             <Image className="w-7 h-7 text-gray-300 mx-auto mb-1.5" />
-            <p className="text-xs text-gray-400">{uploading ? "Uploading..." : "Click to upload or paste URL"}</p>
+            <p className="text-xs text-gray-400">No photo yet</p>
           </div>
         )}
-        <input ref={inputRef} type="file" accept="image/*,video/*" onChange={handleFile}
-          className="absolute inset-0 opacity-0 cursor-pointer" disabled={uploading} />
       </div>
+
+      {/* Hidden file input — triggered explicitly by the button below */}
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleFile}
+        className="hidden"
+        disabled={uploading}
+      />
+
+      {/* Explicit upload button */}
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="w-full h-9 text-xs"
+        disabled={uploading}
+        onClick={() => inputRef.current?.click()}
+      >
+        {uploading
+          ? <><Loader2 className="w-3 h-3 mr-1.5 animate-spin" />Uploading...</>
+          : <><Upload className="w-3 h-3 mr-1.5" />Choose Photo</>}
+      </Button>
+
+      {/* URL paste */}
       <div className="flex gap-2">
-        <Input placeholder="Or paste image URL..." value={urlInput}
+        <Input
+          placeholder="Or paste image URL..."
+          value={urlInput}
           onChange={e => setUrlInput(e.target.value)}
-          onKeyDown={e => { if (e.key === "Enter" && urlInput) { onChange(urlInput); setUrlInput("") } }}
-          className="text-xs h-8" />
+          onKeyDown={e => { if (e.key === "Enter") handleUrlUse() }}
+          className="text-xs h-8"
+        />
         <Button size="sm" variant="outline" className="h-8 px-2 text-xs"
-          onClick={() => { if (urlInput) { onChange(urlInput); setUrlInput("") } }}>
-          Use
+          onClick={handleUrlUse} disabled={uploading || !urlInput.trim()}>
+          {uploading ? "..." : "Use"}
         </Button>
       </div>
+
+      {/* Inline error */}
+      {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
     </div>
   )
 }
@@ -194,11 +279,34 @@ function ServiceAreasEditor({ value, onChange }: { value: string; onChange: (v: 
 
 export default function WebsiteBuilderClient({ config: initialConfig }: { config: any }) {
   const { toast } = useToast()
-  const [config, setConfig] = useState<WebsiteConfig>({ ...DEFAULT_CONFIG, ...initialConfig })
+  const [config, setConfig] = useState<WebsiteConfig>(() => {
+    const merged: WebsiteConfig = { ...DEFAULT_CONFIG, ...initialConfig, videoUrl: toEmbedUrl(initialConfig?.videoUrl || DEFAULT_CONFIG.videoUrl || "") }
+    // Correct old wrong URLs that may have been saved to DB
+    if (merged.facebook === "https://facebook.com/catherinegomezrealtor") merged.facebook = "https://www.facebook.com/catherinegomezrealtors"
+    if (merged.instagram === "https://instagram.com/catherinegomezrealtor") merged.instagram = "https://www.instagram.com/catherine_gomez_realtor/"
+    return merged
+  })
   const [saving, setSaving] = useState(false)
   const [activeSection, setActiveSection] = useState("hero")
 
   const set = (key: keyof WebsiteConfig, value: any) => setConfig(c => ({ ...c, [key]: value }))
+
+  // Auto-fix wrong social URLs in DB on first load
+  useEffect(() => {
+    const wrongFb = initialConfig?.facebook === "https://facebook.com/catherinegomezrealtor"
+    const wrongIg = initialConfig?.instagram === "https://instagram.com/catherinegomezrealtor"
+    if (wrongFb || wrongIg) {
+      fetch("/api/settings/website", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...initialConfig,
+          ...(wrongFb ? { facebook: "https://www.facebook.com/catherinegomezrealtors" } : {}),
+          ...(wrongIg ? { instagram: "https://www.instagram.com/catherine_gomez_realtor/" } : {}),
+        }),
+      }).catch(() => {})
+    }
+  }, [])
 
   async function save() {
     setSaving(true)
@@ -234,7 +342,10 @@ export default function WebsiteBuilderClient({ config: initialConfig }: { config
       {/* Left sidebar */}
       <div className="w-56 flex-shrink-0 border-r border-gray-200 bg-white flex flex-col">
         <div className="p-4 border-b">
-          <h1 className="text-base font-bold text-gray-900">Website Builder</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-base font-bold text-gray-900">Website Builder</h1>
+            <HelpPanel section="website-builder" />
+          </div>
           <p className="text-xs text-gray-400 mt-0.5">Your public website</p>
         </div>
         <nav className="flex-1 overflow-y-auto py-2 px-2">
@@ -429,10 +540,10 @@ export default function WebsiteBuilderClient({ config: initialConfig }: { config
               <Card className="border-0 shadow-sm">
                 <CardContent className="p-5 space-y-4">
                   <div>
-                    <Label className="mb-1.5 block">Intro Video URL (YouTube / Vimeo embed URL)</Label>
-                    <Input value={config.videoUrl || ""} onChange={e => set("videoUrl", e.target.value)}
-                      placeholder="https://www.youtube.com/embed/..." />
-                    <p className="text-xs text-gray-400 mt-1">Use the YouTube "embed" URL format for best results</p>
+                    <Label className="mb-1.5 block">Intro Video URL (YouTube / Vimeo)</Label>
+                    <Input value={config.videoUrl || ""} onChange={e => set("videoUrl", toEmbedUrl(e.target.value))}
+                      placeholder="https://www.youtube.com/watch?v=... or embed URL" />
+                    <p className="text-xs text-gray-400 mt-1">Paste any YouTube or Vimeo link — it converts automatically</p>
                   </div>
                   {config.videoUrl && (
                     <div className="aspect-video rounded-xl overflow-hidden border border-gray-200">

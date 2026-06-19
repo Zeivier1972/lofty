@@ -316,7 +316,7 @@ Responde ÚNICAMENTE con este JSON (sin texto adicional):
           data: {
             subject: parsed.emailSubject,
             body: parsed.emailBody,
-            fromAddress: process.env.SMTP_FROM || "sofia@loftycrm.com",
+            fromAddress: process.env.SMTP_FROM || "sofia@casaicrm.com",
             toAddress: contact.email,
             status: "SENT",
             sentAt: new Date(),

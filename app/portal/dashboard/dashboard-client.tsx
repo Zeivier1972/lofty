@@ -2,11 +2,11 @@
 
 import Link from "next/link"
 import {
-  Home, Calendar, MessageSquare, FileText, Map,
+  Home, MessageSquare, FileText, Map,
   ChevronRight, CheckCircle2, Clock, Star,
-  TrendingUp, Phone, Mail, ArrowRight, Sparkles,
+  Phone, Mail, ArrowRight, Sparkles,
 } from "lucide-react"
-import { cn, formatCurrency, formatDate } from "@/lib/utils"
+import { cn, formatCurrency } from "@/lib/utils"
 
 interface Milestone {
   id: string
@@ -60,6 +60,7 @@ interface Contact {
   propertySaves: PropertySave[]
   appointments: Appointment[]
   portalMessages: { isRead: boolean; fromClient: boolean }[]
+  matchPrefsCompletedAt: string | null
 }
 
 function getPropertyImage(imagesStr: string | null): string {
@@ -143,6 +144,40 @@ export default function PortalDashboardClient({
         )}
       </div>
 
+      {/* AI Match CTA — shown when preferences not yet completed */}
+      {!contact.matchPrefsCompletedAt && (
+        <div className="bg-gradient-to-r from-purple-600 to-lofty-600 rounded-2xl p-5 text-white mb-6 shadow-lg">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center flex-shrink-0">
+              <Sparkles className="w-6 h-6" />
+            </div>
+            <div className="flex-1">
+              <div className="font-bold text-lg">New: AI Property Match</div>
+              <p className="text-purple-100 text-sm mt-1">
+                Sofia can instantly score every listing based on your lifestyle. Answer 4 quick questions to unlock your personalized match scores.
+              </p>
+              <p className="text-purple-200 text-xs mt-0.5">
+                ¡Descubre qué propiedades son perfectas para ti!
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-3 mt-4">
+            <Link
+              href="/portal/preferences"
+              className="flex items-center gap-2 px-5 py-2.5 bg-white text-lofty-700 rounded-xl text-sm font-bold hover:bg-purple-50 transition-colors"
+            >
+              <Sparkles className="w-4 h-4" /> Get My Matches
+            </Link>
+            <Link
+              href="/portal/matches"
+              className="flex items-center gap-2 px-4 py-2.5 bg-white/20 text-white rounded-xl text-sm font-medium hover:bg-white/30 transition-colors"
+            >
+              Browse All <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* Quick action cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
         {[
@@ -155,11 +190,11 @@ export default function PortalDashboardClient({
             badge: unreadMessages,
           },
           {
-            href: "/portal/timeline",
-            icon: Map,
-            label: "Timeline",
-            labelEs: "Progreso",
-            color: "bg-lofty-600",
+            href: "/portal/matches",
+            icon: Sparkles,
+            label: "AI Matches",
+            labelEs: "Mis Matches",
+            color: "bg-gradient-to-br from-purple-500 to-lofty-600",
             badge: 0,
           },
           {

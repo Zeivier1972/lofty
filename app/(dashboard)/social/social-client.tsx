@@ -1,15 +1,16 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import {
   Facebook, Instagram, Linkedin, Youtube,
   Sparkles, Send, Clock, CheckCircle2, XCircle,
   Plus, Settings, Eye, Heart, MessageCircle, Share2,
   BarChart3, Pencil, Trash2, Calendar, Globe,
   TrendingUp, Image, FileText, DollarSign, Home, Users,
-  RefreshCw, ExternalLink,
+  RefreshCw, ExternalLink, AlertCircle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import HelpPanel from "@/components/help-panel"
 
 interface SocialAccount {
   id: string
@@ -34,6 +35,8 @@ interface SocialPost {
   shares: number | null
   aiGenerated: boolean
   createdAt: string
+  externalId: string | null
+  errorMessage: string | null
   account: { accountName: string | null } | null
 }
 
@@ -70,6 +73,18 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
   const [accounts, setAccounts] = useState<SocialAccount[]>(initialAccounts)
   const [posts, setPosts] = useState<SocialPost[]>(initialPosts)
   const [activeTab, setActiveTab] = useState<"composer" | "calendar" | "analytics" | "accounts">("composer")
+  const [autoPilotEnabled, setAutoPilotEnabled] = useState(false)
+  const [autoPilotLoading, setAutoPilotLoading] = useState(false)
+  const [runningNow, setRunningNow] = useState(false)
+  const [runResult, setRunResult] = useState<{ ok: boolean; posted: number; failed: number; blogPublished?: boolean; error?: string } | null>(null)
+
+  // Load auto-pilot state on mount
+  useEffect(() => {
+    fetch("/api/social/autopilot-config")
+      .then(r => r.json())
+      .then(d => setAutoPilotEnabled(d.isEnabled ?? false))
+      .catch(() => {})
+  }, [])
 
   // Composer state
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(["FACEBOOK"])
@@ -90,6 +105,54 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
   // Account connect state
   const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null)
   const [connectForm, setConnectForm] = useState({ accountName: "", accessToken: "", pageId: "" })
+  const [youtubeBanner, setYoutubeBanner] = useState<{ type: "success" | "error"; msg: string } | null>(null)
+
+  // Read OAuth result from URL params on mount
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const params = new URLSearchParams(window.location.search)
+    const tab = params.get("tab")
+    const connected = params.get("youtube_connected")
+    const err = params.get("youtube_error")
+    const fbConnected = params.get("fb_connected")
+    const igConnected = params.get("ig_connected")
+    const fbError = params.get("fb_error")
+
+    if (connected === "1") {
+      setActiveTab("accounts")
+      setYoutubeBanner({ type: "success", msg: "YouTube connected successfully! Videos will now be uploaded automatically." })
+      window.history.replaceState({}, "", window.location.pathname)
+    } else if (err) {
+      setActiveTab("accounts")
+      const messages: Record<string, string> = {
+        no_refresh_token: "Google didn't return a refresh token. Please revoke app access in your Google account and try again.",
+        not_configured: "YOUTUBE_CLIENT_ID or YOUTUBE_CLIENT_SECRET is not set in Railway environment variables.",
+        server_error: "A server error occurred during YouTube authorization.",
+        cancelled: "YouTube authorization was cancelled.",
+      }
+      setYoutubeBanner({ type: "error", msg: messages[err] ?? `Authorization failed: ${err}` })
+      window.history.replaceState({}, "", window.location.pathname)
+    } else if (fbConnected) {
+      setActiveTab("accounts")
+      const msg = igConnected
+        ? "✅ Facebook + Instagram connected! Posts will publish automatically."
+        : "✅ Facebook connected! (No Instagram Business Account found on this page.)"
+      setYoutubeBanner({ type: "success", msg })
+      window.history.replaceState({}, "", window.location.pathname)
+      window.location.reload()
+    } else if (fbError) {
+      setActiveTab("accounts")
+      const messages: Record<string, string> = {
+        not_configured: "FACEBOOK_APP_ID or FACEBOOK_APP_SECRET is not set in Railway environment variables.",
+        no_pages_found: "No Facebook Pages found. Make sure you manage at least one Facebook Page.",
+        cancelled: "Facebook authorization was cancelled.",
+      }
+      setYoutubeBanner({ type: "error", msg: messages[fbError] ?? `Facebook error: ${fbError}` })
+      window.history.replaceState({}, "", window.location.pathname)
+    } else if (tab === "accounts") {
+      setActiveTab("accounts")
+    }
+  }, [])
 
   const connectedPlatforms = new Set(accounts.filter(a => a.isConnected).map(a => a.platform))
 
@@ -209,6 +272,7 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
             <p className="text-sm text-gray-500 mt-0.5">AI-powered content for Facebook, Instagram, TikTok &amp; more</p>
           </div>
           <div className="flex items-center gap-3">
+            <HelpPanel section="social" />
             {/* Connected account pills */}
             {PLATFORMS.filter(p => connectedPlatforms.has(p.id)).map(p => (
               <div key={p.id} className="flex items-center gap-1.5 px-2.5 py-1 bg-green-50 border border-green-200 rounded-full text-xs font-medium text-green-700">
@@ -477,6 +541,103 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
         {/* ── SCHEDULED/RECENT POSTS ── */}
         {activeTab === "calendar" && (
           <div className="max-w-4xl mx-auto space-y-4">
+            {/* Auto-Pilot toggle */}
+            <div className={`flex items-center justify-between gap-3 px-4 py-3 rounded-xl border ${autoPilotEnabled ? "bg-green-50 border-green-200" : "bg-gray-50 border-gray-200"}`}>
+              <div className="flex items-center gap-3">
+                <span className="text-lg">{autoPilotEnabled ? "🤖" : "⏸️"}</span>
+                <div>
+                  <p className={`text-sm font-semibold ${autoPilotEnabled ? "text-green-800" : "text-gray-700"}`}>
+                    Auto-Pilot {autoPilotEnabled ? "Activo" : "Pausado"}
+                  </p>
+                  <p className={`text-xs ${autoPilotEnabled ? "text-green-700" : "text-gray-500"}`}>
+                    {autoPilotEnabled
+                      ? "2 publicaciones diarias a las 9am y 6pm ET — IA genera contenido en español automáticamente"
+                      : connectedPlatforms.size === 0
+                        ? "Conecta una cuenta en la pestaña Accounts para poder activarlo"
+                        : "Actívalo para publicar 2 veces al día automáticamente"}
+                  </p>
+                </div>
+              </div>
+              <button
+                disabled={autoPilotLoading || connectedPlatforms.size === 0}
+                onClick={async () => {
+                  setAutoPilotLoading(true)
+                  try {
+                    const res = await fetch("/api/social/autopilot-config", {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ isEnabled: !autoPilotEnabled }),
+                    })
+                    const d = await res.json()
+                    setAutoPilotEnabled(d.isEnabled)
+                  } finally {
+                    setAutoPilotLoading(false)
+                  }
+                }}
+                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed ${autoPilotEnabled ? "bg-green-500" : "bg-gray-300"}`}
+              >
+                <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${autoPilotEnabled ? "translate-x-5" : "translate-x-0"}`} />
+              </button>
+            </div>
+
+            {/* Manual Run Now */}
+            <div className="flex items-center gap-3">
+              {(["morning", "evening"] as const).map(slot => (
+                <button
+                  key={slot}
+                  disabled={runningNow}
+                  onClick={async () => {
+                    setRunningNow(true)
+                    setRunResult(null)
+                    try {
+                      const res = await fetch(`/api/cron/social-autopilot?slot=${slot}`)
+                      const data = await res.json()
+                      setRunResult({
+                        ok: data.ok,
+                        posted: data.autopilot?.posted ?? 0,
+                        failed: data.autopilot?.failed ?? 0,
+                        blogPublished: data.autopilot?.blogPublished,
+                        error: data.error,
+                      })
+                      // Refresh page to show new posts
+                      setTimeout(() => window.location.reload(), 2000)
+                    } catch (e: any) {
+                      setRunResult({ ok: false, posted: 0, failed: 0, error: e.message })
+                    } finally {
+                      setRunningNow(false)
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-lofty-200 text-lofty-700 hover:bg-lofty-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {runningNow
+                    ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    : <RefreshCw className="w-3.5 h-3.5" />}
+                  Run {slot} now
+                </button>
+              ))}
+              <span className="text-xs text-gray-400">Runs the full research + post cycle immediately</span>
+            </div>
+
+            {/* Run result banner */}
+            {runResult && (
+              <div className={`flex items-start gap-2 px-4 py-3 rounded-xl text-sm ${runResult.ok ? "bg-green-50 border border-green-200 text-green-800" : "bg-red-50 border border-red-200 text-red-800"}`}>
+                {runResult.ok
+                  ? <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  : <XCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />}
+                <div>
+                  {runResult.ok
+                    ? <>
+                        <span className="font-semibold">Done! </span>
+                        {runResult.blogPublished && <span>📝 Blog post published. </span>}
+                        <span>{runResult.posted} post{runResult.posted !== 1 ? "s" : ""} published</span>
+                        {runResult.failed > 0 && <span>, {runResult.failed} failed — check error messages below</span>}
+                        <span className="text-green-600 text-xs"> (refreshing...)</span>
+                      </>
+                    : <><span className="font-semibold">Error: </span>{runResult.error ?? "Unknown error"}</>}
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-lg font-semibold text-gray-900">All Posts ({posts.length})</h2>
             </div>
@@ -520,7 +681,18 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
                           {post.likes != null && <span className="flex items-center gap-1"><Heart className="w-3 h-3" /> {post.likes.toLocaleString()}</span>}
                           {post.comments != null && <span className="flex items-center gap-1"><MessageCircle className="w-3 h-3" /> {post.comments.toLocaleString()}</span>}
                           {post.shares != null && <span className="flex items-center gap-1"><Share2 className="w-3 h-3" /> {post.shares.toLocaleString()}</span>}
+                          {post.externalId && (post.externalId.startsWith("http")) && (
+                            <a href={post.externalId} target="_blank" rel="noopener noreferrer"
+                              className="flex items-center gap-1 text-lofty-600 hover:underline ml-auto">
+                              <ExternalLink className="w-3 h-3" /> Ver en {platform?.label}
+                            </a>
+                          )}
                         </div>
+                      )}
+                      {post.status === "FAILED" && post.errorMessage && (
+                        <p className="mt-1.5 text-xs text-red-500 bg-red-50 rounded-lg px-2 py-1">
+                          ⚠ {post.errorMessage}
+                        </p>
                       )}
                     </div>
                     {post.status === "DRAFT" && (
@@ -596,6 +768,45 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
         {/* ── ACCOUNTS ── */}
         {activeTab === "accounts" && (
           <div className="max-w-3xl mx-auto space-y-4">
+            {youtubeBanner && (
+              <div className={cn(
+                "flex items-start gap-3 rounded-xl p-4 text-sm border",
+                youtubeBanner.type === "success"
+                  ? "bg-green-50 border-green-200 text-green-800"
+                  : "bg-red-50 border-red-200 text-red-800"
+              )}>
+                {youtubeBanner.type === "success"
+                  ? <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  : <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />}
+                <span>{youtubeBanner.msg}</span>
+                <button onClick={() => setYoutubeBanner(null)} className="ml-auto text-xs underline">Dismiss</button>
+              </div>
+            )}
+
+            {/* Token error warnings — only when the LATEST post for that platform failed with an auth error */}
+            {accounts.filter(a => a.isConnected).map(a => {
+              const platformPosts = posts.filter(p => p.platform === a.platform)
+              if (platformPosts.length === 0) return null
+              const latest = platformPosts[0] // posts are ordered newest-first
+              const isAuthError = latest.status === "FAILED" && !!latest.errorMessage && (
+                latest.errorMessage.toLowerCase().includes("token") ||
+                latest.errorMessage.toLowerCase().includes("oauth") ||
+                latest.errorMessage.toLowerCase().includes("permission") ||
+                latest.errorMessage.toLowerCase().includes("expired")
+              )
+              if (!isAuthError) return null
+              return (
+                <div key={a.platform} className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-800">
+                  <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <span className="font-semibold">{a.platform} needs to be reconnected.</span>
+                    <span className="ml-1">Error: {latest.errorMessage}</span>
+                    <p className="text-xs mt-0.5 text-red-600">Disconnect and reconnect below to get a fresh token with all required permissions.</p>
+                  </div>
+                </div>
+              )
+            })}
+
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-700">
               <strong>Setup required:</strong> Connect your social accounts using their API credentials. Each platform requires an access token from their developer portal.
             </div>
@@ -653,7 +864,7 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
                     </div>
                   </div>
 
-                  {isConnecting && (
+                  {isConnecting && platform.id !== "YOUTUBE" && platform.id !== "FACEBOOK" && platform.id !== "INSTAGRAM" && (
                     <div className="mt-4 pt-4 border-t space-y-3">
                       <div className="grid grid-cols-2 gap-3">
                         <div>
@@ -666,18 +877,6 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
                             className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-lofty-500"
                           />
                         </div>
-                        {(platform.id === "FACEBOOK" || platform.id === "INSTAGRAM") && (
-                          <div>
-                            <label className="text-xs font-semibold text-gray-600 mb-1 block">Page ID</label>
-                            <input
-                              type="text"
-                              value={connectForm.pageId}
-                              onChange={e => setConnectForm(f => ({ ...f, pageId: e.target.value }))}
-                              placeholder="123456789"
-                              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-lofty-500"
-                            />
-                          </div>
-                        )}
                       </div>
                       <div>
                         <label className="text-xs font-semibold text-gray-600 mb-1 block">Access Token</label>
@@ -696,6 +895,59 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
                       >
                         Save & Connect
                       </button>
+                    </div>
+                  )}
+
+                  {/* Facebook & Instagram use Meta OAuth — single button, no manual form */}
+                  {isConnecting && (platform.id === "FACEBOOK" || platform.id === "INSTAGRAM") && (
+                    <div className="mt-4 pt-4 border-t">
+                      <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-4">
+                        <p className="text-sm font-semibold text-blue-800 mb-1">
+                          {platform.id === "INSTAGRAM" ? "Instagram connects through Facebook" : "Facebook requires Meta OAuth"}
+                        </p>
+                        <p className="text-xs text-blue-700 leading-relaxed">
+                          {platform.id === "INSTAGRAM"
+                            ? "Click below and log in to Facebook. The system will automatically detect the Instagram Business Account linked to your Facebook Page and connect both at once."
+                            : "Click below to log in with Facebook. The system will request permission to manage your Page posts and auto-detect any linked Instagram Business Account."}
+                        </p>
+                        <ul className="mt-2 text-xs text-blue-700 list-disc list-inside space-y-0.5">
+                          <li>Permissions: <code>pages_manage_posts</code>, <code>pages_read_engagement</code></li>
+                          {platform.id === "INSTAGRAM" && <li>Instagram permissions: <code>instagram_basic</code>, <code>instagram_content_publish</code></li>}
+                          <li>Page token does not expire — no need to reconnect</li>
+                          <li>Make sure <strong>FACEBOOK_APP_ID</strong> and <strong>FACEBOOK_APP_SECRET</strong> are set in Railway</li>
+                        </ul>
+                      </div>
+                      <a
+                        href="/api/social/facebook-auth"
+                        className="flex items-center justify-center gap-2 w-full px-5 py-3 bg-[#1877F2] text-white rounded-xl text-sm font-semibold hover:bg-blue-700"
+                      >
+                        <Facebook className="w-4 h-4" />
+                        {platform.id === "INSTAGRAM" ? "Connect via Facebook" : "Authorize with Facebook"}
+                      </a>
+                    </div>
+                  )}
+
+                  {/* YouTube uses OAuth — show expanded info panel instead of manual form */}
+                  {isConnecting && platform.id === "YOUTUBE" && (
+                    <div className="mt-4 pt-4 border-t">
+                      <div className="bg-red-50 border border-red-100 rounded-xl p-4 mb-4">
+                        <p className="text-sm font-semibold text-red-700 mb-1">YouTube requires Google OAuth2</p>
+                        <p className="text-xs text-red-600 leading-relaxed">
+                          Clicking below will redirect you to Google&apos;s consent screen. Grant access to upload videos on your behalf. Make sure <strong>YOUTUBE_CLIENT_ID</strong> and <strong>YOUTUBE_CLIENT_SECRET</strong> are set in Railway env vars.
+                        </p>
+                        <ul className="mt-2 text-xs text-red-600 list-disc list-inside space-y-0.5">
+                          <li>Permissions requested: <code>youtube.upload</code> + <code>youtube.readonly</code></li>
+                          <li>Videos will be published as public YouTube Shorts</li>
+                          <li>Titles, descriptions &amp; tags are AI-generated in Spanish, SEO-optimized</li>
+                        </ul>
+                      </div>
+                      <a
+                        href="/api/social/youtube-auth"
+                        className="flex items-center justify-center gap-2 w-full px-5 py-3 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700"
+                      >
+                        <Youtube className="w-4 h-4" />
+                        Authorize with Google
+                      </a>
                     </div>
                   )}
                 </div>

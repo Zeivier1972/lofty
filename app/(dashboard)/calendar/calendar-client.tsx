@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, Clock, MapPi
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { cn, APPOINTMENT_TYPES } from "@/lib/utils"
+import HelpPanel from "@/components/help-panel"
 
 interface CalendarClientProps {
   appointments: any[]
@@ -343,9 +344,12 @@ export default function CalendarClient({ appointments: initialAppointments }: Ca
             {appointments.length} appointments this month
           </p>
         </div>
-        <Button size="sm" className="bg-lofty-600 hover:bg-lofty-700 gap-2" onClick={() => openModal(selectedDay)}>
-          <Plus className="w-4 h-4" /> New Appointment
-        </Button>
+        <div className="flex items-center gap-2">
+          <HelpPanel section="calendar" />
+          <Button size="sm" className="bg-lofty-600 hover:bg-lofty-700 gap-2" onClick={() => openModal(selectedDay)}>
+            <Plus className="w-4 h-4" /> New Appointment
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">

@@ -9,11 +9,11 @@ async function main() {
   // Create default user
   const hashedPassword = await bcrypt.hash("password123", 12)
   const user = await prisma.user.upsert({
-    where: { email: "agent@loftycrm.com" },
+    where: { email: "agent@casaicrm.com" },
     update: {},
     create: {
       name: "Alex Johnson",
-      email: "agent@loftycrm.com",
+      email: "agent@casaicrm.com",
       password: hashedPassword,
       role: "AGENT",
       phone: "(555) 123-4567",
@@ -495,7 +495,7 @@ async function main() {
   })
 
   console.log("✅ Database seeded successfully!")
-  console.log(`\nLogin credentials:\n  Email: agent@loftycrm.com\n  Password: password123`)
+  console.log(`\nLogin credentials:\n  Email: agent@casaicrm.com\n  Password: password123`)
 }
 
 main()

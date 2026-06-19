@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog"
 import { cn, formatCurrency, formatDate, getInitials } from "@/lib/utils"
 import { useToast } from "@/components/ui/use-toast"
+import HelpPanel from "@/components/help-panel"
 
 interface PipelineClientProps {
   pipeline: any
@@ -444,7 +445,8 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
             {totalLeads} leads · {formatCurrency(totalValue)} total value
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          <HelpPanel section="pipeline" />
           <Button
             variant={selectMode ? "default" : "outline"}
             size="sm"

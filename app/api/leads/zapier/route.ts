@@ -83,5 +83,5 @@ export async function POST(req: Request) {
 
 // Zapier checks the endpoint with GET to confirm it's alive
 export async function GET() {
-  return NextResponse.json({ status: "ok", endpoint: "Lofty CRM Zapier Lead Webhook" })
+  return NextResponse.json({ status: "ok", endpoint: "Casai Zapier Lead Webhook" })
 }

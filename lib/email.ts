@@ -57,7 +57,7 @@ async function sendViaNodemailer(opts: EmailOptions): Promise<boolean> {
   const t = getTransporter()
   if (!t) return false
   await t.sendMail({
-    from: opts.from || process.env.SMTP_FROM || "CRM <noreply@loftycrm.com>",
+    from: opts.from || process.env.SMTP_FROM || "CRM <noreply@casaicrm.com>",
     to: opts.to,
     subject: opts.subject,
     html: opts.html,

@@ -4,6 +4,15 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth"
 import { initiateCall } from "@/lib/sms"
+import { handleCallOutcome } from "@/lib/lead-flow"
+
+// Map Twilio/dialer statuses to VAPI-compatible end reasons
+const TWILIO_STATUS_MAP: Record<string, string> = {
+  COMPLETED: "completed",            // answered — NOT in NO_ANSWER_REASONS → triggers Warm stage
+  NO_ANSWER: "customer-did-not-answer",
+  BUSY: "customer-busy",
+  FAILED: "pipeline-error",
+}
 
 export async function POST(req: Request) {
   const session = await auth()
@@ -73,8 +82,8 @@ export async function PATCH(req: Request) {
 
   // Update session stats
   if (call.sessionId) {
-    const session = await prisma.dialerSession.findUnique({ where: { id: call.sessionId } })
-    if (session) {
+    const sess = await prisma.dialerSession.findUnique({ where: { id: call.sessionId } })
+    if (sess) {
       await prisma.dialerSession.update({
         where: { id: call.sessionId },
         data: {
@@ -84,6 +93,17 @@ export async function PATCH(req: Request) {
           noAnswers: status === "NO_ANSWER" ? { increment: 1 } : undefined,
         },
       })
+    }
+  }
+
+  // Advance the lead pipeline stage — same logic as Sofia, but flagged as agent call
+  if (call.contactId && ["COMPLETED", "NO_ANSWER", "BUSY", "FAILED"].includes(status)) {
+    const endedReason = TWILIO_STATUS_MAP[status] ?? "customer-did-not-answer"
+    const durationSecs = typeof duration === "number" ? duration : 0
+    try {
+      await handleCallOutcome(call.contactId, endedReason, durationSecs, true)
+    } catch (err) {
+      console.error("[dialer/call] handleCallOutcome failed:", err)
     }
   }
 
