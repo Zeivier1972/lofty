@@ -2,7 +2,7 @@
 const nextConfig = {
   experimental: {
     instrumentationHook: true,
-    serverComponentsExternalPackages: ["@prisma/client", "bcryptjs", "rets-client", "node-expat"],
+    serverComponentsExternalPackages: ["@prisma/client", "bcryptjs", "rets-client", "node-expat", "cloudinary", "node-cron", "openai", "@anthropic-ai/sdk"],
     serverActions: {
       bodySizeLimit: "10mb",
     },
