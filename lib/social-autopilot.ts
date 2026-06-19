@@ -281,7 +281,14 @@ function pickCatherineAvatar(
     return pick.avatar_id
   }
 
-  console.warn("[social-autopilot] No Catherine talking_photo found — no video will be generated")
+  // Last resort: use whatever talking_photo is available (any custom avatar is better than none)
+  if (talkingPhotos.length > 0) {
+    const pick = talkingPhotos[dayOfWeek % talkingPhotos.length]
+    console.warn(`[social-autopilot] No Catherine avatar matched — using first available: "${pick.avatar_name}" (${pick.avatar_id}). Add its ID to CATHERINE_TALKING_PHOTO_IDS to confirm it.`)
+    return pick.avatar_id
+  }
+
+  console.warn("[social-autopilot] No talking_photos found in HeyGen account — no video will be generated")
   return null
 }
 
@@ -1043,8 +1050,13 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
   for (const account of accounts) {
     try {
       // YouTube only gets real HeyGen MP4 videos — skip it on non-video slots
-      if (account.platform === "YOUTUBE" && !isVideoSlot) {
-        console.log("[social-autopilot] Skipping YouTube — no video today (use Tue/Fri evening slot)")
+      // Also skip if it IS a video slot but HeyGen failed to generate a video
+      if (account.platform === "YOUTUBE" && (!isVideoSlot || (isVideoSlot && !sharedVideoId))) {
+        if (!isVideoSlot) {
+          console.log("[social-autopilot] Skipping YouTube — no video today (use Tue/Fri evening slot)")
+        } else {
+          console.log("[social-autopilot] Skipping YouTube — HeyGen video generation failed (check avatar setup)")
+        }
         result.skipped++
         continue
       }
