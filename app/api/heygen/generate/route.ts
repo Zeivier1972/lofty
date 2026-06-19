@@ -65,6 +65,24 @@ function splitScriptForBRoll(script: string): string[] {
   return scenes.length > 1 ? scenes : [script]
 }
 
+// Pick a contextually relevant real estate background based on what the script segment mentions
+function pickSceneBackground(sceneText: string, index: number): Record<string, string> {
+  const t = sceneText.toLowerCase()
+
+  if (/piscina|pool|jardín|jardin|garden/.test(t)) return STYLE_CONFIG.handmade.background
+  if (/familia|family|niños|ninos|children|hogar|doral|kendall|suburban/.test(t)) return STYLE_CONFIG.warm.background
+  if (/playa|beach|mar\b|ocean|waterfront|biscayne/.test(t)) return STYLE_CONFIG.pop_culture.background
+  if (/noche|night|highrise|rascacielos|brickell|downtown/.test(t)) return STYLE_CONFIG.thriller.background
+  if (/penthouse|loft|interior|sala|cocina|kitchen/.test(t)) return STYLE_CONFIG.iconic.background
+  if (/moderno|modern|minimalista|minimalist|contemporáneo/.test(t)) return STYLE_CONFIG.retro_tech.background
+  if (/blanca|white|clean|limpia|elegante|lujo|luxury/.test(t)) return STYLE_CONFIG.modern.background
+  if (/inversi|invest|dólares|dolares|capital|ingreso|renta/.test(t)) return STYLE_CONFIG.cinematic.background
+  if (/vendedor|seller|vender|precio|staging/.test(t)) return STYLE_CONFIG.print.background
+
+  // Default: rotate through pool for variety
+  return { type: "image", url: BROLL_IMAGE_POOL[index % BROLL_IMAGE_POOL.length] }
+}
+
 export async function POST(req: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -90,16 +108,13 @@ export async function POST(req: Request) {
     let videoInputs: Record<string, unknown>[]
 
     if (broll) {
-      // Multi-scene B-Roll: split script, each scene gets a different real estate background
+      // Multi-scene B-Roll: split script, each scene gets a contextually matched background
       const scenes = splitScriptForBRoll(script)
-      videoInputs = scenes.map((sceneText, i) => {
-        const bgUrl = BROLL_IMAGE_POOL[i % BROLL_IMAGE_POOL.length]
-        return {
-          character,
-          voice: { type: "text", input_text: sceneText, voice_id: voiceId },
-          background: { type: "image", url: bgUrl },
-        }
-      })
+      videoInputs = scenes.map((sceneText, i) => ({
+        character,
+        voice: { type: "text", input_text: sceneText, voice_id: voiceId },
+        background: pickSceneBackground(sceneText, i),
+      }))
     } else {
       // Single scene — apply selected style background if any
       const videoInput: Record<string, unknown> = {

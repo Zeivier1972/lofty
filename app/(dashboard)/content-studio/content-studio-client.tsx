@@ -909,6 +909,12 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
   const [status, setStatus] = useState<"idle" | "processing" | "completed" | "failed">("idle")
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null)
+  const [postPlatform, setPostPlatform] = useState("INSTAGRAM")
+  const [postCaption, setPostCaption] = useState("")
+  const [generatingCaption, setGeneratingCaption] = useState(false)
+  const [publishing, setPublishing] = useState(false)
+  const [publishResult, setPublishResult] = useState<"idle" | "success" | "error">("idle")
+  const [publishError, setPublishError] = useState("")
   const pollRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
@@ -975,6 +981,50 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
         }
       } catch { /* keep polling */ }
     }, 6000)
+  }
+
+  const generateCaption = async () => {
+    setGeneratingCaption(true)
+    setPostCaption("")
+    try {
+      const res = await fetch("/api/heygen/video-caption", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ platform: postPlatform, script, topic: researchBrief?.topic }),
+      })
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      setPostCaption(data.content || "")
+      toast({ title: "Texto generado con IA ✨" })
+    } catch (e: any) {
+      toast({ title: "Error generando texto", description: e.message, variant: "destructive" })
+    } finally {
+      setGeneratingCaption(false)
+    }
+  }
+
+  const publishVideo = async () => {
+    if (!videoUrl || !postCaption.trim()) return
+    setPublishing(true)
+    setPublishResult("idle")
+    setPublishError("")
+    try {
+      const res = await fetch("/api/heygen/post-video", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ platform: postPlatform, videoUrl, content: postCaption }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) throw new Error(data.error || "Publicación falló")
+      setPublishResult("success")
+      toast({ title: `¡Publicado en ${postPlatform}! 🎉` })
+    } catch (e: any) {
+      setPublishResult("error")
+      setPublishError(e.message)
+      toast({ title: "Error al publicar", description: e.message, variant: "destructive" })
+    } finally {
+      setPublishing(false)
+    }
   }
 
   const generateAIScript = async () => {
@@ -1265,25 +1315,114 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
 
       {/* Result */}
       {status === "completed" && videoUrl && (
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="bg-gray-900 flex items-center justify-center p-4">
-            <video src={videoUrl} controls poster={thumbnailUrl || undefined}
-              className="max-w-full rounded-xl" style={{ maxHeight: 400 }} />
-          </div>
-          <div className="p-4 flex items-center gap-3 flex-wrap">
-            <span className="flex items-center gap-1.5 text-sm font-medium text-green-700">
-              <Check className="w-4 h-4" /> Video listo
-            </span>
-            <div className="ml-auto flex gap-2">
-              <a href={videoUrl} target="_blank"
-                className="flex items-center gap-1.5 px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
-                <ExternalLink className="w-4 h-4" /> Abrir
-              </a>
-              <a href={videoUrl} download="video-ad.mp4"
-                className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors">
-                <Download className="w-4 h-4" /> Descargar
-              </a>
+        <div className="space-y-4">
+          {/* Video player */}
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="bg-gray-900 flex items-center justify-center p-4">
+              <video src={videoUrl} controls poster={thumbnailUrl || undefined}
+                className="max-w-full rounded-xl" style={{ maxHeight: 400 }} />
             </div>
+            <div className="p-4 flex items-center gap-3 flex-wrap">
+              <span className="flex items-center gap-1.5 text-sm font-medium text-green-700">
+                <Check className="w-4 h-4" /> Video listo
+              </span>
+              <div className="ml-auto flex gap-2">
+                <a href={videoUrl} target="_blank"
+                  className="flex items-center gap-1.5 px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
+                  <ExternalLink className="w-4 h-4" /> Abrir
+                </a>
+                <a href={videoUrl} download="video-ad.mp4"
+                  className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors">
+                  <Download className="w-4 h-4" /> Descargar
+                </a>
+              </div>
+            </div>
+          </div>
+
+          {/* Publish to social section */}
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-4">
+            <h3 className="text-base font-semibold text-gray-800 flex items-center gap-2">
+              <Send className="w-4 h-4 text-purple-600" />
+              Publicar en redes sociales
+            </h3>
+
+            {/* Platform selector */}
+            <div>
+              <p className="text-xs font-semibold text-gray-600 mb-2">Plataforma</p>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { id: "INSTAGRAM", label: "Instagram Reels" },
+                  { id: "FACEBOOK",  label: "Facebook Video" },
+                  { id: "YOUTUBE",   label: "YouTube Shorts" },
+                  { id: "TIKTOK",    label: "TikTok" },
+                  { id: "LINKEDIN",  label: "LinkedIn" },
+                ].map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => { setPostPlatform(p.id); setPostCaption(""); setPublishResult("idle") }}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-xs font-medium border transition-all",
+                      postPlatform === p.id
+                        ? "bg-purple-600 text-white border-purple-600"
+                        : "border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50"
+                    )}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Caption generator */}
+            <button
+              onClick={generateCaption}
+              disabled={generatingCaption}
+              className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl text-sm font-semibold hover:from-purple-700 hover:to-indigo-700 transition-all disabled:opacity-60"
+            >
+              {generatingCaption
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> Generando texto SEO y hashtags…</>
+                : <><Sparkles className="w-4 h-4" /> Generar texto con IA para {postPlatform}</>}
+            </button>
+
+            {postCaption && (
+              <>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-xs font-semibold text-gray-600">Texto generado — edítalo si quieres</p>
+                    <span className="text-xs text-gray-400">{postCaption.length} chars</span>
+                  </div>
+                  <textarea
+                    value={postCaption}
+                    onChange={e => setPostCaption(e.target.value)}
+                    rows={8}
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 resize-y"
+                  />
+                </div>
+
+                {publishResult === "success" ? (
+                  <div className="flex items-center gap-2 px-4 py-3 bg-green-50 border border-green-200 rounded-xl text-sm text-green-800 font-medium">
+                    <Check className="w-4 h-4" /> ¡Publicado exitosamente en {postPlatform}!
+                  </div>
+                ) : (
+                  <>
+                    {publishResult === "error" && (
+                      <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700">
+                        {publishError}
+                      </div>
+                    )}
+                    <button
+                      onClick={publishVideo}
+                      disabled={publishing || !postCaption.trim()}
+                      className="w-full flex items-center justify-center gap-2 py-3 bg-purple-600 text-white rounded-xl font-semibold text-sm hover:bg-purple-700 transition-colors disabled:opacity-50"
+                    >
+                      {publishing
+                        ? <><Loader2 className="w-4 h-4 animate-spin" /> Publicando en {postPlatform}…</>
+                        : <><Send className="w-4 h-4" /> Publicar en {postPlatform}</>}
+                    </button>
+                  </>
+                )}
+              </>
+            )}
           </div>
         </div>
       )}
