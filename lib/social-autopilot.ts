@@ -344,6 +344,10 @@ async function getHeyGenAvatar(dayOfWeek: number): Promise<{ avatarId: string; v
     const voices: Array<{ voice_id: string; language?: string; locale?: string; gender?: string; name?: string }> =
       voicesData?.data?.voices ?? []
 
+    if (voices.length === 0) {
+      console.error("[social-autopilot] HeyGen voices response empty:", JSON.stringify(voicesData))
+    }
+
     const spanishFemale = voices.find(
       v =>
         (v.language?.toLowerCase().includes("es") || v.locale?.toLowerCase().includes("es")) &&
@@ -392,8 +396,9 @@ async function triggerHeyGenVideo(script: string, dayOfWeek: number): Promise<st
     const payload = {
       video_inputs: [videoInput],
       dimension: { width: 1080, height: 1920 },
-      aspect_ratio: "9:16",
     }
+
+    console.log("[social-autopilot] HeyGen generate payload:", JSON.stringify(payload).slice(0, 300))
 
     const res = await fetch("https://api.heygen.com/v2/video/generate", {
       method: "POST",
@@ -405,6 +410,13 @@ async function triggerHeyGenVideo(script: string, dayOfWeek: number): Promise<st
     })
 
     const data = await res.json()
+
+    if (!data?.data?.video_id) {
+      console.error(`[social-autopilot] HeyGen generate failed (HTTP ${res.status}):`, JSON.stringify(data))
+    } else {
+      console.log(`[social-autopilot] HeyGen generate success — video_id: ${data.data.video_id}`)
+    }
+
     return (data?.data?.video_id as string) ?? null
   } catch (err) {
     console.error("[social-autopilot] HeyGen video generation failed:", err)
@@ -985,6 +997,7 @@ export interface AutopilotResult {
   failed: number
   videoQueued: number
   skipped: number
+  heygenError?: string
 }
 
 export async function runAutopilot(slot: "morning" | "evening"): Promise<AutopilotResult> {
@@ -1046,10 +1059,16 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
       sharedVideoId = await triggerHeyGenVideo(videoScript, dayOfWeek)
       if (sharedVideoId) {
         console.log(`[social-autopilot] HeyGen video queued — videoId: ${sharedVideoId}`)
+      } else {
+        result.heygenError = "triggerHeyGenVideo returned null — check Railway logs for [social-autopilot] HeyGen errors"
       }
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
       console.error("[social-autopilot] Video script/HeyGen trigger failed:", err)
+      result.heygenError = msg
     }
+  } else if (isVideoSlot && !heygenConfigured) {
+    result.heygenError = "HEYGEN_API_KEY not set"
   }
 
   // 6. Build prompt metadata to store with each post (YouTube uses this for title/tags)
