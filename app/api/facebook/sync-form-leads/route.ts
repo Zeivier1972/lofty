@@ -56,6 +56,15 @@ export async function POST(req: Request) {
 
       if (!firstName && !email && !phone) { skipped++; continue }
 
+      // Extract any UTM / hidden tag fields from the form submission
+      const utmCampaign = fields["utm_campaign"] || undefined
+      const hiddenTag = fields["tag"] || fields["source_tag"] || fields["hidden_tag"] || fields["custom_tag"] || undefined
+      const autoTags: string[] = []
+      if (utmCampaign) autoTags.push(utmCampaign)
+      if (hiddenTag) autoTags.push(hiddenTag)
+      // Always tag with formName so campaign-triggered smart plans can fire
+      if (formName) autoTags.push(formName)
+
       try {
         await ingestLead({
           firstName,
@@ -66,6 +75,7 @@ export async function POST(req: Request) {
           campaign: formName || undefined,
           facebookLeadId: lead.id,
           smsConsent: !!phone,
+          tags: autoTags.length > 0 ? autoTags : undefined,
         })
         imported++
       } catch (e: any) {
