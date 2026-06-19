@@ -8,7 +8,7 @@ import {
   Phone, Mail, ChevronLeft, ChevronRight, MoreVertical,
   Trash2, Edit, Eye, MessageSquare, X, Send, CheckSquare,
   FileText, AlertCircle, CheckCircle2, Zap, Settings2, MoveRight, Loader2,
-  PhoneCall, PhoneOff, SkipForward, CheckCircle, Clock,
+  PhoneCall, PhoneOff, SkipForward, CheckCircle, Clock, Tag,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -988,6 +988,7 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
   const [deletingContact, setDeletingContact] = useState<string | null>(null)
   const [bulkDeleting, setBulkDeleting] = useState(false)
   const [bulkMoving, setBulkMoving] = useState(false)
+  const [bulkTagging, setBulkTagging] = useState(false)
   const [showPowerDialer, setShowPowerDialer] = useState(false)
 
   const totalPages = Math.ceil(total / pageSize)
@@ -1082,6 +1083,24 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
     } catch {
       toast({ title: "Failed to move contacts", variant: "destructive" })
     } finally { setBulkMoving(false) }
+  }
+
+  const bulkApplyTag = async (tagId: string, tagName: string) => {
+    if (!selected.size) return
+    setBulkTagging(true)
+    try {
+      const res = await fetch("/api/contacts/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: Array.from(selected), tagId }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      toast({ title: `Tag "${tagName}" applied to ${data.tagged} contact${data.tagged !== 1 ? "s" : ""}` })
+      router.refresh()
+    } catch {
+      toast({ title: "Failed to apply tag", variant: "destructive" })
+    } finally { setBulkTagging(false) }
   }
 
   const updateFilter = (key: string, value: string) => {
@@ -1224,6 +1243,26 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
                 ))}
                 {stages.length === 0 && (
                   <DropdownMenuItem disabled className="text-gray-400 text-xs">No stages configured</DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* Tag contacts */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" className="bg-white/10 hover:bg-white/20 text-white border-white/20 gap-1.5" disabled={bulkTagging}>
+                  {bulkTagging ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Tag className="w-3.5 h-3.5" />}
+                  Tag
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-48 max-h-64 overflow-y-auto">
+                {tags.length > 0 ? tags.map((t: any) => (
+                  <DropdownMenuItem key={t.id} onClick={() => bulkApplyTag(t.id, t.name)} className="gap-2">
+                    <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: t.color || "#6366F1" }} />
+                    {t.name}
+                  </DropdownMenuItem>
+                )) : (
+                  <DropdownMenuItem disabled className="text-gray-400 text-xs">No tags created yet</DropdownMenuItem>
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
