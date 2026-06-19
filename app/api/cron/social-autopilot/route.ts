@@ -56,6 +56,7 @@ export async function GET(req: Request) {
         content: true,
         createdAt: true,
         externalId: true,
+        errorMessage: true,
       },
     })
 
