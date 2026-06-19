@@ -401,18 +401,14 @@ async function triggerHeyGenVideo(script: string, dayOfWeek: number): Promise<st
 
     const character: Record<string, unknown> = isTalkingPhoto
       ? { type: "talking_photo", talking_photo_id: avatarInfo.avatarId }
-      : { type: "avatar", avatar_id: avatarInfo.avatarId, avatar_style: "closeup" }
+      : { type: "avatar", avatar_id: avatarInfo.avatarId, avatar_style: "normal" }
 
     const videoInput: Record<string, unknown> = {
       character,
       voice: { type: "text", input_text: script, voice_id: avatarInfo.voiceId },
     }
     if (!isTalkingPhoto) {
-      // Professional Miami real estate background for cinematic look
-      videoInput.background = {
-        type: "image",
-        url: "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1280&q=80",
-      }
+      videoInput.background = { type: "color", value: "#1E3A5F" }
     }
 
     const payload = {
