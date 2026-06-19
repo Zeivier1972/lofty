@@ -21,10 +21,18 @@ const STYLE_CONFIG: Record<string, { avatar_style: string; background: Record<st
   print:        { avatar_style: "normal",  background: { type: "color", value: "#1C1917" } },
 }
 
-// HeyGen talking_photo IDs require character.type = "talking_photo" + talking_photo_id.
-// Regular avatar IDs use character.type = "avatar" + avatar_id.
-// Catherine's avatars are regular type in this account — talking_photos list is empty.
-const TALKING_PHOTO_IDS = new Set<string>([])
+// Catherine Gomez "8 looks" talking_photo IDs — confirmed by user
+const TALKING_PHOTO_IDS = new Set([
+  "ab393d45f3044a89b92fc77d17f321b7",
+  "28e35d5f82f64101a2584fb29e841a88",
+  "ad3b10e46ce44ad8b9a9931f65e151cf",
+  "7ec891d9cc9f43ffa0f38f67d945d38f",
+  "0215c5d293fb4c89b42130da184ded5b",
+  "bc75573c848f42218ee27d37e623a4e6",
+  "701d93d2d1834f2589a987aaf701720d",
+  "f2bf0415eb4f4185b37673d3c876423c",
+  "310728040e89413aa1c5b04ebb8bb9d3",
+])
 
 export async function POST(req: Request) {
   const session = await auth()
@@ -44,17 +52,9 @@ export async function POST(req: Request) {
     const stylePreset = styleId ? (STYLE_CONFIG[styleId] ?? null) : null
     const isTalkingPhoto = TALKING_PHOTO_IDS.has(avatarId)
 
-    // HeyGen API differs for talking_photos vs stock avatars
     const character: Record<string, unknown> = isTalkingPhoto
-      ? {
-          type: "talking_photo",
-          talking_photo_id: avatarId,
-        }
-      : {
-          type: "avatar",
-          avatar_id: avatarId,
-          avatar_style: stylePreset?.avatar_style ?? "normal",
-        }
+      ? { type: "talking_photo", talking_photo_id: avatarId }
+      : { type: "avatar", avatar_id: avatarId, avatar_style: stylePreset?.avatar_style ?? "normal" }
 
     const videoInput: Record<string, unknown> = {
       character,
@@ -71,10 +71,7 @@ export async function POST(req: Request) {
         "X-Api-Key": process.env.HEYGEN_API_KEY,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        video_inputs: [videoInput],
-        dimension,
-      }),
+      body: JSON.stringify({ video_inputs: [videoInput], dimension }),
     })
 
     const data = await res.json()

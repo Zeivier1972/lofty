@@ -243,13 +243,13 @@ interface HeyGenAvatar {
   preview_image_url?: string
 }
 
-// Catherine's 9 preferred talking_photo avatar IDs — rotate by day of week.
+// Catherine Gomez "8 looks" talking_photo avatar IDs — hardcoded, rotate by day of week.
 const CATHERINE_TALKING_PHOTO_IDS: string[] = [
   "ab393d45f3044a89b92fc77d17f321b7",
   "28e35d5f82f64101a2584fb29e841a88",
-  "0215c5d293fb4c89b42130da184ded5b",
+  "ad3b10e46ce44ad8b9a9931f65e151cf",
   "7ec891d9cc9f43ffa0f38f67d945d38f",
-  "bb0a60fd40a0457c98e2ca93c822601c",
+  "0215c5d293fb4c89b42130da184ded5b",
   "bc75573c848f42218ee27d37e623a4e6",
   "701d93d2d1834f2589a987aaf701720d",
   "f2bf0415eb4f4185b37673d3c876423c",
@@ -313,75 +313,38 @@ async function getHeyGenAvatar(dayOfWeek: number): Promise<{ avatarId: string; v
   if (!apiKey) return null
 
   try {
-    const [avatarsRes, voicesRes] = await Promise.all([
-      fetch("https://api.heygen.com/v2/avatars", {
-        headers: { "X-Api-Key": apiKey },
-      }),
-      fetch("https://api.heygen.com/v2/voices", {
-        headers: { "X-Api-Key": apiKey },
-      }),
-    ])
+    // Pick Catherine's avatar directly — hardcoded IDs rotate by day of week
+    // (HeyGen API doesn't return these photo avatars in /v2/avatars, so skip the API lookup)
+    const avatarId = CATHERINE_TALKING_PHOTO_IDS[dayOfWeek % CATHERINE_TALKING_PHOTO_IDS.length]
+    console.log(`[social-autopilot] Catherine avatar: look ${(dayOfWeek % CATHERINE_TALKING_PHOTO_IDS.length) + 1} → ${avatarId}`)
 
-    const avatarsData = await avatarsRes.json()
+    // Fetch voices to find Catalina (Catherine's preferred voice in HeyGen)
+    const voicesRes = await fetch("https://api.heygen.com/v2/voices", {
+      headers: { "X-Api-Key": apiKey },
+    })
     const voicesData = await voicesRes.json()
-
-    // Normalize talking_photos field names to match HeyGenAvatar interface
-    const rawTalkingPhotos: any[] = avatarsData?.data?.talking_photos ?? []
-    const talkingPhotos: HeyGenAvatar[] = rawTalkingPhotos.map((tp: any) => ({
-      avatar_id: tp.talking_photo_id || tp.id || tp.avatar_id,
-      avatar_name: tp.talking_photo_name || tp.name || tp.avatar_name,
-      preview_image_url: tp.preview_image_url,
-    })).filter((tp: HeyGenAvatar) => tp.avatar_id)
-
-    // Also collect regular (non-talking-photo) avatars as fallback
-    const regularAvatars: HeyGenAvatar[] = (avatarsData?.data?.avatars ?? []).map((a: any) => ({
-      avatar_id: a.avatar_id,
-      avatar_name: a.avatar_name,
-      gender: a.gender,
-      preview_image_url: a.preview_image_url,
-    })).filter((a: HeyGenAvatar) => a.avatar_id)
-
-    console.log(
-      `[social-autopilot] HeyGen avatars: ${regularAvatars.length} regular, ${talkingPhotos.length} talking_photos`
-    )
-
-    // Try talking_photos first; fall back to regular avatars (Catherine lives there in this account)
-    let avatarId = pickCatherineAvatar(talkingPhotos, dayOfWeek)
-    if (!avatarId) {
-      avatarId = pickCatherineAvatar(regularAvatars, dayOfWeek)
-      if (!avatarId && regularAvatars.length > 0) {
-        avatarId = regularAvatars[dayOfWeek % regularAvatars.length].avatar_id
-        console.warn(`[social-autopilot] No Catherine avatar by name — using first available regular avatar: ${regularAvatars[dayOfWeek % regularAvatars.length].avatar_name}`)
-      }
-    }
-    if (!avatarId) return null
-
-    // Voice priority: 1) Catherine's own cloned voice, 2) Spanish female, 3) any Spanish, 4) first available
-    // Use exact language match — .includes("es") incorrectly matches "Portuguese", "Vietnamese", "Japanese"
     const voices: Array<{ voice_id: string; language?: string; locale?: string; gender?: string; name?: string }> =
       voicesData?.data?.voices ?? []
 
     if (voices.length === 0) {
-      console.error("[social-autopilot] HeyGen voices response empty:", JSON.stringify(voicesData))
+      console.error("[social-autopilot] HeyGen voices empty:", JSON.stringify(voicesData))
+      return null
     }
 
     const isSpanish = (v: { language?: string; locale?: string }) =>
       v.language === "es" || v.locale?.startsWith("es-") || v.locale === "es"
 
-    const catherineVoice = voices.find(v =>
+    const catalina = voices.find(v =>
       v.name?.toLowerCase().includes("catalina") ||
       v.name?.toLowerCase().includes("catherine")
     )
     const spanishFemale = voices.find(v => isSpanish(v) && v.gender?.toLowerCase() === "female")
     const spanishAny = voices.find(v => isSpanish(v))
-    const selectedVoice = catherineVoice ?? spanishFemale ?? spanishAny ?? voices[0]
+    const selectedVoice = catalina ?? spanishFemale ?? spanishAny ?? voices[0]
     const voiceId = selectedVoice?.voice_id
     if (!voiceId) return null
 
-    console.log(
-      `[social-autopilot] Using voice: "${selectedVoice?.name}" (${voiceId})${catherineVoice ? " [Catherine natural]" : ""}`
-    )
-
+    console.log(`[social-autopilot] Voice: "${selectedVoice?.name}" (${voiceId})`)
     return { avatarId, voiceId }
   } catch (err) {
     console.error("[social-autopilot] HeyGen avatar/voice fetch failed:", err)
