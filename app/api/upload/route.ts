@@ -35,11 +35,12 @@ export async function POST(req: Request) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer())
+    const isPDF = file.type === "application/pdf"
     const isVideo = file.type.startsWith("video/")
     const isAudio = file.type.startsWith("audio/")
-    // Cloudinary uses resource_type "video" for both video and audio files
-    const resourceType = isVideo || isAudio ? "video" : "image"
-    const folder = isAudio ? "lofty-voicemails" : "lofty-crm"
+    // Cloudinary: "raw" for PDFs/docs, "video" for audio+video, "image" for everything else
+    const resourceType = isPDF ? "raw" : isVideo || isAudio ? "video" : "image"
+    const folder = isAudio ? "lofty-voicemails" : isPDF ? "lofty-documents" : "lofty-crm"
 
     const result = await new Promise<any>((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(
@@ -49,7 +50,7 @@ export async function POST(req: Request) {
       stream.end(buffer)
     })
 
-    const type = isAudio ? "audio" : isVideo ? "video" : "image"
+    const type = isPDF ? "pdf" : isAudio ? "audio" : isVideo ? "video" : "image"
     return NextResponse.json({ url: result.secure_url, type })
   } catch (e: any) {
     console.error("[Upload] Error:", e)

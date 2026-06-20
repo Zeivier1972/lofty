@@ -8,7 +8,7 @@ import {
   User, Bell, Shield, Tag, GitBranch, Globe, Save, Loader2,
   Plus, Trash2, Edit, Database, CheckCircle, ExternalLink,
   X, Key, MessageSquare, Mail, Calendar, FileSignature, Home,
-  Check, Clock, Copy, Link, Upload, Phone, Voicemail,
+  Check, Clock, Copy, Link, Upload, Phone, Voicemail, FileText,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -554,6 +554,225 @@ function VoicemailTemplatesPanel() {
             className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-gray-300 text-sm text-gray-500 hover:border-indigo-400 hover:text-indigo-700 transition-colors"
           >
             <Plus className="w-4 h-4" /> Add voicemail message
+          </button>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// ─── Brochures & Documents ───────────────────────────────────────────────────
+type Brochure = { id: string; name: string; url: string; description?: string }
+
+function BrochuresPanel() {
+  const { toast } = useToast()
+  const [brochures, setBrochures] = useState<Brochure[]>([])
+  const [loading, setLoading] = useState(true)
+  const [form, setForm] = useState<Partial<Brochure> | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
+
+  useEffect(() => {
+    fetch("/api/settings/brochures")
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setBrochures(data) })
+      .finally(() => setLoading(false))
+  }, [])
+
+  const saveBrochure = async () => {
+    if (!form?.name?.trim() || !form?.url?.trim()) return
+    setSaving(true)
+    try {
+      const res = await fetch("/api/settings/brochures", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      })
+      const saved = await res.json()
+      setBrochures(prev => {
+        const idx = prev.findIndex(b => b.id === saved.id)
+        if (idx >= 0) { const next = [...prev]; next[idx] = saved; return next }
+        return [...prev, saved]
+      })
+      setForm(null)
+      toast({ title: "Documento guardado" })
+    } catch {
+      toast({ title: "Error al guardar", variant: "destructive" })
+    } finally { setSaving(false) }
+  }
+
+  const deleteBrochure = async (id: string) => {
+    if (!confirm("¿Eliminar este documento?")) return
+    await fetch(`/api/settings/brochures?id=${id}`, { method: "DELETE" })
+    setBrochures(prev => prev.filter(b => b.id !== id))
+    toast({ title: "Documento eliminado" })
+  }
+
+  const uploadFile = async (file: File) => {
+    setUploading(true)
+    try {
+      const fd = new FormData()
+      fd.append("file", file)
+      const res = await fetch("/api/upload", { method: "POST", body: fd })
+      const data = await res.json()
+      if (data.url) setForm(prev => prev ? { ...prev, url: data.url } : prev)
+      else toast({ title: "Error al subir el archivo", variant: "destructive" })
+    } catch {
+      toast({ title: "Error al subir el archivo", variant: "destructive" })
+    } finally { setUploading(false) }
+  }
+
+  return (
+    <Card className="border-0 shadow-sm">
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <FileText className="w-4 h-4 text-blue-600" />
+          Brochures &amp; Documents
+        </CardTitle>
+        <p className="text-sm text-gray-500 mt-1">
+          Upload PDFs and documents that Sofia can email to leads during AI calls when they ask for information.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {loading && (
+          <div className="flex items-center gap-2 text-sm text-gray-400">
+            <Loader2 className="w-4 h-4 animate-spin" /> Loading…
+          </div>
+        )}
+
+        {!loading && brochures.length > 0 && (
+          <div className="space-y-3">
+            {brochures.map(b => (
+              <div key={b.id} className="border border-gray-200 rounded-xl p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-gray-900 text-sm">{b.name}</p>
+                    {b.description && <p className="text-xs text-gray-500 mt-0.5">{b.description}</p>}
+                    <a
+                      href={b.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-blue-600 hover:underline mt-1.5 flex items-center gap-1"
+                    >
+                      <ExternalLink className="w-3 h-3" /> Ver documento
+                    </a>
+                  </div>
+                  <div className="flex gap-1 flex-shrink-0">
+                    <button
+                      onClick={() => setForm({ id: b.id, name: b.name, url: b.url, description: b.description })}
+                      className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                      title="Edit"
+                    >
+                      <Edit className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => deleteBrochure(b.id)}
+                      className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                      title="Delete"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!loading && brochures.length === 0 && !form && (
+          <div className="text-center py-8 border-2 border-dashed border-gray-200 rounded-xl">
+            <FileText className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+            <p className="text-sm text-gray-500 font-medium">No documents yet</p>
+            <p className="text-xs text-gray-400 mt-1">Add PDFs or links that Sofia can send to leads during calls</p>
+          </div>
+        )}
+
+        {form ? (
+          <div className="border border-blue-200 rounded-xl p-5 bg-blue-50 space-y-4">
+            <p className="text-sm font-semibold text-blue-800">{form.id ? "Edit document" : "Add document"}</p>
+
+            <div>
+              <Label className="text-xs font-semibold text-gray-700 mb-1 block">Document name *</Label>
+              <Input
+                placeholder='e.g. "Inversión Miami 2025" or "Pre-construction Brochure"'
+                value={form.name || ""}
+                onChange={e => setForm(p => p ? { ...p, name: e.target.value } : p)}
+                className="bg-white"
+              />
+              <p className="text-xs text-gray-400 mt-1">Sofia uses this name to identify the document ("envíame el brochure de pre-construcción")</p>
+            </div>
+
+            <div>
+              <Label className="text-xs font-semibold text-gray-700 mb-1 block">Description (optional)</Label>
+              <Input
+                placeholder="Brief description shown in the email to the lead"
+                value={form.description || ""}
+                onChange={e => setForm(p => p ? { ...p, description: e.target.value } : p)}
+                className="bg-white"
+              />
+            </div>
+
+            <div>
+              <Label className="text-xs font-semibold text-gray-700 mb-2 block">File or URL *</Label>
+              {form.url ? (
+                <div className="flex items-center gap-2 p-3 bg-white border border-gray-200 rounded-lg">
+                  <FileText className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                  <a href={form.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline flex-1 truncate">
+                    {form.url}
+                  </a>
+                  <button onClick={() => setForm(p => p ? { ...p, url: "" } : p)} className="p-1 text-gray-400 hover:text-red-500 rounded">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ) : uploading ? (
+                <div className="flex items-center gap-2 px-4 py-3 rounded-lg border border-gray-200 bg-white text-sm text-gray-500">
+                  <Loader2 className="w-4 h-4 animate-spin text-blue-600" /> Uploading…
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Input
+                    placeholder="Paste any public PDF or document URL…"
+                    value={form.url || ""}
+                    onChange={e => setForm(p => p ? { ...p, url: e.target.value } : p)}
+                    className="bg-white"
+                  />
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-px bg-gray-200" />
+                    <span className="text-xs text-gray-400">or</span>
+                    <div className="flex-1 h-px bg-gray-200" />
+                  </div>
+                  <label className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 border-dashed border-gray-300 bg-white hover:border-blue-400 hover:text-blue-600 text-sm text-gray-500 cursor-pointer transition-colors">
+                    <Upload className="w-4 h-4" /> Upload PDF
+                    <input
+                      type="file"
+                      accept=".pdf,application/pdf"
+                      className="hidden"
+                      onChange={e => { if (e.target.files?.[0]) uploadFile(e.target.files[0]) }}
+                    />
+                  </label>
+                  <p className="text-xs text-gray-400">PDF files up to 10 MB</p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3">
+              <Button
+                onClick={saveBrochure}
+                disabled={saving || !form.name?.trim() || !form.url?.trim()}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white gap-2"
+              >
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Save document
+              </Button>
+              <Button variant="outline" onClick={() => setForm(null)}>Cancel</Button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setForm({ name: "", url: "", description: "" })}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-gray-300 text-sm text-gray-500 hover:border-blue-400 hover:text-blue-700 transition-colors"
+          >
+            <Plus className="w-4 h-4" /> Add document
           </button>
         )}
       </CardContent>
@@ -1315,7 +1534,10 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
 
           {/* Dialer */}
           <TabsContent value="dialer">
-            <VoicemailTemplatesPanel />
+            <div className="space-y-6">
+              <VoicemailTemplatesPanel />
+              <BrochuresPanel />
+            </div>
           </TabsContent>
 
           {/* Security */}
