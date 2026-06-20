@@ -7,7 +7,7 @@ import { randomUUID } from "crypto"
 
 const SETTING_KEY = "voicemail_templates"
 
-type VmTemplate = { id: string; name: string; text: string; audioUrl?: string }
+type VmTemplate = { id: string; name: string; text?: string; audioUrl?: string }
 
 async function getTemplates(): Promise<VmTemplate[]> {
   const row = await prisma.setting.findUnique({ where: { key: SETTING_KEY } })
@@ -35,13 +35,13 @@ export async function POST(req: Request) {
 
   const body = await req.json()
   const { id, name, text, audioUrl } = body
-  if (!name?.trim() || !text?.trim()) {
-    return NextResponse.json({ error: "name and text required" }, { status: 400 })
+  if (!name?.trim() || (!text?.trim() && !audioUrl)) {
+    return NextResponse.json({ error: "name is required; provide script text or a recorded audio" }, { status: 400 })
   }
 
   const templates = await getTemplates()
   const existing = templates.findIndex(t => t.id === id)
-  const template: VmTemplate = { id: id || randomUUID(), name: name.trim(), text: text.trim(), audioUrl: audioUrl || undefined }
+  const template: VmTemplate = { id: id || randomUUID(), name: name.trim(), text: text?.trim() || undefined, audioUrl: audioUrl || undefined }
 
   if (existing >= 0) templates[existing] = template
   else templates.push(template)

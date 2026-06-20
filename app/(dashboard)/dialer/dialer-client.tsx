@@ -1,12 +1,12 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useRef, useEffect } from "react"
 import {
   Phone, PhoneOff, PhoneMissed, PhoneCall, PhoneIncoming,
   Play, Pause, SkipForward, Plus, Trash2, Clock,
   CheckCircle2, XCircle, MessageSquare, Voicemail,
   BarChart3, Users, Target, TrendingUp,
-  ChevronDown, ChevronUp, Search, User,
+  ChevronDown, ChevronUp, Search, User, Zap,
 } from "lucide-react"
 import { cn, formatPhone } from "@/lib/utils"
 import HelpPanel from "@/components/help-panel"
@@ -84,6 +84,48 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
   const [callError, setCallError] = useState<string | null>(null)
   const [addingToQueue, setAddingToQueue] = useState(false)
   const [selectedStage, setSelectedStage] = useState<string>("all")
+  // Auto-dial countdown
+  const [countdown, setCountdown] = useState<number | null>(null)
+  const [autoDialContact, setAutoDialContact] = useState<Contact | null>(null)
+  const countdownRef = useRef<NodeJS.Timeout | null>(null)
+  const AUTO_DIAL_DELAY = 20
+
+  // Trigger dial when autoDialContact is set (runs with fresh state)
+  useEffect(() => {
+    if (!autoDialContact) return
+    const contact = autoDialContact
+    setAutoDialContact(null)
+    dialContact(contact)
+  }, [autoDialContact])
+
+  function clearCountdown() {
+    if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null }
+    setCountdown(null)
+  }
+
+  function startAutoDialCountdown(nextIdx: number, contact: Contact) {
+    clearCountdown()
+    let remaining = AUTO_DIAL_DELAY
+    setCountdown(remaining)
+    countdownRef.current = setInterval(() => {
+      remaining--
+      if (remaining <= 0) {
+        clearInterval(countdownRef.current!)
+        countdownRef.current = null
+        setCountdown(null)
+        setCurrentCallIndex(nextIdx)
+        setCallStatus("idle")
+        setAutoDialContact(contact)
+      } else {
+        setCountdown(remaining)
+      }
+    }, 1000)
+  }
+
+  function skipCountdown() {
+    clearCountdown()
+    nextCall()
+  }
 
   const filteredContacts = contacts.filter(c => {
     const name = `${c.firstName} ${c.lastName}`.toLowerCase()
@@ -207,6 +249,13 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
     setCallStatus("ended")
     setActiveCallId(null)
     setActiveTwilioSid(null)
+
+    const nextIdx = currentCallIndex + 1
+    if (sessionRunning && nextIdx < queue.length) {
+      startAutoDialCountdown(nextIdx, queue[nextIdx])
+    } else if (sessionRunning) {
+      setSessionRunning(false)
+    }
   }
 
   async function nextCall() {
@@ -231,6 +280,7 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
   }
 
   function pauseDialing() {
+    clearCountdown()
     setSessionRunning(false)
     if (callStatus === "connected") endCall("COMPLETED")
     else setCallStatus("idle")
@@ -594,17 +644,42 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
                 />
               </div>
               {callStatus === "ended" && (
-                <div className="flex items-center justify-between mt-3">
-                  <button
-                    onClick={nextCall}
-                    className="flex items-center gap-2 px-4 py-2 bg-lofty-600 text-white rounded-lg hover:bg-lofty-700 text-sm font-medium"
-                  >
-                    <SkipForward className="w-4 h-4" />
-                    {currentCallIndex < queue.length - 1 ? "Next Contact" : "Finish Session"}
-                  </button>
-                  <span className="text-sm text-gray-500">
-                    Duration: <strong>{formatDuration(callDuration)}</strong>
-                  </span>
+                <div className="mt-3 space-y-3">
+                  {countdown !== null ? (
+                    <div className="bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3 flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">Auto-dialing next in…</p>
+                        <div className="text-3xl font-bold text-indigo-800 tabular-nums">{countdown}s</div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={skipCountdown}
+                          className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700"
+                        >
+                          <Zap className="w-3.5 h-3.5" /> Dial Now
+                        </button>
+                        <button
+                          onClick={() => { clearCountdown(); setSessionRunning(false) }}
+                          className="px-3 py-2 border border-gray-300 text-sm rounded-lg hover:bg-gray-50 text-gray-600"
+                        >
+                          Pause
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between">
+                      <button
+                        onClick={nextCall}
+                        className="flex items-center gap-2 px-4 py-2 bg-lofty-600 text-white rounded-lg hover:bg-lofty-700 text-sm font-medium"
+                      >
+                        <SkipForward className="w-4 h-4" />
+                        {currentCallIndex < queue.length - 1 ? "Next Contact" : "Finish Session"}
+                      </button>
+                      <span className="text-sm text-gray-500">
+                        Duration: <strong>{formatDuration(callDuration)}</strong>
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
