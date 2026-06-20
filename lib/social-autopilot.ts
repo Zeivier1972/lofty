@@ -723,10 +723,17 @@ async function shareBlogOnSocial(
           ],
         })
 
-        const postContent =
+        let postContent =
           message.content[0].type === "text"
             ? message.content[0].text.trim()
             : `📖 Nuevo artículo: ${title}\n\n${excerpt}\n\n👉 Leer más: ${blogUrl}`
+
+        // Always guarantee the full URL appears at the end — Claude sometimes truncates long slugs
+        if (!postContent.includes(blogUrl)) {
+          // Remove any partial/truncated version of the URL Claude may have written
+          postContent = postContent.replace(/https?:\/\/\S+/g, "").trimEnd()
+          postContent = `${postContent}\n\n👉 ${blogUrl}`
+        }
 
         const fakePost: PostLike = {
           id: `blog-share-${Date.now()}`,
