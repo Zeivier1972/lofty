@@ -8,7 +8,7 @@ import {
   Phone, Mail, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, MoreVertical,
   Trash2, Edit, Eye, MessageSquare, X, Send, CheckSquare,
   FileText, AlertCircle, CheckCircle2, Zap, Settings2, MoveRight, Loader2,
-  PhoneCall, PhoneOff, SkipForward, CheckCircle, Clock, Tag,
+  PhoneCall, PhoneOff, SkipForward, CheckCircle, Clock, Tag, Voicemail,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
