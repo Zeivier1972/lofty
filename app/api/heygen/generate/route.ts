@@ -124,6 +124,8 @@ export async function POST(req: Request) {
       caption: true,
     }
 
+    console.log(`[heygen/generate] Sending payload:`, JSON.stringify(payload).slice(0, 800))
+
     const res = await fetch("https://api.heygen.com/v2/video/generate", {
       method: "POST",
       headers: {
@@ -135,8 +137,9 @@ export async function POST(req: Request) {
 
     const data = await res.json()
     if (!res.ok) {
-      const msg = data?.message ?? data?.error ?? JSON.stringify(data).slice(0, 300)
       console.error(`[heygen/generate] HeyGen error HTTP ${res.status}:`, JSON.stringify(data))
+      const raw = data?.message ?? data?.error ?? data
+      const msg = typeof raw === "string" ? raw : JSON.stringify(raw).slice(0, 300)
       throw new Error(msg)
     }
     return NextResponse.json({ videoId: data.data?.video_id })
