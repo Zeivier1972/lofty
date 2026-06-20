@@ -2,37 +2,13 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
+import { fetchSceneVideoUrl, getFallbackBackground } from "@/lib/pexels-video"
 
 const DIMENSIONS: Record<string, { width: number; height: number }> = {
   "16:9": { width: 1280, height: 720 },
   "9:16": { width: 720, height: 1280 },
   "1:1":  { width: 720, height: 720 },
 }
-
-const STYLE_CONFIG: Record<string, { background: Record<string, string> }> = {
-  cinematic:  { background: { type: "image", url: "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1280&q=80" } },
-  thriller:   { background: { type: "image", url: "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=1280&q=80" } },
-  retro_tech: { background: { type: "image", url: "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1280&q=80" } },
-  pop_culture:{ background: { type: "image", url: "https://images.unsplash.com/photo-1533106497176-45ae19e68ba2?w=1280&q=80" } },
-  modern:     { background: { type: "image", url: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1280&q=80" } },
-  warm:       { background: { type: "image", url: "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=1280&q=80" } },
-  handmade:   { background: { type: "image", url: "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=1280&q=80" } },
-  iconic:     { background: { type: "image", url: "https://images.unsplash.com/photo-1613977257365-aaae5a9817ff?w=1280&q=80" } },
-  print:      { background: { type: "image", url: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1280&q=80" } },
-}
-
-// Rotating pool of real estate backgrounds for B-Roll scenes
-const BROLL_IMAGE_POOL = [
-  "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1280&q=80",
-  "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=1280&q=80",
-  "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1280&q=80",
-  "https://images.unsplash.com/photo-1533106497176-45ae19e68ba2?w=1280&q=80",
-  "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1280&q=80",
-  "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=1280&q=80",
-  "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=1280&q=80",
-  "https://images.unsplash.com/photo-1613977257365-aaae5a9817ff?w=1280&q=80",
-  "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1280&q=80",
-]
 
 // Catherine Gomez talking_photo IDs — confirmed by user
 const TALKING_PHOTO_IDS = new Set([
@@ -47,7 +23,7 @@ const TALKING_PHOTO_IDS = new Set([
   "310728040e89413aa1c5b04ebb8bb9d3",
 ])
 
-// Split on blank lines first (structured scripts from AI use blank lines between scenes),
+// Split on blank lines first (AI outputs scenes separated by blank lines),
 // fall back to sentence-boundary splitting.
 function splitScriptForBRoll(script: string): string[] {
   const byBlankLine = script
@@ -68,21 +44,6 @@ function splitScriptForBRoll(script: string): string[] {
   return scenes.length > 1 ? scenes : [script]
 }
 
-// Match scene text keywords → contextually relevant real estate background
-function pickSceneBackground(sceneText: string, index: number): Record<string, string> {
-  const t = sceneText.toLowerCase()
-  if (/piscina|pool|jardín|jardin|garden/.test(t))                            return STYLE_CONFIG.handmade.background
-  if (/familia|family|niños|ninos|children|hogar|doral|kendall/.test(t))      return STYLE_CONFIG.warm.background
-  if (/playa|beach|mar\b|ocean|waterfront|biscayne/.test(t))                  return STYLE_CONFIG.pop_culture.background
-  if (/noche|night|highrise|rascacielos|brickell|downtown/.test(t))           return STYLE_CONFIG.thriller.background
-  if (/penthouse|loft|interior|sala|cocina|kitchen/.test(t))                  return STYLE_CONFIG.iconic.background
-  if (/moderno|modern|minimalista|contemporáneo/.test(t))                     return STYLE_CONFIG.retro_tech.background
-  if (/blanca|white|elegante|lujo|luxury|millón|millon/.test(t))              return STYLE_CONFIG.modern.background
-  if (/inversi|invest|dólares|dolares|capital|ingreso|renta|retorno/.test(t)) return STYLE_CONFIG.cinematic.background
-  if (/vendedor|seller|vender|precio|staging|fachada/.test(t))               return STYLE_CONFIG.print.background
-  return { type: "image", url: BROLL_IMAGE_POOL[index % BROLL_IMAGE_POOL.length] }
-}
-
 export async function POST(req: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -98,47 +59,80 @@ export async function POST(req: Request) {
     }
 
     const dimension = DIMENSIONS[ratio] ?? DIMENSIONS["9:16"]
-    const stylePreset = styleId ? (STYLE_CONFIG[styleId] ?? null) : null
     const isTalkingPhoto = TALKING_PHOTO_IDS.has(avatarId)
-
-    // talking_photo_style "circle" renders Catherine as a portrait circle OVER the background.
-    // Without it, talking_photo fills the entire frame and completely hides the background.
-    const hasBackground = broll || !!stylePreset?.background
-
-    const character: Record<string, unknown> = isTalkingPhoto
-      ? {
-          type: "talking_photo",
-          talking_photo_id: avatarId,
-          ...(hasBackground ? { talking_photo_style: "circle" } : {}),
-        }
-      : { type: "avatar", avatar_id: avatarId, avatar_style: "normal" }
+    const orientation = ratio === "9:16" ? "portrait" : "landscape"
 
     let videoInputs: Record<string, unknown>[]
 
     if (broll) {
       const scenes = splitScriptForBRoll(script)
-      videoInputs = scenes.map((sceneText, i) => ({
-        character,
-        voice: { type: "text", input_text: sceneText, voice_id: voiceId },
-        background: pickSceneBackground(sceneText, i),
-      }))
+
+      // Fetch real video B-roll clips from Pexels in parallel (context-aware per scene)
+      const videoUrls = await Promise.all(
+        scenes.map(sceneText => fetchSceneVideoUrl(sceneText, orientation))
+      )
+
+      videoInputs = scenes.map((sceneText, i) => {
+        const videoUrl = videoUrls[i]
+        const background = videoUrl
+          ? { type: "video", url: videoUrl }          // Real video B-roll clip
+          : getFallbackBackground(sceneText, i)        // Fallback: static image
+
+        // Scene 2 (problem/tension) = pure B-roll — avatar moves off-screen,
+        // only voice + video footage plays (like a documentary cut-away).
+        // All other scenes = Catherine as circle portrait over the video.
+        const hiddenAvatar = i === 1 && scenes.length >= 3
+
+        const sceneCharacter: Record<string, unknown> = isTalkingPhoto
+          ? {
+              type: "talking_photo",
+              talking_photo_id: avatarId,
+              talking_photo_style: "circle",
+              ...(hiddenAvatar ? { offset: { x: -2.0, y: 0.0 } } : {}),
+            }
+          : { type: "avatar", avatar_id: avatarId, avatar_style: "normal" }
+
+        return {
+          character: sceneCharacter,
+          voice: { type: "text", input_text: sceneText, voice_id: voiceId },
+          background,
+        }
+      })
+
+      console.log(
+        `[heygen/generate] B-Roll: ${scenes.length} scenes, Pexels videos: ${videoUrls.filter(Boolean).length}/${scenes.length}, orientation: ${orientation}`
+      )
     } else {
+      // Single-scene mode — apply style preset background if selected
+      const STYLE_BACKGROUNDS: Record<string, string> = {
+        cinematic:  "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1280&q=80",
+        thriller:   "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=1280&q=80",
+        retro_tech: "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1280&q=80",
+        pop_culture:"https://images.unsplash.com/photo-1533106497176-45ae19e68ba2?w=1280&q=80",
+        modern:     "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1280&q=80",
+        warm:       "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=1280&q=80",
+        handmade:   "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=1280&q=80",
+        iconic:     "https://images.unsplash.com/photo-1613977257365-aaae5a9817ff?w=1280&q=80",
+        print:      "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1280&q=80",
+      }
+      const hasBackground = !!styleId && styleId !== "none" && STYLE_BACKGROUNDS[styleId]
+      const character: Record<string, unknown> = isTalkingPhoto
+        ? { type: "talking_photo", talking_photo_id: avatarId, ...(hasBackground ? { talking_photo_style: "circle" } : {}) }
+        : { type: "avatar", avatar_id: avatarId, avatar_style: "normal" }
+
       const videoInput: Record<string, unknown> = {
         character,
         voice: { type: "text", input_text: script, voice_id: voiceId },
       }
-      if (stylePreset?.background) videoInput.background = stylePreset.background
+      if (hasBackground) videoInput.background = { type: "image", url: STYLE_BACKGROUNDS[styleId] }
       videoInputs = [videoInput]
     }
 
     const payload: Record<string, unknown> = {
       video_inputs: videoInputs,
       dimension,
-      // Auto-captions rendered on every scene
       caption: true,
     }
-
-    console.log(`[heygen/generate] ${broll ? `B-Roll ${videoInputs.length} scenes` : "single scene"}, ratio=${ratio}, avatar=${avatarId.slice(0, 8)}, circle=${hasBackground && isTalkingPhoto}`)
 
     const res = await fetch("https://api.heygen.com/v2/video/generate", {
       method: "POST",

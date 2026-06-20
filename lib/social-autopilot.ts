@@ -15,6 +15,7 @@ import { v2 as cloudinary } from "cloudinary"
 import { prisma } from "@/lib/prisma"
 import { researchViralContent, buildAIOSystemPrompt, ResearchBrief } from "./content-research"
 import { uploadVideoToYouTube } from "./youtube-upload"
+import { fetchSceneVideoUrl, getFallbackBackground } from "./pexels-video"
 
 // ─── SDK init ────────────────────────────────────────────────────────────────
 
@@ -378,18 +379,6 @@ async function getHeyGenAvatar(dayOfWeek: number): Promise<{ avatarId: string; v
   }
 }
 
-// Real estate image pool for B-Roll scene backgrounds
-const BROLL_IMAGE_POOL = [
-  "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1280&q=80",
-  "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=1280&q=80",
-  "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1280&q=80",
-  "https://images.unsplash.com/photo-1533106497176-45ae19e68ba2?w=1280&q=80",
-  "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1280&q=80",
-  "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=1280&q=80",
-  "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=1280&q=80",
-  "https://images.unsplash.com/photo-1613977257365-aaae5a9817ff?w=1280&q=80",
-  "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1280&q=80",
-]
 
 function splitScriptForBRoll(script: string): string[] {
   // Prefer blank-line splits — the AI script generator separates scenes with blank lines
@@ -429,13 +418,35 @@ async function triggerHeyGenVideo(script: string, dayOfWeek: number): Promise<st
       ? { type: "talking_photo", talking_photo_id: avatarInfo.avatarId, talking_photo_style: "circle" }
       : { type: "avatar", avatar_id: avatarInfo.avatarId, avatar_style: "normal" }
 
-    // B-Roll: split script into scenes, each with a different real estate background
+    // B-Roll: split into scenes, fetch Pexels video clips in parallel (portrait for 9:16)
     const scenes = splitScriptForBRoll(script)
-    const videoInputs = scenes.map((sceneText, i) => ({
-      character,
-      voice: { type: "text", input_text: sceneText, voice_id: avatarInfo.voiceId },
-      background: { type: "image", url: BROLL_IMAGE_POOL[i % BROLL_IMAGE_POOL.length] },
-    }))
+    const videoUrls = await Promise.all(
+      scenes.map(sceneText => fetchSceneVideoUrl(sceneText, "portrait"))
+    )
+
+    const videoInputs = scenes.map((sceneText, i) => {
+      const videoUrl = videoUrls[i]
+      const background = videoUrl
+        ? { type: "video", url: videoUrl }
+        : getFallbackBackground(sceneText, i)
+
+      // Scene 2 = pure B-roll cut-away (avatar off-screen, only voice + footage)
+      const hiddenAvatar = i === 1 && scenes.length >= 3
+      const sceneCharacter: Record<string, unknown> = isTalkingPhoto
+        ? {
+            type: "talking_photo",
+            talking_photo_id: avatarInfo.avatarId,
+            talking_photo_style: "circle",
+            ...(hiddenAvatar ? { offset: { x: -2.0, y: 0.0 } } : {}),
+          }
+        : character
+
+      return {
+        character: sceneCharacter,
+        voice: { type: "text", input_text: sceneText, voice_id: avatarInfo.voiceId },
+        background,
+      }
+    })
 
     const payload = {
       video_inputs: videoInputs,
@@ -443,7 +454,7 @@ async function triggerHeyGenVideo(script: string, dayOfWeek: number): Promise<st
       caption: true,
     }
 
-    console.log(`[social-autopilot] HeyGen B-Roll payload — ${scenes.length} scenes, avatar: ${avatarInfo.avatarId}`)
+    console.log(`[social-autopilot] HeyGen B-Roll — ${scenes.length} scenes, Pexels videos: ${videoUrls.filter(Boolean).length}/${scenes.length}, avatar: ${avatarInfo.avatarId.slice(0, 8)}`)
 
     const res = await fetch("https://api.heygen.com/v2/video/generate", {
       method: "POST",
