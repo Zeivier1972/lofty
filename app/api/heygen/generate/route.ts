@@ -75,8 +75,8 @@ export async function POST(req: Request) {
       videoInputs = scenes.map((sceneText, i) => {
         const videoUrl = videoUrls[i]
         const background = videoUrl
-          ? { type: "video", url: videoUrl }          // Real video B-roll clip
-          : getFallbackBackground(sceneText, i)        // Fallback: static image
+          ? { type: "video", url: videoUrl, play_style: "fit_all" }   // Real video B-roll clip
+          : getFallbackBackground(sceneText, i)                        // Fallback: static image
 
         const sceneCharacter: Record<string, unknown> = isTalkingPhoto
           ? { type: "talking_photo", talking_photo_id: avatarId }
@@ -107,7 +107,7 @@ export async function POST(req: Request) {
       }
       const hasBackground = !!styleId && styleId !== "none" && STYLE_BACKGROUNDS[styleId]
       const character: Record<string, unknown> = isTalkingPhoto
-        ? { type: "talking_photo", talking_photo_id: avatarId, ...(hasBackground ? { talking_photo_style: "circle" } : {}) }
+        ? { type: "talking_photo", talking_photo_id: avatarId }
         : { type: "avatar", avatar_id: avatarId, avatar_style: "normal" }
 
       const videoInput: Record<string, unknown> = {
@@ -124,7 +124,7 @@ export async function POST(req: Request) {
       caption: true,
     }
 
-    console.log(`[heygen/generate] Sending payload:`, JSON.stringify(payload).slice(0, 800))
+    console.log(`[heygen/generate] Sending payload:`, JSON.stringify(payload).slice(0, 2000))
 
     const res = await fetch("https://api.heygen.com/v2/video/generate", {
       method: "POST",
@@ -138,8 +138,8 @@ export async function POST(req: Request) {
     const data = await res.json()
     if (!res.ok) {
       console.error(`[heygen/generate] HeyGen error HTTP ${res.status}:`, JSON.stringify(data))
-      const raw = data?.message ?? data?.error ?? data
-      const msg = typeof raw === "string" ? raw : JSON.stringify(raw).slice(0, 300)
+      const raw = data?.error?.message ?? data?.message ?? data?.error ?? data
+      const msg = typeof raw === "string" ? raw : JSON.stringify(raw).slice(0, 400)
       throw new Error(msg)
     }
     return NextResponse.json({ videoId: data.data?.video_id })
