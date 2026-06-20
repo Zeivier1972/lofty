@@ -1,5 +1,5 @@
 import React from "react"
-import { Composition } from "remotion"
+import { Composition, registerRoot } from "remotion"
 import { ListingVideo, ListingVideoProps } from "./compositions/ListingVideo"
 
 // Default props for Remotion Studio preview
@@ -66,7 +66,7 @@ const DEFAULT_SCENES: ListingVideoProps["scenes"] = [
   },
 ]
 
-export const RemotionRoot: React.FC = () => {
+const RemotionRoot: React.FC = () => {
   // Calculate total duration in frames (30 fps)
   const fps = 30
   const totalFrames = DEFAULT_SCENES.reduce(
@@ -96,3 +96,5 @@ export const RemotionRoot: React.FC = () => {
     </>
   )
 }
+
+registerRoot(RemotionRoot)
