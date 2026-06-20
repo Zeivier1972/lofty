@@ -78,18 +78,8 @@ export async function POST(req: Request) {
           ? { type: "video", url: videoUrl }          // Real video B-roll clip
           : getFallbackBackground(sceneText, i)        // Fallback: static image
 
-        // Scene 2 (problem/tension) = pure B-roll — avatar moves off-screen,
-        // only voice + video footage plays (like a documentary cut-away).
-        // All other scenes = Catherine as circle portrait over the video.
-        const hiddenAvatar = i === 1 && scenes.length >= 3
-
         const sceneCharacter: Record<string, unknown> = isTalkingPhoto
-          ? {
-              type: "talking_photo",
-              talking_photo_id: avatarId,
-              talking_photo_style: "circle",
-              ...(hiddenAvatar ? { offset: { x: -2.0, y: 0.0 } } : {}),
-            }
+          ? { type: "talking_photo", talking_photo_id: avatarId }
           : { type: "avatar", avatar_id: avatarId, avatar_style: "normal" }
 
         return {
@@ -144,7 +134,11 @@ export async function POST(req: Request) {
     })
 
     const data = await res.json()
-    if (!res.ok) throw new Error(data.message || "HeyGen API error")
+    if (!res.ok) {
+      const msg = data?.message ?? data?.error ?? JSON.stringify(data).slice(0, 300)
+      console.error(`[heygen/generate] HeyGen error HTTP ${res.status}:`, JSON.stringify(data))
+      throw new Error(msg)
+    }
     return NextResponse.json({ videoId: data.data?.video_id })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })

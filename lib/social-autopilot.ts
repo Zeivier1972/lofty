@@ -412,10 +412,8 @@ async function triggerHeyGenVideo(script: string, dayOfWeek: number): Promise<st
     const talkingPhotoIds = new Set(CATHERINE_TALKING_PHOTO_IDS)
     const isTalkingPhoto = talkingPhotoIds.has(avatarInfo.avatarId)
 
-    // "circle" style renders Catherine as a portrait overlay ON TOP of the real estate background.
-    // Without this, talking_photo fills the entire frame and the background is completely hidden.
     const character: Record<string, unknown> = isTalkingPhoto
-      ? { type: "talking_photo", talking_photo_id: avatarInfo.avatarId, talking_photo_style: "circle" }
+      ? { type: "talking_photo", talking_photo_id: avatarInfo.avatarId }
       : { type: "avatar", avatar_id: avatarInfo.avatarId, avatar_style: "normal" }
 
     // B-Roll: split into scenes, fetch Pexels video clips in parallel (portrait for 9:16)
@@ -430,19 +428,8 @@ async function triggerHeyGenVideo(script: string, dayOfWeek: number): Promise<st
         ? { type: "video", url: videoUrl }
         : getFallbackBackground(sceneText, i)
 
-      // Scene 2 = pure B-roll cut-away (avatar off-screen, only voice + footage)
-      const hiddenAvatar = i === 1 && scenes.length >= 3
-      const sceneCharacter: Record<string, unknown> = isTalkingPhoto
-        ? {
-            type: "talking_photo",
-            talking_photo_id: avatarInfo.avatarId,
-            talking_photo_style: "circle",
-            ...(hiddenAvatar ? { offset: { x: -2.0, y: 0.0 } } : {}),
-          }
-        : character
-
       return {
-        character: sceneCharacter,
+        character,
         voice: { type: "text", input_text: sceneText, voice_id: avatarInfo.voiceId },
         background,
       }
