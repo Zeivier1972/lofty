@@ -75,7 +75,7 @@ export async function POST(req: Request) {
       videoInputs = scenes.map((sceneText, i) => {
         const videoUrl = videoUrls[i]
         const background = videoUrl
-          ? { type: "video", url: videoUrl, play_style: "fit_all" }   // Real video B-roll clip
+          ? { type: "video", url: videoUrl, play_style: "fit_to_scene" }   // Real video B-roll clip
           : getFallbackBackground(sceneText, i)                        // Fallback: static image
 
         const sceneCharacter: Record<string, unknown> = isTalkingPhoto

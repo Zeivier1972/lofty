@@ -425,7 +425,7 @@ async function triggerHeyGenVideo(script: string, dayOfWeek: number): Promise<st
     const videoInputs = scenes.map((sceneText, i) => {
       const videoUrl = videoUrls[i]
       const background = videoUrl
-        ? { type: "video", url: videoUrl, play_style: "fit_all" }
+        ? { type: "video", url: videoUrl, play_style: "fit_to_scene" }
         : getFallbackBackground(sceneText, i)
 
       return {
