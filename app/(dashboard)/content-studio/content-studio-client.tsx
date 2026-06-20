@@ -1592,12 +1592,26 @@ function ResearchTool({ toast }: { toast: any }) {
 
 // ── Listing Video Studio ──────────────────────────────────────────────────────
 
+const TIMELINE_LABELS = [
+  { name: "Hook",         type: "avatar", seconds: "0–3s",   caption_hint: "JUST LISTED" },
+  { name: "Exterior",     type: "broll",  seconds: "3–10s",  caption_hint: "STUNNING EXTERIOR" },
+  { name: "Living Room",  type: "broll",  seconds: "10–16s", caption_hint: "OPEN CONCEPT LIVING" },
+  { name: "Kitchen",      type: "broll",  seconds: "16–21s", caption_hint: "CHEF'S KITCHEN" },
+  { name: "Transition",   type: "avatar", seconds: "21–27s", caption_hint: "DESIGNED TO IMPRESS" },
+  { name: "Bedroom",      type: "broll",  seconds: "27–31s", caption_hint: "PRIMARY SUITE" },
+  { name: "Bathroom",     type: "broll",  seconds: "31–35s", caption_hint: "SPA BATHROOM" },
+  { name: "Outdoor",      type: "broll",  seconds: "35–39s", caption_hint: "PRIVATE BACKYARD" },
+  { name: "Neighborhood", type: "broll",  seconds: "39–49s", caption_hint: "PRIME LOCATION" },
+  { name: "CTA",          type: "avatar", seconds: "49–62s", caption_hint: "CONTACT US TODAY" },
+]
+
 function ListingVideoStudio({ toast }: { toast: any }) {
   const [avatars, setAvatars] = useState<any[]>([])
   const [voices, setVoices] = useState<any[]>([])
   const [avatarId, setAvatarId] = useState("")
   const [voiceId, setVoiceId] = useState("")
   const [property, setProperty] = useState("")
+  const [photoUrlsText, setPhotoUrlsText] = useState("")
   const [ratio, setRatio] = useState("9:16")
   const [loadingData, setLoadingData] = useState(true)
   const [generating, setGenerating] = useState(false)
@@ -1647,13 +1661,13 @@ function ListingVideoStudio({ toast }: { toast: any }) {
           clearInterval(pollRef.current!)
           setVideoUrl(data.data.video_url)
           setStatus("completed")
-          toast({ title: "¡Video de listing listo! 🎬" })
+          toast({ title: "¡Listing video listo!" })
         } else if (s === "failed") {
           clearInterval(pollRef.current!)
           setStatus("failed")
           toast({ title: "HeyGen falló", description: data.data?.error || "Error desconocido", variant: "destructive" })
         }
-      } catch { /* poll again */ }
+      } catch { /* retry on next interval */ }
     }, 8000)
   }
 
@@ -1661,6 +1675,11 @@ function ListingVideoStudio({ toast }: { toast: any }) {
     if (!property.trim()) { toast({ title: "Describe la propiedad", variant: "destructive" }); return }
     if (!avatarId) { toast({ title: "Selecciona un avatar", variant: "destructive" }); return }
     if (!voiceId) { toast({ title: "Selecciona una voz", variant: "destructive" }); return }
+
+    const photoUrls = photoUrlsText
+      .split("\n")
+      .map(u => u.trim())
+      .filter(u => u.startsWith("http"))
 
     if (pollRef.current) clearInterval(pollRef.current)
     setGenerating(true)
@@ -1672,14 +1691,14 @@ function ListingVideoStudio({ toast }: { toast: any }) {
       const res = await fetch("/api/heygen/listing-video", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ property, avatarId, voiceId, ratio }),
+        body: JSON.stringify({ property, photoUrls, avatarId, voiceId, ratio }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
       setPlan(data.plan)
       setStatus("processing")
       pollStatus(data.videoId)
-      toast({ title: "Plan generado — HeyGen procesando video (2-5 min) 🎬" })
+      toast({ title: `Plan de ${data.plan.scenes?.length} escenas generado — HeyGen procesando…` })
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" })
       setStatus("idle")
@@ -1692,6 +1711,21 @@ function ListingVideoStudio({ toast }: { toast: any }) {
 
   return (
     <div className="space-y-6">
+      {/* Timeline overview */}
+      <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-2xl p-5">
+        <p className="text-xs font-semibold text-purple-800 mb-3 uppercase tracking-wide">Timeline — 10 escenas / ~60 segundos</p>
+        <div className="flex gap-1 flex-wrap">
+          {TIMELINE_LABELS.map((t, i) => (
+            <div key={i} className={`px-2 py-1 rounded-lg text-xs font-medium ${t.type === "avatar" ? "bg-purple-600 text-white" : "bg-blue-100 text-blue-800"}`}>
+              {i + 1}. {t.name} <span className="opacity-70">{t.seconds}</span>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-purple-700 mt-2">
+          Avatar: 3 escenas (Hook + Transición + CTA) · B-Roll: 7 escenas con Pexels o fotos de listing
+        </p>
+      </div>
+
       {/* Avatar + Voice */}
       <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
         <h2 className="text-base font-semibold text-gray-800 mb-4">1. Avatar y voz</h2>
@@ -1726,7 +1760,6 @@ function ListingVideoStudio({ toast }: { toast: any }) {
             </select>
           </div>
         </div>
-
         <div className="mt-4">
           <label className="text-xs font-semibold text-gray-600 mb-2 block">Formato</label>
           <div className="flex gap-2">
@@ -1743,54 +1776,72 @@ function ListingVideoStudio({ toast }: { toast: any }) {
       {/* Property Info */}
       <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
         <h2 className="text-base font-semibold text-gray-800 mb-1">2. Información de la propiedad</h2>
-        <p className="text-xs text-gray-500 mb-4">Incluye dirección, precio, recámaras, amenidades clave, barrio y estilo de vida que ofrece.</p>
+        <p className="text-xs text-gray-500 mb-3">Incluye precio, recámaras, amenidades, barrio y estilo de vida.</p>
         <textarea
           value={property}
           onChange={e => setProperty(e.target.value)}
-          placeholder={`Ejemplo:\n3 bed / 2 bath en Brickell, Miami. $750,000. Vista al mar, piscina en rooftop, gym, concierge 24h. A 5 min caminando de Whole Foods y Brickell City Centre. Ideal para profesionales o inversores — Airbnb permitido, proyección de renta $6,500/mes.`}
-          rows={6}
+          placeholder={"Ej: 3 bed / 2 bath en Brickell, Miami. $750,000. Vista al mar, piscina en rooftop, gym, concierge 24h. A 5 min caminando de Whole Foods y Brickell City Centre. Airbnb permitido, renta proyectada $6,500/mes."}
+          rows={5}
           className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none"
         />
+      </div>
 
-        <div className="mt-4 bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800 space-y-1">
-          <p className="font-semibold">Estructura del video (7 escenas, 60-90 seg):</p>
-          <p>🎯 Escena 1 — Hook (0-5s): Catherine en cámara</p>
-          <p>🏠 Escena 2 — Property Reveal (5-15s): B-roll exterior/aerial</p>
-          <p>✨ Escena 3 — Lifestyle (15-35s): B-roll vida en la propiedad</p>
-          <p>🛋 Escena 4 — Features (35-55s): B-roll interior</p>
-          <p>📍 Escena 5 — Barrio (55-70s): B-roll vecindario</p>
-          <p>⚡ Escena 6 — Urgencia (70-85s): B-roll mercado/precio</p>
-          <p>📣 Escena 7 — CTA (85-90s): Catherine en cámara</p>
-        </div>
+      {/* Listing Photos */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+        <h2 className="text-base font-semibold text-gray-800 mb-1">3. Fotos de la propiedad <span className="text-gray-400 font-normal">(opcional)</span></h2>
+        <p className="text-xs text-gray-500 mb-3">
+          Pega URLs de fotos del MLS o Zillow — una por línea. Se usarán como fondos en lugar de stock.<br />
+          <strong>Orden ideal:</strong> Exterior · Sala · Cocina · Recámara principal · Baño · Jardín · Piscina · Aéreo
+        </p>
+        <textarea
+          value={photoUrlsText}
+          onChange={e => setPhotoUrlsText(e.target.value)}
+          placeholder={"https://photos.zillowstatic.com/exterior.jpg\nhttps://photos.zillowstatic.com/living-room.jpg\nhttps://photos.zillowstatic.com/kitchen.jpg\n..."}
+          rows={5}
+          className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none"
+        />
+        {photoUrlsText.split("\n").filter(u => u.trim().startsWith("http")).length > 0 && (
+          <p className="text-xs text-green-700 mt-2">
+            ✓ {photoUrlsText.split("\n").filter(u => u.trim().startsWith("http")).length} fotos detectadas
+          </p>
+        )}
 
         <button
           onClick={generate}
           disabled={generating || !property.trim() || !avatarId || !voiceId || status === "processing"}
-          className="mt-4 w-full flex items-center justify-center gap-2 py-3 bg-purple-600 text-white rounded-xl font-semibold text-sm hover:bg-purple-700 transition-colors disabled:opacity-50">
+          className="mt-5 w-full flex items-center justify-center gap-2 py-3 bg-purple-600 text-white rounded-xl font-semibold text-sm hover:bg-purple-700 transition-colors disabled:opacity-50">
           {generating
-            ? <><Loader2 className="w-4 h-4 animate-spin" /> Generando plan con IA…</>
+            ? <><Loader2 className="w-4 h-4 animate-spin" /> Claude generando guión + buscando Pexels…</>
             : status === "processing"
-            ? <><Loader2 className="w-4 h-4 animate-spin" /> HeyGen procesando… (2-5 min)</>
-            : <><Clapperboard className="w-4 h-4" /> Generar Listing Video</>}
+            ? <><Loader2 className="w-4 h-4 animate-spin" /> HeyGen renderizando 10 escenas… (3-6 min)</>
+            : <><Clapperboard className="w-4 h-4" /> Generar Listing Video (10 escenas)</>}
         </button>
       </div>
 
       {/* Scene Plan Preview */}
       {plan?.scenes && (
         <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-          <h2 className="text-base font-semibold text-gray-800 mb-4">Plan generado por IA</h2>
-          <div className="space-y-3">
-            {plan.scenes.map((scene: any) => (
-              <div key={scene.scene_number} className={`rounded-xl p-4 border text-sm ${scene.avatar_present ? "bg-purple-50 border-purple-200" : "bg-blue-50 border-blue-200"}`}>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${scene.avatar_present ? "bg-purple-600 text-white" : "bg-blue-600 text-white"}`}>
-                    {scene.avatar_present ? "Avatar" : "B-Roll"}
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-semibold text-gray-800">Guión generado — {plan.scenes.length} escenas</h2>
+            {plan.meta && (
+              <span className="text-xs text-gray-500">
+                {plan.meta.pexelsHits} videos Pexels · {plan.meta.photoUrls} fotos de listing
+              </span>
+            )}
+          </div>
+          <div className="space-y-2">
+            {plan.scenes.map((scene: any, i: number) => (
+              <div key={i} className={`rounded-xl p-3 border text-sm flex gap-3 ${scene.avatar_present ? "bg-purple-50 border-purple-200" : "bg-blue-50 border-blue-200"}`}>
+                <div className="flex-shrink-0 pt-0.5">
+                  <span className={`inline-block text-[10px] font-bold px-1.5 py-0.5 rounded-md ${scene.avatar_present ? "bg-purple-600 text-white" : "bg-blue-600 text-white"}`}>
+                    {scene.avatar_present ? "CAM" : "B-ROLL"}
                   </span>
-                  <span className="font-semibold text-gray-800">Escena {scene.scene_number} — {scene.name}</span>
                 </div>
-                <p className="text-gray-700 mb-1">{scene.script}</p>
-                <p className="text-xs text-gray-500">Caption: <em>"{scene.caption}"</em> · Headline: <em>"{scene.headline}"</em></p>
-                {!scene.avatar_present && <p className="text-xs text-gray-400 mt-1">B-roll query: {scene.broll_query}</p>}
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-gray-600 mb-0.5">{scene.scene_number}. {scene.name}</p>
+                  <p className="text-gray-800 leading-snug">{scene.script}</p>
+                  <p className="text-xs text-gray-400 mt-1">Caption: <strong className="text-gray-600">{scene.caption}</strong></p>
+                </div>
               </div>
             ))}
           </div>
@@ -1801,8 +1852,8 @@ function ListingVideoStudio({ toast }: { toast: any }) {
       {status === "processing" && (
         <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6 text-center">
           <Loader2 className="w-8 h-8 text-blue-500 animate-spin mx-auto mb-3" />
-          <p className="font-semibold text-blue-800">HeyGen está generando tu listing video…</p>
-          <p className="text-sm text-blue-600 mt-1">7 escenas — esto toma entre 3 y 6 minutos.</p>
+          <p className="font-semibold text-blue-800">HeyGen está renderizando el listing video…</p>
+          <p className="text-sm text-blue-600 mt-1">10 escenas — esto toma entre 3 y 6 minutos. No cierres esta pantalla.</p>
         </div>
       )}
 
@@ -1810,10 +1861,10 @@ function ListingVideoStudio({ toast }: { toast: any }) {
       {status === "completed" && videoUrl && (
         <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
           <h2 className="text-base font-semibold text-gray-800 mb-4">Video listo</h2>
-          <video src={videoUrl} controls className="w-full rounded-xl max-h-[600px] object-contain bg-black" />
-          <a href={videoUrl} download target="_blank" rel="noopener noreferrer"
+          <video src={videoUrl} controls playsInline className="w-full rounded-xl max-h-[600px] object-contain bg-black" />
+          <a href={videoUrl} target="_blank" rel="noopener noreferrer"
             className="mt-3 w-full flex items-center justify-center gap-2 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-semibold hover:bg-gray-700 transition-colors">
-            Descargar video
+            Descargar / abrir video
           </a>
         </div>
       )}

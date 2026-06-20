@@ -3,28 +3,54 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import Anthropic from "@anthropic-ai/sdk"
-import { fetchVideoByQuery, getFallbackBackground } from "@/lib/pexels-video"
+import { fetchListingSceneVideo, getListingBackground } from "@/lib/pexels-listing"
+import { getFallbackBackground } from "@/lib/pexels-video"
 
-const LISTING_VIDEO_SYSTEM = `You are an elite real estate video producer creating videos for HeyGen.
+// ─── Timeline definition ──────────────────────────────────────────────────────
+// 10 scenes that give a fast-cut montage feel within HeyGen's constraints.
+// Duration is controlled by word count: HeyGen TTS ≈ 2.3 words/sec.
+// Avatar scenes (hook, transition, cta) = 30% of runtime max.
+// B-roll scenes = 70% minimum.
 
-Your job is to convert property information into a 60-90 second high-converting listing video.
+const TIMELINE: Array<{
+  name: string
+  scene_type: string
+  avatar_present: boolean
+  target_words: number   // target spoken words for this scene
+  caption_hint: string   // 4-word all-caps caption style
+}> = [
+  { name: "Hook",           scene_type: "hook",           avatar_present: true,  target_words: 10, caption_hint: "JUST LISTED" },
+  { name: "Exterior",       scene_type: "exterior",       avatar_present: false, target_words: 16, caption_hint: "STUNNING EXTERIOR" },
+  { name: "Living Room",    scene_type: "living_room",    avatar_present: false, target_words: 13, caption_hint: "OPEN CONCEPT LIVING" },
+  { name: "Kitchen",        scene_type: "kitchen",        avatar_present: false, target_words: 10, caption_hint: "CHEF'S KITCHEN" },
+  { name: "Transition",     scene_type: "transition",     avatar_present: true,  target_words: 13, caption_hint: "DESIGNED TO IMPRESS" },
+  { name: "Bedroom",        scene_type: "master_bedroom", avatar_present: false, target_words: 8,  caption_hint: "PRIMARY SUITE" },
+  { name: "Bathroom",       scene_type: "bathroom",       avatar_present: false, target_words: 8,  caption_hint: "SPA BATHROOM" },
+  { name: "Outdoor",        scene_type: "backyard",       avatar_present: false, target_words: 8,  caption_hint: "PRIVATE BACKYARD" },
+  { name: "Neighborhood",   scene_type: "neighborhood",   avatar_present: false, target_words: 20, caption_hint: "PRIME LOCATION" },
+  { name: "CTA",            scene_type: "cta",            avatar_present: true,  target_words: 30, caption_hint: "CONTACT US TODAY" },
+]
 
-Rules:
-* Avatar appears ONLY for Scene 1 (Hook) and Scene 7 (CTA). All other scenes are B-roll with voice narration.
-* Property footage must occupy at least 70% of screen time.
-* Focus on lifestyle benefits, not features.
-* Write scripts in Spanish (Catherine's audience is Hispanic Miami buyers).
-* Keep each scene script under 40 words — it must fit in the allotted seconds when spoken.
-* Captions use short punchy social media style (max 8 words each).
+// ─── Claude system prompt ─────────────────────────────────────────────────────
 
-Scene Structure (output ALL 7):
-Scene 1: Hook (0-5s) - avatar_present: true
-Scene 2: Property Reveal (5-15s) - avatar_present: false
-Scene 3: Lifestyle Story (15-35s) - avatar_present: false
-Scene 4: Features Montage (35-55s) - avatar_present: false
-Scene 5: Neighborhood Benefits (55-70s) - avatar_present: false
-Scene 6: Urgency/Price (70-85s) - avatar_present: false
-Scene 7: CTA (85-90s) - avatar_present: true
+function buildSystemPrompt(): string {
+  const sceneDescriptions = TIMELINE.map((s, i) =>
+    `Scene ${i + 1} — ${s.name} (${s.avatar_present ? "AVATAR" : "B-ROLL"}, target ${s.target_words} words, caption style: "${s.caption_hint}")`
+  ).join("\n")
+
+  return `You are an elite real estate video scriptwriter. Generate a 10-scene video script for a Miami property listing.
+
+RULES:
+- Write ALL scripts in Spanish (audience = Hispanic Miami buyers)
+- AVATAR scenes: Catherine speaks directly to camera. Energetic, personal, direct.
+- B-ROLL scenes: punchy narration over footage. Short, visual phrases. Each phrase ≈ 4-6 words.
+- Hit target word counts as closely as possible — they control video timing.
+- Focus on LIFESTYLE BENEFITS, not feature lists.
+- Caption text: 1-4 words, ALL CAPS, social-media style (max 4 words).
+- broll_query: specific Pexels search query for this scene's footage.
+
+SCENE STRUCTURE (output ALL 10 in this exact order):
+${sceneDescriptions}
 
 Output ONLY valid JSON — no markdown, no explanation:
 {
@@ -32,14 +58,17 @@ Output ONLY valid JSON — no markdown, no explanation:
     {
       "scene_number": 1,
       "name": "Hook",
-      "script": "spoken text for this scene",
-      "broll_query": "pexels video search query for this scene (ignored for avatar scenes)",
-      "caption": "short caption (max 8 words)",
-      "headline": "on-screen bold text",
+      "scene_type": "hook",
+      "script": "spoken script for this scene",
+      "caption": "JUST LISTED",
+      "broll_query": "pexels search query (used only for B-roll scenes)",
       "avatar_present": true
     }
   ]
 }`
+}
+
+// ─── API config ───────────────────────────────────────────────────────────────
 
 const DIMENSIONS: Record<string, { width: number; height: number }> = {
   "9:16": { width: 720, height: 1280 },
@@ -59,6 +88,8 @@ const TALKING_PHOTO_IDS = new Set([
   "310728040e89413aa1c5b04ebb8bb9d3",
 ])
 
+// ─── Route handler ────────────────────────────────────────────────────────────
+
 export async function POST(req: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -68,7 +99,14 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { property, avatarId, voiceId, ratio = "9:16" } = await req.json()
+    const {
+      property,
+      photoUrls = [],  // string[] — listing photos in priority order
+      avatarId,
+      voiceId,
+      ratio = "9:16",
+    } = await req.json()
+
     if (!avatarId || !voiceId || !property?.trim()) {
       return NextResponse.json({ error: "property, avatarId, and voiceId are required" }, { status: 400 })
     }
@@ -77,43 +115,46 @@ export async function POST(req: Request) {
     const isTalkingPhoto = TALKING_PHOTO_IDS.has(avatarId)
     const orientation = ratio === "9:16" ? "portrait" : "landscape"
 
-    // Step 1: Generate 7-scene video plan via Claude
+    // Step 1: Generate 10-scene script via Claude
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
     const claudeRes = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 3000,
-      system: LISTING_VIDEO_SYSTEM,
-      messages: [{ role: "user", content: `Property details:\n\n${property}\n\nOutput only valid JSON.` }],
+      max_tokens: 3500,
+      system: buildSystemPrompt(),
+      messages: [{
+        role: "user",
+        content: `Property details:\n\n${property}\n\nPhotos available: ${photoUrls.length} listing photos provided.\n\nOutput only valid JSON.`,
+      }],
     })
 
     const planText = claudeRes.content[0].type === "text" ? claudeRes.content[0].text : ""
     const jsonMatch = planText.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) throw new Error("No se pudo generar el plan de video — Claude no devolvió JSON válido")
+    if (!jsonMatch) throw new Error("Claude no devolvió JSON válido para el plan de video")
 
     const plan = JSON.parse(jsonMatch[0])
     const scenes: Array<{
       scene_number: number
       name: string
+      scene_type: string
       script: string
-      broll_query: string
       caption: string
-      headline: string
+      broll_query: string
       avatar_present: boolean
     }> = plan.scenes
 
-    if (!scenes?.length) throw new Error("El plan de video no tiene escenas")
+    if (!scenes?.length) throw new Error("El plan no tiene escenas")
 
-    // Step 2: Fetch B-roll for non-avatar scenes in parallel
-    const videoUrls = await Promise.all(
-      scenes.map(scene =>
-        scene.avatar_present
-          ? Promise.resolve(null)
-          : fetchVideoByQuery(scene.broll_query, orientation)
-      )
+    // Step 2: Fetch Pexels B-roll for non-avatar scenes in parallel
+    // Use the Claude-generated broll_query when scene_type is generic; otherwise use our curated queries
+    const pexelsUrls = await Promise.all(
+      scenes.map((scene) => {
+        if (scene.avatar_present) return Promise.resolve(null)
+        return fetchListingSceneVideo(scene.scene_type, orientation)
+      })
     )
 
-    // Step 3: Build HeyGen video_inputs
+    // Step 3: Build HeyGen video_inputs using the timeline
     const character: Record<string, unknown> = isTalkingPhoto
       ? { type: "talking_photo", talking_photo_id: avatarId }
       : { type: "avatar", avatar_id: avatarId, avatar_style: "normal" }
@@ -122,30 +163,35 @@ export async function POST(req: Request) {
       const voice = { type: "text", input_text: scene.script, voice_id: voiceId }
 
       if (scene.avatar_present) {
+        // Avatar scenes: use a quality real estate image behind Catherine
+        // (talking_photo fills the frame, but the background is visible briefly during transitions)
         return {
           character,
           voice,
-          background: getFallbackBackground(scene.script, i),
+          background: getFallbackBackground(scene.scene_type, i),
         }
       }
 
-      const videoUrl = videoUrls[i]
-      const background = videoUrl
-        ? { type: "video", url: videoUrl, play_style: "fit_to_scene" }
-        : getFallbackBackground(scene.broll_query, i)
-
+      // B-roll scenes: listing photo → Pexels video → static fallback
+      const background = getListingBackground(scene.scene_type, photoUrls, pexelsUrls[i], i)
       return { voice, background }
     })
+
+    const avatarScenes  = scenes.filter(s => s.avatar_present).length
+    const brollScenes   = scenes.length - avatarScenes
+    const pexelsHits    = pexelsUrls.filter(Boolean).length
+    const photoHits     = scenes.filter((s, i) => !s.avatar_present && pexelsUrls[i] === null && photoUrls.length > 0).length
+
+    console.log(
+      `[listing-video] ${scenes.length} scenes | avatar: ${avatarScenes} | broll: ${brollScenes}` +
+      ` | pexels: ${pexelsHits} | listing photos: ${photoUrls.length} provided`
+    )
 
     const payload = {
       video_inputs,
       dimension,
       caption: true,
     }
-
-    const avatarScenes = scenes.filter(s => s.avatar_present).length
-    const pexelsHits = videoUrls.filter(Boolean).length
-    console.log(`[listing-video] ${scenes.length} scenes, ${avatarScenes} avatar, ${pexelsHits} Pexels videos`)
 
     // Step 4: Submit to HeyGen
     const heygenRes = await fetch("https://api.heygen.com/v2/video/generate", {
@@ -165,7 +211,10 @@ export async function POST(req: Request) {
       throw new Error(msg)
     }
 
-    return NextResponse.json({ videoId: data.data?.video_id, plan })
+    return NextResponse.json({
+      videoId: data.data?.video_id,
+      plan: { scenes, meta: { avatarScenes, brollScenes, pexelsHits, photoUrls: photoUrls.length } },
+    })
   } catch (e: any) {
     console.error("[listing-video] Error:", e)
     return NextResponse.json({ error: e.message }, { status: 500 })
