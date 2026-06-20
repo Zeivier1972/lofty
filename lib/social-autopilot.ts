@@ -192,6 +192,7 @@ async function generateAndUploadImage(dayOfWeek: number, research?: ResearchBrie
       prompt: imagePrompt,
       n: 1,
       size: "1024x1024",
+      response_format: "b64_json",
     } as any)
 
     const b64 = (response.data as any[])?.[0]?.b64_json
@@ -586,6 +587,7 @@ async function generateSectionImage(prompt: string, folder = "lofty-blog"): Prom
       prompt: `Professional Miami real estate photography. ${prompt}. Luxury properties, blue sky, palm trees, modern architecture. Photorealistic, bright daylight, no text or watermarks.`,
       n: 1,
       size: "1024x1024",
+      response_format: "b64_json",
     } as any)
 
     const b64 = (response.data as any[])?.[0]?.b64_json
