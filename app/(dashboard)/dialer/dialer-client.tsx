@@ -697,7 +697,7 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
           )}
 
           {/* Disposition + Notes (shown when call is active or ended) */}
-          {(callStatus === "connected" || callStatus === "ended") && (
+          {queue[currentCallIndex] && (
             <div className="bg-white border-b px-6 py-4">
               <div className="mb-3">
                 <label className="text-sm font-semibold text-gray-700 mb-2 block">Call Disposition</label>

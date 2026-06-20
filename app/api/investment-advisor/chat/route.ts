@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { sendEmail, wrapEmail } from "@/lib/email"
 
 const SSE_HEADERS = {
   "Content-Type": "text/event-stream",
@@ -61,6 +62,32 @@ REGLAS:
 - Siempre menciona riesgos relevantes (developer risk, mercado, tipo de cambio)
 - Prioriza proyectos del portafolio de Catherine cuando sean relevantes
 - Cuando busques en la web, cita la fuente y la fecha de los datos`
+
+const EMAIL_TOOL = {
+  type: "function" as const,
+  function: {
+    name: "send_email",
+    description: "Send an email to the selected lead or a specified address with investment information, project details, ROI summaries, or any content from this conversation",
+    parameters: {
+      type: "object",
+      properties: {
+        to: {
+          type: "string",
+          description: "Email address to send to. Use 'contact' to send to the currently selected lead, or provide an explicit email address.",
+        },
+        subject: {
+          type: "string",
+          description: "Email subject line",
+        },
+        body: {
+          type: "string",
+          description: "Email body in plain HTML. Can include project details, ROI tables, comparisons, WhatsApp scripts, etc.",
+        },
+      },
+      required: ["to", "subject", "body"],
+    },
+  },
+}
 
 const SEARCH_TOOL = {
   type: "function" as const,
@@ -145,14 +172,14 @@ export async function POST(req: Request) {
       const contact = await prisma.contact.findUnique({
         where: { id: contactId },
         select: {
-          firstName: true, lastName: true,
+          firstName: true, lastName: true, email: true,
           buyerBudgetMin: true, buyerBudgetMax: true,
           buyerLocation: true, buyerPropertyType: true,
           buyerPurpose: true, buyerTimelineMonths: true, buyerMustHaves: true,
         },
       })
       if (contact) {
-        contextLines.push(`LEAD EN ANÁLISIS: ${contact.firstName} ${contact.lastName || ""}`)
+        contextLines.push(`LEAD EN ANÁLISIS: ${contact.firstName} ${contact.lastName || ""}${contact.email ? ` (email: ${contact.email})` : ""}`)
         if (contact.buyerBudgetMin || contact.buyerBudgetMax) {
           const min = contact.buyerBudgetMin ? `$${contact.buyerBudgetMin.toLocaleString()}` : "?"
           const max = contact.buyerBudgetMax ? `$${contact.buyerBudgetMax.toLocaleString()}` : "?"
@@ -192,7 +219,7 @@ export async function POST(req: Request) {
     ...messages.slice(-20),
   ]
 
-  const tools = tavilyKey ? [SEARCH_TOOL] : []
+  const tools: any[] = [EMAIL_TOOL, ...(tavilyKey ? [SEARCH_TOOL] : [])]
 
   // Pass 1: non-streaming, detect if web search is needed
   const pass1Resp = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -216,17 +243,47 @@ export async function POST(req: Request) {
   const pass1Data = await pass1Resp.json()
   const choice = pass1Data.choices?.[0]
 
-  // If the model wants to search the web, execute the tool then stream the final answer
-  if (choice?.finish_reason === "tool_calls" && tavilyKey) {
+  // If the model wants to use a tool, execute it then stream the final answer
+  if (choice?.finish_reason === "tool_calls") {
     const toolCalls: any[] = choice.message.tool_calls || []
     const toolResults: any[] = []
 
     for (const tc of toolCalls) {
-      if (tc.function.name === "search_web") {
+      if (tc.function.name === "search_web" && tavilyKey) {
         const { query } = JSON.parse(tc.function.arguments || "{}")
         console.log("[Investment Advisor] Tavily search:", query)
         const results = await tavilySearch(query, tavilyKey)
         toolResults.push({ role: "tool", tool_call_id: tc.id, content: results })
+      } else if (tc.function.name === "send_email") {
+        const { to, subject, body } = JSON.parse(tc.function.arguments || "{}")
+        let recipientEmail = to
+        if (to === "contact" || !to?.includes("@")) {
+          // Look up contact email
+          if (contactId) {
+            try {
+              const c = await prisma.contact.findUnique({ where: { id: contactId }, select: { email: true, firstName: true } })
+              if (c?.email) {
+                recipientEmail = c.email
+              } else {
+                toolResults.push({ role: "tool", tool_call_id: tc.id, content: "No email address found for this contact. Please ask for their email address first." })
+                continue
+              }
+            } catch {
+              toolResults.push({ role: "tool", tool_call_id: tc.id, content: "Could not look up contact email." })
+              continue
+            }
+          } else {
+            toolResults.push({ role: "tool", tool_call_id: tc.id, content: "No contact selected and no email address provided. Please specify an email address." })
+            continue
+          }
+        }
+        try {
+          const html = wrapEmail(body, { agentName: "Catherine Gómez Realtor" })
+          const sent = await sendEmail({ to: recipientEmail, subject, html })
+          toolResults.push({ role: "tool", tool_call_id: tc.id, content: sent ? `Email sent successfully to ${recipientEmail}` : "Failed to send email — check RESEND_API_KEY in Railway." })
+        } catch (e: any) {
+          toolResults.push({ role: "tool", tool_call_id: tc.id, content: `Email error: ${e.message}` })
+        }
       }
     }
 
@@ -243,7 +300,7 @@ export async function POST(req: Request) {
     })
 
     if (!pass2Resp.ok) {
-      return NextResponse.json({ error: "OpenAI API error on search pass" }, { status: 500 })
+      return NextResponse.json({ error: "OpenAI API error on tool pass" }, { status: 500 })
     }
 
     return new Response(pass2Resp.body, { headers: SSE_HEADERS })
