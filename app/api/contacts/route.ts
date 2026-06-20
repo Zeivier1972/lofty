@@ -12,6 +12,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
     const search = searchParams.get("search")
     const status = searchParams.get("status")
+    const tagsParam = searchParams.get("tags")
     const page = parseInt(searchParams.get("page") || "1")
     const pageSize = parseInt(searchParams.get("pageSize") || "20")
 
@@ -24,6 +25,10 @@ export async function GET(req: Request) {
         { email: { contains: search } },
         { phone: { contains: search } },
       ]
+    }
+    if (tagsParam) {
+      const tagIds = tagsParam.split(",").filter(Boolean)
+      if (tagIds.length > 0) where.tags = { some: { tagId: { in: tagIds } } }
     }
 
     const [contacts, total] = await Promise.all([

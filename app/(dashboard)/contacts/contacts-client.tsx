@@ -48,7 +48,7 @@ interface ContactsClientProps {
   page: number
   pageSize: number
   tags: any[]
-  filters: { status?: string; search?: string; source?: string }
+  filters: { status?: string; search?: string; source?: string; tags?: string }
   activeTab: string
   stageCounts: Record<string, number>
   stages: Stage[]
@@ -999,6 +999,7 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
     const params = new URLSearchParams()
     if (tabId !== "all") params.set("tab", tabId)
     if (filters.search) params.set("search", filters.search)
+    if (filters.tags) params.set("tags", filters.tags)
     router.push(`/contacts?${params.toString()}`)
   }
 
@@ -1103,23 +1104,46 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
     } finally { setBulkTagging(false) }
   }
 
-  const updateFilter = (key: string, value: string) => {
+  const activeTagIds = filters.tags ? filters.tags.split(",").filter(Boolean) : []
+
+  const buildParams = (overrides: Record<string, string | undefined> = {}) => {
+    const base: Record<string, string | undefined> = {
+      search: filters.search,
+      status: filters.status,
+      source: filters.source,
+      tags: filters.tags,
+      tab: activeTab !== "all" ? activeTab : undefined,
+    }
+    const merged = { ...base, ...overrides }
     const params = new URLSearchParams()
-    if (filters.search) params.set("search", filters.search)
-    if (filters.status) params.set("status", filters.status)
-    if (filters.source) params.set("source", filters.source)
-    if (value && value !== "ALL") params.set(key, value)
-    else params.delete(key)
+    for (const [k, v] of Object.entries(merged)) {
+      if (v && v !== "ALL") params.set(k, v)
+    }
     params.delete("page")
+    return params
+  }
+
+  const updateFilter = (key: string, value: string) => {
+    const params = buildParams({ [key]: value !== "ALL" ? value : undefined })
+    router.push(`/contacts?${params.toString()}`)
+  }
+
+  const toggleTagFilter = (tagId: string) => {
+    const next = activeTagIds.includes(tagId)
+      ? activeTagIds.filter(id => id !== tagId)
+      : [...activeTagIds, tagId]
+    const params = buildParams({ tags: next.length > 0 ? next.join(",") : undefined })
+    router.push(`/contacts?${params.toString()}`)
+  }
+
+  const clearTagFilter = () => {
+    const params = buildParams({ tags: undefined })
     router.push(`/contacts?${params.toString()}`)
   }
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
-    const params = new URLSearchParams()
-    if (search) params.set("search", search)
-    if (filters.status) params.set("status", filters.status)
-    if (filters.source) params.set("source", filters.source)
+    const params = buildParams({ search: search || undefined })
     router.push(`/contacts?${params.toString()}`)
   }
 
@@ -1344,7 +1368,78 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
             ))}
           </SelectContent>
         </Select>
+
+        {/* Tag filter */}
+        {tags.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className={cn(
+                  "h-9 gap-1.5 font-normal",
+                  activeTagIds.length > 0 && "border-lofty-500 text-lofty-700 bg-lofty-50"
+                )}
+              >
+                <Tag className="w-3.5 h-3.5" />
+                {activeTagIds.length > 0 ? `Tags (${activeTagIds.length})` : "Filter by Tag"}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-52 max-h-72 overflow-y-auto">
+              {tags.map((t: any) => {
+                const active = activeTagIds.includes(t.id)
+                return (
+                  <DropdownMenuItem
+                    key={t.id}
+                    onClick={(e) => { e.preventDefault(); toggleTagFilter(t.id) }}
+                    className="gap-2 cursor-pointer"
+                  >
+                    <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: t.color || "#6366F1" }} />
+                    <span className="flex-1 text-sm">{t.name}</span>
+                    {active && <CheckCircle2 className="w-3.5 h-3.5 text-lofty-600 flex-shrink-0" />}
+                  </DropdownMenuItem>
+                )
+              })}
+              {activeTagIds.length > 0 && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={clearTagFilter} className="text-gray-500 text-xs gap-2">
+                    <X className="w-3.5 h-3.5" /> Clear tag filters
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
+
+      {/* Active tag filter pills */}
+      {activeTagIds.length > 0 && (
+        <div className="flex flex-wrap gap-2 -mt-1">
+          {activeTagIds.map(tagId => {
+            const tag = tags.find((t: any) => t.id === tagId)
+            if (!tag) return null
+            return (
+              <span
+                key={tagId}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium"
+                style={{ backgroundColor: (tag.color || "#6366F1") + "20", color: tag.color || "#6366F1" }}
+              >
+                {tag.name}
+                <button
+                  onClick={() => toggleTagFilter(tagId)}
+                  className="ml-0.5 hover:opacity-70 transition-opacity"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )
+          })}
+          <button onClick={clearTagFilter} className="text-xs text-gray-400 hover:text-gray-600 px-1">
+            Clear all
+          </button>
+        </div>
+      )}
 
       {/* Contact list */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">

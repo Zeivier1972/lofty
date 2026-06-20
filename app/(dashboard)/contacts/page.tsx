@@ -6,7 +6,7 @@ import ContactsClient from "./contacts-client"
 export default async function ContactsPage({
   searchParams,
 }: {
-  searchParams: { status?: string; search?: string; source?: string; page?: string; tab?: string }
+  searchParams: { status?: string; search?: string; source?: string; page?: string; tab?: string; tags?: string }
 }) {
   let contacts: any[] = []
   let total = 0
@@ -65,6 +65,10 @@ export default async function ContactsPage({
         { phone: { contains: searchParams.search } },
       ]
     }
+    if (searchParams.tags) {
+      const tagIds = searchParams.tags.split(",").filter(Boolean)
+      if (tagIds.length > 0) tabWhere.tags = { some: { tagId: { in: tagIds } } }
+    }
 
     // Count per stage in parallel
     const stageCountResults = await Promise.all(
@@ -102,7 +106,7 @@ export default async function ContactsPage({
       page={page}
       pageSize={pageSize}
       tags={JSON.parse(JSON.stringify(tags))}
-      filters={{ status: searchParams.status, search: searchParams.search, source: searchParams.source }}
+      filters={{ status: searchParams.status, search: searchParams.search, source: searchParams.source, tags: searchParams.tags }}
       activeTab={searchParams.tab || "all"}
       stageCounts={stageCounts}
       stages={JSON.parse(JSON.stringify(stages))}
