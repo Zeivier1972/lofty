@@ -71,6 +71,220 @@ const ACTIVITY_ICONS: Record<string, { icon: string; color: string }> = {
 
 type TabId = "overview" | "properties" | "searches" | "transactions" | "documents" | "automations" | "calls"
 
+function BuyerPrefsPanel({ contact }: { contact: any }) {
+  const { toast } = useToast()
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [fields, setFields] = useState({
+    buyerPropertyType: contact.buyerPropertyType || "",
+    buyerLocation: contact.buyerLocation || "",
+    buyerBedroomsMin: contact.buyerBedroomsMin != null ? String(contact.buyerBedroomsMin) : "",
+    buyerBathroomsMin: contact.buyerBathroomsMin != null ? String(contact.buyerBathroomsMin) : "",
+    buyerBudgetMin: contact.buyerBudgetMin != null ? String(contact.buyerBudgetMin) : "",
+    buyerBudgetMax: contact.buyerBudgetMax != null ? String(contact.buyerBudgetMax) : "",
+    buyerTimelineMonths: contact.buyerTimelineMonths != null ? String(contact.buyerTimelineMonths) : "",
+    buyerPurpose: contact.buyerPurpose || "",
+    buyerMustHaves: contact.buyerMustHaves || "",
+  })
+
+  async function save() {
+    setSaving(true)
+    try {
+      const body = {
+        buyerPropertyType: fields.buyerPropertyType || null,
+        buyerLocation: fields.buyerLocation || null,
+        buyerBedroomsMin: fields.buyerBedroomsMin ? parseInt(fields.buyerBedroomsMin) : null,
+        buyerBathroomsMin: fields.buyerBathroomsMin ? parseFloat(fields.buyerBathroomsMin) : null,
+        buyerBudgetMin: fields.buyerBudgetMin ? parseInt(fields.buyerBudgetMin) : null,
+        buyerBudgetMax: fields.buyerBudgetMax ? parseInt(fields.buyerBudgetMax) : null,
+        buyerTimelineMonths: fields.buyerTimelineMonths ? parseInt(fields.buyerTimelineMonths) : null,
+        buyerPurpose: fields.buyerPurpose || null,
+        buyerMustHaves: fields.buyerMustHaves || null,
+      }
+      const res = await fetch(`/api/contacts/${contact.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) throw new Error("Failed to save")
+      // Update local contact object so sidebar re-renders correctly
+      Object.assign(contact, body)
+      setEditing(false)
+      toast({ title: "Buyer preferences saved" })
+    } catch {
+      toast({ title: "Error saving", variant: "destructive" })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const hasData = fields.buyerBudgetMax || fields.buyerLocation || fields.buyerPropertyType || fields.buyerPurpose
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Buyer Preferences</p>
+        <button
+          onClick={() => editing ? save() : setEditing(true)}
+          disabled={saving}
+          className="text-xs text-lofty-600 hover:text-lofty-800 font-medium flex items-center gap-1"
+        >
+          {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : editing ? "Save" : <><Edit className="w-3 h-3" /> Edit</>}
+        </button>
+        {editing && (
+          <button onClick={() => setEditing(false)} className="text-xs text-gray-400 hover:text-gray-600 ml-1">
+            <X className="w-3 h-3" />
+          </button>
+        )}
+      </div>
+
+      {editing ? (
+        <div className="bg-gray-50 rounded-lg p-3 space-y-2 text-xs">
+          <div className="flex gap-2">
+            <select
+              value={fields.buyerPropertyType}
+              onChange={e => setFields(f => ({ ...f, buyerPropertyType: e.target.value }))}
+              className="flex-1 border rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-lofty-500"
+            >
+              <option value="">Tipo de propiedad...</option>
+              <option>Casa</option><option>Apartamento</option><option>Townhouse</option>
+              <option>Condo</option><option>Terreno</option><option>Commercial</option>
+            </select>
+          </div>
+          <input
+            type="text"
+            placeholder="Área / Zona / Ciudad..."
+            value={fields.buyerLocation}
+            onChange={e => setFields(f => ({ ...f, buyerLocation: e.target.value }))}
+            className="w-full border rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-lofty-500"
+          />
+          <div className="flex gap-2">
+            <select
+              value={fields.buyerBedroomsMin}
+              onChange={e => setFields(f => ({ ...f, buyerBedroomsMin: e.target.value }))}
+              className="flex-1 border rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-lofty-500"
+            >
+              <option value="">Cuartos mín.</option>
+              {["1","2","3","4","5"].map(v => <option key={v} value={v}>{v}+</option>)}
+            </select>
+            <select
+              value={fields.buyerBathroomsMin}
+              onChange={e => setFields(f => ({ ...f, buyerBathroomsMin: e.target.value }))}
+              className="flex-1 border rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-lofty-500"
+            >
+              <option value="">Baños mín.</option>
+              {["1","2","3","4"].map(v => <option key={v} value={v}>{v}+</option>)}
+            </select>
+          </div>
+          <div className="flex gap-2 items-center">
+            <input
+              type="number"
+              placeholder="Budget mín $"
+              value={fields.buyerBudgetMin}
+              onChange={e => setFields(f => ({ ...f, buyerBudgetMin: e.target.value }))}
+              className="flex-1 border rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-lofty-500"
+            />
+            <span className="text-gray-400">–</span>
+            <input
+              type="number"
+              placeholder="Budget máx $"
+              value={fields.buyerBudgetMax}
+              onChange={e => setFields(f => ({ ...f, buyerBudgetMax: e.target.value }))}
+              className="flex-1 border rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-lofty-500"
+            />
+          </div>
+          <div className="flex gap-2">
+            <select
+              value={fields.buyerTimelineMonths}
+              onChange={e => setFields(f => ({ ...f, buyerTimelineMonths: e.target.value }))}
+              className="flex-1 border rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-lofty-500"
+            >
+              <option value="">Plazo...</option>
+              <option value="1">Lo antes posible</option>
+              <option value="3">1–3 meses</option>
+              <option value="6">3–6 meses</option>
+              <option value="12">6–12 meses</option>
+              <option value="24">1+ año</option>
+            </select>
+            <select
+              value={fields.buyerPurpose}
+              onChange={e => setFields(f => ({ ...f, buyerPurpose: e.target.value }))}
+              className="flex-1 border rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-lofty-500"
+            >
+              <option value="">Propósito...</option>
+              <option>Inversión</option><option>Vivienda principal</option>
+              <option>Vacaciones</option><option>Airbnb</option><option>Renta</option>
+            </select>
+          </div>
+          <input
+            type="text"
+            placeholder="Must-haves (piscina, garaje, vista al mar...)"
+            value={fields.buyerMustHaves}
+            onChange={e => setFields(f => ({ ...f, buyerMustHaves: e.target.value }))}
+            className="w-full border rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-lofty-500"
+          />
+        </div>
+      ) : hasData ? (
+        <div className="bg-gray-50 rounded-lg p-3 space-y-1.5 text-xs">
+          {fields.buyerPropertyType && (
+            <div className="flex justify-between">
+              <span className="text-gray-500">Tipo</span>
+              <span className="font-medium text-gray-800">{fields.buyerPropertyType}</span>
+            </div>
+          )}
+          {fields.buyerLocation && (
+            <div className="flex justify-between">
+              <span className="text-gray-500">Área</span>
+              <span className="font-medium text-gray-800 text-right max-w-[130px]">{fields.buyerLocation}</span>
+            </div>
+          )}
+          {(fields.buyerBudgetMin || fields.buyerBudgetMax) && (
+            <div className="flex justify-between">
+              <span className="text-gray-500">Presupuesto</span>
+              <span className="font-medium text-gray-800">
+                {fields.buyerBudgetMin ? `$${Number(fields.buyerBudgetMin).toLocaleString()}` : ""}
+                {fields.buyerBudgetMin && fields.buyerBudgetMax ? " – " : ""}
+                {fields.buyerBudgetMax ? `$${Number(fields.buyerBudgetMax).toLocaleString()}` : ""}
+              </span>
+            </div>
+          )}
+          {fields.buyerBedroomsMin && (
+            <div className="flex justify-between">
+              <span className="text-gray-500">Cuartos</span>
+              <span className="font-medium text-gray-800">{fields.buyerBedroomsMin}+</span>
+            </div>
+          )}
+          {fields.buyerPurpose && (
+            <div className="flex justify-between">
+              <span className="text-gray-500">Propósito</span>
+              <span className="font-medium text-gray-800">{fields.buyerPurpose}</span>
+            </div>
+          )}
+          {fields.buyerTimelineMonths && (
+            <div className="flex justify-between">
+              <span className="text-gray-500">Plazo</span>
+              <span className="font-medium text-gray-800">{fields.buyerTimelineMonths} meses</span>
+            </div>
+          )}
+          {fields.buyerMustHaves && (
+            <div className="flex justify-between">
+              <span className="text-gray-500">Must-haves</span>
+              <span className="font-medium text-gray-800 text-right max-w-[130px]">{fields.buyerMustHaves}</span>
+            </div>
+          )}
+        </div>
+      ) : (
+        <button
+          onClick={() => setEditing(true)}
+          className="w-full text-xs text-gray-400 border border-dashed border-gray-200 rounded-lg py-2 hover:border-lofty-400 hover:text-lofty-600 transition-colors"
+        >
+          + Add buyer preferences
+        </button>
+      )}
+    </div>
+  )
+}
+
 export default function ContactDetailClient({ contact, smsMessages = [], stages = [], pipelineId = "" }: { contact: any; smsMessages?: any[]; stages?: any[]; pipelineId?: string }) {
   const { toast } = useToast()
   const router = useRouter()
@@ -623,49 +837,8 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
             )}
           </div>
 
-          {/* Buyer/Seller profile */}
-          {(contact.buyerBudgetMax || contact.buyerLocation || contact.sellerAddress) && (
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                {contact.sellerAddress ? "Seller Profile" : "Search Criteria"}
-              </p>
-              <div className="bg-gray-50 rounded-lg p-3 space-y-1.5 text-xs">
-                {contact.buyerBudgetMax && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Budget</span>
-                    <span className="font-medium text-gray-800">
-                      {contact.buyerBudgetMin ? `${formatCurrency(contact.buyerBudgetMin)} – ` : "Up to "}
-                      {formatCurrency(contact.buyerBudgetMax)}
-                    </span>
-                  </div>
-                )}
-                {contact.buyerBedroomsMin && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Bedrooms</span>
-                    <span className="font-medium text-gray-800">{contact.buyerBedroomsMin}+</span>
-                  </div>
-                )}
-                {contact.buyerLocation && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Area</span>
-                    <span className="font-medium text-gray-800 text-right max-w-[120px]">{contact.buyerLocation}</span>
-                  </div>
-                )}
-                {contact.sellerAddress && (
-                  <div>
-                    <span className="text-gray-500">Property</span>
-                    <p className="font-medium text-gray-800 mt-0.5">{contact.sellerAddress}</p>
-                  </div>
-                )}
-                {contact.sellerEstimatedValue && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Est. Value</span>
-                    <span className="font-medium text-green-600">{formatCurrency(contact.sellerEstimatedValue)}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+          {/* Buyer Preferences — always visible, inline editable */}
+          <BuyerPrefsPanel contact={contact} />
 
           {/* Edit link */}
           <Link href={`/contacts/${contact.id}/edit`}>
