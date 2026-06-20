@@ -13,7 +13,11 @@ export default async function DialerPage() {
     const session = await auth()
     ;[contacts, sessions] = await Promise.all([
       prisma.contact.findMany({
-        select: { id: true, firstName: true, lastName: true, phone: true, phone2: true, status: true, leadScore: true },
+        select: {
+          id: true, firstName: true, lastName: true, phone: true, phone2: true, status: true, leadScore: true,
+          buyerPropertyType: true, buyerLocation: true, buyerBedroomsMin: true, buyerBathroomsMin: true,
+          buyerBudgetMin: true, buyerBudgetMax: true, buyerTimelineMonths: true, buyerPurpose: true,
+        },
         where: { phone: { not: null } },
         orderBy: { leadScore: "desc" },
         take: 200,
@@ -41,7 +45,11 @@ export default async function DialerPage() {
             leads: {
               include: {
                 contact: {
-                  select: { id: true, firstName: true, lastName: true, phone: true, phone2: true, status: true, leadScore: true },
+                  select: {
+                    id: true, firstName: true, lastName: true, phone: true, phone2: true, status: true, leadScore: true,
+                    buyerPropertyType: true, buyerLocation: true, buyerBedroomsMin: true, buyerBathroomsMin: true,
+                    buyerBudgetMin: true, buyerBudgetMax: true, buyerTimelineMonths: true, buyerPurpose: true,
+                  },
                 },
               },
             },

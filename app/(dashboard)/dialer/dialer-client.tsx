@@ -19,6 +19,14 @@ interface Contact {
   phone2: string | null
   status: string
   leadScore: number
+  buyerPropertyType?: string | null
+  buyerLocation?: string | null
+  buyerBedroomsMin?: number | null
+  buyerBathroomsMin?: number | null
+  buyerBudgetMin?: number | null
+  buyerBudgetMax?: number | null
+  buyerTimelineMonths?: number | null
+  buyerPurpose?: string | null
 }
 
 interface DialerCall {
@@ -54,6 +62,26 @@ interface Props {
   contacts: Contact[]
   sessions: DialerSession[]
   pipelineStages: PipelineStage[]
+}
+
+function mapPropertyType(type?: string | null): string {
+  switch (type) {
+    case "SINGLE_FAMILY": return "Casa"
+    case "CONDO": return "Condo"
+    case "TOWNHOUSE": return "Townhouse"
+    case "MULTI_FAMILY": return "Casa"
+    case "LAND": return "Terreno"
+    default: return ""
+  }
+}
+
+function mapTimeline(months?: number | null): string {
+  if (!months) return ""
+  if (months <= 1) return "Lo antes posible"
+  if (months <= 3) return "1-3 meses"
+  if (months <= 6) return "3-6 meses"
+  if (months <= 12) return "6-12 meses"
+  return "1+ año"
 }
 
 const DISPOSITIONS = [
@@ -108,6 +136,24 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
     setAutoDialContact(null)
     dialContact(contact)
   }, [autoDialContact])
+
+  // Pre-fill notes from stored buyer preferences when the active contact changes
+  useEffect(() => {
+    const contact = queue[currentCallIndex]
+    if (!contact) return
+    setNoteFields({
+      propertyType: mapPropertyType(contact.buyerPropertyType),
+      area: contact.buyerLocation || "",
+      beds: contact.buyerBedroomsMin ? `${contact.buyerBedroomsMin}+` : "",
+      baths: contact.buyerBathroomsMin ? `${contact.buyerBathroomsMin}+` : "",
+      budgetMin: contact.buyerBudgetMin != null ? String(contact.buyerBudgetMin) : "",
+      budgetMax: contact.buyerBudgetMax != null ? String(contact.buyerBudgetMax) : "",
+      timeline: mapTimeline(contact.buyerTimelineMonths),
+      purpose: contact.buyerPurpose || "",
+      actions: [],
+      extraNotes: "",
+    })
+  }, [currentCallIndex, queue])
 
   function clearCountdown() {
     if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null }
