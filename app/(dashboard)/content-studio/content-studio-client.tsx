@@ -943,6 +943,11 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
   const [publishError, setPublishError] = useState("")
   const pollRef = useRef<NodeJS.Timeout | null>(null)
 
+  // Remotion state
+  const [rConfig, setRConfig] = useState<any>(null)
+  const [rLoading, setRLoading] = useState(false)
+  const [rCopied, setRCopied] = useState(false)
+
   useEffect(() => {
     // Pre-fill script from campaign keyword if navigated from a campaign card
     if (campaignKeyword) {
@@ -1097,6 +1102,41 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
     } finally {
       setGenerating(false)
     }
+  }
+
+  const generateVideoAdConfig = async () => {
+    if (!script.trim()) {
+      toast({ title: "Escribe el guión primero", variant: "destructive" })
+      return
+    }
+    setRLoading(true)
+    setRConfig(null)
+    try {
+      const res = await fetch("/api/remotion/video-ad", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ script }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setRConfig(data)
+      toast({ title: `Config lista — ${data.meta.sceneCount} escenas, ${data.meta.totalSeconds}s` })
+    } catch (e: any) {
+      toast({ title: "Error generando config", description: e.message, variant: "destructive" })
+    } finally {
+      setRLoading(false)
+    }
+  }
+
+  const downloadVideoAdConfig = () => {
+    if (!rConfig) return
+    const blob = new Blob([JSON.stringify(rConfig, null, 2)], { type: "application/json" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `video-ad-${Date.now()}.json`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   if (loadingData) {
@@ -1333,8 +1373,92 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
             ? <><Loader2 className="w-4 h-4 animate-spin" /> Enviando a HeyGen…</>
             : status === "processing"
             ? <><Loader2 className="w-4 h-4 animate-spin" /> Generando video… (2–5 min)</>
-            : <><Clapperboard className="w-4 h-4" /> Generar Video Ad</>}
+            : <><Clapperboard className="w-4 h-4" /> Generar Video Ad con HeyGen</>}
         </button>
+      </div>
+
+      {/* ── Remotion — Render locally ────────────────────────────────────── */}
+      <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-6 shadow-lg border border-gray-700">
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <h2 className="text-base font-semibold text-white">Remotion — Render desde tu terminal</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Renderiza el guión como video profesional con captions animados, Ken Burns y B-roll de Pexels.</p>
+          </div>
+          <span className="text-[10px] font-bold px-2 py-1 bg-orange-500 text-white rounded-full uppercase tracking-wide">Local</span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          {[
+            ["Captions", "kinéticos estilo Reels"],
+            ["B-roll", "Pexels por tema del guión"],
+            ["Ken Burns", "en fotos de propiedad"],
+            ["Branding", "tu nombre en el CTA final"],
+          ].map(([title, desc]) => (
+            <div key={title} className="bg-white/5 rounded-xl p-2.5 text-xs">
+              <span className="text-orange-400 font-semibold">{title}</span>
+              <span className="text-gray-400"> — {desc}</span>
+            </div>
+          ))}
+        </div>
+
+        <button
+          onClick={generateVideoAdConfig}
+          disabled={rLoading || !script.trim()}
+          className="w-full flex items-center justify-center gap-2 py-3 bg-orange-500 text-white rounded-xl font-semibold text-sm hover:bg-orange-600 transition-all disabled:opacity-50">
+          {rLoading
+            ? <><Loader2 className="w-4 h-4 animate-spin" /> Generando config de Remotion…</>
+            : <><Video className="w-4 h-4" /> Generar Config (usa el guión escrito arriba)</>}
+        </button>
+
+        {rConfig && (
+          <div className="mt-4 space-y-3">
+            <div className="flex gap-3 text-xs">
+              <span className="bg-white/10 text-gray-300 px-2 py-1 rounded-lg">{rConfig.meta.sceneCount} escenas</span>
+              <span className="bg-white/10 text-gray-300 px-2 py-1 rounded-lg">{rConfig.meta.totalSeconds}s</span>
+              <span className="bg-white/10 text-gray-300 px-2 py-1 rounded-lg">720×1280 · 30fps</span>
+            </div>
+
+            <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+              {rConfig.scenes.map((s: any, i: number) => (
+                <div key={i} className="rounded-lg p-2.5 text-xs bg-white/5 border border-white/10 flex gap-2">
+                  <span className="flex-shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded self-start mt-0.5 bg-orange-600 text-white">
+                    {s.asset_type === "video" ? "BROLL" : "FOTO"}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-gray-300">{i + 1}. {s.name} <span className="text-gray-500">({s.duration_seconds}s)</span></p>
+                    <p className="text-gray-400 leading-snug text-[11px] mt-0.5 line-clamp-2">{s.script}</p>
+                    <p className="text-gray-500 mt-0.5">Caption: <strong className="text-gray-400">{s.caption}</strong></p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <button
+              onClick={downloadVideoAdConfig}
+              className="w-full flex items-center justify-center gap-2 py-2.5 bg-white/10 hover:bg-white/15 text-white rounded-xl text-sm font-semibold transition-colors border border-white/20">
+              <Download className="w-4 h-4" /> Descargar video-ad-config.json
+            </button>
+
+            <div className="bg-black/50 rounded-xl p-4 border border-gray-700">
+              <p className="text-xs text-gray-400 mb-2 font-semibold uppercase tracking-wide">Terminal</p>
+              <div className="flex items-start gap-2">
+                <code className="flex-1 text-xs text-green-400 font-mono break-all">
+                  node scripts/render-listing.mjs --config video-ad-config.json
+                </code>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText("node scripts/render-listing.mjs --config video-ad-config.json")
+                    setRCopied(true)
+                    setTimeout(() => setRCopied(false), 2000)
+                  }}
+                  className="flex-shrink-0 p-1.5 bg-white/10 hover:bg-white/20 rounded-lg transition-colors">
+                  {rCopied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5 text-gray-400" />}
+                </button>
+              </div>
+              <p className="text-[11px] text-gray-500 mt-2">Descarga el JSON → ponlo en la raíz del proyecto → corre el comando</p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Processing */}
