@@ -72,7 +72,7 @@ const POST_TYPE_LABELS: Record<string, string> = {
 export default function SocialClient({ accounts: initialAccounts, posts: initialPosts }: Props) {
   const [accounts, setAccounts] = useState<SocialAccount[]>(initialAccounts)
   const [posts, setPosts] = useState<SocialPost[]>(initialPosts)
-  const [activeTab, setActiveTab] = useState<"composer" | "calendar" | "analytics" | "accounts">("composer")
+  const [activeTab, setActiveTab] = useState<"composer" | "calendar" | "analytics" | "accounts" | "blog">("composer")
   const [autoPilotEnabled, setAutoPilotEnabled] = useState(false)
   const [autoPilotLoading, setAutoPilotLoading] = useState(false)
   const [runningNow, setRunningNow] = useState(false)
@@ -101,6 +101,41 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
   const [aiDetails, setAiDetails] = useState("")
   const [aiPlatform, setAiPlatform] = useState("FACEBOOK")
   const [generatedContent, setGeneratedContent] = useState("")
+
+  // Blog share state
+  const [blogPosts, setBlogPosts] = useState<any[]>([])
+  const [blogLoading, setBlogLoading] = useState(false)
+  const [sharingBlogId, setSharingBlogId] = useState<string | null>(null)
+  const [shareResults, setShareResults] = useState<Record<string, "ok" | "error">>({})
+
+  const loadBlogPosts = async () => {
+    setBlogLoading(true)
+    try {
+      const res = await fetch("/api/blog?limit=20")
+      const data = await res.json()
+      setBlogPosts(data.posts ?? data ?? [])
+    } catch { /* ignore */ } finally {
+      setBlogLoading(false)
+    }
+  }
+
+  const shareBlog = async (blogId: string) => {
+    setSharingBlogId(blogId)
+    try {
+      const res = await fetch("/api/social/share-blog", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ blogId }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setShareResults(r => ({ ...r, [blogId]: "ok" }))
+    } catch {
+      setShareResults(r => ({ ...r, [blogId]: "error" }))
+    } finally {
+      setSharingBlogId(null)
+    }
+  }
 
   // Account connect state
   const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null)
@@ -287,6 +322,7 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
         <div className="flex gap-1 mt-4">
           {[
             { id: "composer", label: "Composer", icon: Pencil },
+            { id: "blog", label: "Share Blog", icon: FileText },
             { id: "calendar", label: "Scheduled", icon: Calendar },
             { id: "analytics", label: "Analytics", icon: BarChart3 },
             { id: "accounts", label: "Accounts", icon: Settings },
@@ -953,6 +989,88 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
                 </div>
               )
             })}
+          </div>
+        )}
+
+        {/* ── Blog Share Tab ─────────────────────────────────────────────── */}
+        {activeTab === "blog" && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-gray-800">Share Blog Posts to Social</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Publishes to all connected Facebook & Instagram accounts + posts an engagement comment automatically.</p>
+              </div>
+              <button
+                onClick={loadBlogPosts}
+                disabled={blogLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium text-gray-700 transition-colors">
+                <RefreshCw className={cn("w-3.5 h-3.5", blogLoading && "animate-spin")} />
+                {blogPosts.length === 0 ? "Load Posts" : "Refresh"}
+              </button>
+            </div>
+
+            {blogPosts.length === 0 && !blogLoading && (
+              <div className="text-center py-12 text-gray-400 text-sm">
+                Click "Load Posts" to see your published blog posts.
+              </div>
+            )}
+
+            {blogLoading && (
+              <div className="text-center py-12 text-gray-400 text-sm">Loading blog posts…</div>
+            )}
+
+            <div className="space-y-3">
+              {blogPosts.map((post: any) => (
+                <div key={post.id} className="bg-white border border-gray-200 rounded-2xl p-4 flex gap-4 items-start">
+                  {post.coverImage && (
+                    <img src={post.coverImage} alt={post.title} className="w-16 h-16 rounded-xl object-cover flex-shrink-0" />
+                  )}
+                  {!post.coverImage && (
+                    <div className="w-16 h-16 rounded-xl bg-gray-100 flex items-center justify-center flex-shrink-0">
+                      <FileText className="w-6 h-6 text-gray-300" />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-800 leading-snug line-clamp-2">{post.title}</p>
+                    <p className="text-xs text-gray-400 mt-1 line-clamp-2">{post.excerpt}</p>
+                    <p className="text-xs text-gray-300 mt-1">
+                      {new Date(post.createdAt).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" })}
+                    </p>
+                  </div>
+                  <div className="flex-shrink-0 flex flex-col gap-2">
+                    {shareResults[post.id] === "ok" ? (
+                      <div className="flex items-center gap-1.5 text-xs text-green-700 font-semibold px-3 py-2">
+                        <CheckCircle2 className="w-4 h-4" /> Compartido
+                      </div>
+                    ) : shareResults[post.id] === "error" ? (
+                      <div className="flex items-center gap-1.5 text-xs text-red-600 font-semibold px-3 py-2">
+                        <XCircle className="w-4 h-4" /> Error
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => shareBlog(post.id)}
+                        disabled={sharingBlogId === post.id}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition-colors disabled:opacity-50">
+                        {sharingBlogId === post.id
+                          ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Compartiendo…</>
+                          : <><Share2 className="w-3.5 h-3.5" /> Compartir</>}
+                      </button>
+                    )}
+                    <a
+                      href={`/site/blog/${post.slug}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 px-3 py-1.5 border border-gray-200 rounded-xl text-xs text-gray-500 hover:bg-gray-50 transition-colors">
+                      <ExternalLink className="w-3 h-3" /> Ver post
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-xs text-blue-700">
+              <strong>Auto-comment activado:</strong> Cada vez que compartes, el sistema publica automáticamente un comentario de engagement (pregunta al audience) para mejorar el alcance orgánico en Facebook e Instagram.
+            </div>
           </div>
         )}
       </div>

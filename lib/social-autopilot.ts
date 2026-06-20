@@ -693,7 +693,7 @@ async function publishBlogPost(dayOfWeek: number, research?: ResearchBrief): Pro
   }
 }
 
-async function shareBlogOnSocial(
+export async function shareBlogOnSocial(
   title: string,
   excerpt: string,
   blogUrl: string,
@@ -743,10 +743,18 @@ async function shareBlogOnSocial(
           prompt: null,
         }
 
+        let blogPostExternalId: string | null = null
         if (account.platform === "FACEBOOK") {
-          await publishToFacebook(account, fakePost)
+          blogPostExternalId = await publishToFacebook(account, fakePost)
         } else if (account.platform === "INSTAGRAM" && coverImage) {
-          await publishToInstagram(account, fakePost)
+          blogPostExternalId = await publishToInstagram(account, fakePost)
+        }
+
+        // Auto-comment for engagement
+        if (blogPostExternalId && account.accessToken) {
+          const comment = await generateEngagementComment(account.platform, postContent)
+          if (account.platform === "FACEBOOK") postFacebookComment(blogPostExternalId, account.accessToken, comment)
+          else postInstagramComment(blogPostExternalId, account.accessToken, comment)
         }
 
         await prisma.socialPost.create({
@@ -930,6 +938,52 @@ async function publishToInstagram(account: AccountLike, post: PostLike): Promise
   return published.id as string
 }
 
+// ─── Post a comment after publishing (engagement boost) ──────────────────────
+
+export async function postFacebookComment(postId: string, accessToken: string, message: string): Promise<void> {
+  try {
+    const res = await fetch(`https://graph.facebook.com/v19.0/${postId}/comments`, {
+      method: "POST",
+      body: new URLSearchParams({ message, access_token: accessToken }),
+    })
+    const data = await res.json()
+    if (data.error) console.error("[social-autopilot] Facebook comment failed:", data.error.message)
+    else console.log(`[social-autopilot] Facebook comment posted on ${postId}`)
+  } catch (e) {
+    console.error("[social-autopilot] Facebook comment error:", e)
+  }
+}
+
+export async function postInstagramComment(mediaId: string, accessToken: string, text: string): Promise<void> {
+  try {
+    const res = await fetch(`https://graph.facebook.com/v19.0/${mediaId}/comments`, {
+      method: "POST",
+      body: new URLSearchParams({ message: text, access_token: accessToken }),
+    })
+    const data = await res.json()
+    if (data.error) console.error("[social-autopilot] Instagram comment failed:", data.error.message)
+    else console.log(`[social-autopilot] Instagram comment posted on ${mediaId}`)
+  } catch (e) {
+    console.error("[social-autopilot] Instagram comment error:", e)
+  }
+}
+
+async function generateEngagementComment(platform: string, postContent: string): Promise<string> {
+  try {
+    const res = await anthropic.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 120,
+      messages: [{
+        role: "user",
+        content: `Escribe UN comentario corto en español (máx 2 oraciones) para publicar justo después de este post en ${platform}. El objetivo es generar engagement: debe hacer UNA pregunta directa al lector o pedirles que comenten algo específico (ej: "¿SÍ o NO?", "Comenta MIAMI", "¿Cuál es tu duda?"). Solo el texto del comentario, sin comillas.\n\nPost: ${postContent.slice(0, 300)}`,
+      }],
+    })
+    return res.content[0].type === "text" ? res.content[0].text.trim() : "¿Tienes preguntas sobre el mercado de Miami? ¡Comenta abajo! 👇"
+  } catch {
+    return "¿Tienes preguntas sobre el mercado de Miami? ¡Comenta abajo! 👇"
+  }
+}
+
 async function publishToTikTok(account: AccountLike, post: PostLike): Promise<string> {
   if (!account.accessToken) throw new Error("TikTok: missing access token")
 
@@ -1046,12 +1100,18 @@ export async function publishPost(post: PostLike, account: AccountLike): Promise
 
     await prisma.socialPost.update({
       where: { id: post.id },
-      data: {
-        status: "PUBLISHED",
-        publishedAt: new Date(),
-        externalId,
-      },
+      data: { status: "PUBLISHED", publishedAt: new Date(), externalId },
     })
+
+    // Auto-comment for engagement (fire-and-forget, non-fatal)
+    if (externalId && account.accessToken && (post.platform === "FACEBOOK" || post.platform === "INSTAGRAM")) {
+      const comment = await generateEngagementComment(post.platform, post.content)
+      if (post.platform === "FACEBOOK") {
+        postFacebookComment(externalId, account.accessToken, comment)
+      } else {
+        postInstagramComment(externalId, account.accessToken, comment)
+      }
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error(`[social-autopilot] Publish failed for ${post.platform} (post ${post.id}): ${msg}`)
