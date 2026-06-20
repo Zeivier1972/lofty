@@ -11,9 +11,8 @@ export default async function InvestmentAdvisorPage() {
         id: true, firstName: true, lastName: true, status: true,
         buyerBudgetMin: true, buyerBudgetMax: true, buyerLocation: true, buyerPurpose: true,
       },
-      where: { OR: [{ buyerBudgetMin: { not: null } }, { buyerPurpose: { not: null } }, { status: "HOT_LEAD" }] },
       orderBy: { leadScore: "desc" },
-      take: 100,
+      take: 300,
     })
   } catch {}
 
