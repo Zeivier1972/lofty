@@ -65,6 +65,39 @@ export function getFallbackBackground(sceneText: string, index: number): Record<
   return { type: "image", url }
 }
 
+export async function fetchVideoByQuery(
+  query: string,
+  orientation: "portrait" | "landscape" = "portrait"
+): Promise<string | null> {
+  const apiKey = process.env.PEXELS_API_KEY
+  if (!apiKey) return null
+
+  const targetWidth = orientation === "portrait" ? 720 : 1280
+
+  try {
+    const res = await fetch(
+      `https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=8&orientation=${orientation}&size=medium`,
+      {
+        headers: { Authorization: apiKey },
+        signal: AbortSignal.timeout(6000),
+      }
+    )
+    if (!res.ok) return null
+
+    const data = await res.json()
+    const videos: any[] = data?.videos ?? []
+    if (!videos.length) return null
+
+    const video = videos[Math.floor(Math.random() * Math.min(videos.length, 5))]
+    const files: any[] = (video.video_files ?? []).filter((f: any) => f.file_type === "video/mp4")
+    const sorted = files.sort((a: any, b: any) => Math.abs(a.width - targetWidth) - Math.abs(b.width - targetWidth))
+
+    return sorted[0]?.link ?? null
+  } catch {
+    return null
+  }
+}
+
 export async function fetchSceneVideoUrl(
   sceneText: string,
   orientation: "portrait" | "landscape" = "portrait"

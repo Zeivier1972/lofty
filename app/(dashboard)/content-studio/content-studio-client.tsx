@@ -15,7 +15,7 @@ import HelpPanel from "@/components/help-panel"
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = "blog" | "images" | "research" | "posts" | "video"
+type Tab = "blog" | "images" | "research" | "posts" | "video" | "listing"
 
 const AUDIENCES = [
   { id: "buyers", label: "Buyers", icon: Home },
@@ -113,6 +113,7 @@ export default function ContentStudioClient() {
             { id: "research" as Tab, label: "Research", icon: Search },
             { id: "posts" as Tab, label: "My Posts", icon: List },
             { id: "video" as Tab, label: "Video Ads", icon: Clapperboard },
+            { id: "listing" as Tab, label: "Listing Video", icon: Home },
           ].map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setTab(id)}
               className={cn("flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all",
@@ -128,6 +129,7 @@ export default function ContentStudioClient() {
         {tab === "research" && <ResearchTool toast={toast} />}
         {tab === "posts" && <PostsManager toast={toast} />}
         {tab === "video" && <VideoStudio toast={toast} campaignKeyword={campaignParam} />}
+        {tab === "listing" && <ListingVideoStudio toast={toast} />}
       </div>
     </div>
   )
@@ -1582,6 +1584,237 @@ function ResearchTool({ toast }: { toast: any }) {
             </button>
           </div>
           <div className="prose prose-gray prose-headings:font-bold prose-p:text-gray-700 prose-li:text-gray-700 prose-strong:text-gray-900 max-w-none whitespace-pre-wrap text-gray-700">{result}</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Listing Video Studio ──────────────────────────────────────────────────────
+
+function ListingVideoStudio({ toast }: { toast: any }) {
+  const [avatars, setAvatars] = useState<any[]>([])
+  const [voices, setVoices] = useState<any[]>([])
+  const [avatarId, setAvatarId] = useState("")
+  const [voiceId, setVoiceId] = useState("")
+  const [property, setProperty] = useState("")
+  const [ratio, setRatio] = useState("9:16")
+  const [loadingData, setLoadingData] = useState(true)
+  const [generating, setGenerating] = useState(false)
+  const [status, setStatus] = useState<"idle" | "processing" | "completed" | "failed">("idle")
+  const [videoUrl, setVideoUrl] = useState<string | null>(null)
+  const [plan, setPlan] = useState<any>(null)
+  const pollRef = useRef<any>(null)
+
+  useEffect(() => {
+    Promise.all([
+      fetch("/api/heygen/avatars").then(r => r.json()),
+      fetch("/api/heygen/voices").then(r => r.json()),
+    ]).then(([avatarData, voiceData]) => {
+      const avatarList: any[] = avatarData?.data?.avatars || []
+      const allVoices: any[] = voiceData?.data?.voices || []
+      const isSpanish = (v: any) =>
+        v.language === "es" || v.locale?.startsWith("es-") || v.name?.toLowerCase().includes("catherine")
+      const spanishVoices = allVoices.filter(isSpanish)
+
+      const catherineAvatars = avatarList.filter((a: any) => a.group === "Catherine Gomez")
+      const stockAvatars = avatarList.filter((a: any) => a.group !== "Catherine Gomez")
+      setAvatars([...catherineAvatars, ...stockAvatars])
+      setVoices(spanishVoices.length > 0 ? spanishVoices : allVoices)
+
+      if (catherineAvatars[0]) setAvatarId(catherineAvatars[0].avatar_id)
+      else if (avatarList[0]) setAvatarId(avatarList[0].avatar_id)
+
+      const catherineVoice = spanishVoices.find((v: any) =>
+        v.name?.toLowerCase().includes("catalina") || v.name?.toLowerCase().includes("catherine")
+      )
+      if (catherineVoice || spanishVoices[0] || allVoices[0]) {
+        setVoiceId((catherineVoice || spanishVoices[0] || allVoices[0]).voice_id)
+      }
+    }).catch(() => toast({ title: "Error cargando avatares", variant: "destructive" }))
+      .finally(() => setLoadingData(false))
+
+    return () => { if (pollRef.current) clearInterval(pollRef.current) }
+  }, [])
+
+  const pollStatus = (videoId: string) => {
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/heygen/status?videoId=${videoId}`)
+        const data = await res.json()
+        const s = data?.data?.status
+        if (s === "completed") {
+          clearInterval(pollRef.current!)
+          setVideoUrl(data.data.video_url)
+          setStatus("completed")
+          toast({ title: "¡Video de listing listo! 🎬" })
+        } else if (s === "failed") {
+          clearInterval(pollRef.current!)
+          setStatus("failed")
+          toast({ title: "HeyGen falló", description: data.data?.error || "Error desconocido", variant: "destructive" })
+        }
+      } catch { /* poll again */ }
+    }, 8000)
+  }
+
+  const generate = async () => {
+    if (!property.trim()) { toast({ title: "Describe la propiedad", variant: "destructive" }); return }
+    if (!avatarId) { toast({ title: "Selecciona un avatar", variant: "destructive" }); return }
+    if (!voiceId) { toast({ title: "Selecciona una voz", variant: "destructive" }); return }
+
+    if (pollRef.current) clearInterval(pollRef.current)
+    setGenerating(true)
+    setStatus("idle")
+    setVideoUrl(null)
+    setPlan(null)
+
+    try {
+      const res = await fetch("/api/heygen/listing-video", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ property, avatarId, voiceId, ratio }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setPlan(data.plan)
+      setStatus("processing")
+      pollStatus(data.videoId)
+      toast({ title: "Plan generado — HeyGen procesando video (2-5 min) 🎬" })
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" })
+      setStatus("idle")
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  if (loadingData) return <div className="text-center py-20 text-gray-400">Cargando avatares…</div>
+
+  return (
+    <div className="space-y-6">
+      {/* Avatar + Voice */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+        <h2 className="text-base font-semibold text-gray-800 mb-4">1. Avatar y voz</h2>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-2 block">Avatar</label>
+            <select value={avatarId} onChange={e => setAvatarId(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white">
+              {avatars.filter((a: any) => a.group === "Catherine Gomez").length > 0 && (
+                <optgroup label="— Catherine Gomez —">
+                  {avatars.filter((a: any) => a.group === "Catherine Gomez").map((a: any) => (
+                    <option key={a.avatar_id} value={a.avatar_id}>{a.avatar_name}</option>
+                  ))}
+                </optgroup>
+              )}
+              {avatars.filter((a: any) => a.group !== "Catherine Gomez").length > 0 && (
+                <optgroup label="— Stock Avatars —">
+                  {avatars.filter((a: any) => a.group !== "Catherine Gomez").map((a: any) => (
+                    <option key={a.avatar_id} value={a.avatar_id}>{a.avatar_name}</option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-2 block">Voz</label>
+            <select value={voiceId} onChange={e => setVoiceId(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white">
+              {voices.map((v: any) => (
+                <option key={v.voice_id} value={v.voice_id}>{v.name}{v.language ? ` — ${v.language}` : ""}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <label className="text-xs font-semibold text-gray-600 mb-2 block">Formato</label>
+          <div className="flex gap-2">
+            {[{ id: "9:16", label: "Reels / TikTok" }, { id: "16:9", label: "YouTube" }, { id: "1:1", label: "Feed" }].map(r => (
+              <button key={r.id} onClick={() => setRatio(r.id)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${ratio === r.id ? "bg-purple-600 text-white border-purple-600" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}>
+                {r.id} — {r.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Property Info */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+        <h2 className="text-base font-semibold text-gray-800 mb-1">2. Información de la propiedad</h2>
+        <p className="text-xs text-gray-500 mb-4">Incluye dirección, precio, recámaras, amenidades clave, barrio y estilo de vida que ofrece.</p>
+        <textarea
+          value={property}
+          onChange={e => setProperty(e.target.value)}
+          placeholder={`Ejemplo:\n3 bed / 2 bath en Brickell, Miami. $750,000. Vista al mar, piscina en rooftop, gym, concierge 24h. A 5 min caminando de Whole Foods y Brickell City Centre. Ideal para profesionales o inversores — Airbnb permitido, proyección de renta $6,500/mes.`}
+          rows={6}
+          className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none"
+        />
+
+        <div className="mt-4 bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800 space-y-1">
+          <p className="font-semibold">Estructura del video (7 escenas, 60-90 seg):</p>
+          <p>🎯 Escena 1 — Hook (0-5s): Catherine en cámara</p>
+          <p>🏠 Escena 2 — Property Reveal (5-15s): B-roll exterior/aerial</p>
+          <p>✨ Escena 3 — Lifestyle (15-35s): B-roll vida en la propiedad</p>
+          <p>🛋 Escena 4 — Features (35-55s): B-roll interior</p>
+          <p>📍 Escena 5 — Barrio (55-70s): B-roll vecindario</p>
+          <p>⚡ Escena 6 — Urgencia (70-85s): B-roll mercado/precio</p>
+          <p>📣 Escena 7 — CTA (85-90s): Catherine en cámara</p>
+        </div>
+
+        <button
+          onClick={generate}
+          disabled={generating || !property.trim() || !avatarId || !voiceId || status === "processing"}
+          className="mt-4 w-full flex items-center justify-center gap-2 py-3 bg-purple-600 text-white rounded-xl font-semibold text-sm hover:bg-purple-700 transition-colors disabled:opacity-50">
+          {generating
+            ? <><Loader2 className="w-4 h-4 animate-spin" /> Generando plan con IA…</>
+            : status === "processing"
+            ? <><Loader2 className="w-4 h-4 animate-spin" /> HeyGen procesando… (2-5 min)</>
+            : <><Clapperboard className="w-4 h-4" /> Generar Listing Video</>}
+        </button>
+      </div>
+
+      {/* Scene Plan Preview */}
+      {plan?.scenes && (
+        <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+          <h2 className="text-base font-semibold text-gray-800 mb-4">Plan generado por IA</h2>
+          <div className="space-y-3">
+            {plan.scenes.map((scene: any) => (
+              <div key={scene.scene_number} className={`rounded-xl p-4 border text-sm ${scene.avatar_present ? "bg-purple-50 border-purple-200" : "bg-blue-50 border-blue-200"}`}>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${scene.avatar_present ? "bg-purple-600 text-white" : "bg-blue-600 text-white"}`}>
+                    {scene.avatar_present ? "Avatar" : "B-Roll"}
+                  </span>
+                  <span className="font-semibold text-gray-800">Escena {scene.scene_number} — {scene.name}</span>
+                </div>
+                <p className="text-gray-700 mb-1">{scene.script}</p>
+                <p className="text-xs text-gray-500">Caption: <em>"{scene.caption}"</em> · Headline: <em>"{scene.headline}"</em></p>
+                {!scene.avatar_present && <p className="text-xs text-gray-400 mt-1">B-roll query: {scene.broll_query}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Processing */}
+      {status === "processing" && (
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6 text-center">
+          <Loader2 className="w-8 h-8 text-blue-500 animate-spin mx-auto mb-3" />
+          <p className="font-semibold text-blue-800">HeyGen está generando tu listing video…</p>
+          <p className="text-sm text-blue-600 mt-1">7 escenas — esto toma entre 3 y 6 minutos.</p>
+        </div>
+      )}
+
+      {/* Result */}
+      {status === "completed" && videoUrl && (
+        <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+          <h2 className="text-base font-semibold text-gray-800 mb-4">Video listo</h2>
+          <video src={videoUrl} controls className="w-full rounded-xl max-h-[600px] object-contain bg-black" />
+          <a href={videoUrl} download target="_blank" rel="noopener noreferrer"
+            className="mt-3 w-full flex items-center justify-center gap-2 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-semibold hover:bg-gray-700 transition-colors">
+            Descargar video
+          </a>
         </div>
       )}
     </div>
