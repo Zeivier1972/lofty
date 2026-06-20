@@ -1620,6 +1620,12 @@ function ListingVideoStudio({ toast }: { toast: any }) {
   const [plan, setPlan] = useState<any>(null)
   const pollRef = useRef<any>(null)
 
+  // Creatomate state
+  const [cStatus, setCStatus] = useState<"idle" | "rendering" | "succeeded" | "failed">("idle")
+  const [cVideoUrl, setCVideoUrl] = useState<string | null>(null)
+  const [cRendering, setCRendering] = useState(false)
+  const cPollRef = useRef<any>(null)
+
   useEffect(() => {
     Promise.all([
       fetch("/api/heygen/avatars").then(r => r.json()),
@@ -1704,6 +1710,61 @@ function ListingVideoStudio({ toast }: { toast: any }) {
       setStatus("idle")
     } finally {
       setGenerating(false)
+    }
+  }
+
+  // ── Creatomate handlers ──────────────────────────────────────────────────
+
+  const pollCreatomate = (renderId: string) => {
+    cPollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/creatomate/status?renderId=${renderId}`)
+        const data = await res.json()
+        if (data.status === "succeeded") {
+          clearInterval(cPollRef.current!)
+          setCVideoUrl(data.url)
+          setCStatus("succeeded")
+          toast({ title: "¡Creatomate listo! Descarga tu listing video." })
+        } else if (data.status === "failed") {
+          clearInterval(cPollRef.current!)
+          setCStatus("failed")
+          toast({ title: "Creatomate falló", description: data.errorMessage || "Error desconocido", variant: "destructive" })
+        }
+      } catch { /* retry */ }
+    }, 5000)
+  }
+
+  const generateCreatomate = async () => {
+    const photoUrls = photoUrlsText
+      .split("\n")
+      .map(u => u.trim())
+      .filter(u => u.startsWith("http"))
+
+    if (!photoUrls.length) {
+      toast({ title: "Agrega al menos una foto de la propiedad", variant: "destructive" })
+      return
+    }
+
+    if (cPollRef.current) clearInterval(cPollRef.current)
+    setCRendering(true)
+    setCStatus("rendering")
+    setCVideoUrl(null)
+
+    try {
+      const res = await fetch("/api/creatomate/render", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photoUrls }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      toast({ title: `Render iniciado — Creatomate procesando… (30-90 seg)` })
+      pollCreatomate(data.renderId)
+    } catch (e: any) {
+      toast({ title: "Error Creatomate", description: e.message, variant: "destructive" })
+      setCStatus("idle")
+    } finally {
+      setCRendering(false)
     }
   }
 
@@ -1814,8 +1875,57 @@ function ListingVideoStudio({ toast }: { toast: any }) {
             ? <><Loader2 className="w-4 h-4 animate-spin" /> Claude generando guión + buscando Pexels…</>
             : status === "processing"
             ? <><Loader2 className="w-4 h-4 animate-spin" /> HeyGen renderizando 10 escenas… (3-6 min)</>
-            : <><Clapperboard className="w-4 h-4" /> Generar Listing Video (10 escenas)</>}
+            : <><Clapperboard className="w-4 h-4" /> Generar Listing Video con HeyGen (10 escenas)</>}
         </button>
+      </div>
+
+      {/* ── Creatomate visual showcase ──────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border-2 border-dashed border-purple-200 p-6 shadow-sm">
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <h2 className="text-base font-semibold text-gray-800">Creatomate — Showcase de Propiedad</h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Video profesional con tus fotos de listing + efectos de movimiento (Ken Burns, transiciones). Sin avatar — pura propiedad.
+            </p>
+          </div>
+          <span className="text-[10px] font-bold px-2 py-1 bg-purple-100 text-purple-700 rounded-full uppercase tracking-wide">Nuevo</span>
+        </div>
+
+        <div className="bg-gray-50 rounded-xl p-3 text-xs text-gray-600 mb-4 space-y-1">
+          <p>✦ <strong>Ken Burns</strong> zoom/pan automático en cada foto</p>
+          <p>✦ <strong>Transiciones</strong> profesionales entre escenas</p>
+          <p>✦ <strong>Captions</strong> animados con estilo TikTok/Reels</p>
+          <p>✦ <strong>Música</strong> de fondo incluida en el template</p>
+          <p className="text-gray-400">Usa las fotos que ingresaste arriba (mínimo 1, óptimo 4)</p>
+        </div>
+
+        <button
+          onClick={generateCreatomate}
+          disabled={cRendering || cStatus === "rendering" || !photoUrlsText.trim()}
+          className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl font-semibold text-sm hover:from-purple-700 hover:to-indigo-700 transition-all disabled:opacity-50">
+          {cRendering
+            ? <><Loader2 className="w-4 h-4 animate-spin" /> Iniciando render…</>
+            : cStatus === "rendering"
+            ? <><Loader2 className="w-4 h-4 animate-spin" /> Creatomate renderizando… (30-90 seg)</>
+            : <><Video className="w-4 h-4" /> Generar con Creatomate</>}
+        </button>
+
+        {cStatus === "rendering" && (
+          <div className="mt-3 bg-indigo-50 border border-indigo-200 rounded-xl p-4 text-center text-sm text-indigo-700">
+            <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />
+            Creatomate está aplicando efectos de movimiento a tus fotos…
+          </div>
+        )}
+
+        {cStatus === "succeeded" && cVideoUrl && (
+          <div className="mt-4">
+            <video src={cVideoUrl} controls playsInline className="w-full rounded-xl max-h-[500px] object-contain bg-black" />
+            <a href={cVideoUrl} target="_blank" rel="noopener noreferrer"
+              className="mt-2 w-full flex items-center justify-center gap-2 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-semibold hover:bg-gray-700 transition-colors">
+              Descargar / abrir video Creatomate
+            </a>
+          </div>
+        )}
       </div>
 
       {/* Scene Plan Preview */}
