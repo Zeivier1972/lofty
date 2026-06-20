@@ -37,5 +37,20 @@ export async function register() {
     ])
   })
 
+  // Daily MLS/IDX sync at 3 AM ET (07:00 UTC) — only activates when Bridge API token is configured
+  if (process.env.BRIDGE_SERVER_TOKEN) {
+    const mlsSecret = process.env.MLS_SYNC_SECRET || ""
+    schedule("0 7 * * *", () => {
+      console.log("[cron] MLS sync — daily listings update")
+      fetch(`${base}/api/mls/sync`, {
+        method: "POST",
+        headers: mlsSecret ? { "x-sync-secret": mlsSecret } : {},
+      }).then(r => r.json()).then(d => {
+        console.log(`[cron] MLS sync done — ${d.created ?? 0} new, ${d.updated ?? 0} updated, ${d.errors ?? 0} errors`)
+      }).catch(e => console.error("[cron] MLS sync error:", e))
+    })
+    console.log("[cron] MLS daily sync scheduled for 3am ET (BRIDGE_SERVER_TOKEN is set)")
+  }
+
   console.log("[cron] scheduled: social autopilot 9am+6pm ET, calls every 15min, smart-plans+heygen hourly")
 }
