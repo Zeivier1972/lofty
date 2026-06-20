@@ -11,6 +11,13 @@ export default async function InvestmentAdvisorPage() {
         id: true, firstName: true, lastName: true, status: true,
         buyerBudgetMin: true, buyerBudgetMax: true, buyerLocation: true, buyerPurpose: true,
       },
+      where: {
+        tags: {
+          some: {
+            tag: { name: { contains: "inversionista", mode: "insensitive" } },
+          },
+        },
+      },
       orderBy: { leadScore: "desc" },
       take: 300,
     })
