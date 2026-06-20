@@ -81,6 +81,7 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
   const [callNotes, setCallNotes] = useState("")
   const [sessionRunning, setSessionRunning] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
+  const [callError, setCallError] = useState<string | null>(null)
   const [addingToQueue, setAddingToQueue] = useState(false)
   const [selectedStage, setSelectedStage] = useState<string>("all")
 
@@ -137,6 +138,7 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
   async function dialContact(contact: Contact) {
     if (!contact.phone) return
     setCallStatus("calling")
+    setCallError(null)
     setDisposition("")
     setCallNotes("")
 
@@ -155,11 +157,17 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
         }),
       })
       const data = await res.json()
+      if (data.status === "FAILED" || data.error) {
+        setCallError(data.error || "Call failed to connect")
+        setCallStatus("idle")
+        return
+      }
       setActiveCallId(data.callId)
       setActiveTwilioSid(data.twilioSid)
       setCallStatus("connected")
       startTimer()
-    } catch {
+    } catch (e: any) {
+      setCallError(e.message || "Network error — call could not be placed")
       setCallStatus("idle")
     }
   }
@@ -243,6 +251,13 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
         </div>
         <div className="flex items-center gap-3">
           <HelpPanel section="dialer" />
+          {callError && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+              <XCircle className="w-4 h-4 flex-shrink-0" />
+              <span>{callError}</span>
+              <button onClick={() => setCallError(null)} className="ml-1 hover:text-red-900">✕</button>
+            </div>
+          )}
           <div className={cn("px-3 py-1.5 rounded-full text-sm font-medium", statusColor)}>
             {callStatusLabel}
             {callStatus === "connected" && (

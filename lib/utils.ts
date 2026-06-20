@@ -38,6 +38,26 @@ export function formatPhone(phone: string | null | undefined): string {
   return phone
 }
 
+/**
+ * Normalizes any phone number to E.164 format.
+ * Handles Colombia (+57) and US (+1) numbers correctly.
+ * - Already E.164 (starts with +): returned as-is
+ * - 12 digits starting with 57: Colombian number → +57XXXXXXXXXX
+ * - 10 digits starting with 3: Colombian mobile → +57XXXXXXXXXX
+ * - 11 digits starting with 1: US with country code → +1XXXXXXXXXX
+ * - 10 digits: US 10-digit → +1XXXXXXXXXX
+ */
+export function normalizePhone(phone: string): string {
+  if (!phone) return phone
+  if (phone.startsWith("+")) return phone
+  const digits = phone.replace(/\D/g, "")
+  if (digits.length === 12 && digits.startsWith("57")) return `+${digits}`
+  if (digits.length === 10 && digits.startsWith("3")) return `+57${digits}`
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`
+  if (digits.length === 10) return `+1${digits}`
+  return `+${digits}`
+}
+
 export function getInitials(name: string): string {
   return name
     .split(" ")

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth"
 import { initiateCall } from "@/lib/sms"
 import { handleCallOutcome } from "@/lib/lead-flow"
+import { normalizePhone } from "@/lib/utils"
 
 // Map Twilio/dialer statuses to VAPI-compatible end reasons
 const TWILIO_STATUS_MAP: Record<string, string> = {
@@ -33,7 +34,7 @@ export async function POST(req: Request) {
 
   try {
     const twimlUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/dialer/twiml?callId=${call.id}`
-    const twilioSid = await initiateCall(phoneNumber, twimlUrl)
+    const twilioSid = await initiateCall(normalizePhone(phoneNumber), twimlUrl)
 
     await prisma.dialerCall.update({
       where: { id: call.id },
