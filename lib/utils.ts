@@ -41,7 +41,7 @@ export function formatPhone(phone: string | null | undefined): string {
 /**
  * Normalizes any phone number to E.164 format.
  * Handles Colombia (+57) and US (+1) numbers correctly.
- * - Already E.164 (starts with +): returned as-is
+ * - Already E.164 (starts with +): strip formatting, return +digits
  * - 12 digits starting with 57: Colombian number → +57XXXXXXXXXX
  * - 10 digits starting with 3: Colombian mobile → +57XXXXXXXXXX
  * - 11 digits starting with 1: US with country code → +1XXXXXXXXXX
@@ -49,8 +49,9 @@ export function formatPhone(phone: string | null | undefined): string {
  */
 export function normalizePhone(phone: string): string {
   if (!phone) return phone
-  if (phone.startsWith("+")) return phone
   const digits = phone.replace(/\D/g, "")
+  // If original had a + prefix (e.g. "+57 301 234 5678"), strip formatting but keep country code
+  if (phone.trim().startsWith("+")) return `+${digits}`
   if (digits.length === 12 && digits.startsWith("57")) return `+${digits}`
   if (digits.length === 10 && digits.startsWith("3")) return `+57${digits}`
   if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`

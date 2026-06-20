@@ -176,6 +176,15 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
     stopTimer()
     if (!activeCallId) { setCallStatus("idle"); return }
 
+    // Terminate the Twilio call on Twilio's side first so the line is freed
+    if (activeTwilioSid) {
+      fetch("/api/dialer/hangup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ twilioSid: activeTwilioSid }),
+      }).catch(() => {})
+    }
+
     await fetch("/api/dialer/call", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
