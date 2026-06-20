@@ -581,6 +581,15 @@ Devuelve SOLO JSON válido con este formato exacto:
 }
 
 async function generateSectionImage(prompt: string, folder = "lofty-blog"): Promise<string | null> {
+  const BLOG_FALLBACKS = [
+    "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1080&q=80",
+    "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1080&q=80",
+    "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1080&q=80",
+    "https://images.unsplash.com/photo-1613977257365-aaae5a9817ff?w=1080&q=80",
+    "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=1080&q=80",
+    "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=1080&q=80",
+    "https://images.unsplash.com/photo-1449844908441-8829872d2607?w=1080&q=80",
+  ]
   try {
     const response = await openai.images.generate({
       model: "dall-e-3",
@@ -591,7 +600,10 @@ async function generateSectionImage(prompt: string, folder = "lofty-blog"): Prom
     } as any)
 
     const b64 = (response.data as any[])?.[0]?.b64_json
-    if (!b64) return null
+    if (!b64) {
+      console.warn("[social-autopilot] DALL-E returned no b64_json, using fallback")
+      return BLOG_FALLBACKS[Math.floor(Math.random() * BLOG_FALLBACKS.length)]
+    }
 
     const uploadResult = await cloudinary.uploader.upload(
       `data:image/png;base64,${b64}`,
@@ -601,7 +613,7 @@ async function generateSectionImage(prompt: string, folder = "lofty-blog"): Prom
     return uploadResult.secure_url
   } catch (err) {
     console.error("[social-autopilot] Section image generation failed:", err)
-    return null
+    return BLOG_FALLBACKS[Math.floor(Math.random() * BLOG_FALLBACKS.length)]
   }
 }
 
