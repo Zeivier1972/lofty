@@ -72,25 +72,39 @@ export async function POST(req: Request) {
         scenes.map(sceneText => fetchSceneVideoUrl(sceneText, orientation))
       )
 
+      const character: Record<string, unknown> = isTalkingPhoto
+        ? { type: "talking_photo", talking_photo_id: avatarId }
+        : { type: "avatar", avatar_id: avatarId, avatar_style: "normal" }
+
       videoInputs = scenes.map((sceneText, i) => {
         const videoUrl = videoUrls[i]
-        const background = videoUrl
-          ? { type: "video", url: videoUrl, play_style: "fit_to_scene" }   // Real video B-roll clip
-          : getFallbackBackground(sceneText, i)                        // Fallback: static image
+        const videoBackground = videoUrl
+          ? { type: "video", url: videoUrl, play_style: "fit_to_scene" }
+          : getFallbackBackground(sceneText, i)
 
-        const sceneCharacter: Record<string, unknown> = isTalkingPhoto
-          ? { type: "talking_photo", talking_photo_id: avatarId }
-          : { type: "avatar", avatar_id: avatarId, avatar_style: "normal" }
+        // Even scenes (0, 2, 3): avatar talking over a static image background
+        // Odd scenes (1, ...): pure B-roll — full-frame real estate footage + voice narration, no avatar
+        const isBrollOnly = i % 2 === 1
 
+        if (isBrollOnly) {
+          return {
+            voice: { type: "text", input_text: sceneText, voice_id: voiceId },
+            background: videoBackground,
+          }
+        }
+
+        // Avatar scene: use a static image behind Catherine (she fills the frame anyway)
+        const staticBackground = getFallbackBackground(sceneText, i)
         return {
-          character: sceneCharacter,
+          character,
           voice: { type: "text", input_text: sceneText, voice_id: voiceId },
-          background,
+          background: staticBackground,
         }
       })
 
+      const brollCount = scenes.filter((_, i) => i % 2 === 1).length
       console.log(
-        `[heygen/generate] B-Roll: ${scenes.length} scenes, Pexels videos: ${videoUrls.filter(Boolean).length}/${scenes.length}, orientation: ${orientation}`
+        `[heygen/generate] B-Roll: ${scenes.length} scenes, ${brollCount} B-roll-only, Pexels videos: ${videoUrls.filter(Boolean).length}/${scenes.length}, orientation: ${orientation}`
       )
     } else {
       // Single-scene mode — apply style preset background if selected

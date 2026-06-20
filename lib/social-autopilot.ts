@@ -424,14 +424,22 @@ async function triggerHeyGenVideo(script: string, dayOfWeek: number): Promise<st
 
     const videoInputs = scenes.map((sceneText, i) => {
       const videoUrl = videoUrls[i]
-      const background = videoUrl
+      const videoBackground = videoUrl
         ? { type: "video", url: videoUrl, play_style: "fit_to_scene" }
         : getFallbackBackground(sceneText, i)
+
+      // Odd scenes = pure B-roll (voice narration, full-frame footage, no avatar)
+      if (i % 2 === 1) {
+        return {
+          voice: { type: "text", input_text: sceneText, voice_id: avatarInfo.voiceId },
+          background: videoBackground,
+        }
+      }
 
       return {
         character,
         voice: { type: "text", input_text: sceneText, voice_id: avatarInfo.voiceId },
-        background,
+        background: getFallbackBackground(sceneText, i),
       }
     })
 
