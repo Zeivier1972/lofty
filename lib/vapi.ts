@@ -61,7 +61,14 @@ TRANSFERENCIA EN VIVO A CATHERINE:
 - Si el lead pide hablar con una persona real, con "la agente", con "Catherine", o dice que prefiere no hablar con una IA → usa la herramienta transferToAgent
 - Antes de transferir di: "¡Con mucho gusto! Déjame conectarte con Catherine ahora mismo, un momentico..."
 - Solo transfiere si el lead lo pide explícitamente — no lo ofrezcas sin que lo pidan
-- SI LA TRANSFERENCIA FALLA O CATHERINE NO CONTESTA: di "Ay, parece que Catherine está ocupada en este momento, pero no te preocupes. ¿Te gustaría que te agendara directamente una cita con ella para que puedan hablar cuando esté disponible?" — y si dicen sí, usa bookAppointment para darle el link`
+- SI LA TRANSFERENCIA FALLA O CATHERINE NO CONTESTA: di "Ay, parece que Catherine está ocupada en este momento, pero no te preocupes. ¿Te gustaría que te agendara directamente una cita con ella para que puedan hablar cuando esté disponible?" — y si dicen sí, usa bookAppointment para darle el link
+
+HERRAMIENTAS DE ACCIÓN — CUÁNDO Y CÓMO USARLAS:
+- sendPropertyEmail: Cuando el lead diga "mándame propiedades", "quiero ver opciones por correo", "envíame algo". Busca con sus criterios actuales. Confirma: "Listo, te acabo de enviar propiedades a tu correo."
+- createTask: Cuando el lead quiera que lo llamen, diga "habla con mi esposo/a primero", "llámame la próxima semana", o las notas de Catherine lo indiquen. Confirma: "Perfecto, le dejo nota a Catherine para que te contacte."
+- sendDocument: Cuando el lead pida un PDF, brochure, o información de un proyecto. Solo usa nombres que aparezcan en la lista de documentos disponibles. Confirma: "Te envié el documento a tu correo."
+- IMPORTANTE: Si el lead no tiene email registrado y necesitas enviarlo, pide su correo primero: "¿Me puedes dar tu correo electrónico para enviarte la información?"
+- Las notas de Catherine son instrucciones — si dicen "enviar email de propiedades", hazlo al inicio de la llamada.`
 
 const DEFAULT_VOICEMAIL_MSG =
   "Hola, soy Sofía, de la oficina de Catherine Gómez, bienes raíces en Miami. Te llamé porque mostraste interés en propiedades y quería platicarte. " +
@@ -113,7 +120,14 @@ CATHERINE:
 - Colombiana, vive en Miami hace más de veinte años
 - Especialista en inversiones para colombianos y latinos en Florida
 - Habla español perfectamente, disponible los siete días
-- Tiene acceso a propiedades que no están en el mercado público`
+- Tiene acceso a propiedades que no están en el mercado público
+
+HERRAMIENTAS DE ACCIÓN — CUÁNDO Y CÓMO USARLAS:
+- sendPropertyEmail: Cuando el lead diga "mándame propiedades", "quiero ver opciones por correo", "envíame algo". Busca con sus criterios actuales. Confirma: "Listo, te acabo de enviar propiedades a tu correo."
+- createTask: Cuando el lead quiera que lo llamen, diga "habla con mi esposo/a primero", "llámame la próxima semana", o las notas de Catherine lo indiquen. Confirma: "Perfecto, le dejo nota a Catherine para que te contacte."
+- sendDocument: Cuando el lead pida un PDF, brochure, o información de un proyecto. Solo usa nombres que aparezcan en la lista de documentos disponibles. Confirma: "Te envié el documento a tu correo."
+- IMPORTANTE: Si el lead no tiene email registrado y necesitas enviarlo, pide su correo primero: "¿Me puedes dar tu correo electrónico para enviarte la información?"
+- Las notas de Catherine son instrucciones — si dicen "enviar email de propiedades", hazlo al inicio de la llamada.`
 
 const VOICEMAIL_COLOMBIA =
   "Hola, le habla Sofía, de la oficina de Catherine Gómez, asesora inmobiliaria en Miami. Le llamé porque mostró interés en invertir en Florida — " +
@@ -139,6 +153,7 @@ export interface VAPICallOptions {
   sessionIndex?: number
   voicemailMsg?: string
   investorProfile?: string
+  callNotes?: string
 }
 
 function isBusinessHours(): boolean {
@@ -184,6 +199,26 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
         : `+1${aiConfig.realtorPhone.replace(/\D/g, "").slice(-10)}`)
     : null
 
+  // Fetch brochures list for Sofia's context
+  let brochures: { name: string; url: string; description?: string }[] = []
+  try {
+    const brochureSetting = await prisma.setting.findUnique({ where: { key: "brochure_documents" } })
+    if (brochureSetting) brochures = JSON.parse(brochureSetting.value)
+  } catch {}
+
+  // If no callNotes provided, fetch from most recent manual DialerCall for this contact
+  let callNotes = opts.callNotes
+  if (!callNotes) {
+    try {
+      const recentCall = await prisma.dialerCall.findFirst({
+        where: { contactId: opts.contactId, notes: { not: null } },
+        orderBy: { createdAt: "desc" },
+        select: { notes: true },
+      })
+      if (recentCall?.notes) callNotes = recentCall.notes
+    } catch {}
+  }
+
   // Build context summary for the assistant
   const ctx: string[] = [`Nombre del lead: ${opts.contactName}`]
   if (opts.campaign) ctx.push(`Campaña de origen: ${opts.campaign}`)
@@ -192,6 +227,10 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
   if (opts.location) ctx.push(`Área de interés: ${opts.location}`)
   if (opts.bedrooms) ctx.push(`Cuartos mínimos: ${opts.bedrooms}`)
   if (opts.propertyType) ctx.push(`Tipo de propiedad: ${opts.propertyType}`)
+  if (callNotes) ctx.push(`\nNOTAS DE CATHERINE PARA ESTA LLAMADA:\n${callNotes}`)
+  if (brochures.length > 0) {
+    ctx.push(`\nDOCUMENTOS DISPONIBLES PARA ENVIAR (usar con sendDocument):\n${brochures.map(b => `- ${b.name}${b.description ? ": " + b.description : ""}`).join("\n")}`)
+  }
 
   // Personalize first message from real interest only — never expose campaign/platform names
   const firstName = opts.contactName.split(" ")[0]
@@ -278,6 +317,58 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
                   property_type: { type: "string" },
                 },
                 required: [],
+              },
+            },
+            server: { url: webhookUrl },
+          },
+          {
+            type: "function",
+            function: {
+              name: "sendPropertyEmail",
+              description: "Envía un email al lead con propiedades que coincidan con sus criterios de búsqueda",
+              parameters: {
+                type: "object",
+                properties: {
+                  price_max: { type: "number", description: "Precio máximo en dólares" },
+                  price_min: { type: "number", description: "Precio mínimo en dólares" },
+                  bedrooms_min: { type: "number", description: "Cuartos mínimos requeridos" },
+                  location: { type: "string", description: "Ciudad o área (Doral, Brickell, Kendall...)" },
+                  property_type: { type: "string", enum: ["CONDO", "SINGLE_FAMILY", "TOWNHOUSE", "MULTI_FAMILY"] },
+                },
+                required: [],
+              },
+            },
+            server: { url: webhookUrl },
+          },
+          {
+            type: "function",
+            function: {
+              name: "createTask",
+              description: "Crea una tarea de seguimiento para Catherine Gomez",
+              parameters: {
+                type: "object",
+                properties: {
+                  title: { type: "string", description: "Título corto de la tarea" },
+                  description: { type: "string", description: "Descripción detallada: qué hacer y contexto de la conversación" },
+                  priority: { type: "string", enum: ["HIGH", "MEDIUM", "LOW"], description: "Prioridad de la tarea" },
+                  due_days: { type: "number", description: "Días desde hoy para la fecha límite (1 = mañana, 7 = próxima semana)" },
+                },
+                required: ["title"],
+              },
+            },
+            server: { url: webhookUrl },
+          },
+          {
+            type: "function",
+            function: {
+              name: "sendDocument",
+              description: "Envía un documento o brochure al lead por correo electrónico",
+              parameters: {
+                type: "object",
+                properties: {
+                  document_name: { type: "string", description: "Nombre exacto del documento de la lista de documentos disponibles" },
+                },
+                required: ["document_name"],
               },
             },
             server: { url: webhookUrl },

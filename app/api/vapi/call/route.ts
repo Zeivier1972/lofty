@@ -11,7 +11,7 @@ export async function POST(req: Request) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   try {
-    const { contactId, phone, name } = await req.json()
+    const { contactId, phone, name, callNotes } = await req.json()
     if (!contactId || !phone) {
       return NextResponse.json({ error: "contactId and phone required" }, { status: 400 })
     }
@@ -32,6 +32,7 @@ export async function POST(req: Request) {
       propertyType: contact.buyerPropertyType ?? null,
       skipBusinessHoursCheck: true,
       isManual: true,
+      callNotes: callNotes || undefined,
     })
 
     if (!callId) {

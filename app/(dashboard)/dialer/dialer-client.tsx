@@ -78,7 +78,18 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
   const [callDuration, setCallDuration] = useState(0)
   const [callTimer, setCallTimer] = useState<NodeJS.Timeout | null>(null)
   const [disposition, setDisposition] = useState("")
-  const [callNotes, setCallNotes] = useState("")
+  const [noteFields, setNoteFields] = useState({
+    propertyType: "",
+    area: "",
+    beds: "",
+    baths: "",
+    budgetMin: "",
+    budgetMax: "",
+    timeline: "",
+    purpose: "",
+    actions: [] as string[],
+    extraNotes: "",
+  })
   const [sessionRunning, setSessionRunning] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [callError, setCallError] = useState<string | null>(null)
@@ -101,6 +112,35 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
   function clearCountdown() {
     if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null }
     setCountdown(null)
+  }
+
+  function buildNotesString(fields: typeof noteFields): string {
+    const lines: string[] = []
+    if (fields.propertyType) lines.push(`Tipo: ${fields.propertyType}`)
+    if (fields.area) lines.push(`Área: ${fields.area}`)
+    const roomParts = []
+    if (fields.beds) roomParts.push(`${fields.beds} cuartos`)
+    if (fields.baths) roomParts.push(`${fields.baths} baños`)
+    if (roomParts.length) lines.push(roomParts.join(", "))
+    if (fields.budgetMin || fields.budgetMax) {
+      const min = fields.budgetMin ? `$${Number(fields.budgetMin).toLocaleString()}` : ""
+      const max = fields.budgetMax ? `$${Number(fields.budgetMax).toLocaleString()}` : ""
+      lines.push(`Presupuesto: ${[min, max].filter(Boolean).join(" – ")}`)
+    }
+    if (fields.timeline) lines.push(`Plazo: ${fields.timeline}`)
+    if (fields.purpose) lines.push(`Propósito: ${fields.purpose}`)
+    if (fields.actions.length > 0) {
+      lines.push("")
+      lines.push("INSTRUCCIONES PARA SOFÍA:")
+      if (fields.actions.includes("send_email")) lines.push("- Envía un email con propiedades que coincidan con los criterios al inicio de la llamada")
+      if (fields.actions.includes("create_task")) lines.push("- Crea una tarea de seguimiento para Catherine después de la llamada")
+      if (fields.actions.includes("send_document")) lines.push("- Envía un brochure o documento informativo al lead")
+    }
+    if (fields.extraNotes) {
+      lines.push("")
+      lines.push(fields.extraNotes)
+    }
+    return lines.join("\n").trim()
   }
 
   function startAutoDialCountdown(nextIdx: number, contact: Contact) {
@@ -182,7 +222,7 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
     setCallStatus("calling")
     setCallError(null)
     setDisposition("")
-    setCallNotes("")
+    setNoteFields({ propertyType: "", area: "", beds: "", baths: "", budgetMin: "", budgetMax: "", timeline: "", purpose: "", actions: [], extraNotes: "" })
 
     let session = activeSession
     if (!session) { session = await createSession() }
@@ -234,7 +274,7 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
         callId: activeCallId,
         status,
         disposition: disposition || undefined,
-        notes: callNotes || undefined,
+        notes: buildNotesString(noteFields) || undefined,
         duration: callDuration,
       }),
     })
@@ -634,14 +674,128 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
                 </div>
               </div>
               <div>
-                <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Call Notes</label>
-                <textarea
-                  value={callNotes}
-                  onChange={e => setCallNotes(e.target.value)}
-                  placeholder="Add notes about this call..."
-                  rows={2}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-lofty-500 resize-none"
-                />
+                <label className="text-sm font-semibold text-gray-700 mb-2 block">Lead Notes</label>
+                <div className="space-y-2">
+                  {/* Property type + area */}
+                  <div className="flex gap-2">
+                    <select
+                      value={noteFields.propertyType}
+                      onChange={e => setNoteFields(f => ({ ...f, propertyType: e.target.value }))}
+                      className="flex-1 text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-lofty-500 bg-white"
+                    >
+                      <option value="">Tipo de propiedad...</option>
+                      <option>Casa</option>
+                      <option>Apartamento</option>
+                      <option>Townhouse</option>
+                      <option>Condo</option>
+                      <option>Terreno</option>
+                    </select>
+                    <input
+                      type="text"
+                      placeholder="Área / Zona..."
+                      value={noteFields.area}
+                      onChange={e => setNoteFields(f => ({ ...f, area: e.target.value }))}
+                      className="flex-1 text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-lofty-500"
+                    />
+                  </div>
+                  {/* Beds + baths + timeline */}
+                  <div className="flex gap-2">
+                    <select
+                      value={noteFields.beds}
+                      onChange={e => setNoteFields(f => ({ ...f, beds: e.target.value }))}
+                      className="flex-1 text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-lofty-500 bg-white"
+                    >
+                      <option value="">Cuartos</option>
+                      {["1+","2+","3+","4+","5+"].map(v => <option key={v}>{v}</option>)}
+                    </select>
+                    <select
+                      value={noteFields.baths}
+                      onChange={e => setNoteFields(f => ({ ...f, baths: e.target.value }))}
+                      className="flex-1 text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-lofty-500 bg-white"
+                    >
+                      <option value="">Baños</option>
+                      {["1+","2+","3+","4+"].map(v => <option key={v}>{v}</option>)}
+                    </select>
+                    <select
+                      value={noteFields.timeline}
+                      onChange={e => setNoteFields(f => ({ ...f, timeline: e.target.value }))}
+                      className="flex-1 text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-lofty-500 bg-white"
+                    >
+                      <option value="">Plazo...</option>
+                      <option>Lo antes posible</option>
+                      <option>1-3 meses</option>
+                      <option>3-6 meses</option>
+                      <option>6-12 meses</option>
+                      <option>1+ año</option>
+                    </select>
+                  </div>
+                  {/* Budget */}
+                  <div className="flex gap-2 items-center">
+                    <span className="text-xs text-gray-400 flex-shrink-0">$</span>
+                    <input
+                      type="number"
+                      placeholder="Presupuesto mín"
+                      value={noteFields.budgetMin}
+                      onChange={e => setNoteFields(f => ({ ...f, budgetMin: e.target.value }))}
+                      className="flex-1 text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-lofty-500"
+                    />
+                    <span className="text-xs text-gray-400">–</span>
+                    <input
+                      type="number"
+                      placeholder="Presupuesto máx"
+                      value={noteFields.budgetMax}
+                      onChange={e => setNoteFields(f => ({ ...f, budgetMax: e.target.value }))}
+                      className="flex-1 text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-lofty-500"
+                    />
+                  </div>
+                  {/* Purpose */}
+                  <select
+                    value={noteFields.purpose}
+                    onChange={e => setNoteFields(f => ({ ...f, purpose: e.target.value }))}
+                    className="w-full text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-lofty-500 bg-white"
+                  >
+                    <option value="">Propósito de compra...</option>
+                    <option>Vivienda personal</option>
+                    <option>Inversión Airbnb</option>
+                    <option>Alquiler largo plazo</option>
+                    <option>Inversión para revender</option>
+                    <option>Para la familia</option>
+                  </select>
+                  {/* Sofia actions */}
+                  <div className="border border-indigo-100 bg-indigo-50 rounded-lg p-2">
+                    <p className="text-xs font-semibold text-indigo-700 mb-1.5">Acciones para Sofía:</p>
+                    <div className="space-y-1">
+                      {[
+                        { key: "send_email", label: "Enviar propiedades por email" },
+                        { key: "create_task", label: "Crear tarea de seguimiento" },
+                        { key: "send_document", label: "Enviar brochure/documento" },
+                      ].map(action => (
+                        <label key={action.key} className="flex items-center gap-2 text-xs cursor-pointer text-indigo-800">
+                          <input
+                            type="checkbox"
+                            checked={noteFields.actions.includes(action.key)}
+                            onChange={e => setNoteFields(f => ({
+                              ...f,
+                              actions: e.target.checked
+                                ? [...f.actions, action.key]
+                                : f.actions.filter(a => a !== action.key),
+                            }))}
+                            className="w-3 h-3"
+                          />
+                          {action.label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Extra notes */}
+                  <textarea
+                    value={noteFields.extraNotes}
+                    onChange={e => setNoteFields(f => ({ ...f, extraNotes: e.target.value }))}
+                    placeholder="Notas adicionales..."
+                    rows={2}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-lofty-500 resize-none"
+                  />
+                </div>
               </div>
               {callStatus === "ended" && (
                 <div className="mt-3 space-y-3">
