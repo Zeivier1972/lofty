@@ -36,16 +36,21 @@ export async function POST(req: Request) {
 
     const buffer = Buffer.from(await file.arrayBuffer())
     const isVideo = file.type.startsWith("video/")
+    const isAudio = file.type.startsWith("audio/")
+    // Cloudinary uses resource_type "video" for both video and audio files
+    const resourceType = isVideo || isAudio ? "video" : "image"
+    const folder = isAudio ? "lofty-voicemails" : "lofty-crm"
 
     const result = await new Promise<any>((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(
-        { resource_type: isVideo ? "video" : "image", folder: "lofty-crm" },
+        { resource_type: resourceType, folder },
         (error, result) => { if (error) reject(error); else resolve(result) }
       )
       stream.end(buffer)
     })
 
-    return NextResponse.json({ url: result.secure_url, type: isVideo ? "video" : "image" })
+    const type = isAudio ? "audio" : isVideo ? "video" : "image"
+    return NextResponse.json({ url: result.secure_url, type })
   } catch (e: any) {
     console.error("[Upload] Error:", e)
     return NextResponse.json({ error: e.message }, { status: 500 })
