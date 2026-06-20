@@ -139,39 +139,117 @@ export async function sendBulkEmail(
 // ─── Template builders ────────────────────────────────────────────────────────
 export function wrapEmail(body: string, opts: {
   agentName: string
+  agentPhone?: string
+  agentPhoto?: string
+  agentEmail?: string
+  agentWebsite?: string
   unsubscribeUrl?: string
   preheader?: string
 }): string {
+  const phone    = opts.agentPhone  || process.env.AGENT_PHONE  || ""
+  const email    = opts.agentEmail  || process.env.AGENT_EMAIL  || "info@catherinegomezrealtor.com"
+  const website  = opts.agentWebsite || process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
+  const photo    = opts.agentPhoto  || process.env.AGENT_PHOTO_URL || ""
+  const initials = opts.agentName.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() || "CG"
+  const websiteDisplay = website.replace(/^https?:\/\//, "").replace(/\/$/, "")
+  const heroImages = [
+    "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=600&q=80&auto=format&fit=crop", // Miami skyline
+    "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=600&q=80&auto=format&fit=crop", // luxury home pool
+    "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=600&q=80&auto=format&fit=crop", // modern villa
+  ]
+  // Rotate hero image based on day of month for variety
+  const hero = heroImages[new Date().getDate() % heroImages.length]
+
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <meta name="x-apple-disable-message-reformatting"/>
-${opts.preheader ? `<div style="display:none;max-height:0;overflow:hidden">${opts.preheader}</div>` : ""}
+${opts.preheader ? `<div style="display:none;max-height:0;overflow:hidden;mso-hide:all">${opts.preheader}&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</div>` : ""}
 </head>
-<body style="margin:0;padding:0;background:#F3F4F6;font-family:Arial,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#F3F4F6;padding:24px 0">
+<body style="margin:0;padding:0;background:#F0F2F5;font-family:'Helvetica Neue',Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#F0F2F5;padding:24px 0">
 <tr><td align="center">
 <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%">
 
-  <!-- Header -->
-  <tr><td style="background:linear-gradient(135deg,#4F46E5,#7C3AED);border-radius:16px 16px 0 0;padding:28px 32px;text-align:center">
-    <span style="color:white;font-size:20px;font-weight:bold">${opts.agentName}</span>
-    <p style="color:#c4b5fd;font-size:13px;margin:4px 0 0">Bienes Raíces</p>
+  <!-- Hero image -->
+  <tr><td style="border-radius:16px 16px 0 0;overflow:hidden;line-height:0">
+    <div style="position:relative">
+      <img src="${hero}" alt="Miami Real Estate" width="600" style="width:100%;max-width:600px;height:200px;object-fit:cover;display:block"/>
+      <!-- Dark overlay text on image -->
+      <div style="background:linear-gradient(to bottom,rgba(0,0,0,0.1),rgba(0,0,0,0.55));padding:16px 28px 20px;margin-top:-68px;position:relative">
+        <p style="color:rgba(255,255,255,0.85);font-size:11px;letter-spacing:2px;text-transform:uppercase;margin:0 0 2px">Catherine Gómez · Realtor</p>
+        <p style="color:white;font-size:13px;margin:0;opacity:0.9">Miami · Brickell · Doral · Coral Gables · Aventura</p>
+      </div>
+    </div>
+  </td></tr>
+
+  <!-- Agent card -->
+  <tr><td style="background:#1B1F3B;padding:20px 28px">
+    <table width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="width:56px;vertical-align:middle">
+          ${photo
+            ? `<img src="${photo}" alt="${opts.agentName}" width="52" height="52" style="width:52px;height:52px;border-radius:50%;object-fit:cover;border:2px solid #C9A84C"/>`
+            : `<div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#C9A84C,#8B6914);display:flex;align-items:center;justify-content:center;color:white;font-weight:bold;font-size:20px;text-align:center;line-height:52px">${initials}</div>`
+          }
+        </td>
+        <td style="padding-left:14px;vertical-align:middle">
+          <p style="color:white;font-size:16px;font-weight:bold;margin:0 0 2px">${opts.agentName}</p>
+          <p style="color:#C9A84C;font-size:12px;margin:0 0 4px;letter-spacing:0.5px">Licensed Real Estate Agent · Miami, FL</p>
+          ${phone ? `<p style="color:#9CA3AF;font-size:12px;margin:0">📱 ${phone}</p>` : ""}
+        </td>
+        <td style="text-align:right;vertical-align:middle">
+          <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/4/4c/Flag_of_Florida.svg/60px-Flag_of_Florida.svg.png" alt="FL" width="36" style="opacity:0.7"/>
+        </td>
+      </tr>
+    </table>
   </td></tr>
 
   <!-- Body -->
-  <tr><td style="background:white;padding:32px;border-radius:0 0 16px 16px;border:1px solid #e5e7eb;border-top:none">
+  <tr><td style="background:white;padding:32px 32px 28px;font-size:15px;line-height:1.7;color:#374151">
     ${body}
+
+    <!-- Signature -->
+    <hr style="border:none;border-top:1px solid #E5E7EB;margin:28px 0 20px"/>
+    <table cellpadding="0" cellspacing="0" style="width:100%">
+      <tr>
+        <td style="vertical-align:middle;padding-right:14px;width:60px">
+          ${photo
+            ? `<img src="${photo}" alt="${opts.agentName}" width="52" height="52" style="width:52px;height:52px;border-radius:50%;object-fit:cover;border:2px solid #C9A84C"/>`
+            : `<div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#C9A84C,#8B6914);color:white;font-weight:bold;font-size:18px;text-align:center;line-height:52px">${initials}</div>`
+          }
+        </td>
+        <td style="vertical-align:middle">
+          <p style="margin:0 0 2px;font-weight:bold;font-size:14px;color:#111827">${opts.agentName}</p>
+          <p style="margin:0 0 6px;font-size:12px;color:#C9A84C;letter-spacing:0.3px">Licensed Real Estate Agent &middot; Miami, FL</p>
+          <table cellpadding="0" cellspacing="0">
+            ${phone ? `<tr><td style="font-size:12px;color:#6B7280;padding-bottom:2px">📞&nbsp;<a href="tel:${phone.replace(/\D/g,"")}" style="color:#374151;text-decoration:none">${phone}</a></td></tr>` : ""}
+            <tr><td style="font-size:12px;color:#6B7280;padding-bottom:2px">✉️&nbsp;<a href="mailto:${email}" style="color:#374151;text-decoration:none">${email}</a></td></tr>
+            <tr><td style="font-size:12px;color:#6B7280">🌐&nbsp;<a href="${website}" style="color:#4F46E5;text-decoration:none">${websiteDisplay}</a></td></tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </td></tr>
+
+  <!-- Areas served banner -->
+  <tr><td style="background:#F8F4EC;padding:16px 28px;border-top:3px solid #C9A84C">
+    <p style="color:#6B5B2E;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;margin:0 0 6px;font-weight:600">Areas We Serve</p>
+    <p style="color:#92826A;font-size:12px;margin:0">
+      Brickell &nbsp;·&nbsp; Miami Beach &nbsp;·&nbsp; Doral &nbsp;·&nbsp; Coral Gables &nbsp;·&nbsp;
+      Edgewater &nbsp;·&nbsp; Wynwood &nbsp;·&nbsp; Aventura &nbsp;·&nbsp; Sunny Isles
+    </p>
   </td></tr>
 
   <!-- Footer -->
-  <tr><td style="padding:20px 0;text-align:center">
-    <p style="color:#9CA3AF;font-size:12px;margin:0">
-      © ${new Date().getFullYear()} ${opts.agentName} · Real Estate
+  <tr><td style="background:#1B1F3B;border-radius:0 0 16px 16px;padding:18px 28px;text-align:center">
+    <p style="color:#6B7280;font-size:11px;margin:0">
+      © ${new Date().getFullYear()} ${opts.agentName} &nbsp;·&nbsp; <a href="mailto:${email}" style="color:#6B7280;text-decoration:none">${email}</a>
     </p>
-    ${opts.unsubscribeUrl ? `<p style="margin:8px 0 0"><a href="${opts.unsubscribeUrl}" style="color:#9CA3AF;font-size:11px">Cancelar suscripción / Unsubscribe</a></p>` : ""}
+    ${phone ? `<p style="color:#6B7280;font-size:11px;margin:4px 0 0">${phone}</p>` : ""}
+    ${opts.unsubscribeUrl ? `<p style="margin:6px 0 0"><a href="${opts.unsubscribeUrl}" style="color:#4B5563;font-size:10px;text-decoration:underline">Cancelar suscripción / Unsubscribe</a></p>` : ""}
   </td></tr>
 
 </table>

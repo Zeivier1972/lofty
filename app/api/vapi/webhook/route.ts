@@ -118,7 +118,7 @@ async function sendPropertyEmail(input: any, contactId: string): Promise<string>
     await sendEmail({
       to: contact.email,
       subject: `Propiedades seleccionadas para ti — Catherine Gómez Realtor`,
-      html: wrapEmail(bodyHtml, { agentName: `${contact.firstName} ${contact.lastName || ""}` }),
+      html: wrapEmail(bodyHtml, { agentName: "Catherine Gómez Realtor" }),
     })
 
     await prisma.activity.create({
@@ -212,7 +212,7 @@ async function sendDocumentToContact(input: any, contactId: string): Promise<str
     await sendEmail({
       to: contact.email,
       subject: `${doc.name} — Catherine Gómez Realtor`,
-      html: wrapEmail(bodyHtml, { agentName: `${contact.firstName} ${contact.lastName || ""}` }),
+      html: wrapEmail(bodyHtml, { agentName: "Catherine Gómez Realtor" }),
     })
 
     await prisma.activity.create({
