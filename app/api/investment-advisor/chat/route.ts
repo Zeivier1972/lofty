@@ -4,6 +4,12 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 
+const SSE_HEADERS = {
+  "Content-Type": "text/event-stream",
+  "Cache-Control": "no-cache",
+  Connection: "keep-alive",
+}
+
 const SYSTEM_PROMPT = `Eres un asesor experto en inversiones inmobiliarias en Miami y el sur de la Florida. Trabajas con Catherine Gómez Realtor y ayudas a analizar proyectos de preconstrucción, calcular ROI, evaluar vecindarios y asesorar a inversionistas colombianos y latinos.
 
 ÁREAS DE EXPERTISE:
@@ -44,6 +50,7 @@ CAPACIDADES ADICIONALES:
 - Crea hooks de anuncio para Facebook/Instagram si se te pide
 - Usa tablas en markdown para comparar proyectos (columnas: precio, ROI, entrega, down payment, pros/contras)
 - Responde en español o inglés según el idioma del usuario
+- Puedes buscar proyectos y precios actuales en preconstruction.miami usando la herramienta de búsqueda web
 
 REGLAS:
 - Habla en el idioma del usuario (español o inglés)
@@ -52,8 +59,67 @@ REGLAS:
 - Si no tienes datos exactos, usa rangos del mercado y dilo claramente
 - Para ROI, muestra el cálculo paso a paso con supuestos claros
 - Siempre menciona riesgos relevantes (developer risk, mercado, tipo de cambio)
-- NUNCA inventes datos de proyectos no listados arriba
-- Prioriza proyectos del portafolio de Catherine cuando sean relevantes`
+- Prioriza proyectos del portafolio de Catherine cuando sean relevantes
+- Cuando busques en la web, cita la fuente y la fecha de los datos`
+
+const SEARCH_TOOL = {
+  type: "function" as const,
+  function: {
+    name: "search_web",
+    description: "Search preconstruction.miami and other Miami real estate sources for current project listings, pricing, availability, and developer info",
+    parameters: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "Search query, e.g. 'River District 14 Doral prices' or 'new preconstruction condos Brickell 2025'",
+        },
+      },
+      required: ["query"],
+    },
+  },
+}
+
+async function tavilySearch(query: string, apiKey: string): Promise<string> {
+  try {
+    const resp = await fetch("https://api.tavily.com/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        api_key: apiKey,
+        query,
+        search_depth: "basic",
+        include_domains: ["preconstruction.miami"],
+        max_results: 5,
+      }),
+    })
+    if (!resp.ok) return `Search unavailable (status ${resp.status})`
+    const data = await resp.json()
+    const results: any[] = data.results || []
+    if (results.length === 0) return "No results found on preconstruction.miami for that query."
+    return results
+      .map(r => `**${r.title}**\nURL: ${r.url}\n${r.content?.slice(0, 600) || ""}`)
+      .join("\n\n---\n\n")
+  } catch (e: any) {
+    return `Search error: ${e.message}`
+  }
+}
+
+function simulateSSE(content: string): Response {
+  const encoder = new TextEncoder()
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(
+        encoder.encode(
+          `data: ${JSON.stringify({ choices: [{ delta: { content }, finish_reason: null }] })}\n\n`
+        )
+      )
+      controller.enqueue(encoder.encode("data: [DONE]\n\n"))
+      controller.close()
+    },
+  })
+  return new Response(stream, { headers: SSE_HEADERS })
+}
 
 export async function POST(req: Request) {
   const session = await auth()
@@ -66,6 +132,8 @@ export async function POST(req: Request) {
       { status: 503 }
     )
   }
+
+  const tavilyKey = process.env.TAVILY_API_KEY || ""
 
   const { messages, contactId } = await req.json()
   if (!Array.isArray(messages)) return NextResponse.json({ error: "messages required" }, { status: 400 })
@@ -107,7 +175,9 @@ export async function POST(req: Request) {
         contextLines.push(`\nPROYECTOS EN CARTERA DE CATHERINE:`)
         projects.slice(0, 10).forEach(p => {
           const price = p.priceMin ? `desde $${Number(p.priceMin).toLocaleString()}` : ""
-          contextLines.push(`- ${p.name} (${p.neighborhood || p.city || "Miami"}): ${price}${p.developer ? `, ${p.developer}` : ""}${p.deliveryDate ? `, entrega ${p.deliveryDate}` : ""}`)
+          contextLines.push(
+            `- ${p.name} (${p.neighborhood || p.city || "Miami"}): ${price}${p.developer ? `, ${p.developer}` : ""}${p.deliveryDate ? `, entrega ${p.deliveryDate}` : ""}${p.estimatedROI ? `, ROI estimado ${p.estimatedROI}` : ""}`
+          )
         })
       }
     }
@@ -122,32 +192,64 @@ export async function POST(req: Request) {
     ...messages.slice(-20),
   ]
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const tools = tavilyKey ? [SEARCH_TOOL] : []
+
+  // Pass 1: non-streaming, detect if web search is needed
+  const pass1Resp = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       model: "gpt-4o",
       messages: openaiMessages,
-      stream: true,
+      ...(tools.length ? { tools, tool_choice: "auto" } : {}),
       temperature: 0.6,
       max_tokens: 1500,
     }),
   })
 
-  if (!response.ok) {
-    const errText = await response.text()
+  if (!pass1Resp.ok) {
+    const errText = await pass1Resp.text()
     console.error("[Investment Advisor] OpenAI error:", errText)
     return NextResponse.json({ error: "OpenAI API error — check OPENAI_API_KEY in Railway" }, { status: 500 })
   }
 
-  return new Response(response.body, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-    },
-  })
+  const pass1Data = await pass1Resp.json()
+  const choice = pass1Data.choices?.[0]
+
+  // If the model wants to search the web, execute the tool then stream the final answer
+  if (choice?.finish_reason === "tool_calls" && tavilyKey) {
+    const toolCalls: any[] = choice.message.tool_calls || []
+    const toolResults: any[] = []
+
+    for (const tc of toolCalls) {
+      if (tc.function.name === "search_web") {
+        const { query } = JSON.parse(tc.function.arguments || "{}")
+        console.log("[Investment Advisor] Tavily search:", query)
+        const results = await tavilySearch(query, tavilyKey)
+        toolResults.push({ role: "tool", tool_call_id: tc.id, content: results })
+      }
+    }
+
+    const pass2Resp = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [...openaiMessages, choice.message, ...toolResults],
+        stream: true,
+        temperature: 0.6,
+        max_tokens: 1500,
+      }),
+    })
+
+    if (!pass2Resp.ok) {
+      return NextResponse.json({ error: "OpenAI API error on search pass" }, { status: 500 })
+    }
+
+    return new Response(pass2Resp.body, { headers: SSE_HEADERS })
+  }
+
+  // No tool call — return pass1 content as a simulated SSE stream
+  const content = choice?.message?.content || ""
+  return simulateSSE(content)
 }
