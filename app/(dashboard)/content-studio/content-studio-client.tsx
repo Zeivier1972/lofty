@@ -1612,6 +1612,12 @@ function ListingVideoStudio({ toast }: { toast: any }) {
   const [voiceId, setVoiceId] = useState("")
   const [property, setProperty] = useState("")
   const [photoUrlsText, setPhotoUrlsText] = useState("")
+  const [agentName, setAgentName] = useState("Catherine Gomez")
+  const [agentTitle, setAgentTitle] = useState("Real Estate Agent")
+  const [agentPhone, setAgentPhone] = useState("")
+  const [propertyAddress, setPropertyAddress] = useState("")
+  const [price, setPrice] = useState("")
+  const [brandColor, setBrandColor] = useState("#FF4D1C")
   const [ratio, setRatio] = useState("9:16")
   const [loadingData, setLoadingData] = useState(true)
   const [generating, setGenerating] = useState(false)
@@ -1620,11 +1626,10 @@ function ListingVideoStudio({ toast }: { toast: any }) {
   const [plan, setPlan] = useState<any>(null)
   const pollRef = useRef<any>(null)
 
-  // Creatomate state
-  const [cStatus, setCStatus] = useState<"idle" | "rendering" | "succeeded" | "failed">("idle")
-  const [cVideoUrl, setCVideoUrl] = useState<string | null>(null)
-  const [cRendering, setCRendering] = useState(false)
-  const cPollRef = useRef<any>(null)
+  // Remotion state
+  const [rConfig, setRConfig] = useState<any>(null)
+  const [rLoading, setRLoading] = useState(false)
+  const [rCopied, setRCopied] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -1713,59 +1718,57 @@ function ListingVideoStudio({ toast }: { toast: any }) {
     }
   }
 
-  // ── Creatomate handlers ──────────────────────────────────────────────────
+  // ── Remotion config handler ───────────────────────────────────────────────
 
-  const pollCreatomate = (renderId: string) => {
-    cPollRef.current = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/creatomate/status?renderId=${renderId}`)
-        const data = await res.json()
-        if (data.status === "succeeded") {
-          clearInterval(cPollRef.current!)
-          setCVideoUrl(data.url)
-          setCStatus("succeeded")
-          toast({ title: "¡Creatomate listo! Descarga tu listing video." })
-        } else if (data.status === "failed") {
-          clearInterval(cPollRef.current!)
-          setCStatus("failed")
-          toast({ title: "Creatomate falló", description: data.errorMessage || "Error desconocido", variant: "destructive" })
-        }
-      } catch { /* retry */ }
-    }, 5000)
-  }
+  const generateRemotionConfig = async () => {
+    if (!property.trim()) {
+      toast({ title: "Describe la propiedad primero", variant: "destructive" })
+      return
+    }
 
-  const generateCreatomate = async () => {
     const photoUrls = photoUrlsText
       .split("\n")
       .map(u => u.trim())
       .filter(u => u.startsWith("http"))
 
-    if (!photoUrls.length) {
-      toast({ title: "Agrega al menos una foto de la propiedad", variant: "destructive" })
-      return
-    }
-
-    if (cPollRef.current) clearInterval(cPollRef.current)
-    setCRendering(true)
-    setCStatus("rendering")
-    setCVideoUrl(null)
+    setRLoading(true)
+    setRConfig(null)
 
     try {
-      const res = await fetch("/api/creatomate/render", {
+      const res = await fetch("/api/remotion/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ photoUrls }),
+        body: JSON.stringify({
+          property,
+          photoUrls,
+          agentName,
+          agentTitle,
+          agentPhone,
+          propertyAddress,
+          price,
+          brandColor,
+        }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
-      toast({ title: `Render iniciado — Creatomate procesando… (30-90 seg)` })
-      pollCreatomate(data.renderId)
+      setRConfig(data)
+      toast({ title: `Config de ${data.meta.sceneCount} escenas lista — descarga y renderiza localmente` })
     } catch (e: any) {
-      toast({ title: "Error Creatomate", description: e.message, variant: "destructive" })
-      setCStatus("idle")
+      toast({ title: "Error generando config", description: e.message, variant: "destructive" })
     } finally {
-      setCRendering(false)
+      setRLoading(false)
     }
+  }
+
+  const downloadRemotionConfig = () => {
+    if (!rConfig) return
+    const blob = new Blob([JSON.stringify(rConfig, null, 2)], { type: "application/json" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `listing-video-${Date.now()}.json`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   if (loadingData) return <div className="text-center py-20 text-gray-400">Cargando avatares…</div>
@@ -1838,6 +1841,20 @@ function ListingVideoStudio({ toast }: { toast: any }) {
       <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
         <h2 className="text-base font-semibold text-gray-800 mb-1">2. Información de la propiedad</h2>
         <p className="text-xs text-gray-500 mb-3">Incluye precio, recámaras, amenidades, barrio y estilo de vida.</p>
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mb-1 block">Dirección</label>
+            <input value={propertyAddress} onChange={e => setPropertyAddress(e.target.value)}
+              placeholder="1234 Ocean Drive, Miami Beach, FL"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mb-1 block">Precio</label>
+            <input value={price} onChange={e => setPrice(e.target.value)}
+              placeholder="$1,250,000"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+          </div>
+        </div>
         <textarea
           value={property}
           onChange={e => setProperty(e.target.value)}
@@ -1847,12 +1864,47 @@ function ListingVideoStudio({ toast }: { toast: any }) {
         />
       </div>
 
+      {/* Agent Info */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+        <h2 className="text-base font-semibold text-gray-800 mb-3">3. Tu información de contacto</h2>
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mb-1 block">Nombre</label>
+            <input value={agentName} onChange={e => setAgentName(e.target.value)}
+              placeholder="Catherine Gomez"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mb-1 block">Título</label>
+            <input value={agentTitle} onChange={e => setAgentTitle(e.target.value)}
+              placeholder="Real Estate Agent"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mb-1 block">Teléfono</label>
+            <input value={agentPhone} onChange={e => setAgentPhone(e.target.value)}
+              placeholder="(305) 555-0100"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+          </div>
+        </div>
+        <div className="mt-3 flex items-center gap-3">
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mb-1 block">Color de marca</label>
+            <div className="flex items-center gap-2">
+              <input type="color" value={brandColor} onChange={e => setBrandColor(e.target.value)}
+                className="w-10 h-10 rounded-lg border border-gray-200 cursor-pointer p-0.5" />
+              <span className="text-xs text-gray-400 font-mono">{brandColor}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Listing Photos */}
       <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-        <h2 className="text-base font-semibold text-gray-800 mb-1">3. Fotos de la propiedad <span className="text-gray-400 font-normal">(opcional)</span></h2>
+        <h2 className="text-base font-semibold text-gray-800 mb-1">4. Fotos de la propiedad <span className="text-gray-400 font-normal">(opcional)</span></h2>
         <p className="text-xs text-gray-500 mb-3">
-          Pega URLs de fotos del MLS o Zillow — una por línea. Se usarán como fondos en lugar de stock.<br />
-          <strong>Orden ideal:</strong> Exterior · Sala · Cocina · Recámara principal · Baño · Jardín · Piscina · Aéreo
+          Pega URLs de fotos del MLS o Zillow — una por línea.<br />
+          <strong>Orden ideal:</strong> Exterior · Sala · Cocina · Recámara · Baño · Jardín · Piscina · Aéreo
         </p>
         <textarea
           value={photoUrlsText}
@@ -1866,87 +1918,136 @@ function ListingVideoStudio({ toast }: { toast: any }) {
             ✓ {photoUrlsText.split("\n").filter(u => u.trim().startsWith("http")).length} fotos detectadas
           </p>
         )}
+      </div>
+
+      {/* ── Remotion — Render in Terminal ─────────────────────────────────── */}
+      <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-6 shadow-lg border border-gray-700">
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <h2 className="text-base font-semibold text-white">Remotion — Video con efectos profesionales</h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Genera el config con IA y renderiza desde tu terminal. Ken Burns · captions animados · transiciones.
+            </p>
+          </div>
+          <span className="text-[10px] font-bold px-2 py-1 bg-orange-500 text-white rounded-full uppercase tracking-wide">Nuevo</span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          {[
+            ["Ken Burns", "zoom/pan en cada foto"],
+            ["Captions", "animados estilo Reels"],
+            ["Transiciones", "flash profesional"],
+            ["Branding", "tu nombre + teléfono en CTA"],
+          ].map(([title, desc]) => (
+            <div key={title} className="bg-white/5 rounded-xl p-2.5 text-xs">
+              <span className="text-orange-400 font-semibold">{title}</span>
+              <span className="text-gray-400"> — {desc}</span>
+            </div>
+          ))}
+        </div>
+
+        <button
+          onClick={generateRemotionConfig}
+          disabled={rLoading || !property.trim()}
+          className="w-full flex items-center justify-center gap-2 py-3 bg-orange-500 text-white rounded-xl font-semibold text-sm hover:bg-orange-600 transition-all disabled:opacity-50">
+          {rLoading
+            ? <><Loader2 className="w-4 h-4 animate-spin" /> Claude generando guión + Pexels B-roll…</>
+            : <><Video className="w-4 h-4" /> Generar Config de Remotion (10 escenas)</>}
+        </button>
+
+        {rConfig && (
+          <div className="mt-4 space-y-3">
+            {/* Stats */}
+            <div className="flex gap-3 text-xs">
+              <span className="bg-white/10 text-gray-300 px-2 py-1 rounded-lg">{rConfig.meta.sceneCount} escenas</span>
+              <span className="bg-white/10 text-gray-300 px-2 py-1 rounded-lg">{rConfig.meta.totalSeconds}s de video</span>
+              <span className="bg-white/10 text-gray-300 px-2 py-1 rounded-lg">{rConfig.meta.totalFrames} frames @ 30fps</span>
+            </div>
+
+            {/* Scene preview */}
+            <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+              {rConfig.scenes.map((s: any, i: number) => (
+                <div key={i} className={`rounded-lg p-2.5 text-xs flex gap-2 ${s.avatar_present ? "bg-purple-900/40 border border-purple-700/40" : "bg-blue-900/40 border border-blue-700/40"}`}>
+                  <span className={`flex-shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded self-start mt-0.5 ${s.avatar_present ? "bg-purple-600 text-white" : "bg-blue-600 text-white"}`}>
+                    {s.avatar_present ? "CAM" : s.asset_type === "video" ? "VIDEO" : "FOTO"}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-gray-300">{i + 1}. {s.name} <span className="text-gray-500">({s.duration_seconds}s)</span></p>
+                    <p className="text-gray-400 leading-snug truncate">{s.script}</p>
+                    <p className="text-gray-500 mt-0.5">Caption: <strong className="text-gray-400">{s.caption}</strong></p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Download + Terminal command */}
+            <button
+              onClick={downloadRemotionConfig}
+              className="w-full flex items-center justify-center gap-2 py-2.5 bg-white/10 hover:bg-white/15 text-white rounded-xl text-sm font-semibold transition-colors border border-white/20">
+              <Download className="w-4 h-4" /> Descargar listing-config.json
+            </button>
+
+            <div className="bg-black/50 rounded-xl p-4 border border-gray-700">
+              <p className="text-xs text-gray-400 mb-2 font-semibold uppercase tracking-wide">Comando para tu terminal</p>
+              <div className="flex items-start gap-2">
+                <code className="flex-1 text-xs text-green-400 font-mono leading-relaxed break-all">
+                  {`node scripts/render-listing.mjs --config listing-config.json`}
+                </code>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText("node scripts/render-listing.mjs --config listing-config.json")
+                    setRCopied(true)
+                    setTimeout(() => setRCopied(false), 2000)
+                  }}
+                  className="flex-shrink-0 p-1.5 bg-white/10 hover:bg-white/20 rounded-lg transition-colors">
+                  {rCopied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5 text-gray-400" />}
+                </button>
+              </div>
+              <div className="mt-3 space-y-1 text-[11px] text-gray-500">
+                <p>1. Descarga el archivo JSON arriba</p>
+                <p>2. Colócalo en la carpeta raíz del proyecto lofty</p>
+                <p>3. Corre el comando en tu terminal</p>
+                <p>4. El video se guarda en <code className="text-gray-400">output/listing-*.mp4</code></p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* HeyGen generate */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+        <h2 className="text-base font-semibold text-gray-800 mb-1">Generar con HeyGen (avatar)</h2>
+        <p className="text-xs text-gray-500 mb-4">Alternativa: video con el avatar de Catherine. Requiere avatar + voz seleccionados arriba.</p>
 
         <button
           onClick={generate}
           disabled={generating || !property.trim() || !avatarId || !voiceId || status === "processing"}
-          className="mt-5 w-full flex items-center justify-center gap-2 py-3 bg-purple-600 text-white rounded-xl font-semibold text-sm hover:bg-purple-700 transition-colors disabled:opacity-50">
+          className="w-full flex items-center justify-center gap-2 py-3 bg-purple-600 text-white rounded-xl font-semibold text-sm hover:bg-purple-700 transition-colors disabled:opacity-50">
           {generating
             ? <><Loader2 className="w-4 h-4 animate-spin" /> Claude generando guión + buscando Pexels…</>
             : status === "processing"
             ? <><Loader2 className="w-4 h-4 animate-spin" /> HeyGen renderizando 10 escenas… (3-6 min)</>
             : <><Clapperboard className="w-4 h-4" /> Generar Listing Video con HeyGen (10 escenas)</>}
         </button>
-      </div>
 
-      {/* ── Creatomate visual showcase ──────────────────────────────────── */}
-      <div className="bg-white rounded-2xl border-2 border-dashed border-purple-200 p-6 shadow-sm">
-        <div className="flex items-start justify-between mb-3">
-          <div>
-            <h2 className="text-base font-semibold text-gray-800">Creatomate — Showcase de Propiedad</h2>
-            <p className="text-xs text-gray-500 mt-0.5">
-              Video profesional con tus fotos de listing + efectos de movimiento (Ken Burns, transiciones). Sin avatar — pura propiedad.
-            </p>
-          </div>
-          <span className="text-[10px] font-bold px-2 py-1 bg-purple-100 text-purple-700 rounded-full uppercase tracking-wide">Nuevo</span>
-        </div>
-
-        <div className="bg-gray-50 rounded-xl p-3 text-xs text-gray-600 mb-4 space-y-1">
-          <p>✦ <strong>Ken Burns</strong> zoom/pan automático en cada foto</p>
-          <p>✦ <strong>Transiciones</strong> profesionales entre escenas</p>
-          <p>✦ <strong>Captions</strong> animados con estilo TikTok/Reels</p>
-          <p>✦ <strong>Música</strong> de fondo incluida en el template</p>
-          <p className="text-gray-400">Usa las fotos que ingresaste arriba (mínimo 1, óptimo 4)</p>
-        </div>
-
-        <button
-          onClick={generateCreatomate}
-          disabled={cRendering || cStatus === "rendering" || !photoUrlsText.trim()}
-          className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl font-semibold text-sm hover:from-purple-700 hover:to-indigo-700 transition-all disabled:opacity-50">
-          {cRendering
-            ? <><Loader2 className="w-4 h-4 animate-spin" /> Iniciando render…</>
-            : cStatus === "rendering"
-            ? <><Loader2 className="w-4 h-4 animate-spin" /> Creatomate renderizando… (30-90 seg)</>
-            : <><Video className="w-4 h-4" /> Generar con Creatomate</>}
-        </button>
-
-        {cStatus === "rendering" && (
-          <div className="mt-3 bg-indigo-50 border border-indigo-200 rounded-xl p-4 text-center text-sm text-indigo-700">
-            <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />
-            Creatomate está aplicando efectos de movimiento a tus fotos…
+        {/* Processing */}
+        {status === "processing" && (
+          <div className="mt-4 bg-blue-50 border border-blue-200 rounded-xl p-4 text-center">
+            <Loader2 className="w-6 h-6 text-blue-500 animate-spin mx-auto mb-2" />
+            <p className="font-semibold text-blue-800 text-sm">HeyGen está renderizando el listing video…</p>
+            <p className="text-xs text-blue-600 mt-1">10 escenas — 3-6 minutos. No cierres esta pantalla.</p>
           </div>
         )}
 
-        {cStatus === "succeeded" && cVideoUrl && (
-          <div className="mt-4">
-            <video src={cVideoUrl} controls playsInline className="w-full rounded-xl max-h-[500px] object-contain bg-black" />
-            <a href={cVideoUrl} target="_blank" rel="noopener noreferrer"
-              className="mt-2 w-full flex items-center justify-center gap-2 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-semibold hover:bg-gray-700 transition-colors">
-              Descargar / abrir video Creatomate
-            </a>
-          </div>
-        )}
-      </div>
-
-      {/* Scene Plan Preview */}
-      {plan?.scenes && (
-        <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-semibold text-gray-800">Guión generado — {plan.scenes.length} escenas</h2>
-            {plan.meta && (
-              <span className="text-xs text-gray-500">
-                {plan.meta.pexelsHits} videos Pexels · {plan.meta.photoUrls} fotos de listing
-              </span>
-            )}
-          </div>
-          <div className="space-y-2">
+        {/* Scene Plan */}
+        {plan?.scenes && (
+          <div className="mt-4 space-y-2">
+            <p className="text-sm font-semibold text-gray-700">Guión — {plan.scenes.length} escenas</p>
             {plan.scenes.map((scene: any, i: number) => (
               <div key={i} className={`rounded-xl p-3 border text-sm flex gap-3 ${scene.avatar_present ? "bg-purple-50 border-purple-200" : "bg-blue-50 border-blue-200"}`}>
-                <div className="flex-shrink-0 pt-0.5">
-                  <span className={`inline-block text-[10px] font-bold px-1.5 py-0.5 rounded-md ${scene.avatar_present ? "bg-purple-600 text-white" : "bg-blue-600 text-white"}`}>
-                    {scene.avatar_present ? "CAM" : "B-ROLL"}
-                  </span>
-                </div>
+                <span className={`flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-md self-start mt-0.5 ${scene.avatar_present ? "bg-purple-600 text-white" : "bg-blue-600 text-white"}`}>
+                  {scene.avatar_present ? "CAM" : "B-ROLL"}
+                </span>
                 <div className="min-w-0">
                   <p className="text-xs font-semibold text-gray-600 mb-0.5">{scene.scene_number}. {scene.name}</p>
                   <p className="text-gray-800 leading-snug">{scene.script}</p>
@@ -1955,29 +2056,19 @@ function ListingVideoStudio({ toast }: { toast: any }) {
               </div>
             ))}
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Processing */}
-      {status === "processing" && (
-        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6 text-center">
-          <Loader2 className="w-8 h-8 text-blue-500 animate-spin mx-auto mb-3" />
-          <p className="font-semibold text-blue-800">HeyGen está renderizando el listing video…</p>
-          <p className="text-sm text-blue-600 mt-1">10 escenas — esto toma entre 3 y 6 minutos. No cierres esta pantalla.</p>
-        </div>
-      )}
-
-      {/* Result */}
-      {status === "completed" && videoUrl && (
-        <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-          <h2 className="text-base font-semibold text-gray-800 mb-4">Video listo</h2>
-          <video src={videoUrl} controls playsInline className="w-full rounded-xl max-h-[600px] object-contain bg-black" />
-          <a href={videoUrl} target="_blank" rel="noopener noreferrer"
-            className="mt-3 w-full flex items-center justify-center gap-2 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-semibold hover:bg-gray-700 transition-colors">
-            Descargar / abrir video
-          </a>
-        </div>
-      )}
+        {/* Result */}
+        {status === "completed" && videoUrl && (
+          <div className="mt-4">
+            <video src={videoUrl} controls playsInline className="w-full rounded-xl max-h-[600px] object-contain bg-black" />
+            <a href={videoUrl} target="_blank" rel="noopener noreferrer"
+              className="mt-3 w-full flex items-center justify-center gap-2 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-semibold hover:bg-gray-700 transition-colors">
+              Descargar / abrir video
+            </a>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
