@@ -153,9 +153,9 @@ export function wrapEmail(body: string, opts: {
   const initials = opts.agentName.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() || "CG"
   const websiteDisplay = website.replace(/^https?:\/\//, "").replace(/\/$/, "")
   const heroImages = [
-    "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=600&q=80&auto=format&fit=crop", // luxury home exterior
+    "https://images.unsplash.com/photo-1533106497176-45ae19e68ba2?w=600&q=80&auto=format&fit=crop", // Miami Brickell skyline
+    "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=600&q=80&auto=format&fit=crop", // Miami condo towers
     "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=600&q=80&auto=format&fit=crop", // luxury home pool
-    "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=600&q=80&auto=format&fit=crop", // modern villa
   ]
   // Rotate hero image based on day of month for variety
   const hero = heroImages[new Date().getDate() % heroImages.length]
@@ -181,7 +181,7 @@ ${opts.preheader ? `<div style="display:none;max-height:0;overflow:hidden;mso-hi
   <!-- Hero text banner (separate row — avoids CSS position overlap in email clients) -->
   <tr><td style="background:linear-gradient(135deg,#1B1F3B,#2a3060);padding:10px 28px">
     <p style="color:rgba(255,255,255,0.6);font-size:10px;letter-spacing:2px;text-transform:uppercase;margin:0 0 2px">Catherine Gómez · Realtor</p>
-    <p style="color:#C9A84C;font-size:12px;margin:0">Miami · Brickell · Doral · Coral Gables · Aventura</p>
+    <p style="color:#C9A84C;font-size:12px;margin:0">Miami · Brickell · Doral · Coral Gables · Aventura · Homestead</p>
   </td></tr>
 
   <!-- Agent card -->
@@ -236,7 +236,7 @@ ${opts.preheader ? `<div style="display:none;max-height:0;overflow:hidden;mso-hi
     <p style="color:#6B5B2E;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;margin:0 0 6px;font-weight:600">Areas We Serve</p>
     <p style="color:#92826A;font-size:12px;margin:0">
       Brickell &nbsp;·&nbsp; Miami Beach &nbsp;·&nbsp; Doral &nbsp;·&nbsp; Coral Gables &nbsp;·&nbsp;
-      Edgewater &nbsp;·&nbsp; Wynwood &nbsp;·&nbsp; Aventura &nbsp;·&nbsp; Sunny Isles
+      Edgewater &nbsp;·&nbsp; Wynwood &nbsp;·&nbsp; Aventura &nbsp;·&nbsp; Sunny Isles &nbsp;·&nbsp; Homestead
     </p>
   </td></tr>
 
