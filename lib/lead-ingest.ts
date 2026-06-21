@@ -209,38 +209,47 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
     const waNumber = process.env.TWILIO_WHATSAPP_NUMBER
 
     if (isInvestor && waNumber) {
-      // Investor leads → WhatsApp (Colombian investors prefer WhatsApp over SMS)
+      // Investor leads → WhatsApp via template only.
+      // Free-form WhatsApp (sendWhatsApp) requires an open 24h session from a prior inbound message.
+      // New leads have no session, so free-form always fails with error 63016.
+      // Strategy: use template if configured; otherwise fall back to SMS immediately.
       const templateSid = process.env.TWILIO_WA_INVESTOR_TEMPLATE_SID
-      const waBody = `🏙️ Hola ${firstName}! Soy Sofía, asistente de Catherine Gómez Realtor.\n\nVi que estás interesado en inversiones inmobiliarias en Miami. Catherine es especialista en pre-construcción y retornos de inversión para compradores colombianos y latinos.\n\n📊 ¿Te gustaría ver proyectos con ROI 8-12% anual?\n\n📅 Agenda una consulta gratuita: ${bookingUrl}\n📞 Tel: ${realtorPhone}`
 
-      const sendWA = templateSid
-        ? sendWhatsAppTemplate(toPhone, templateSid, { "1": firstName })
-        : sendWhatsApp(toPhone, waBody)
-
-      sendWA
-        .then(() => {
-          console.log(`[INGEST] WhatsApp sent to investor ${toPhone}`)
-          const sentDescription = templateSid
-            ? `Hola ${firstName}, soy Sofía, asistente de Catherine Gómez Realtor 🏙️ Vi que estás interesado en inversiones inmobiliarias en Miami...`
-            : waBody.slice(0, 200)
-          prisma.activity.create({
-            data: { type: "WHATSAPP", title: "Sofía sent investor welcome via WhatsApp", description: sentDescription, contactId: contact.id },
-          }).catch(() => {})
-          prisma.whatsAppMessage.create({
-            data: { toNumber: `whatsapp:${toPhone}`, fromNumber: `whatsapp:${waNumber}`, body: sentDescription, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
-          }).catch(() => {})
-        })
-        .catch(e => {
-          console.error("[INGEST] WhatsApp failed, falling back to SMS:", e)
-          const smsBody = `Hola ${firstName}! Soy Sofía de Catherine Gomez Realtor 🏠 Vi que estás interesado en inversiones en Miami. ¿Hablamos? Agenda: ${bookingUrl} · Tel: ${realtorPhone}`
-          sendSMS(toPhone, smsBody)
-            .then(() => {
-              prisma.activity.create({
-                data: { type: "SMS", title: "Sofía sent investor welcome via SMS (WhatsApp fallback)", description: smsBody.slice(0, 200), contactId: contact.id },
-              }).catch(() => {})
-            })
-            .catch(() => {})
-        })
+      if (templateSid) {
+        sendWhatsAppTemplate(toPhone, templateSid, { "1": firstName })
+          .then(() => {
+            console.log(`[INGEST] WhatsApp template sent to investor ${toPhone}`)
+            const sentDescription = `Hola ${firstName}, soy Sofía, asistente de Catherine Gómez Realtor 🏙️ Vi que estás interesado en inversiones inmobiliarias en Miami...`
+            prisma.activity.create({
+              data: { type: "WHATSAPP", title: "Sofía sent investor welcome via WhatsApp", description: sentDescription, contactId: contact.id },
+            }).catch(() => {})
+            prisma.whatsAppMessage.create({
+              data: { toNumber: `whatsapp:${toPhone}`, fromNumber: `whatsapp:${waNumber}`, body: sentDescription, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
+            }).catch(() => {})
+          })
+          .catch(e => {
+            console.error("[INGEST] WhatsApp template failed, falling back to SMS:", e)
+            const smsBody = `Hola ${firstName}! Soy Sofía de Catherine Gomez Realtor 🏠 Vi que estás interesado en inversiones en Miami. ¿Hablamos? Agenda: ${bookingUrl} · Tel: ${realtorPhone}`
+            sendSMS(toPhone, smsBody)
+              .then(() => {
+                prisma.activity.create({
+                  data: { type: "SMS", title: "Sofía sent investor welcome via SMS (WhatsApp fallback)", description: smsBody.slice(0, 200), contactId: contact.id },
+                }).catch(() => {})
+              })
+              .catch(() => {})
+          })
+      } else {
+        // No template configured — SMS avoids guaranteed 63016 error on cold outbound WhatsApp
+        console.log("[INGEST] No TWILIO_WA_INVESTOR_TEMPLATE_SID — sending SMS to investor")
+        const smsBody = `Hola ${firstName}! Soy Sofía de Catherine Gomez Realtor 🏠 Especialistas en inversiones en Miami. ¿Hablamos? Agenda: ${bookingUrl} · Tel: ${realtorPhone}`
+        sendSMS(toPhone, smsBody)
+          .then(() => {
+            prisma.activity.create({
+              data: { type: "SMS", title: "Sofía sent investor welcome via SMS (no WhatsApp template)", description: smsBody.slice(0, 200), contactId: contact.id },
+            }).catch(() => {})
+          })
+          .catch(() => {})
+      }
     } else {
       // Regular leads → SMS
       const interest = propertyType === "PRE_CONSTRUCTION" || (campaign || "").toLowerCase().includes("pre")

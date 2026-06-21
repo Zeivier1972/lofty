@@ -131,12 +131,26 @@ export async function GET(req: Request) {
           const toPhone = contact.phone.startsWith("+")
             ? contact.phone
             : `+1${contact.phone.replace(/\D/g, "").slice(-10)}`
-          await sendWhatsApp(toPhone, fill(step.content))
+          const filledContent = fill(step.content)
+          // WhatsApp free-form requires an open 24h session (contact messaged first).
+          // Smart plan steps often run days later, so fall back to SMS on error 63016.
+          let waSucceeded = false
+          try {
+            await sendWhatsApp(toPhone, filledContent)
+            waSucceeded = true
+          } catch (waErr: any) {
+            console.warn("[smart-plans] WhatsApp failed (likely outside 24h window), falling back to SMS:", waErr?.message)
+            try {
+              await sendSMS(toPhone, filledContent)
+            } catch (smsErr) {
+              console.error("[smart-plans] SMS fallback also failed:", smsErr)
+            }
+          }
           await prisma.activity.create({
             data: {
-              type: "SMS",
-              title: "Smart Plan WhatsApp",
-              description: fill(step.content).slice(0, 120),
+              type: waSucceeded ? "WHATSAPP" : "SMS",
+              title: waSucceeded ? "Smart Plan WhatsApp" : "Smart Plan WhatsApp → SMS fallback",
+              description: filledContent.slice(0, 120),
               contactId: contact.id,
             },
           })
