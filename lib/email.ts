@@ -153,7 +153,7 @@ export function wrapEmail(body: string, opts: {
   const initials = opts.agentName.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() || "CG"
   const websiteDisplay = website.replace(/^https?:\/\//, "").replace(/\/$/, "")
   const heroImages = [
-    "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=600&q=80&auto=format&fit=crop", // Miami skyline
+    "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=600&q=80&auto=format&fit=crop", // luxury home exterior
     "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=600&q=80&auto=format&fit=crop", // luxury home pool
     "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=600&q=80&auto=format&fit=crop", // modern villa
   ]
@@ -174,15 +174,14 @@ ${opts.preheader ? `<div style="display:none;max-height:0;overflow:hidden;mso-hi
 <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%">
 
   <!-- Hero image -->
-  <tr><td style="border-radius:16px 16px 0 0;overflow:hidden;line-height:0">
-    <div style="position:relative">
-      <img src="${hero}" alt="Miami Real Estate" width="600" style="width:100%;max-width:600px;height:200px;object-fit:cover;display:block"/>
-      <!-- Dark overlay text on image -->
-      <div style="background:linear-gradient(to bottom,rgba(0,0,0,0.1),rgba(0,0,0,0.55));padding:16px 28px 20px;margin-top:-68px;position:relative">
-        <p style="color:rgba(255,255,255,0.85);font-size:11px;letter-spacing:2px;text-transform:uppercase;margin:0 0 2px">Catherine Gómez · Realtor</p>
-        <p style="color:white;font-size:13px;margin:0;opacity:0.9">Miami · Brickell · Doral · Coral Gables · Aventura</p>
-      </div>
-    </div>
+  <tr><td style="border-radius:16px 16px 0 0;overflow:hidden;line-height:0;padding:0">
+    <img src="${hero}" alt="Miami Real Estate" width="600" style="width:100%;max-width:600px;height:200px;object-fit:cover;display:block"/>
+  </td></tr>
+
+  <!-- Hero text banner (separate row — avoids CSS position overlap in email clients) -->
+  <tr><td style="background:linear-gradient(135deg,#1B1F3B,#2a3060);padding:10px 28px">
+    <p style="color:rgba(255,255,255,0.6);font-size:10px;letter-spacing:2px;text-transform:uppercase;margin:0 0 2px">Catherine Gómez · Realtor</p>
+    <p style="color:#C9A84C;font-size:12px;margin:0">Miami · Brickell · Doral · Coral Gables · Aventura</p>
   </td></tr>
 
   <!-- Agent card -->
@@ -200,9 +199,7 @@ ${opts.preheader ? `<div style="display:none;max-height:0;overflow:hidden;mso-hi
           <p style="color:#C9A84C;font-size:12px;margin:0 0 4px;letter-spacing:0.5px">Licensed Real Estate Agent · Miami, FL</p>
           ${phone ? `<p style="color:#9CA3AF;font-size:12px;margin:0">📱 ${phone}</p>` : ""}
         </td>
-        <td style="text-align:right;vertical-align:middle">
-          <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/4/4c/Flag_of_Florida.svg/60px-Flag_of_Florida.svg.png" alt="FL" width="36" style="opacity:0.7"/>
-        </td>
+        <td style="text-align:right;vertical-align:middle;color:#C9A84C;font-size:22px">🌴</td>
       </tr>
     </table>
   </td></tr>
