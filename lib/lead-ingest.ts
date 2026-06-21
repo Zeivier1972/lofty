@@ -214,7 +214,7 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
       const waBody = `🏙️ Hola ${firstName}! Soy Sofía, asistente de Catherine Gómez Realtor.\n\nVi que estás interesado en inversiones inmobiliarias en Miami. Catherine es especialista en pre-construcción y retornos de inversión para compradores colombianos y latinos.\n\n📊 ¿Te gustaría ver proyectos con ROI 8-12% anual?\n\n📅 Agenda una consulta gratuita: ${bookingUrl}\n📞 Tel: ${realtorPhone}`
 
       const sendWA = templateSid
-        ? sendWhatsAppTemplate(toPhone, templateSid, { "1": firstName, "2": bookingUrl, "3": realtorPhone })
+        ? sendWhatsAppTemplate(toPhone, templateSid, { "1": firstName })
         : sendWhatsApp(toPhone, waBody)
 
       sendWA
