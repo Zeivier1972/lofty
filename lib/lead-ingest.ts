@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma"
 import { scoreContact } from "@/lib/scoring"
 import { triggerOutboundCall } from "@/lib/vapi"
 import { sendEmail } from "@/lib/email"
-import { sendSMS } from "@/lib/sms"
+import { sendSMS, sendWhatsApp, sendWhatsAppTemplate } from "@/lib/sms"
 
 export interface LeadData {
   firstName: string
@@ -205,22 +205,53 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
 
   if (phone && autoSMS) {
     const toPhone = phone.startsWith("+") ? phone : `+1${phoneDigits}`
-    const interest = propertyType === "PRE_CONSTRUCTION" || (campaign || "").toLowerCase().includes("pre")
-      ? "pre-construcción y programas para primeros compradores"
-      : propertyType ? `propiedades tipo ${propertyType.toLowerCase().replace("_", " ")} en Miami` : "propiedades en Miami"
-    const smsBody = `Hola ${firstName}! Soy Sofía, asistente de Catherine Gomez Realtor 🏠 Vi que estás interesado en ${interest}. ¿Tienes un momentito para hablar? Agenda aquí: ${bookingUrl} · Tel: ${realtorPhone}`
-    sendSMS(toPhone, smsBody)
-      .then(() => {
-        console.log(`[INGEST] SMS sent to ${toPhone}`)
-        prisma.activity.create({
-          data: { type: "SMS", title: "Sofía sent welcome SMS", description: smsBody.slice(0, 200), contactId: contact.id },
-        }).catch(() => {})
-      })
-      .catch(e => console.error("[INGEST] SMS failed:", e))
+    const isInvestor = tags?.some(t => t.toLowerCase().includes("inversionista"))
+    const waNumber = process.env.TWILIO_WHATSAPP_NUMBER
 
-    prisma.sMSMessage.create({
-      data: { toNumber: toPhone, fromNumber: process.env.TWILIO_PHONE_NUMBER || "", body: smsBody, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
-    }).catch(() => {})
+    if (isInvestor && waNumber) {
+      // Investor leads → WhatsApp (Colombian investors prefer WhatsApp over SMS)
+      const templateSid = process.env.TWILIO_WA_INVESTOR_TEMPLATE_SID
+      const waBody = `🏙️ Hola ${firstName}! Soy Sofía, asistente de Catherine Gómez Realtor.\n\nVi que estás interesado en inversiones inmobiliarias en Miami. Catherine es especialista en pre-construcción y retornos de inversión para compradores colombianos y latinos.\n\n📊 ¿Te gustaría ver proyectos con ROI 8-12% anual?\n\n📅 Agenda una consulta gratuita: ${bookingUrl}\n📞 Tel: ${realtorPhone}`
+
+      const sendWA = templateSid
+        ? sendWhatsAppTemplate(toPhone, templateSid, { "1": firstName, "2": bookingUrl, "3": realtorPhone })
+        : sendWhatsApp(toPhone, waBody)
+
+      sendWA
+        .then(() => {
+          console.log(`[INGEST] WhatsApp sent to investor ${toPhone}`)
+          prisma.activity.create({
+            data: { type: "WHATSAPP", title: "Sofía sent investor welcome via WhatsApp", description: waBody.slice(0, 200), contactId: contact.id },
+          }).catch(() => {})
+          prisma.whatsAppMessage.create({
+            data: { toNumber: `whatsapp:${toPhone}`, fromNumber: `whatsapp:${waNumber}`, body: waBody, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
+          }).catch(() => {})
+        })
+        .catch(e => {
+          console.error("[INGEST] WhatsApp failed, falling back to SMS:", e)
+          // Fall back to SMS
+          const smsBody = `Hola ${firstName}! Soy Sofía de Catherine Gomez Realtor 🏠 Vi que estás interesado en inversiones en Miami. ¿Hablamos? Agenda: ${bookingUrl} · Tel: ${realtorPhone}`
+          sendSMS(toPhone, smsBody).catch(() => {})
+        })
+    } else {
+      // Regular leads → SMS
+      const interest = propertyType === "PRE_CONSTRUCTION" || (campaign || "").toLowerCase().includes("pre")
+        ? "pre-construcción y programas para primeros compradores"
+        : propertyType ? `propiedades tipo ${propertyType.toLowerCase().replace("_", " ")} en Miami` : "propiedades en Miami"
+      const smsBody = `Hola ${firstName}! Soy Sofía, asistente de Catherine Gomez Realtor 🏠 Vi que estás interesado en ${interest}. ¿Tienes un momentito para hablar? Agenda aquí: ${bookingUrl} · Tel: ${realtorPhone}`
+      sendSMS(toPhone, smsBody)
+        .then(() => {
+          console.log(`[INGEST] SMS sent to ${toPhone}`)
+          prisma.activity.create({
+            data: { type: "SMS", title: "Sofía sent welcome SMS", description: smsBody.slice(0, 200), contactId: contact.id },
+          }).catch(() => {})
+        })
+        .catch(e => console.error("[INGEST] SMS failed:", e))
+
+      prisma.sMSMessage.create({
+        data: { toNumber: toPhone, fromNumber: process.env.TWILIO_PHONE_NUMBER || "", body: smsBody, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
+      }).catch(() => {})
+    }
   } else {
     console.log(`[INGEST] SMS skipped — phone=${!!phone} autoSMS=${autoSMS}`)
   }
