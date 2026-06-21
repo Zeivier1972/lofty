@@ -220,18 +220,26 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
       sendWA
         .then(() => {
           console.log(`[INGEST] WhatsApp sent to investor ${toPhone}`)
+          const sentDescription = templateSid
+            ? `Hola ${firstName}, soy Sofía, asistente de Catherine Gómez Realtor 🏙️ Vi que estás interesado en inversiones inmobiliarias en Miami...`
+            : waBody.slice(0, 200)
           prisma.activity.create({
-            data: { type: "WHATSAPP", title: "Sofía sent investor welcome via WhatsApp", description: waBody.slice(0, 200), contactId: contact.id },
+            data: { type: "WHATSAPP", title: "Sofía sent investor welcome via WhatsApp", description: sentDescription, contactId: contact.id },
           }).catch(() => {})
           prisma.whatsAppMessage.create({
-            data: { toNumber: `whatsapp:${toPhone}`, fromNumber: `whatsapp:${waNumber}`, body: waBody, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
+            data: { toNumber: `whatsapp:${toPhone}`, fromNumber: `whatsapp:${waNumber}`, body: sentDescription, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
           }).catch(() => {})
         })
         .catch(e => {
           console.error("[INGEST] WhatsApp failed, falling back to SMS:", e)
-          // Fall back to SMS
           const smsBody = `Hola ${firstName}! Soy Sofía de Catherine Gomez Realtor 🏠 Vi que estás interesado en inversiones en Miami. ¿Hablamos? Agenda: ${bookingUrl} · Tel: ${realtorPhone}`
-          sendSMS(toPhone, smsBody).catch(() => {})
+          sendSMS(toPhone, smsBody)
+            .then(() => {
+              prisma.activity.create({
+                data: { type: "SMS", title: "Sofía sent investor welcome via SMS (WhatsApp fallback)", description: smsBody.slice(0, 200), contactId: contact.id },
+              }).catch(() => {})
+            })
+            .catch(() => {})
         })
     } else {
       // Regular leads → SMS
