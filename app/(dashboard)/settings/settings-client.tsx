@@ -9,6 +9,7 @@ import {
   Plus, Trash2, Edit, Database, CheckCircle, ExternalLink,
   X, Key, MessageSquare, Mail, Calendar, FileSignature, Home,
   Check, Clock, Copy, Link, Upload, Phone, Voicemail, FileText,
+  Send, FlaskConical,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -780,6 +781,114 @@ function BrochuresPanel() {
   )
 }
 
+// ─── WhatsApp Test Card ───────────────────────────────────────────────────────
+function WhatsAppTestCard() {
+  const { toast } = useToast()
+  const [phone, setPhone] = useState("")
+  const [firstName, setFirstName] = useState("")
+  const [tag, setTag] = useState("inversionista")
+  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState<{ success?: boolean; method?: string; note?: string; error?: string } | null>(null)
+
+  const INVESTOR_TAGS = [
+    { value: "inversionista", label: "inversionista" },
+    { value: "inversionista bogota", label: "inversionista bogota" },
+    { value: "inversionista_airbnb", label: "inversionista_airbnb" },
+    { value: "Investor_colombia", label: "Investor_colombia" },
+    { value: "regular", label: "Regular lead (non-investor)" },
+  ]
+
+  async function handleSend() {
+    if (!phone) return
+    setLoading(true)
+    setResult(null)
+    try {
+      const res = await fetch("/api/test/whatsapp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, firstName, tag }),
+      })
+      const data = await res.json()
+      setResult(data)
+      if (data.success) {
+        toast({ title: "WhatsApp sent!", description: `Delivered to ${phone} via ${data.method}` })
+      } else {
+        toast({ title: "Failed to send", description: data.error, variant: "destructive" })
+      }
+    } catch {
+      toast({ title: "Error", description: "Network error", variant: "destructive" })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Card className="border-0 shadow-sm border-l-4 border-l-green-500">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <FlaskConical className="w-4 h-4 text-green-600" />
+          Test WhatsApp Outreach
+        </CardTitle>
+        <p className="text-xs text-gray-500">Send a test message exactly as a new investor lead would receive it</p>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label className="text-xs text-gray-600 mb-1 block">Phone number</Label>
+            <Input
+              placeholder="+1 786 290 5831"
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              className="text-sm"
+            />
+          </div>
+          <div>
+            <Label className="text-xs text-gray-600 mb-1 block">First name (for template)</Label>
+            <Input
+              placeholder="Catherine"
+              value={firstName}
+              onChange={e => setFirstName(e.target.value)}
+              className="text-sm"
+            />
+          </div>
+        </div>
+        <div>
+          <Label className="text-xs text-gray-600 mb-1 block">Simulate lead tag</Label>
+          <select
+            value={tag}
+            onChange={e => setTag(e.target.value)}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+          >
+            {INVESTOR_TAGS.map(t => (
+              <option key={t.value} value={t.value}>{t.value === "regular" ? "Regular lead (non-investor → SMS)" : t.label}</option>
+            ))}
+          </select>
+        </div>
+        <Button onClick={handleSend} disabled={loading || !phone} className="bg-green-600 hover:bg-green-700 text-white w-full">
+          {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+          Send Test WhatsApp
+        </Button>
+        {result && (
+          <div className={`rounded-lg p-3 text-xs ${result.success ? "bg-green-50 text-green-800 border border-green-200" : "bg-red-50 text-red-800 border border-red-200"}`}>
+            {result.success ? (
+              <>
+                <p className="font-semibold mb-1">✅ Sent successfully</p>
+                <p><span className="font-medium">Method:</span> {result.method}</p>
+                {result.note && <p className="mt-1 text-green-700">{result.note}</p>}
+              </>
+            ) : (
+              <>
+                <p className="font-semibold mb-1">❌ Failed</p>
+                <p>{result.error}</p>
+              </>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function SettingsClient({ user, tags: initialTags, pipelines: initialPipelines, websiteConfig: initialWebsiteConfig }: SettingsClientProps) {
   const { toast } = useToast()
@@ -1455,6 +1564,8 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
 
           {/* Integrations */}
           <TabsContent value="integrations">
+            <div className="space-y-4">
+            <WhatsAppTestCard />
             <Card className="border-0 shadow-sm">
               <CardHeader><CardTitle className="text-base">Integrations</CardTitle></CardHeader>
               <CardContent className="space-y-3">
@@ -1503,6 +1614,7 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
                 </div>
               </CardContent>
             </Card>
+            </div>
           </TabsContent>
 
           {/* Availability */}
