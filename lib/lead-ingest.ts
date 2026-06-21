@@ -205,7 +205,7 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
 
   if (phone && autoSMS) {
     const toPhone = phone.startsWith("+") ? phone : `+1${phoneDigits}`
-    const isInvestor = tags?.some(t => t.toLowerCase().includes("inversionista"))
+    const isInvestor = tags?.some(t => t.toLowerCase().includes("inversionista") || t.toLowerCase().includes("investor"))
     const waNumber = process.env.TWILIO_WHATSAPP_NUMBER
 
     if (isInvestor && waNumber) {
