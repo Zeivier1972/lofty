@@ -179,13 +179,85 @@ Escribe SOLO el contenido del post, listo para publicar. Sin explicaciones, sin 
   return content.trim()
 }
 
+// ─── Image deduplication helpers ─────────────────────────────────────────────
+
+// 20-image fallback pool covering diverse Miami property types
+const FALLBACK_IMAGES = [
+  // Luxury homes with pools
+  "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1080&q=80",
+  "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1080&q=80",
+  "https://images.unsplash.com/photo-1613977257365-aaae5a9817ff?w=1080&q=80",
+  "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=1080&q=80",
+  // Modern home exteriors
+  "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1080&q=80",
+  "https://images.unsplash.com/photo-1570129477492-45c003edd2be?w=1080&q=80",
+  "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=1080&q=80",
+  "https://images.unsplash.com/photo-1583608205776-bfd35f0d9f83?w=1080&q=80",
+  "https://images.unsplash.com/photo-1600047508788-786f3865b911?w=1080&q=80",
+  "https://images.unsplash.com/photo-1598928506311-c55ded91a20c?w=1080&q=80",
+  // Miami skyline / condo towers
+  "https://images.unsplash.com/photo-1533106497176-45ae19e68ba2?w=1080&q=80",
+  "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=1080&q=80",
+  // Luxury interiors
+  "https://images.unsplash.com/photo-1484154218962-a197022b5858?w=1080&q=80",
+  "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=1080&q=80",
+  "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=1080&q=80",
+  "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=1080&q=80",
+  // Additional luxury homes — varied angles
+  "https://images.unsplash.com/photo-1449844908441-8829872d2607?w=1080&q=80",
+  "https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=1080&q=80",
+  "https://images.unsplash.com/photo-1493809842364-78817add7ffb?w=1080&q=80",
+  "https://images.unsplash.com/photo-1541123437800-1bb1317badc2?w=1080&q=80",
+]
+
+async function getRecentlyUsedMediaUrls(): Promise<Set<string>> {
+  const since = new Date(Date.now() - 30 * 86400000)
+  const posts = await prisma.socialPost.findMany({
+    where: { mediaUrl: { not: null }, publishedAt: { gte: since } },
+    select: { mediaUrl: true },
+  })
+  return new Set(posts.map(p => p.mediaUrl!).filter(Boolean))
+}
+
+function pickUnusedFallback(usedUrls: Set<string>): string {
+  const unused = FALLBACK_IMAGES.filter(url => !usedUrls.has(url))
+  const pool = unused.length > 0 ? unused : FALLBACK_IMAGES
+  return pool[Math.floor(Math.random() * pool.length)]
+}
+
+// Photo variety arrays to make each DALL-E prompt unique
+const PHOTO_ANGLES = [
+  "aerial drone perspective", "street-level view", "golden hour twilight shot",
+  "poolside view looking up", "rooftop terrace vantage point",
+  "wide-angle interior living area", "balcony view of city skyline",
+  "driveway approach shot", "garden patio perspective",
+]
+
+const PHOTO_SUBJECTS = [
+  "Brickell high-rise luxury condo", "Coral Gables Mediterranean estate",
+  "Doral family home with pool", "Coconut Grove waterfront villa",
+  "Aventura oceanfront high-rise", "Homestead modern suburban home",
+  "Edgewater bay-view apartment building", "South Beach Art Deco property",
+  "Key Biscayne luxury waterfront home", "Wynwood modern loft building",
+  "Sunny Isles Beach tower", "Kendall single-family home with palm trees",
+]
+
 // ─── Image generation with DALL-E → Cloudinary ───────────────────────────────
 
-async function generateAndUploadImage(dayOfWeek: number, research?: ResearchBrief): Promise<string | null> {
+async function generateAndUploadImage(
+  dayOfWeek: number,
+  research?: ResearchBrief,
+  usedUrls = new Set<string>()
+): Promise<string | null> {
   const theme = research?.trendingTopic ?? DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
 
   try {
-    const imagePrompt = `Professional Miami real estate photography, theme: ${theme}. Luxury properties, blue sky, palm trees, modern architecture. Photorealistic, bright daylight, no text or watermarks.`
+    const now = new Date()
+    const dateStr = now.toISOString().slice(0, 10)
+    const angle = PHOTO_ANGLES[Math.floor(Math.random() * PHOTO_ANGLES.length)]
+    const subject = PHOTO_SUBJECTS[Math.floor(Math.random() * PHOTO_SUBJECTS.length)]
+
+    const imagePrompt = `Professional South Florida real estate photography. Subject: ${subject}. Perspective: ${angle}. Thematic context: ${theme}. Clear blue sky, lush tropical landscaping, modern architecture, bright natural daylight. Ultra-realistic, no text, no watermarks, no people. Date reference: ${dateStr}.`
 
     const response = await openai.images.generate({
       model: "dall-e-3",
@@ -1258,6 +1330,9 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
       })
     : DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
 
+  // 7. Fetch recently used images once — shared across all accounts this run
+  const usedMediaUrls = await getRecentlyUsedMediaUrls()
+
   // 7. Process each connected account independently
   for (const account of accounts) {
     try {
@@ -1288,20 +1363,14 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
       }
 
       if (!useVideoFlow) {
-        // Generate image with gpt-image-1 → Cloudinary
-        // Fall back to a curated Unsplash Miami real estate photo if AI generation fails
-        mediaUrl = await generateAndUploadImage(dayOfWeek, research)
+        // Generate unique AI image → Cloudinary, fall back to unused Unsplash photo
+        mediaUrl = await generateAndUploadImage(dayOfWeek, research, usedMediaUrls)
         if (!mediaUrl) {
-          const FALLBACK_IMAGES = [
-            "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1080&q=80",
-            "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1080&q=80",
-            "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1080&q=80",
-            "https://images.unsplash.com/photo-1613977257365-aaae5a9817ff?w=1080&q=80",
-            "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=1080&q=80",
-          ]
-          mediaUrl = FALLBACK_IMAGES[dayOfWeek % FALLBACK_IMAGES.length]
-          console.log("[social-autopilot] Using fallback Unsplash image (AI image generation failed)")
+          mediaUrl = pickUnusedFallback(usedMediaUrls)
+          console.log("[social-autopilot] Using fallback Unsplash image (AI image generation failed):", mediaUrl)
         }
+        // Track this URL so subsequent accounts in the same run don't repeat it
+        if (mediaUrl) usedMediaUrls.add(mediaUrl)
       }
 
       // 7c. Create SocialPost record
