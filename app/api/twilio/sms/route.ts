@@ -42,6 +42,13 @@ export async function POST(req: Request) {
     },
   })
 
+  // Log inbound SMS as activity
+  if (contact) {
+    prisma.activity.create({
+      data: { type: "SMS", title: "Inbound SMS from contact", description: body.slice(0, 200), contactId: contact.id },
+    }).catch(() => {})
+  }
+
   // Log conversation in AI system
   if (contact) {
     let conversation = await prisma.aIConversation.findFirst({
@@ -97,6 +104,11 @@ export async function POST(req: Request) {
         contactId: contact.id,
       },
     })
+
+    // Log Sofía's outbound reply as activity
+    prisma.activity.create({
+      data: { type: "SMS", title: "Sofía replied via SMS", description: reply.slice(0, 200), contactId: contact.id },
+    }).catch(() => {})
 
     // Update score on inbound SMS reply
     scoreContact(contact.id).catch(() => {})

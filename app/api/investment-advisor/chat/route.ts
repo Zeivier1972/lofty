@@ -280,6 +280,11 @@ export async function POST(req: Request) {
         try {
           const html = wrapEmail(body, { agentName: "Catherine Gómez Realtor" })
           const sent = await sendEmail({ to: recipientEmail, subject, html })
+          if (sent && contactId) {
+            prisma.activity.create({
+              data: { type: "EMAIL_SENT", title: `Investment advisor email: ${subject}`, description: `Sent to ${recipientEmail}: ${subject}`, contactId },
+            }).catch(() => {})
+          }
           toolResults.push({ role: "tool", tool_call_id: tc.id, content: sent ? `Email sent successfully to ${recipientEmail}` : "Failed to send email — check RESEND_API_KEY in Railway." })
         } catch (e: any) {
           toolResults.push({ role: "tool", tool_call_id: tc.id, content: `Email error: ${e.message}` })

@@ -210,7 +210,12 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
       : propertyType ? `propiedades tipo ${propertyType.toLowerCase().replace("_", " ")} en Miami` : "propiedades en Miami"
     const smsBody = `Hola ${firstName}! Soy Sofía, asistente de Catherine Gomez Realtor 🏠 Vi que estás interesado en ${interest}. ¿Tienes un momentito para hablar? Agenda aquí: ${bookingUrl} · Tel: ${realtorPhone}`
     sendSMS(toPhone, smsBody)
-      .then(() => console.log(`[INGEST] SMS sent to ${toPhone}`))
+      .then(() => {
+        console.log(`[INGEST] SMS sent to ${toPhone}`)
+        prisma.activity.create({
+          data: { type: "SMS", title: "Sofía sent welcome SMS", description: smsBody.slice(0, 200), contactId: contact.id },
+        }).catch(() => {})
+      })
       .catch(e => console.error("[INGEST] SMS failed:", e))
 
     prisma.sMSMessage.create({
@@ -229,6 +234,9 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
         console.log(`[INGEST] Email sent to ${email}`)
         prisma.email.create({
           data: { subject, body: html, fromAddress, toAddress: email, status: "SENT", sentAt: new Date(), contactId: contact.id },
+        }).catch(() => {})
+        prisma.activity.create({
+          data: { type: "EMAIL_SENT", title: "Sofía sent welcome email", description: subject, contactId: contact.id },
         }).catch(() => {})
       })
       .catch(e => console.error("[INGEST] Email failed:", e))

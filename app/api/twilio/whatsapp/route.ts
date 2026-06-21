@@ -36,6 +36,13 @@ export async function POST(req: Request) {
     },
   })
 
+  // Log inbound WhatsApp as activity
+  if (contact) {
+    prisma.activity.create({
+      data: { type: "WHATSAPP", title: "Inbound WhatsApp from contact", description: body.slice(0, 200), contactId: contact.id },
+    }).catch(() => {})
+  }
+
   if (contact) {
     let conversation = await prisma.aIConversation.findFirst({ where: { contactId: contact.id } })
     if (!conversation) {
@@ -68,6 +75,11 @@ export async function POST(req: Request) {
         contactId: contact.id,
       },
     })
+
+    // Log Sofía's outbound reply as activity
+    prisma.activity.create({
+      data: { type: "WHATSAPP", title: "Sofía replied via WhatsApp", description: reply.slice(0, 200), contactId: contact.id },
+    }).catch(() => {})
 
     // Move to Warm pipeline, pause drip enrollments, notify Catherine
     handleLeadEngaged(contact.id, "WhatsApp", body).catch(() => {})

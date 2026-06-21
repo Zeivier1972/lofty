@@ -126,16 +126,23 @@ async function sendOutreachMessages(contact: any, stageName: string, config: any
   `
 
   if (phone) {
-    sendSMS(
-      phone.startsWith("+") ? phone : `+1${phone.replace(/\D/g, "").slice(-10)}`,
-      smsBody
-    ).catch(() => {})
+    const toPhone = phone.startsWith("+") ? phone : `+1${phone.replace(/\D/g, "").slice(-10)}`
+    sendSMS(toPhone, smsBody)
+      .then(() => {
+        prisma.activity.create({
+          data: { type: "SMS", title: "Sofía sent outreach SMS", description: smsBody.slice(0, 200), contactId: contact.id },
+        }).catch(() => {})
+        prisma.sMSMessage.create({
+          data: { toNumber: toPhone, fromNumber: process.env.TWILIO_PHONE_NUMBER || "", body: smsBody, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
+        }).catch(() => {})
+      })
+      .catch(() => {})
   }
 
   if (contact.email) {
     const subject = `Intentamos contactarte sobre ${campaign}`
     sendEmail({ to: contact.email, subject, html: emailHtml, text: smsBody })
-      .then(() =>
+      .then(() => {
         prisma.email.create({
           data: {
             subject,
@@ -147,21 +154,11 @@ async function sendOutreachMessages(contact: any, stageName: string, config: any
             contactId: contact.id,
           },
         }).catch(() => {})
-      )
+        prisma.activity.create({
+          data: { type: "EMAIL_SENT", title: "Sofía sent outreach email", description: subject, contactId: contact.id },
+        }).catch(() => {})
+      })
       .catch(() => {})
-  }
-
-  if (phone) {
-    prisma.sMSMessage.create({
-      data: {
-        toNumber: phone.startsWith("+") ? phone : `+1${phone.replace(/\D/g, "").slice(-10)}`,
-        fromNumber: process.env.TWILIO_PHONE_NUMBER || "",
-        body: smsBody,
-        direction: "OUTBOUND",
-        status: "SENT",
-        contactId: contact.id,
-      },
-    }).catch(() => {})
   }
 }
 

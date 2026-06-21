@@ -323,6 +323,10 @@ Responde ÚNICAMENTE con este JSON (sin texto adicional):
             contactId: contact.id,
           },
         })
+
+        await prisma.activity.create({
+          data: { type: "EMAIL_SENT", title: `Sofía sent email: ${parsed.emailSubject}`, description: parsed.emailSubject, contactId: contact.id },
+        })
       } catch (e) {
         console.error("Email send failed:", e)
       }
