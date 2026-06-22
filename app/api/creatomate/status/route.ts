@@ -16,7 +16,7 @@ export async function GET(req: Request) {
   }
 
   try {
-    const res = await fetch(`https://api.creatomate.com/v2/renders/${renderId}`, {
+    const res = await fetch(`https://api.creatomate.com/v1/renders/${renderId}`, {
       headers: { "Authorization": `Bearer ${process.env.CREATOMATE_API_KEY}` },
     })
 

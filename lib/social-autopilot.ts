@@ -938,11 +938,11 @@ export async function checkHeygenVideos(): Promise<{ checked: number; completed:
                 width: 720,
                 height: 1280,
                 elements: [
-                  { type: "video", source: videoUrl, fit: "cover", time: 0, duration: "auto" },
+                  { id: "main-video", type: "video", source: videoUrl, fit: "cover", time: 0, duration: "auto" },
                   {
                     type: "text",
                     transcript: true,
-                    transcript_source: videoUrl,
+                    transcript_source: "main-video",
                     transcript_effect: "highlight",
                     transcript_placement: "word",
                     transcript_highlight_color: "#FFD700",

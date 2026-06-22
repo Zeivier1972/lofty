@@ -2,9 +2,6 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 
-// Submits a completed HeyGen video to Creatomate for kinetic word-by-word caption rendering.
-// Uses Creatomate's inline JSON source (no pre-built template needed) with their
-// transcript auto-caption feature: it transcribes the audio and animates each word.
 export async function POST(req: Request) {
   if (!process.env.CREATOMATE_API_KEY) {
     return NextResponse.json({ error: "CREATOMATE_API_KEY not configured" }, { status: 500 })
@@ -14,28 +11,29 @@ export async function POST(req: Request) {
     const { videoUrl, width = 720, height = 1280 } = await req.json()
     if (!videoUrl) return NextResponse.json({ error: "videoUrl is required" }, { status: 400 })
 
+    // Creatomate inline source with auto-transcript captions.
+    // The video element is given an ID so the text element can reference it as transcript_source.
     const source = {
       output_format: "mp4",
       frame_rate: 30,
       width,
       height,
       elements: [
-        // Layer 1: the source video (avatar + b-roll)
         {
+          id: "main-video",
           type: "video",
           source: videoUrl,
           fit: "cover",
           time: 0,
           duration: "auto",
         },
-        // Layer 2: kinetic word-by-word captions auto-transcribed from the video audio
         {
           type: "text",
           transcript: true,
-          transcript_source: videoUrl,
-          transcript_effect: "highlight",       // each word highlights as it's spoken
-          transcript_placement: "word",          // one word at a time
-          transcript_highlight_color: "#FFD700", // gold highlight — matches Catherine's brand
+          transcript_source: "main-video",
+          transcript_effect: "highlight",
+          transcript_placement: "word",
+          transcript_highlight_color: "#FFD700",
           font_family: "Montserrat",
           font_weight: "800",
           font_size: "7.5vh",
@@ -51,7 +49,7 @@ export async function POST(req: Request) {
       ],
     }
 
-    console.log(`[creatomate/captions] Submitting kinetic caption render for: ${videoUrl.slice(0, 80)}`)
+    console.log(`[creatomate/captions] Submitting to v1/renders for: ${videoUrl.slice(0, 80)}`)
 
     const res = await fetch("https://api.creatomate.com/v1/renders", {
       method: "POST",
@@ -63,18 +61,22 @@ export async function POST(req: Request) {
     })
 
     const data = await res.json()
+    console.log(`[creatomate/captions] API response (HTTP ${res.status}):`, JSON.stringify(data).slice(0, 500))
+
     if (!res.ok) {
-      console.error("[creatomate/captions] API error:", JSON.stringify(data))
       const raw = data?.message ?? data?.error ?? data
       throw new Error(typeof raw === "string" ? raw : JSON.stringify(raw).slice(0, 300))
     }
 
     const render = Array.isArray(data) ? data[0] : data
-    console.log(`[creatomate/captions] Render started: ${render.id}`)
+    if (!render?.id) {
+      throw new Error(`Unexpected Creatomate response: ${JSON.stringify(data).slice(0, 200)}`)
+    }
 
+    console.log(`[creatomate/captions] Render started: ${render.id} (status: ${render.status})`)
     return NextResponse.json({ renderId: render.id, status: render.status, url: render.url ?? null })
   } catch (e: any) {
-    console.error("[creatomate/captions] Error:", e)
+    console.error("[creatomate/captions] Error:", e.message)
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
 }
