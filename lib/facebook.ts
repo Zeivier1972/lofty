@@ -453,6 +453,11 @@ interface CapiUserData {
   firstName?: string | null
   lastName?: string | null
   facebookLeadId?: string | null
+  // Browser signals — improve event match quality score significantly
+  clientIp?: string | null
+  clientUserAgent?: string | null
+  fbp?: string | null   // _fbp cookie — ties server event to browser session
+  fbc?: string | null   // _fbc cookie — ties to a specific Facebook ad click
 }
 
 export async function sendCapiEvent(
@@ -468,11 +473,15 @@ export async function sendCapiEvent(
   }
 
   const ud: Record<string, string | string[]> = {}
-  if (userData.email)      ud.em  = [sha256(userData.email)]
-  if (userData.phone)      ud.ph  = [sha256(userData.phone.replace(/\D/g, ""))]
-  if (userData.firstName)  ud.fn  = [sha256(userData.firstName)]
-  if (userData.lastName)   ud.ln  = [sha256(userData.lastName)]
-  if (userData.facebookLeadId) ud.lead_id = userData.facebookLeadId
+  if (userData.email)           ud.em           = [sha256(userData.email)]
+  if (userData.phone)           ud.ph           = [sha256(userData.phone.replace(/\D/g, ""))]
+  if (userData.firstName)       ud.fn           = [sha256(userData.firstName)]
+  if (userData.lastName)        ud.ln           = [sha256(userData.lastName)]
+  if (userData.facebookLeadId)  ud.lead_id      = userData.facebookLeadId
+  if (userData.clientIp)        ud.client_ip_address  = userData.clientIp
+  if (userData.clientUserAgent) ud.client_user_agent  = userData.clientUserAgent
+  if (userData.fbp)             ud.fbp          = userData.fbp
+  if (userData.fbc)             ud.fbc          = userData.fbc
 
   const event: Record<string, unknown> = {
     event_name: eventName,
