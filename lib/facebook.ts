@@ -1,5 +1,7 @@
 const GRAPH = "https://graph.facebook.com/v25.0"
 
+import crypto from "crypto"
+
 // Page Access Token — used for Messenger, lead form creation, page posts
 function token() {
   return process.env.FB_PAGE_ACCESS_TOKEN || process.env.FACEBOOK_PAGE_ACCESS_TOKEN || ""
@@ -429,4 +431,76 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
   }
 
   return { campaignId, adSetId, creativeIds, adIds, leadFormId }
+}
+
+// ─── Conversions API (CAPI) — server-side event reporting ────────────────────
+// Sends real CRM signals to Facebook so ad campaigns optimise for quality leads
+// rather than volume. All PII is SHA-256 hashed before transmission.
+
+function sha256(value: string): string {
+  return crypto.createHash("sha256").update(value.trim().toLowerCase()).digest("hex")
+}
+
+export type CapiEventName =
+  | "Lead"           // new contact ingested
+  | "Contact"        // contact became active / booked a call
+  | "Schedule"       // appointment scheduled
+  | "Purchase"       // deal closed
+
+interface CapiUserData {
+  email?: string | null
+  phone?: string | null
+  firstName?: string | null
+  lastName?: string | null
+  facebookLeadId?: string | null
+}
+
+export async function sendCapiEvent(
+  eventName: CapiEventName,
+  userData: CapiUserData,
+  opts: { value?: number; currency?: string; eventId?: string } = {}
+): Promise<void> {
+  const pixelId = process.env.FACEBOOK_PIXEL_ID
+  const capiToken = process.env.FACEBOOK_CAPI_TOKEN
+  if (!pixelId || !capiToken) {
+    console.log(`[CAPI] Skipped ${eventName} — FACEBOOK_PIXEL_ID or FACEBOOK_CAPI_TOKEN not set`)
+    return
+  }
+
+  const ud: Record<string, string | string[]> = {}
+  if (userData.email)      ud.em  = [sha256(userData.email)]
+  if (userData.phone)      ud.ph  = [sha256(userData.phone.replace(/\D/g, ""))]
+  if (userData.firstName)  ud.fn  = [sha256(userData.firstName)]
+  if (userData.lastName)   ud.ln  = [sha256(userData.lastName)]
+  if (userData.facebookLeadId) ud.lead_id = userData.facebookLeadId
+
+  const event: Record<string, unknown> = {
+    event_name: eventName,
+    event_time: Math.floor(Date.now() / 1000),
+    action_source: "crm",
+    user_data: ud,
+  }
+  if (opts.value !== undefined) {
+    event.custom_data = { value: opts.value, currency: opts.currency ?? "USD" }
+  }
+  if (opts.eventId) event.event_id = opts.eventId
+
+  try {
+    const res = await fetch(
+      `https://graph.facebook.com/v19.0/${pixelId}/events?access_token=${capiToken}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data: [event] }),
+      }
+    )
+    const data = await res.json()
+    if (data.error) {
+      console.error(`[CAPI] ${eventName} error:`, data.error.message)
+    } else {
+      console.log(`[CAPI] ${eventName} sent — events_received: ${data.events_received}`)
+    }
+  } catch (err) {
+    console.error(`[CAPI] ${eventName} failed:`, err)
+  }
 }

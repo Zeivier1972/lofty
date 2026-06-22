@@ -3,6 +3,7 @@ import { scoreContact } from "@/lib/scoring"
 import { triggerOutboundCall } from "@/lib/vapi"
 import { sendEmail } from "@/lib/email"
 import { sendSMS, sendWhatsApp, sendWhatsAppTemplate } from "@/lib/sms"
+import { sendCapiEvent } from "@/lib/facebook"
 
 export interface LeadData {
   firstName: string
@@ -106,6 +107,15 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
       buyerPropertyType: propertyType || undefined,
     },
   })
+
+  // Report Lead event to Facebook Conversions API (fire-and-forget)
+  sendCapiEvent("Lead", {
+    email,
+    phone: contact.phone,
+    firstName,
+    lastName,
+    facebookLeadId,
+  }, { eventId: contact.id }).catch(() => {})
 
   // Auto-assign to first stage of default pipeline
   const pipeline = await prisma.pipeline.findFirst({
