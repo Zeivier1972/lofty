@@ -184,6 +184,20 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
       }
       setYoutubeBanner({ type: "error", msg: messages[fbError] ?? `Facebook error: ${fbError}` })
       window.history.replaceState({}, "", window.location.pathname)
+    } else if (params.get("tt_connected")) {
+      setActiveTab("accounts")
+      setYoutubeBanner({ type: "success", msg: "✅ TikTok connected! Videos will be posted automatically on Tue/Fri." })
+      window.history.replaceState({}, "", window.location.pathname)
+      window.location.reload()
+    } else if (params.get("tt_error")) {
+      setActiveTab("accounts")
+      const ttErr = params.get("tt_error") ?? ""
+      const messages: Record<string, string> = {
+        not_configured: "TIKTOK_CLIENT_KEY or TIKTOK_CLIENT_SECRET is not set in Railway.",
+        cancelled: "TikTok authorization was cancelled.",
+      }
+      setYoutubeBanner({ type: "error", msg: messages[ttErr] ?? `TikTok error: ${ttErr}` })
+      window.history.replaceState({}, "", window.location.pathname)
     } else if (tab === "accounts") {
       setActiveTab("accounts")
     }
@@ -983,6 +997,30 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
                       >
                         <Youtube className="w-4 h-4" />
                         Authorize with Google
+                      </a>
+                    </div>
+                  )}
+
+                  {/* TikTok uses OAuth — dedicated connect button */}
+                  {isConnecting && platform.id === "TIKTOK" && (
+                    <div className="mt-4 pt-4 border-t">
+                      <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-4">
+                        <p className="text-sm font-semibold text-gray-800 mb-1">TikTok requires OAuth authorization</p>
+                        <p className="text-xs text-gray-600 leading-relaxed">
+                          Click below to log in with TikTok. Make sure <strong>TIKTOK_CLIENT_KEY</strong> and <strong>TIKTOK_CLIENT_SECRET</strong> are set in Railway. Videos from HeyGen (Tue/Fri) will be posted automatically.
+                        </p>
+                        <ul className="mt-2 text-xs text-gray-600 list-disc list-inside space-y-0.5">
+                          <li>Permissions: <code>video.upload</code>, <code>video.publish</code></li>
+                          <li>Only HeyGen videos are posted to TikTok (video-only platform)</li>
+                          <li>Token expires in 24h — reconnect weekly or use refresh token</li>
+                        </ul>
+                      </div>
+                      <a
+                        href="/api/social/tiktok-auth"
+                        className="flex items-center justify-center gap-2 w-full px-5 py-3 bg-black text-white rounded-xl text-sm font-semibold hover:bg-gray-900"
+                      >
+                        <span className="font-black text-sm">TT</span>
+                        Authorize with TikTok
                       </a>
                     </div>
                   )}
