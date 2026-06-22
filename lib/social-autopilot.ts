@@ -137,7 +137,8 @@ const PLATFORM_GUIDES: Record<string, string> = {
 async function generateContent(
   platform: string,
   dayOfWeek: number,
-  research?: ResearchBrief
+  research?: ResearchBrief,
+  blogUrl?: string | null
 ): Promise<string> {
   // For YouTube, use pre-built SEO description from research brief
   if (platform === "YOUTUBE" && research?.youtubeDescription) {
@@ -158,6 +159,10 @@ async function generateContent(
     ? `\n\nGancho de apertura (usa esta primera línea exactamente o adáptala mínimamente): "${research.viralHook}"\nÁngulo de engagement: ${research.engagementAngle}`
     : ""
 
+  const blogInstruction = blogUrl
+    ? `\n\nAl final del post, invita a leer el artículo completo con esta línea (OBLIGATORIO — incluye el link exacto):\n👉 Lee el artículo completo aquí: ${blogUrl}`
+    : ""
+
   const userPrompt = `Escribe un post de redes sociales sobre el tema del día: ${theme}.${hookInstruction}
 
 Palabras clave SEO que DEBES incluir de forma natural (2-3 de ellas): ${keywords.join(", ")}.
@@ -165,6 +170,7 @@ Palabras clave SEO que DEBES incluir de forma natural (2-3 de ellas): ${keywords
 Audiencia objetivo: ${research?.targetAudience ?? "compradores e inversores hispanohablantes en South Florida"}.
 
 ${platformGuide}
+${blogInstruction}
 
 Escribe SOLO el contenido del post, listo para publicar. Sin explicaciones, sin preámbulos, sin etiquetas como "Post:" o "Caption:". Solo el texto del post.`
 
@@ -689,10 +695,10 @@ async function generateSectionImage(prompt: string, folder = "lofty-blog"): Prom
   }
 }
 
-async function publishBlogPost(dayOfWeek: number, research?: ResearchBrief): Promise<boolean> {
+async function publishBlogPost(dayOfWeek: number, research?: ResearchBrief): Promise<{ slug: string; title: string; coverImage: string | null } | null> {
   try {
     const data = await generateBlogPostContent(dayOfWeek, research)
-    if (!data) return false
+    if (!data) return null
 
     const theme = research?.trendingTopic ?? DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
 
@@ -752,16 +758,10 @@ async function publishBlogPost(dayOfWeek: number, research?: ResearchBrief): Pro
     })
 
     console.log(`[social-autopilot] Blog post published: "${data.title}"`)
-
-    // Share the blog post on connected social accounts (Facebook / Instagram)
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
-    const blogUrl = `${appUrl}/site/blog/${slug}`
-    await shareBlogOnSocial(data.title, data.excerpt, blogUrl, coverImage, dayOfWeek, research)
-
-    return true
+    return { slug, title: data.title, coverImage: coverImage ?? null }
   } catch (err) {
     console.error("[social-autopilot] Blog post publish failed:", err)
-    return false
+    return null
   }
 }
 
@@ -1320,14 +1320,17 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
     console.warn("[social-autopilot] Content research failed, using default themes:", err)
   }
 
-  // 3. Morning slot: auto-publish one blog post per day
+  // 3. Morning slot: publish one blog post and capture its URL for social posts
+  let morningBlogUrl: string | null = null
   if (slot === "morning") {
     try {
-      const blogPublished = await publishBlogPost(dayOfWeek, research)
-      if (blogPublished) {
-        console.log("[social-autopilot] Blog post published successfully")
+      const blogResult = await publishBlogPost(dayOfWeek, research)
+      if (blogResult) {
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
+        morningBlogUrl = `${appUrl}/site/blog/${blogResult.slug}`
+        console.log(`[social-autopilot] Blog post published: "${blogResult.title}" → ${morningBlogUrl}`)
       } else {
-        console.warn("[social-autopilot] Blog post publish returned false — check logs")
+        console.warn("[social-autopilot] Blog post publish returned null — check logs")
       }
     } catch (err) {
       console.error("[social-autopilot] Blog post publish threw:", err)
@@ -1387,7 +1390,7 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
         continue
       }
       // 7a. Generate platform-specific content (research-enriched + AIO optimized)
-      const content = await generateContent(account.platform, dayOfWeek, research)
+      const content = await generateContent(account.platform, dayOfWeek, research, morningBlogUrl)
 
       // 7b. Determine media handling
       let mediaUrl: string | null = null
