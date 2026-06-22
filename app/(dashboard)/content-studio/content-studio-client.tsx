@@ -932,7 +932,7 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
   const [generating, setGenerating] = useState(false)
   const [researchingScript, setResearchingScript] = useState(false)
   const [researchBrief, setResearchBrief] = useState<{ topic?: string; hook?: string } | null>(null)
-  const [status, setStatus] = useState<"idle" | "processing" | "completed" | "failed">("idle")
+  const [status, setStatus] = useState<"idle" | "processing" | "captions" | "completed" | "failed">("idle")
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null)
   const [postPlatform, setPostPlatform] = useState("INSTAGRAM")
@@ -991,6 +991,29 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [campaignKeyword])
 
+  const pollCaptionsStatus = (renderId: string, fallbackVideoUrl: string) => {
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/creatomate/status?renderId=${renderId}`)
+        const data = await res.json()
+        if (data.status === "succeeded" && data.url) {
+          clearInterval(pollRef.current!)
+          pollRef.current = null
+          setStatus("completed")
+          setVideoUrl(data.url)
+          toast({ title: "¡Video con captions listo! 🎬✨" })
+        } else if (data.status === "failed") {
+          clearInterval(pollRef.current!)
+          pollRef.current = null
+          // Fall back to raw HeyGen video
+          setStatus("completed")
+          setVideoUrl(fallbackVideoUrl)
+          toast({ title: "Video listo (sin kinetic captions)", variant: "default" })
+        }
+      } catch { /* keep polling */ }
+    }, 5000)
+  }
+
   const pollStatus = (videoId: string) => {
     pollRef.current = setInterval(async () => {
       try {
@@ -1000,10 +1023,32 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
         if (s === "completed") {
           clearInterval(pollRef.current!)
           pollRef.current = null
-          setStatus("completed")
-          setVideoUrl(data.data.video_url)
+          const heygenUrl: string = data.data.video_url
           setThumbnailUrl(data.data.thumbnail_url || null)
-          toast({ title: "¡Video listo! 🎬" })
+
+          // Submit to Creatomate for kinetic captions
+          setStatus("captions")
+          toast({ title: "Video generado — aplicando kinetic captions... ✨" })
+          try {
+            const ctRes = await fetch("/api/creatomate/captions", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ videoUrl: heygenUrl, width: 720, height: 1280 }),
+            })
+            const ctData = await ctRes.json()
+            if (ctData.renderId) {
+              pollCaptionsStatus(ctData.renderId, heygenUrl)
+            } else {
+              // Creatomate not available — show raw video
+              setStatus("completed")
+              setVideoUrl(heygenUrl)
+              toast({ title: "¡Video listo! 🎬" })
+            }
+          } catch {
+            setStatus("completed")
+            setVideoUrl(heygenUrl)
+            toast({ title: "¡Video listo! 🎬" })
+          }
         } else if (s === "failed") {
           clearInterval(pollRef.current!)
           pollRef.current = null
@@ -1367,12 +1412,14 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
 
         <button
           onClick={generate}
-          disabled={generating || !script.trim() || !avatarId || !voiceId || status === "processing"}
+          disabled={generating || !script.trim() || !avatarId || !voiceId || status === "processing" || status === "captions"}
           className="mt-4 w-full flex items-center justify-center gap-2 py-3 bg-purple-600 text-white rounded-xl font-semibold text-sm hover:bg-purple-700 transition-colors disabled:opacity-50">
           {generating
             ? <><Loader2 className="w-4 h-4 animate-spin" /> Enviando a HeyGen…</>
             : status === "processing"
             ? <><Loader2 className="w-4 h-4 animate-spin" /> Generando video… (2–5 min)</>
+            : status === "captions"
+            ? <><Loader2 className="w-4 h-4 animate-spin" /> Aplicando kinetic captions…</>
             : <><Clapperboard className="w-4 h-4" /> Generar Video Ad con HeyGen</>}
         </button>
       </div>
@@ -1461,12 +1508,31 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
         )}
       </div>
 
-      {/* Processing */}
+      {/* Processing — HeyGen rendering */}
       {status === "processing" && (
         <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6 text-center">
           <Loader2 className="w-8 h-8 text-blue-500 animate-spin mx-auto mb-3" />
           <p className="font-semibold text-blue-800">HeyGen está generando tu video…</p>
           <p className="text-sm text-blue-600 mt-1">Esto toma entre 2 y 5 minutos. No cierres esta pantalla.</p>
+          <div className="mt-4 flex items-center justify-center gap-6 text-xs text-blue-500">
+            <span className="flex items-center gap-1.5 font-semibold text-blue-700"><span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />Avatar intro</span>
+            <span>→</span>
+            <span>B-roll clips</span>
+            <span>→</span>
+            <span>Avatar outro</span>
+          </div>
+        </div>
+      )}
+
+      {/* Processing — Creatomate kinetic captions */}
+      {status === "captions" && (
+        <div className="bg-purple-50 border border-purple-200 rounded-2xl p-6 text-center">
+          <Loader2 className="w-8 h-8 text-purple-500 animate-spin mx-auto mb-3" />
+          <p className="font-semibold text-purple-800">Aplicando kinetic captions… ✨</p>
+          <p className="text-sm text-purple-600 mt-1">Creatomate está agregando captions animadas palabra por palabra.</p>
+          <div className="mt-3 inline-flex items-center gap-2 bg-purple-100 text-purple-700 text-xs font-bold px-3 py-1.5 rounded-full uppercase tracking-wide">
+            <span className="w-2 h-2 bg-yellow-400 rounded-full" /> Gold highlight · Montserrat Bold
+          </div>
         </div>
       )}
 

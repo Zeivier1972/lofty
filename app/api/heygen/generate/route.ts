@@ -77,11 +77,11 @@ export async function POST(req: Request) {
     if (broll) {
       const scenes = splitScriptForBRoll(script)
 
-      // Fetch real video B-roll clips from Pexels in parallel (context-aware per scene)
+      // Fetch B-roll video clips for middle scenes only (first + last are avatar)
       const videoUrls = await Promise.all(
         scenes.map((sceneText, i) =>
-          i === 0
-            ? Promise.resolve(null)          // Scene 0 is avatar — no video needed
+          i === 0 || i === scenes.length - 1
+            ? Promise.resolve(null)
             : fetchSceneVideoUrl(sceneText, orientation)
         )
       )
@@ -91,31 +91,31 @@ export async function POST(req: Request) {
         : { type: "avatar", avatar_id: avatarId, avatar_style: "normal" }
 
       videoInputs = scenes.map((sceneText, i) => {
-        if (i === 0) {
-          // Scene 0: Avatar intro — Catherine on screen, static real estate background
+        const isFirst = i === 0
+        const isLast = i === scenes.length - 1
+
+        if (isFirst || isLast) {
+          // Avatar scenes: intro hook + outro CTA — Catherine on screen
           return {
             character,
             voice: { type: "text", input_text: sceneText, voice_id: voiceId },
-            background: getFallbackBackground(sceneText, 0),
+            background: getFallbackBackground(sceneText, i),
           }
         }
 
-        // Scenes 1+: B-roll only — video clip (or image if Pexels returns nothing)
-        // Alternates video/image for visual variety: odd scenes prefer video, even scenes use image
+        // Middle scenes: B-roll — Pexels video clip (or image fallback)
         const videoUrl = videoUrls[i]
-        const background = videoUrl
-          ? { type: "video", url: videoUrl, play_style: "fit_to_scene" }
-          : getFallbackBackground(sceneText, i)
-
         return {
           voice: { type: "text", input_text: sceneText, voice_id: voiceId },
-          background,
+          background: videoUrl
+            ? { type: "video", url: videoUrl, play_style: "fit_to_scene" }
+            : getFallbackBackground(sceneText, i),
         }
       })
 
-      const brollCount = scenes.length - 1
+      const brollCount = Math.max(0, scenes.length - 2)
       console.log(
-        `[heygen/generate] Structure: 1 avatar intro + ${brollCount} B-roll scenes, Pexels videos: ${videoUrls.filter(Boolean).length}/${brollCount}, orientation: ${orientation}`
+        `[heygen/generate] Structure: avatar intro + ${brollCount} B-roll + avatar outro (${scenes.length} total), Pexels: ${videoUrls.filter(Boolean).length}/${brollCount}, orientation: ${orientation}`
       )
     } else {
       // Single-scene mode — apply style preset background if selected
