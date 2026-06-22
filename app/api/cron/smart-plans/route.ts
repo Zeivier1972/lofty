@@ -132,24 +132,35 @@ export async function GET(req: Request) {
             ? contact.phone
             : `+1${contact.phone.replace(/\D/g, "").slice(-10)}`
           const filledContent = fill(step.content)
-          // WhatsApp free-form requires an open 24h session (contact messaged first).
-          // Smart plan steps often run days later, so fall back to SMS on error 63016.
-          let waSucceeded = false
-          try {
-            await sendWhatsApp(toPhone, filledContent)
-            waSucceeded = true
-          } catch (waErr: any) {
-            console.warn("[smart-plans] WhatsApp failed (likely outside 24h window), falling back to SMS:", waErr?.message)
+
+          // Only use free-form WhatsApp if contact sent an inbound message in the last 24h
+          // (open session window). Otherwise go straight to SMS to avoid error 63016.
+          const windowStart = new Date(Date.now() - 24 * 60 * 60 * 1000)
+          const recentInbound = await prisma.whatsAppMessage.findFirst({
+            where: {
+              contactId: contact.id,
+              direction: "INBOUND",
+              createdAt: { gte: windowStart },
+            },
+          })
+
+          let channel: "WHATSAPP" | "SMS" = "SMS"
+          if (recentInbound) {
             try {
-              await sendSMS(toPhone, filledContent)
-            } catch (smsErr) {
-              console.error("[smart-plans] SMS fallback also failed:", smsErr)
+              await sendWhatsApp(toPhone, filledContent)
+              channel = "WHATSAPP"
+            } catch (waErr: any) {
+              console.warn("[smart-plans] WhatsApp failed despite open session, falling back to SMS:", waErr?.message)
+              await sendSMS(toPhone, filledContent).catch(e => console.error("[smart-plans] SMS also failed:", e))
             }
+          } else {
+            await sendSMS(toPhone, filledContent).catch(e => console.error("[smart-plans] SMS failed:", e))
           }
+
           await prisma.activity.create({
             data: {
-              type: waSucceeded ? "WHATSAPP" : "SMS",
-              title: waSucceeded ? "Smart Plan WhatsApp" : "Smart Plan WhatsApp → SMS fallback",
+              type: channel,
+              title: channel === "WHATSAPP" ? "Smart Plan WhatsApp" : "Smart Plan SMS (no open WA session)",
               description: filledContent.slice(0, 120),
               contactId: contact.id,
             },
