@@ -765,6 +765,45 @@ async function publishBlogPost(dayOfWeek: number, research?: ResearchBrief): Pro
   }
 }
 
+export async function publishBlogPostOnly(): Promise<{ ok: boolean; title?: string; error?: string }> {
+  const now = new Date()
+  const dayOfWeek = now.getDay()
+  let research: ResearchBrief | undefined
+  try { research = await researchViralContent(dayOfWeek) } catch {}
+  try {
+    const data = await generateBlogPostContent(dayOfWeek, research)
+    if (!data) return { ok: false, error: "Content generation returned null" }
+
+    const theme = research?.trendingTopic ?? DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
+    const coverPrompt = `${theme}, luxurious Miami waterfront property, golden hour`
+    const [coverImage, sectionImg1, sectionImg2] = await Promise.all([
+      generateSectionImage(coverPrompt, "lofty-blog"),
+      data.sectionImagePrompts?.[0] ? generateSectionImage(data.sectionImagePrompts[0], "lofty-blog") : Promise.resolve(null),
+      data.sectionImagePrompts?.[1] ? generateSectionImage(data.sectionImagePrompts[1], "lofty-blog") : Promise.resolve(null),
+    ])
+
+    let html = data.content
+    html = sectionImg1
+      ? html.replace("[IMG_SECTION_1]", `<figure class="my-8 rounded-2xl overflow-hidden shadow-md"><img src="${sectionImg1}" alt="${data.title}" class="w-full object-cover max-h-80" loading="lazy" /></figure>`)
+      : html.replace("[IMG_SECTION_1]", "")
+    html = sectionImg2
+      ? html.replace("[IMG_SECTION_2]", `<figure class="my-8 rounded-2xl overflow-hidden shadow-md"><img src="${sectionImg2}" alt="${data.title}" class="w-full object-cover max-h-80" loading="lazy" /></figure>`)
+      : html.replace("[IMG_SECTION_2]", "")
+
+    const baseSlug = data.title.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
+    const slug = `${baseSlug}-${Date.now()}`
+
+    await prisma.blogPost.create({
+      data: { title: data.title, slug, excerpt: data.excerpt, content: html, coverImage, author: "Catherine Gomez", tags: JSON.stringify(data.tags), featured: false, published: true, publishedAt: new Date() },
+    })
+    console.log(`[social-autopilot] Blog-only post published: "${data.title}"`)
+    return { ok: true, title: data.title }
+  } catch (err: any) {
+    console.error("[social-autopilot] Blog-only publish failed:", err)
+    return { ok: false, error: err?.message ?? String(err) }
+  }
+}
+
 export async function shareBlogOnSocial(
   title: string,
   excerpt: string,
