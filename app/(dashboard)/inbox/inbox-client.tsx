@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
-import { MessageSquare, Phone, Search, Send, RefreshCw, Wifi, Smartphone, Paperclip } from "lucide-react"
+import { MessageSquare, Phone, Search, Send, RefreshCw, Wifi, Smartphone, Paperclip, ExternalLink } from "lucide-react"
 import { cn, getInitials } from "@/lib/utils"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -10,6 +10,7 @@ import { useToast } from "@/components/ui/use-toast"
 import { formatDistanceToNow } from "date-fns"
 import { es } from "date-fns/locale"
 import { AiAssistBar } from "@/components/ui/ai-assist-bar"
+import { useSearchParams } from "next/navigation"
 
 interface Thread {
   contactId: string
@@ -17,7 +18,7 @@ interface Thread {
   lastMessage: string
   lastMessageAt: string
   lastDirection: string
-  channel: "sms" | "whatsapp" | "facebook"
+  channel: "sms" | "whatsapp" | "facebook" | "portal"
   unread: boolean
 }
 
@@ -40,6 +41,7 @@ const CHANNEL_TABS = [
   { id: "sms", label: "SMS" },
   { id: "whatsapp", label: "WhatsApp" },
   { id: "facebook", label: "Messenger" },
+  { id: "portal", label: "Portal" },
 ]
 
 // Facebook Messenger badge icon (letter F in purple)
@@ -52,7 +54,8 @@ function MessengerIcon({ className }: { className?: string }) {
 }
 
 export default function InboxClient() {
-  const [channel, setChannel] = useState("all")
+  const searchParams = useSearchParams()
+  const [channel, setChannel] = useState(searchParams.get("channel") || "all")
   const [threads, setThreads] = useState<Thread[]>([])
   const [selectedContact, setSelectedContact] = useState<string | null>(null)
   const [conversation, setConversation] = useState<ConversationData | null>(null)
@@ -65,6 +68,7 @@ export default function InboxClient() {
   const [unreadSms, setUnreadSms] = useState(0)
   const [unreadWa, setUnreadWa] = useState(0)
   const [unreadFb, setUnreadFb] = useState(0)
+  const [unreadPortal, setUnreadPortal] = useState(0)
   const [inboxMediaUrl, setInboxMediaUrl] = useState("")
   const [inboxUploading, setInboxUploading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -78,6 +82,7 @@ export default function InboxClient() {
       setUnreadSms(data.unreadSms || 0)
       setUnreadWa(data.unreadWa || 0)
       setUnreadFb(data.unreadFb || 0)
+      setUnreadPortal(data.unreadPortal || 0)
     } catch {
       toast({ title: "Error cargando mensajes", variant: "destructive" })
     } finally {
@@ -195,6 +200,9 @@ export default function InboxClient() {
                 {tab.id === "facebook" && unreadFb > 0 && (
                   <span className="ml-1 bg-red-500 text-white rounded-full text-[10px] px-1">{unreadFb}</span>
                 )}
+                {tab.id === "portal" && unreadPortal > 0 && (
+                  <span className="ml-1 bg-red-500 text-white rounded-full text-[10px] px-1">{unreadPortal}</span>
+                )}
               </button>
             ))}
           </div>
@@ -210,11 +218,46 @@ export default function InboxClient() {
             </div>
           ) : (
             filteredThreads.map(thread => (
+              thread.channel === "portal" ? (
+                <a
+                  key={thread.contactId}
+                  href={`/contacts/${thread.contactId}`}
+                  className="block w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-purple-50 transition-colors"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="relative flex-shrink-0">
+                      <Avatar className="w-9 h-9">
+                        <AvatarFallback className="bg-purple-100 text-purple-700 text-xs font-bold">
+                          {getInitials(`${thread.contact.firstName} ${thread.contact.lastName}`)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-purple-500 rounded-full flex items-center justify-center">
+                        <MessageSquare className="w-2 h-2 text-white" />
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className={cn("text-sm font-medium truncate", thread.unread ? "text-gray-900 font-bold" : "text-gray-700")}>
+                          {thread.contact.firstName} {thread.contact.lastName}
+                        </span>
+                        <span className="text-[10px] text-gray-400 flex-shrink-0 ml-1">{formatTime(thread.lastMessageAt)}</span>
+                      </div>
+                      <p className="text-xs truncate mt-0.5 text-gray-700">{thread.lastMessage}</p>
+                      <p className="text-[10px] text-purple-500 mt-0.5 flex items-center gap-1">
+                        <ExternalLink className="w-2.5 h-2.5" /> Ver en perfil del contacto
+                      </p>
+                    </div>
+                    {thread.unread && (
+                      <span className="w-2 h-2 bg-purple-500 rounded-full flex-shrink-0 mt-2" />
+                    )}
+                  </div>
+                </a>
+              ) : (
               <button
                 key={thread.contactId}
                 onClick={() => {
                   setSelectedContact(thread.contactId)
-                  setReplyChannel(thread.channel)
+                  setReplyChannel(thread.channel as "sms" | "whatsapp" | "facebook")
                 }}
                 className={cn(
                   "w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors",
@@ -259,6 +302,7 @@ export default function InboxClient() {
                   )}
                 </div>
               </button>
+              )
             ))
           )}
         </div>
@@ -270,7 +314,7 @@ export default function InboxClient() {
           <div className="flex-1 flex items-center justify-center flex-col gap-3 text-gray-300">
             <MessageSquare className="w-16 h-16" />
             <p className="text-lg font-medium">Selecciona una conversación</p>
-            <p className="text-sm">SMS, WhatsApp y Facebook Messenger en un solo lugar</p>
+            <p className="text-sm">SMS, WhatsApp, Messenger y Portal en un solo lugar</p>
           </div>
         ) : (
           <>
