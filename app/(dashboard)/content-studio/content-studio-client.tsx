@@ -935,6 +935,7 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
   const [status, setStatus] = useState<"idle" | "processing" | "captions" | "completed" | "failed">("idle")
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null)
+  const [pasteUrl, setPasteUrl] = useState("")
   const [postPlatform, setPostPlatform] = useState("INSTAGRAM")
   const [postCaption, setPostCaption] = useState("")
   const [generatingCaption, setGeneratingCaption] = useState(false)
@@ -1507,6 +1508,33 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
           </div>
         )}
       </div>
+
+      {/* ── Paste external HeyGen URL ─────────────────────────────────────── */}
+      {status === "idle" && (
+        <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+          <h2 className="text-base font-semibold text-gray-800 mb-1">¿Ya tienes un video de HeyGen?</h2>
+          <p className="text-xs text-gray-400 mb-3">Pega el link del video para generar el texto SEO y publicarlo directamente.</p>
+          <div className="flex gap-2">
+            <input
+              value={pasteUrl}
+              onChange={e => setPasteUrl(e.target.value)}
+              placeholder="https://resource.heygen.com/video/..."
+              className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+            />
+            <button
+              disabled={!pasteUrl.trim().startsWith("http")}
+              onClick={() => {
+                setVideoUrl(pasteUrl.trim())
+                setStatus("completed")
+                setPasteUrl("")
+              }}
+              className="px-4 py-2.5 bg-purple-600 text-white rounded-xl text-sm font-semibold hover:bg-purple-700 transition-colors disabled:opacity-40"
+            >
+              Usar este video
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Processing — HeyGen rendering */}
       {status === "processing" && (
