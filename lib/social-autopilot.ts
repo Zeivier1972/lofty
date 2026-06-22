@@ -459,25 +459,31 @@ async function getHeyGenAvatar(dayOfWeek: number): Promise<{ avatarId: string; v
 }
 
 
+// Scene 0 = avatar intro (short hook), scenes 1+ = b-roll segments.
 function splitScriptForBRoll(script: string): string[] {
-  // Prefer blank-line splits — the AI script generator separates scenes with blank lines
   const byBlankLine = script
     .split(/\n\n+/)
     .map(s => s.replace(/\n/g, " ").trim())
     .filter(s => s.length > 10)
   if (byBlankLine.length >= 2 && byBlankLine.length <= 5) return byBlankLine.slice(0, 4)
 
-  // Fall back to sentence-boundary splitting
   const sentences = script.split(/(?<=[.!?¡])\s+/).filter(s => s.trim().length > 0)
   if (sentences.length <= 2) return [script]
-  const sceneCount = Math.min(4, Math.max(2, Math.ceil(sentences.length / 2)))
-  const perScene = Math.ceil(sentences.length / sceneCount)
-  const scenes: string[] = []
-  for (let i = 0; i < sceneCount; i++) {
-    const chunk = sentences.slice(i * perScene, (i + 1) * perScene).join(" ").trim()
-    if (chunk) scenes.push(chunk)
+
+  // Scene 0: first 1-2 sentences as the avatar hook
+  const hookEnd = Math.min(2, Math.ceil(sentences.length * 0.3))
+  const hook = sentences.slice(0, hookEnd).join(" ").trim()
+  const rest = sentences.slice(hookEnd)
+
+  // Remaining: 2-3 b-roll segments
+  const brollCount = Math.min(3, Math.max(1, Math.ceil(rest.length / 2)))
+  const perScene = Math.ceil(rest.length / brollCount)
+  const brolls: string[] = []
+  for (let i = 0; i < brollCount; i++) {
+    const chunk = rest.slice(i * perScene, (i + 1) * perScene).join(" ").trim()
+    if (chunk) brolls.push(chunk)
   }
-  return scenes.length > 1 ? scenes : [script]
+  return [hook, ...brolls]
 }
 
 async function triggerHeyGenVideo(script: string, dayOfWeek: number): Promise<string | null> {
@@ -495,30 +501,30 @@ async function triggerHeyGenVideo(script: string, dayOfWeek: number): Promise<st
       ? { type: "talking_photo", talking_photo_id: avatarInfo.avatarId }
       : { type: "avatar", avatar_id: avatarInfo.avatarId, avatar_style: "normal" }
 
-    // B-Roll: split into scenes, fetch Pexels video clips in parallel (portrait for 9:16)
+    // Structure: scene 0 = avatar intro, scenes 1+ = b-roll with captions
     const scenes = splitScriptForBRoll(script)
     const videoUrls = await Promise.all(
-      scenes.map(sceneText => fetchSceneVideoUrl(sceneText, "portrait"))
+      scenes.map((sceneText, i) =>
+        i === 0 ? Promise.resolve(null) : fetchSceneVideoUrl(sceneText, "portrait")
+      )
     )
 
     const videoInputs = scenes.map((sceneText, i) => {
-      const videoUrl = videoUrls[i]
-      const videoBackground = videoUrl
-        ? { type: "video", url: videoUrl, play_style: "fit_to_scene" }
-        : getFallbackBackground(sceneText, i)
-
-      // Odd scenes = pure B-roll (voice narration, full-frame footage, no avatar)
-      if (i % 2 === 1) {
+      if (i === 0) {
+        // Avatar intro — Catherine on screen with static background
         return {
+          character,
           voice: { type: "text", input_text: sceneText, voice_id: avatarInfo.voiceId },
-          background: videoBackground,
+          background: getFallbackBackground(sceneText, 0),
         }
       }
-
+      // B-roll scenes — video clip (or image fallback) with voice narration + captions
+      const videoUrl = videoUrls[i]
       return {
-        character,
         voice: { type: "text", input_text: sceneText, voice_id: avatarInfo.voiceId },
-        background: getFallbackBackground(sceneText, i),
+        background: videoUrl
+          ? { type: "video", url: videoUrl, play_style: "fit_to_scene" }
+          : getFallbackBackground(sceneText, i),
       }
     })
 
@@ -528,7 +534,7 @@ async function triggerHeyGenVideo(script: string, dayOfWeek: number): Promise<st
       caption: true,
     }
 
-    console.log(`[social-autopilot] HeyGen B-Roll — ${scenes.length} scenes, Pexels videos: ${videoUrls.filter(Boolean).length}/${scenes.length}, avatar: ${avatarInfo.avatarId.slice(0, 8)}`)
+    console.log(`[social-autopilot] HeyGen — 1 avatar intro + ${scenes.length - 1} B-roll scenes, Pexels: ${videoUrls.filter(Boolean).length}/${scenes.length - 1}, avatar: ${avatarInfo.avatarId.slice(0, 8)}`)
 
     const res = await fetch("https://api.heygen.com/v2/video/generate", {
       method: "POST",

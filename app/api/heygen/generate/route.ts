@@ -23,25 +23,35 @@ const TALKING_PHOTO_IDS = new Set([
   "310728040e89413aa1c5b04ebb8bb9d3",
 ])
 
-// Split on blank lines first (AI outputs scenes separated by blank lines),
-// fall back to sentence-boundary splitting.
+// Split script into scenes: scene 0 = avatar intro (short hook), scenes 1+ = b-roll segments.
+// Blank-line separated paragraphs are respected first; falls back to sentence splitting.
 function splitScriptForBRoll(script: string): string[] {
   const byBlankLine = script
     .split(/\n\n+/)
     .map(s => s.replace(/\n/g, " ").trim())
     .filter(s => s.length > 10)
-  if (byBlankLine.length >= 2 && byBlankLine.length <= 5) return byBlankLine.slice(0, 4)
+  if (byBlankLine.length >= 2 && byBlankLine.length <= 5) {
+    return byBlankLine.slice(0, 4)
+  }
 
   const sentences = script.split(/(?<=[.!?¡])\s+/).filter(s => s.trim().length > 0)
   if (sentences.length <= 2) return [script]
-  const sceneCount = Math.min(4, Math.max(2, Math.ceil(sentences.length / 2)))
-  const perScene = Math.ceil(sentences.length / sceneCount)
-  const scenes: string[] = []
-  for (let i = 0; i < sceneCount; i++) {
-    const chunk = sentences.slice(i * perScene, (i + 1) * perScene).join(" ").trim()
-    if (chunk) scenes.push(chunk)
+
+  // Scene 0 (avatar): first 1-2 sentences as the hook
+  const hookEnd = Math.min(2, Math.ceil(sentences.length * 0.3))
+  const hook = sentences.slice(0, hookEnd).join(" ").trim()
+  const rest = sentences.slice(hookEnd)
+
+  // Remaining sentences: 2-3 b-roll segments
+  const brollCount = Math.min(3, Math.max(1, Math.ceil(rest.length / 2)))
+  const perScene = Math.ceil(rest.length / brollCount)
+  const brolls: string[] = []
+  for (let i = 0; i < brollCount; i++) {
+    const chunk = rest.slice(i * perScene, (i + 1) * perScene).join(" ").trim()
+    if (chunk) brolls.push(chunk)
   }
-  return scenes.length > 1 ? scenes : [script]
+
+  return [hook, ...brolls]
 }
 
 export async function POST(req: Request) {
@@ -69,7 +79,11 @@ export async function POST(req: Request) {
 
       // Fetch real video B-roll clips from Pexels in parallel (context-aware per scene)
       const videoUrls = await Promise.all(
-        scenes.map(sceneText => fetchSceneVideoUrl(sceneText, orientation))
+        scenes.map((sceneText, i) =>
+          i === 0
+            ? Promise.resolve(null)          // Scene 0 is avatar — no video needed
+            : fetchSceneVideoUrl(sceneText, orientation)
+        )
       )
 
       const character: Record<string, unknown> = isTalkingPhoto
@@ -77,34 +91,31 @@ export async function POST(req: Request) {
         : { type: "avatar", avatar_id: avatarId, avatar_style: "normal" }
 
       videoInputs = scenes.map((sceneText, i) => {
-        const videoUrl = videoUrls[i]
-        const videoBackground = videoUrl
-          ? { type: "video", url: videoUrl, play_style: "fit_to_scene" }
-          : getFallbackBackground(sceneText, i)
-
-        // Even scenes (0, 2, 3): avatar talking over a static image background
-        // Odd scenes (1, ...): pure B-roll — full-frame real estate footage + voice narration, no avatar
-        const isBrollOnly = i % 2 === 1
-
-        if (isBrollOnly) {
+        if (i === 0) {
+          // Scene 0: Avatar intro — Catherine on screen, static real estate background
           return {
+            character,
             voice: { type: "text", input_text: sceneText, voice_id: voiceId },
-            background: videoBackground,
+            background: getFallbackBackground(sceneText, 0),
           }
         }
 
-        // Avatar scene: use a static image behind Catherine (she fills the frame anyway)
-        const staticBackground = getFallbackBackground(sceneText, i)
+        // Scenes 1+: B-roll only — video clip (or image if Pexels returns nothing)
+        // Alternates video/image for visual variety: odd scenes prefer video, even scenes use image
+        const videoUrl = videoUrls[i]
+        const background = videoUrl
+          ? { type: "video", url: videoUrl, play_style: "fit_to_scene" }
+          : getFallbackBackground(sceneText, i)
+
         return {
-          character,
           voice: { type: "text", input_text: sceneText, voice_id: voiceId },
-          background: staticBackground,
+          background,
         }
       })
 
-      const brollCount = scenes.filter((_, i) => i % 2 === 1).length
+      const brollCount = scenes.length - 1
       console.log(
-        `[heygen/generate] B-Roll: ${scenes.length} scenes, ${brollCount} B-roll-only, Pexels videos: ${videoUrls.filter(Boolean).length}/${scenes.length}, orientation: ${orientation}`
+        `[heygen/generate] Structure: 1 avatar intro + ${brollCount} B-roll scenes, Pexels videos: ${videoUrls.filter(Boolean).length}/${brollCount}, orientation: ${orientation}`
       )
     } else {
       // Single-scene mode — apply style preset background if selected
