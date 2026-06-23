@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { detectKeyword, deliverLeadMagnet } from "@/lib/lead-magnet-delivery"
 import {
   sendInstagramDM, sendInstagramDMWithQuickReplies, replyToComment, verifyWebhookToken,
   extractEmail, extractPhone, isOptOut, parseIntent,
@@ -80,6 +81,21 @@ export async function POST(req: Request) {
 
           if (!igUserId || !commentId) continue
           if (!matchesKeyword(commentText)) continue
+
+          // Send lead magnet guide immediately if keyword matches a stored LeadMagnet
+          const leadKeyword = await detectKeyword(commentText)
+          if (leadKeyword) {
+            const existing = await prisma.contact.findFirst({ where: { instagramIgsid: igUserId } })
+            deliverLeadMagnet(leadKeyword, {
+              id: existing?.id,
+              firstName: existing?.firstName || igUsername || "Hola",
+              phone: existing?.phone,
+              email: existing?.email,
+              instagramIgsid: igUserId,
+            }, { sms: false, email: !!existing?.email, fbDm: false, igDm: true }).catch(e =>
+              console.error("[IG webhook] lead magnet delivery failed:", e)
+            )
+          }
 
           const campaign = findCampaign(commentText)
           const greeting = campaign?.greeting || config.msgGreeting
@@ -254,6 +270,22 @@ export async function POST(req: Request) {
             .replace("{name}", convo.firstName?.split(" ")[0] || "")
             .replace("{website}", config.websiteUrl || "")
           await sendInstagramDM(igUserId, thankYou)
+
+          // Send lead magnet guide if campaign keyword matches a LeadMagnet
+          if (convo.campaignKeyword) {
+            const leadKw = await detectKeyword(convo.campaignKeyword)
+            if (leadKw) {
+              deliverLeadMagnet(leadKw, {
+                id: contactId,
+                firstName: nameParts[0],
+                phone,
+                email: convo.email || undefined,
+                instagramIgsid: igUserId,
+              }, { sms: true, email: !!convo.email, fbDm: false, igDm: true }).catch(e =>
+                console.error("[IG bot] lead magnet delivery at complete failed:", e)
+              )
+            }
+          }
 
           // Send campaign PDF if this conversation was triggered by a campaign keyword
           if (convo.campaignKeyword) {
