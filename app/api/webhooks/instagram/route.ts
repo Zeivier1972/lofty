@@ -58,8 +58,20 @@ export async function POST(req: Request) {
 
     const igCampaigns = await prisma.instagramBotCampaign.findMany({ where: { isActive: true } })
 
-    const findCampaign = (text: string) =>
-      igCampaigns.find(c => text.toLowerCase().includes(c.keyword.toLowerCase()))
+    const normalize = (s: string) => s.toLowerCase()
+      .replace(/[áä]/g, "a").replace(/[éë]/g, "e").replace(/[íï]/g, "i")
+      .replace(/[óö]/g, "o").replace(/[úü]/g, "u").replace(/ñ/g, "n")
+
+    const findCampaign = (text: string) => {
+      const t = normalize(text)
+      return igCampaigns.find(c => {
+        const allKws = c.keywords
+          ? c.keywords.split(",").map(k => k.trim()).filter(Boolean)
+          : [c.keyword]
+        allKws.push(c.keyword)
+        return allKws.some(kw => t.includes(normalize(kw)))
+      })
+    }
 
     const keywords = config.triggerKeywords
       .split(",")
@@ -67,7 +79,7 @@ export async function POST(req: Request) {
       .filter(Boolean)
 
     const matchesKeyword = (text: string) =>
-      keywords.some(k => text.toLowerCase().includes(k)) || !!findCampaign(text)
+      keywords.some(k => normalize(text).includes(normalize(k))) || !!findCampaign(text)
 
     for (const entry of body.entry || []) {
       // ── Comment event ─────────────────────────────────────────────────────
