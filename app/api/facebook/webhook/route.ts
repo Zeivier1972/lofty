@@ -175,24 +175,13 @@ export async function POST(req: Request) {
 
         if (!matchedCampaign && !matchesGeneral) continue
 
-        // If LeadMagnet keyword, use topic-specific greeting and send guide
+        // For LeadMagnet keywords: tease the guide, collect info first, deliver at COMPLETE
         const leadKeyword = await detectKeyword(commentText)
         let greeting: string
-        if (leadKeyword) {
-          const magnet = leadKeyword === "LISTO" ? null
-            : await prisma.leadMagnet.findUnique({ where: { keyword: leadKeyword } })
+        if (leadKeyword && leadKeyword !== "LISTO") {
+          const magnet = await prisma.leadMagnet.findUnique({ where: { keyword: leadKeyword } })
           const topic = magnet?.title ?? leadKeyword
-          greeting = `¡Hola! Gracias por comentar en mi video sobre ${topic}. Te envío la guía completa ahora mismo 📄`
-          const fbContact = await prisma.contact.findFirst({ where: { facebookPsid: commenterId } })
-          deliverLeadMagnet(leadKeyword, {
-            id: fbContact?.id,
-            firstName: fbContact?.firstName || val.from?.name?.split(" ")[0] || "Hola",
-            phone: fbContact?.phone,
-            email: fbContact?.email,
-            facebookPsid: commenterId,
-          }, { sms: false, email: !!fbContact?.email, fbDm: true, igDm: false }).catch(e =>
-            console.error("[FB webhook] lead magnet delivery failed:", e)
-          )
+          greeting = `¡Hola! 🏠 Vi que comentaste en mi video sobre ${topic}. Te envío la guía gratuita — solo necesito un par de datos rápidos para enviártela. ¿Cuál es tu nombre?`
         } else {
           greeting = matchedCampaign?.greeting || botConfig.msgGreeting
         }
@@ -398,6 +387,22 @@ export async function POST(req: Request) {
             .replace("{name}", convo.firstName?.split(" ")[0] || "")
             .replace("{website}", botConfig.websiteUrl || "")
           await sendFacebookMessage(psid, thankYou)
+
+          // Send lead magnet guide if campaignKeyword matches a LeadMagnet
+          if (convo.campaignKeyword) {
+            const lmKeyword = await detectKeyword(convo.campaignKeyword)
+            if (lmKeyword) {
+              deliverLeadMagnet(lmKeyword, {
+                id: contactId,
+                firstName: convo.firstName?.split(" ")[0] || "",
+                phone,
+                email: convo.email || undefined,
+                facebookPsid: psid,
+              }, { sms: true, email: !!convo.email, fbDm: true, igDm: false }).catch(e =>
+                console.error("[FB bot] lead magnet delivery at complete failed:", e)
+              )
+            }
+          }
 
           // Send campaign PDF if this conversation was triggered by a campaign keyword
           if (convo.campaignKeyword) {
