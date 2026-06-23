@@ -175,9 +175,14 @@ export async function POST(req: Request) {
 
         if (!matchedCampaign && !matchesGeneral) continue
 
-        // ── Lead magnet delivery (immediate guide DM on keyword comment) ──────
+        // If LeadMagnet keyword, use topic-specific greeting and send guide
         const leadKeyword = await detectKeyword(commentText)
+        let greeting: string
         if (leadKeyword) {
+          const magnet = leadKeyword === "LISTO" ? null
+            : await prisma.leadMagnet.findUnique({ where: { keyword: leadKeyword } })
+          const topic = magnet?.title ?? leadKeyword
+          greeting = `¡Hola! Gracias por comentar en mi video sobre ${topic}. Te envío la guía completa ahora mismo 📄`
           const fbContact = await prisma.contact.findFirst({ where: { facebookPsid: commenterId } })
           deliverLeadMagnet(leadKeyword, {
             id: fbContact?.id,
@@ -188,9 +193,9 @@ export async function POST(req: Request) {
           }, { sms: false, email: !!fbContact?.email, fbDm: true, igDm: false }).catch(e =>
             console.error("[FB webhook] lead magnet delivery failed:", e)
           )
+        } else {
+          greeting = matchedCampaign?.greeting || botConfig.msgGreeting
         }
-
-        const greeting = matchedCampaign?.greeting || botConfig.msgGreeting
 
         try {
           const existing = await prisma.facebookBotConversation.findUnique({

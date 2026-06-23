@@ -82,34 +82,40 @@ export async function POST(req: Request) {
           if (!igUserId || !commentId) continue
           if (!matchesKeyword(commentText)) continue
 
-          // Send lead magnet guide immediately if keyword matches a stored LeadMagnet
+          // If this is a LeadMagnet keyword, use a topic-specific greeting and send the guide
           const leadKeyword = await detectKeyword(commentText)
+          let greeting: string
           if (leadKeyword) {
-            const existing = await prisma.contact.findFirst({ where: { instagramIgsid: igUserId } })
+            const magnet = leadKeyword === "LISTO" ? null
+              : await prisma.leadMagnet.findUnique({ where: { keyword: leadKeyword } })
+            const topic = magnet?.title ?? leadKeyword
+            greeting = `¡Hola! Gracias por comentar en mi video sobre ${topic}. Te envío la guía completa ahora mismo 📄`
+            const existingContact = await prisma.contact.findFirst({ where: { instagramIgsid: igUserId } })
             deliverLeadMagnet(leadKeyword, {
-              id: existing?.id,
-              firstName: existing?.firstName || igUsername || "Hola",
-              phone: existing?.phone,
-              email: existing?.email,
+              id: existingContact?.id,
+              firstName: existingContact?.firstName || igUsername || "Hola",
+              phone: existingContact?.phone,
+              email: existingContact?.email,
               instagramIgsid: igUserId,
-            }, { sms: false, email: !!existing?.email, fbDm: false, igDm: true }).catch(e =>
+            }, { sms: false, email: !!existingContact?.email, fbDm: false, igDm: true }).catch(e =>
               console.error("[IG webhook] lead magnet delivery failed:", e)
             )
+          } else {
+            const campaign = findCampaign(commentText)
+            greeting = campaign?.greeting || config.msgGreeting
           }
 
-          const campaign = findCampaign(commentText)
-          const greeting = campaign?.greeting || config.msgGreeting
-
+          const igCampaign = findCampaign(commentText)
           const existing = await prisma.instagramConversation.findUnique({ where: { igUserId } })
 
           if (existing && (existing.state === "COMPLETE" || existing.state === "OPTED_OUT")) {
             await prisma.instagramConversation.update({
               where: { igUserId },
-              data: { state: "ASKED_OPTIN", sourceCommentId: commentId, intent: null, firstName: null, email: null, phone: null, contactId: null, campaignKeyword: campaign?.keyword || null },
+              data: { state: "ASKED_OPTIN", sourceCommentId: commentId, intent: null, firstName: null, email: null, phone: null, contactId: null, campaignKeyword: leadKeyword || igCampaign?.keyword || null },
             })
           } else if (!existing) {
             await prisma.instagramConversation.create({
-              data: { igUserId, igUsername, state: "ASKED_OPTIN", sourceCommentId: commentId, campaignKeyword: campaign?.keyword || null },
+              data: { igUserId, igUsername, state: "ASKED_OPTIN", sourceCommentId: commentId, campaignKeyword: leadKeyword || igCampaign?.keyword || null },
             })
           }
 
