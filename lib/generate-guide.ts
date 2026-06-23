@@ -67,6 +67,26 @@ Responde SOLO con JSON válido:
     update: { title: parsed.title, description: parsed.description, content: parsed.content, scriptSource: script, guideUrl },
   })
 
-  console.log(`[generate-guide] Guide upserted for keyword="${keyword}" → ${guideUrl}`)
+  // Auto-create Instagram + Facebook campaigns so the keyword appears in the bot UI
+  // and the existing campaign PDF delivery mechanism sends the guide at COMPLETE
+  const campaignData = {
+    name: parsed.title,
+    keywords: `${keyword},${slugify(keyword)}`,
+    pdfUrl: guideUrl,
+    pdfName: parsed.title,
+    isActive: true,
+  }
+  await prisma.instagramBotCampaign.upsert({
+    where: { keyword },
+    create: { keyword, ...campaignData },
+    update: campaignData,
+  }).catch(e => console.error("[generate-guide] IG campaign upsert failed:", e))
+  await prisma.facebookBotCampaign.upsert({
+    where: { keyword },
+    create: { keyword, ...campaignData },
+    update: campaignData,
+  }).catch(e => console.error("[generate-guide] FB campaign upsert failed:", e))
+
+  console.log(`[generate-guide] Guide + campaigns upserted for keyword="${keyword}" → ${guideUrl}`)
   return { keyword, title: parsed.title, guideUrl }
 }
