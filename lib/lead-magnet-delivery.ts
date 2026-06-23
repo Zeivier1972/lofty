@@ -17,14 +17,17 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 export async function detectKeyword(message: string): Promise<string | null> {
   const upper = message.trim().toUpperCase()
-  // Only match messages that are exactly a keyword or very short (comment replies)
   if (upper.length > 50) return null
 
-  const magnets = await prisma.leadMagnet.findMany({ select: { keyword: true } })
-  for (const { keyword } of magnets) {
-    if (upper === keyword || upper.includes(keyword)) return keyword
+  try {
+    const magnets = await prisma.leadMagnet.findMany({ select: { keyword: true } })
+    for (const { keyword } of magnets) {
+      if (upper === keyword || upper.includes(keyword)) return keyword
+    }
+  } catch {
+    // LeadMagnet table may not exist yet — fall through
   }
-  // LISTO is always a booking keyword even without a stored guide
+
   if (upper === "LISTO" || upper.includes("LISTO")) return "LISTO"
   return null
 }

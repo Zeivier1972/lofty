@@ -82,7 +82,7 @@ export async function POST(req: Request) {
           if (!igUserId || !commentId) continue
           if (!matchesKeyword(commentText)) continue
 
-          const leadKeyword = await detectKeyword(commentText)
+          const leadKeyword = await detectKeyword(commentText).catch(() => null)
           const igCampaign = findCampaign(commentText)
 
           // For LeadMagnet keywords: tease the guide but collect info first
@@ -279,7 +279,7 @@ export async function POST(req: Request) {
 
           // Send lead magnet guide if campaign keyword matches a LeadMagnet
           if (convo.campaignKeyword) {
-            const leadKw = await detectKeyword(convo.campaignKeyword)
+            const leadKw = await detectKeyword(convo.campaignKeyword).catch(() => null)
             if (leadKw) {
               deliverLeadMagnet(leadKw, {
                 id: contactId,

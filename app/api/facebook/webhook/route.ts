@@ -176,7 +176,7 @@ export async function POST(req: Request) {
         if (!matchedCampaign && !matchesGeneral) continue
 
         // For LeadMagnet keywords: tease the guide, collect info first, deliver at COMPLETE
-        const leadKeyword = await detectKeyword(commentText)
+        const leadKeyword = await detectKeyword(commentText).catch(() => null)
         let greeting: string
         if (leadKeyword && leadKeyword !== "LISTO") {
           const magnet = await prisma.leadMagnet.findUnique({ where: { keyword: leadKeyword } })
@@ -239,7 +239,7 @@ export async function POST(req: Request) {
         const igsid: string = event.sender?.id ?? ""
         const igText: string = event.message?.text ?? ""
         if (igsid && igText) {
-          const igKeyword = await detectKeyword(igText)
+          const igKeyword = await detectKeyword(igText).catch(() => null)
           if (igKeyword) {
             const igContact = await prisma.contact.findFirst({ where: { instagramIgsid: igsid } })
             deliverLeadMagnet(igKeyword, {
@@ -390,7 +390,7 @@ export async function POST(req: Request) {
 
           // Send lead magnet guide if campaignKeyword matches a LeadMagnet
           if (convo.campaignKeyword) {
-            const lmKeyword = await detectKeyword(convo.campaignKeyword)
+            const lmKeyword = await detectKeyword(convo.campaignKeyword).catch(() => null)
             if (lmKeyword) {
               deliverLeadMagnet(lmKeyword, {
                 id: contactId,
