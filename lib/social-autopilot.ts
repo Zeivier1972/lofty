@@ -1083,7 +1083,13 @@ async function publishToFacebook(account: AccountLike, post: PostLike): Promise<
 async function publishToInstagram(account: AccountLike, post: PostLike): Promise<string> {
   if (!account.accessToken || !account.pageId) throw new Error("Instagram: missing credentials")
 
-  const isVideo = !!(post.mediaUrl?.includes(".mp4") || post.mediaUrl?.includes("video"))
+  // Detect video by extension OR common video CDN patterns (HeyGen, Creatomate, etc.)
+  const isVideo = !!(
+    post.mediaUrl?.match(/\.(mp4|mov|avi|m4v)(\?|$)/i) ||
+    post.mediaUrl?.includes("heygen") ||
+    post.mediaUrl?.includes("creatomate") ||
+    post.mediaUrl?.includes("video")
+  )
 
   const containerParams: Record<string, string> = {
     caption: post.content,
@@ -1091,8 +1097,10 @@ async function publishToInstagram(account: AccountLike, post: PostLike): Promise
   }
 
   if (isVideo && post.mediaUrl) {
-    containerParams.media_type = "VIDEO"
+    // Instagram requires REELS media_type for video content (VIDEO type is deprecated)
+    containerParams.media_type = "REELS"
     containerParams.video_url = post.mediaUrl
+    containerParams.share_to_feed = "true"
   } else if (post.mediaUrl) {
     containerParams.image_url = post.mediaUrl
   } else {
@@ -1107,24 +1115,27 @@ async function publishToInstagram(account: AccountLike, post: PostLike): Promise
     }
   )
   const container = await containerRes.json()
-  if (container.error) throw new Error(container.error.message)
+  if (container.error) {
+    throw new Error(`Instagram API: ${container.error.message} (code ${container.error.code}, subcode ${container.error.error_subcode ?? "n/a"})`)
+  }
   if (!container.id) throw new Error("Instagram: container creation returned no ID")
 
-  // Poll until container is FINISHED (Instagram needs time to process the image)
+  // Poll until container is FINISHED — videos can take 30-60s to process
   let attempts = 0
-  while (attempts < 10) {
-    await new Promise(r => setTimeout(r, 3000))
+  while (attempts < 20) {
+    await new Promise(r => setTimeout(r, 5000))
     const statusRes = await fetch(
-      `https://graph.facebook.com/v19.0/${container.id}?fields=status_code&access_token=${account.accessToken}`
+      `https://graph.facebook.com/v19.0/${container.id}?fields=status_code,status&access_token=${account.accessToken}`
     )
     const statusData = await statusRes.json()
+    console.log(`[instagram] Container ${container.id} status: ${statusData.status_code}`)
     if (statusData.status_code === "FINISHED") break
     if (statusData.status_code === "ERROR" || statusData.status_code === "EXPIRED") {
-      throw new Error(`Instagram container processing failed: ${statusData.status_code}`)
+      throw new Error(`Instagram container failed: ${statusData.status_code} — ${statusData.status ?? "check video URL is publicly accessible"}`)
     }
     attempts++
   }
-  if (attempts >= 10) throw new Error("Instagram: container did not finish processing in time")
+  if (attempts >= 20) throw new Error("Instagram: video took too long to process — ensure the video URL is a direct public MP4 link")
 
   const publishRes = await fetch(
     `https://graph.facebook.com/v19.0/${account.pageId}/media_publish`,
@@ -1137,7 +1148,7 @@ async function publishToInstagram(account: AccountLike, post: PostLike): Promise
     }
   )
   const published = await publishRes.json()
-  if (published.error) throw new Error(published.error.message)
+  if (published.error) throw new Error(`Instagram publish: ${published.error.message} (code ${published.error.code})`)
   return published.id as string
 }
 
