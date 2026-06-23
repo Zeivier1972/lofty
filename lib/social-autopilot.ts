@@ -296,10 +296,6 @@ export async function generateVideoScript(dayOfWeek: number, research?: Research
   const keywords = research?.additionalKeywords?.slice(0, 3) ?? pickKeywords(dayOfWeek)
   const hook = research?.viralHook
 
-  // Rotate comment keyword so CTAs vary each week
-  const CTA_KEYWORDS = ["INVERSIÓN", "CASA", "GRATIS", "LISTO"]
-  const ctaWord = CTA_KEYWORDS[getDayIndex() % CTA_KEYWORDS.length]
-
   const hookLine = hook
     ? `\nUSA ESTA PRIMERA LÍNEA EXACTA o muy similar (es el hook viral): "${hook}"`
     : ""
@@ -333,7 +329,7 @@ ESCENA 3 - SOLUCIÓN + CREDENCIAL (45-55 palabras):
 Empieza con "Soy Catherine Gomez, Realtor en Miami." + dato específico del mercado de South Florida que demuestra expertise + exactamente cómo ella resuelve este problema para familias hispanas. Incluye naturalmente: ${keywords.join(", ")}.
 
 ESCENA 4 - CTA ESPECÍFICO (20-25 palabras):
-"Comenta '${ctaWord}' abajo" + exactamente qué van a recibir (guía gratis, llamada, los números reales, paso a paso).
+"Comenta '[KEYWORD]' abajo" donde [KEYWORD] es UNA PALABRA en español todo en mayúsculas que resuma el tema del video (ejemplos: INVERSIÓN, CREDITO, HIPOTECA, CALIFICA, VENDEDOR, RENTAR, MIAMI — inventa la que sea más relevante para este guión específico). Explica exactamente qué van a recibir (guía gratis, los números reales, paso a paso).
 
 Devuelve SOLO las 4 escenas en texto corrido. Sin etiquetas "ESCENA X", sin corchetes, sin acotaciones. Solo el texto que Catherine dice, separado por una línea en blanco entre cada escena.`,
       },
