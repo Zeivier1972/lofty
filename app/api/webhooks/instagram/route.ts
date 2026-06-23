@@ -95,21 +95,19 @@ export async function POST(req: Request) {
             greeting = igCampaign?.greeting || config.msgGreeting
           }
 
+          const newState = leadKeyword && leadKeyword !== "LISTO" ? "ASKED_NAME" : "ASKED_OPTIN"
+          const newCampaignKeyword = leadKeyword || igCampaign?.keyword || null
           const existing = await prisma.instagramConversation.findUnique({ where: { igUserId } })
 
-          if (existing && (existing.state === "COMPLETE" || existing.state === "OPTED_OUT")) {
+          if (existing) {
+            // Reset regardless of current state — re-commenting a keyword restarts the flow
             await prisma.instagramConversation.update({
               where: { igUserId },
-              data: { state: "ASKED_NAME", sourceCommentId: commentId, intent: null, firstName: null, email: null, phone: null, contactId: null, campaignKeyword: leadKeyword || igCampaign?.keyword || null },
+              data: { state: newState, sourceCommentId: commentId, intent: null, firstName: null, email: null, phone: null, contactId: null, campaignKeyword: newCampaignKeyword },
             })
-          } else if (!existing) {
+          } else {
             await prisma.instagramConversation.create({
-              data: {
-                igUserId, igUsername,
-                state: leadKeyword && leadKeyword !== "LISTO" ? "ASKED_NAME" : "ASKED_OPTIN",
-                sourceCommentId: commentId,
-                campaignKeyword: leadKeyword || igCampaign?.keyword || null,
-              },
+              data: { igUserId, igUsername, state: newState, sourceCommentId: commentId, campaignKeyword: newCampaignKeyword },
             })
           }
 

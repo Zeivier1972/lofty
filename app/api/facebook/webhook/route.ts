@@ -191,30 +191,18 @@ export async function POST(req: Request) {
             where: { psid: commenterId },
           })
 
-          if (existing && (existing.state === "COMPLETE" || existing.state === "OPTED_OUT")) {
+          const fbNewState = leadKeyword && leadKeyword !== "LISTO" ? "ASKED_NAME" : "ASKED_OPTIN"
+          const fbCampaignKeyword = leadKeyword || matchedCampaign?.keyword || null
+
+          if (existing) {
+            // Reset regardless of state — re-commenting a keyword restarts the flow
             await prisma.facebookBotConversation.update({
               where: { psid: commenterId },
-              data: {
-                state: "ASKED_OPTIN",
-                sourceCommentId: commentId,
-                intent: null,
-                firstName: null,
-                email: null,
-                phone: null,
-                contactId: null,
-                campaignKeyword: matchedCampaign?.keyword || null,
-                pageId,
-              },
+              data: { state: fbNewState, sourceCommentId: commentId, intent: null, firstName: null, email: null, phone: null, contactId: null, campaignKeyword: fbCampaignKeyword, pageId },
             })
-          } else if (!existing) {
+          } else {
             await prisma.facebookBotConversation.create({
-              data: {
-                psid: commenterId,
-                pageId,
-                state: "ASKED_OPTIN",
-                sourceCommentId: commentId,
-                campaignKeyword: matchedCampaign?.keyword || null,
-              },
+              data: { psid: commenterId, pageId, state: fbNewState, sourceCommentId: commentId, campaignKeyword: fbCampaignKeyword },
             })
           }
 
