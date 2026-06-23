@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { detectKeyword, deliverLeadMagnet } from "@/lib/lead-magnet-delivery"
 import {
   getFacebookUserProfile,
   getFacebookLeadData,
@@ -174,6 +175,21 @@ export async function POST(req: Request) {
 
         if (!matchedCampaign && !matchesGeneral) continue
 
+        // ── Lead magnet delivery (immediate guide DM on keyword comment) ──────
+        const leadKeyword = await detectKeyword(commentText)
+        if (leadKeyword) {
+          const fbContact = await prisma.contact.findFirst({ where: { facebookPsid: commenterId } })
+          deliverLeadMagnet(leadKeyword, {
+            id: fbContact?.id,
+            firstName: fbContact?.firstName || val.from?.name?.split(" ")[0] || "Hola",
+            phone: fbContact?.phone,
+            email: fbContact?.email,
+            facebookPsid: commenterId,
+          }, { sms: false, email: !!fbContact?.email, fbDm: true, igDm: false }).catch(e =>
+            console.error("[FB webhook] lead magnet delivery failed:", e)
+          )
+        }
+
         const greeting = matchedCampaign?.greeting || botConfig.msgGreeting
 
         try {
@@ -216,6 +232,32 @@ export async function POST(req: Request) {
           await postPublicCommentReply(commentId, "¡Hola! Te enviamos info por mensaje privado 📩")
         } catch (e) {
           console.error("[FB webhook feed comment]", e)
+        }
+        continue
+      }
+    }
+
+    // ── Instagram DMs (keyword-triggered lead magnet delivery) ───────────────
+    for (const event of entry.messaging || []) {
+      if (!event.message || event.message.is_echo) continue
+      if (entry.id?.startsWith("17") || event.sender?.id?.startsWith("IGID")) {
+        // Instagram messaging event — check for lead magnet keyword
+        const igsid: string = event.sender?.id ?? ""
+        const igText: string = event.message?.text ?? ""
+        if (igsid && igText) {
+          const igKeyword = await detectKeyword(igText)
+          if (igKeyword) {
+            const igContact = await prisma.contact.findFirst({ where: { instagramIgsid: igsid } })
+            deliverLeadMagnet(igKeyword, {
+              id: igContact?.id,
+              firstName: igContact?.firstName || "Hola",
+              phone: igContact?.phone,
+              email: igContact?.email,
+              instagramIgsid: igsid,
+            }, { sms: false, email: !!igContact?.email, fbDm: false, igDm: true }).catch(e =>
+              console.error("[FB webhook] IG lead magnet delivery failed:", e)
+            )
+          }
         }
         continue
       }
