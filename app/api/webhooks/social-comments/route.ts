@@ -24,7 +24,7 @@ export async function GET(req: Request) {
   const token = searchParams.get("hub.verify_token")
   const challenge = searchParams.get("hub.challenge")
 
-  if (mode === "subscribe" && token === process.env.WEBHOOK_VERIFY_TOKEN) {
+  if (mode === "subscribe" && token === process.env.FB_VERIFY_TOKEN) {
     console.log("[social-comments webhook] Verified successfully")
     return new NextResponse(challenge, { status: 200 })
   }

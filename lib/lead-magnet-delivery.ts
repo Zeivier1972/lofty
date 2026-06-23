@@ -170,7 +170,8 @@ async function sendFacebookDM(psid: string, message: string): Promise<void> {
   const account = await prisma.socialAccount.findFirst({
     where: { platform: "FACEBOOK", isConnected: true },
   })
-  if (!account?.accessToken) throw new Error("No Facebook account connected")
+  const accessToken = account?.accessToken || process.env.FB_PAGE_ACCESS_TOKEN
+  if (!accessToken) throw new Error("No Facebook account connected")
 
   const res = await fetch("https://graph.facebook.com/v19.0/me/messages", {
     method: "POST",
@@ -178,7 +179,7 @@ async function sendFacebookDM(psid: string, message: string): Promise<void> {
     body: JSON.stringify({
       recipient: { id: psid },
       message: { text: message },
-      access_token: account.accessToken,
+      access_token: accessToken,
     }),
   })
   const data = await res.json()
@@ -191,15 +192,17 @@ async function sendInstagramDM(igsid: string, message: string): Promise<void> {
   const account = await prisma.socialAccount.findFirst({
     where: { platform: "INSTAGRAM", isConnected: true },
   })
-  if (!account?.accessToken || !account.pageId) throw new Error("No Instagram account connected")
+  const accessToken = account?.accessToken || process.env.FB_PAGE_ACCESS_TOKEN
+  const pageId = account?.pageId || process.env.FACEBOOK_PAGE_ID
+  if (!accessToken || !pageId) throw new Error("No Instagram account connected")
 
-  const res = await fetch(`https://graph.facebook.com/v19.0/${account.pageId}/messages`, {
+  const res = await fetch(`https://graph.facebook.com/v19.0/${pageId}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       recipient: { id: igsid },
       message: { text: message },
-      access_token: account.accessToken,
+      access_token: accessToken,
     }),
   })
   const data = await res.json()
