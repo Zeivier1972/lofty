@@ -936,6 +936,8 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null)
   const [pasteUrl, setPasteUrl] = useState("")
+  const [generatingGuide, setGeneratingGuide] = useState(false)
+  const [guideUrl, setGuideUrl] = useState<string | null>(null)
   const [postPlatform, setPostPlatform] = useState("INSTAGRAM")
   const [postCaption, setPostCaption] = useState("")
   const [generatingCaption, setGeneratingCaption] = useState(false)
@@ -1127,6 +1129,27 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
       toast({ title: "Error generando guión", description: e.message, variant: "destructive" })
     } finally {
       setResearchingScript(false)
+    }
+  }
+
+  const generateGuide = async () => {
+    if (!script.trim()) { toast({ title: "Escribe el guión primero", variant: "destructive" }); return }
+    setGeneratingGuide(true)
+    setGuideUrl(null)
+    try {
+      const res = await fetch("/api/ai/generate-guide", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ script }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setGuideUrl(data.guideUrl)
+      toast({ title: `Guía creada para "${data.keyword}" ✅`, description: data.title })
+    } catch (e: any) {
+      toast({ title: "Error creando guía", description: e.message, variant: "destructive" })
+    } finally {
+      setGeneratingGuide(false)
     }
   }
 
@@ -1421,11 +1444,26 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
 
         <textarea
           value={script}
-          onChange={e => setScript(e.target.value.slice(0, 1500))}
+          onChange={e => { setScript(e.target.value.slice(0, 1500)); setGuideUrl(null) }}
           placeholder="Escribe el guión del video en español. Habla como si estuvieras frente a la cámara..."
           rows={7}
           className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none"
         />
+
+        <button
+          onClick={generateGuide}
+          disabled={generatingGuide || !script.trim()}
+          className="mt-2 w-full flex items-center justify-center gap-2 py-2.5 bg-amber-500 text-white rounded-xl text-sm font-semibold hover:bg-amber-600 transition-colors disabled:opacity-50">
+          {generatingGuide
+            ? <><Loader2 className="w-4 h-4 animate-spin" /> Generando guía con IA…</>
+            : <>📄 Crear Guía PDF del guión</>}
+        </button>
+        {guideUrl && (
+          <div className="mt-2 bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-sm text-green-800 flex items-center gap-2">
+            <span>✅ Guía lista:</span>
+            <a href={guideUrl} target="_blank" rel="noreferrer" className="underline font-medium truncate">{guideUrl}</a>
+          </div>
+        )}
 
         <button
           onClick={generate}
