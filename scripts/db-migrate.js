@@ -47,6 +47,30 @@ const STMTS = [
     CONSTRAINT "PropertyAlertSent_pkey" PRIMARY KEY ("id")
   )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "PropertyAlertSent_contactId_propertyId_key" ON "PropertyAlertSent"("contactId", "propertyId")`,
+  // lead magnet guide system
+  `CREATE TABLE IF NOT EXISTS "LeadMagnet" (
+    "id"           TEXT NOT NULL,
+    "keyword"      TEXT NOT NULL,
+    "title"        TEXT NOT NULL,
+    "description"  TEXT NOT NULL,
+    "content"      TEXT NOT NULL,
+    "scriptSource" TEXT,
+    "pdfUrl"       TEXT,
+    "guideUrl"     TEXT,
+    "createdAt"    TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt"    TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "LeadMagnet_pkey" PRIMARY KEY ("id")
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "LeadMagnet_keyword_key" ON "LeadMagnet"("keyword")`,
+  `CREATE TABLE IF NOT EXISTS "LeadMagnetDelivery" (
+    "id"          TEXT NOT NULL,
+    "keyword"     TEXT NOT NULL,
+    "channel"     TEXT NOT NULL,
+    "deliveredAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "contactId"   TEXT,
+    CONSTRAINT "LeadMagnetDelivery_pkey" PRIMARY KEY ("id")
+  )`,
+  `ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "instagramIgsid" TEXT`,
 ]
 
 // ─── Email templates ─────────────────────────────────────────────────────────
