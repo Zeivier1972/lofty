@@ -77,7 +77,7 @@ async function handleFacebookComment(value: any) {
 
   if (!commentText || !commenterPsid) return
 
-  const keyword = detectKeyword(commentText)
+  const keyword = await detectKeyword(commentText)
   if (!keyword) return
 
   console.log(`[social-comments] FB comment keyword "${keyword}" from ${commenterName} (${commenterPsid})`)
@@ -115,7 +115,7 @@ async function handleInstagramComment(value: any, pageId: string) {
 
   if (!commentText || !igsid) return
 
-  const keyword = detectKeyword(commentText)
+  const keyword = await detectKeyword(commentText)
   if (!keyword) return
 
   console.log(`[social-comments] IG comment keyword "${keyword}" from @${commenterName} (${igsid})`)
@@ -150,7 +150,7 @@ async function handleInstagramDM(event: any) {
 
   if (!igsid || !messageText) return
 
-  const keyword = detectKeyword(messageText)
+  const keyword = await detectKeyword(messageText)
   if (!keyword) return
 
   console.log(`[social-comments] IG DM keyword "${keyword}" from ${igsid}`)

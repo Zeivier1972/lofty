@@ -1091,6 +1091,8 @@ model LeadMagnet {
   keyword     String   @unique
   title       String
   description String
+  content     String   @db.Text
+  scriptSource String? @db.Text
   pdfUrl      String?
   guideUrl    String?
   createdAt   DateTime @default(now())

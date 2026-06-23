@@ -1111,9 +1111,18 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
       const res = await fetch("/api/heygen/research")
       const data = await res.json()
       if (data.error) throw new Error(data.error)
-      setScript(data.script || "")
+      const generatedScript = data.script || ""
+      setScript(generatedScript)
       if (data.topic || data.hook) setResearchBrief({ topic: data.topic, hook: data.hook })
       toast({ title: "Guión generado con investigación viral ✨" })
+      // Fire-and-forget: generate the lead magnet guide in the background
+      if (generatedScript) {
+        fetch("/api/ai/generate-guide", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ script: generatedScript }),
+        }).catch(() => undefined)
+      }
     } catch (e: any) {
       toast({ title: "Error generando guión", description: e.message, variant: "destructive" })
     } finally {
@@ -1131,6 +1140,13 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
     setStatus("idle")
     setVideoUrl(null)
     setThumbnailUrl(null)
+
+    // Fire-and-forget: generate the lead magnet guide from this script
+    fetch("/api/ai/generate-guide", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ script }),
+    }).catch(() => undefined)
 
     try {
       const res = await fetch("/api/heygen/generate", {

@@ -13,64 +13,42 @@ import { sendEmail } from "@/lib/email"
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-// ─── Keyword → Lead Magnet mapping ───────────────────────────────────────────
+// ─── Detect keyword in a message (looks up DB dynamically) ───────────────────
 
-export const LEAD_MAGNET_KEYWORDS = ["INVERSIÓN", "INVERSION", "CASA", "GRATIS", "LISTO"] as const
-
-export const KEYWORD_CONFIG: Record<string, {
-  canonical: string
-  title: string
-  description: string
-  isBooking: boolean
-}> = {
-  INVERSIÓN:  { canonical: "INVERSIÓN", title: "Guía de Inversión en Miami 2026", description: "Cómo invertir en bienes raíces en Miami desde cualquier país", isBooking: false },
-  INVERSION:  { canonical: "INVERSIÓN", title: "Guía de Inversión en Miami 2026", description: "Cómo invertir en bienes raíces en Miami desde cualquier país", isBooking: false },
-  CASA:       { canonical: "CASA",      title: "Guía para Compradores de Primera Vez", description: "Paso a paso para comprar tu primera casa en Miami", isBooking: false },
-  GRATIS:     { canonical: "GRATIS",    title: "Reporte del Mercado de Miami 2026", description: "El estado actual del mercado inmobiliario en South Florida", isBooking: false },
-  LISTO:      { canonical: "LISTO",     title: "Consulta Gratuita con Catherine", description: "Agenda tu consulta gratuita con Catherine Gomez Realtor", isBooking: true },
-}
-
-// ─── Detect keyword in a message ─────────────────────────────────────────────
-
-export function detectKeyword(message: string): string | null {
+export async function detectKeyword(message: string): Promise<string | null> {
   const upper = message.trim().toUpperCase()
-  for (const kw of Object.keys(KEYWORD_CONFIG)) {
-    if (upper === kw || upper.includes(kw)) return kw
+  // Only match messages that are exactly a keyword or very short (comment replies)
+  if (upper.length > 50) return null
+
+  const magnets = await prisma.leadMagnet.findMany({ select: { keyword: true } })
+  for (const { keyword } of magnets) {
+    if (upper === keyword || upper.includes(keyword)) return keyword
   }
+  // LISTO is always a booking keyword even without a stored guide
+  if (upper === "LISTO" || upper.includes("LISTO")) return "LISTO"
   return null
 }
 
-// ─── Get or generate lead magnet URL ─────────────────────────────────────────
+// ─── Get lead magnet URL from DB ──────────────────────────────────────────────
 
 export async function getLeadMagnetUrl(keyword: string): Promise<string | null> {
-  const config = KEYWORD_CONFIG[keyword]
-  if (!config) return null
-
-  if (config.isBooking) {
+  if (keyword === "LISTO") {
     const aiConfig = await prisma.aIConfig.findFirst()
     return (aiConfig as any)?.calendlyUrl || `${process.env.NEXT_PUBLIC_APP_URL}/book`
   }
-
-  // Check if PDF already generated
-  const magnet = await prisma.leadMagnet.findUnique({ where: { keyword: config.canonical } })
-  if (magnet?.guideUrl) return magnet.guideUrl
-
-  // Return the web guide URL (generated on-demand)
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
-  return `${appUrl}/guides/${config.canonical.toLowerCase().replace("ó", "o").replace("é", "e")}`
+  const magnet = await prisma.leadMagnet.findUnique({ where: { keyword } })
+  return magnet?.guideUrl ?? null
 }
 
 // ─── Build the SMS/DM message for delivery ───────────────────────────────────
 
-function buildDeliveryMessage(keyword: string, firstName: string, url: string): string {
-  const config = KEYWORD_CONFIG[keyword]
-  if (!config) return ""
-
-  if (config.isBooking) {
+async function buildDeliveryMessage(keyword: string, firstName: string, url: string): Promise<string> {
+  if (keyword === "LISTO") {
     return `Hola ${firstName}! Soy Sofía de Catherine Gomez Realtor 🏠 Aquí está el link para agendar tu consulta gratuita con Catherine: ${url}`
   }
-
-  return `Hola ${firstName}! Soy Sofía de Catherine Gomez Realtor 🏠 Aquí está tu "${config.title}": ${url} — ¡Cualquier pregunta, estamos aquí para ayudarte!`
+  const magnet = await prisma.leadMagnet.findUnique({ where: { keyword } })
+  const title = magnet?.title ?? "tu guía gratuita"
+  return `Hola ${firstName}! Soy Sofía de Catherine Gomez Realtor 🏠 Aquí está tu guía "${title}": ${url} — ¡Cualquier pregunta, escríbenos!`
 }
 
 // ─── Core delivery function ───────────────────────────────────────────────────
@@ -89,13 +67,10 @@ export async function deliverLeadMagnet(
   contact: DeliveryContact,
   channels: { sms?: boolean; email?: boolean; fbDm?: boolean; igDm?: boolean } = {}
 ): Promise<{ delivered: string[]; failed: string[] }> {
-  const config = KEYWORD_CONFIG[keyword]
-  if (!config) return { delivered: [], failed: [] }
-
   const url = await getLeadMagnetUrl(keyword)
   if (!url) return { delivered: [], failed: [] }
 
-  const message = buildDeliveryMessage(keyword, contact.firstName, url)
+  const message = await buildDeliveryMessage(keyword, contact.firstName, url)
   const delivered: string[] = []
   const failed: string[] = []
 
@@ -121,11 +96,13 @@ export async function deliverLeadMagnet(
   // ── Email ─────────────────────────────────────────────────────────────────
   if (email && contact.email) {
     try {
-      const emailConfig = KEYWORD_CONFIG[keyword]
+      const magnet = keyword === "LISTO" ? null : await prisma.leadMagnet.findUnique({ where: { keyword } })
+      const emailTitle = magnet?.title ?? "Tu consulta gratuita"
+      const emailDesc = magnet?.description ?? "Agenda tu consulta con Catherine Gomez Realtor"
       await sendEmail({
         to: contact.email,
-        subject: `Tu ${config.title} — Catherine Gomez Realtor 🏠`,
-        html: buildEmailHtml(contact.firstName, config.title, config.description, url, config.isBooking),
+        subject: `${emailTitle} — Catherine Gomez Realtor 🏠`,
+        html: buildEmailHtml(contact.firstName, emailTitle, emailDesc, url, keyword === "LISTO"),
         text: message,
       })
       delivered.push("EMAIL")
@@ -160,9 +137,12 @@ export async function deliverLeadMagnet(
   // ── Log delivery in CRM ───────────────────────────────────────────────────
   if (delivered.length > 0 && contact.id) {
     try {
+      const magnetTitle = keyword === "LISTO"
+        ? "Consulta gratuita"
+        : (await prisma.leadMagnet.findUnique({ where: { keyword }, select: { title: true } }))?.title ?? keyword
       await prisma.leadMagnetDelivery.create({
         data: {
-          keyword: config.canonical,
+          keyword,
           channel: delivered.join(","),
           contactId: contact.id,
         },
@@ -170,7 +150,7 @@ export async function deliverLeadMagnet(
       await prisma.activity.create({
         data: {
           type: "SMS",
-          title: `Lead magnet enviado: ${config.title}`,
+          title: `Lead magnet enviado: ${magnetTitle}`,
           description: `Keyword: ${keyword} · Canales: ${delivered.join(", ")} · URL: ${url}`,
           contactId: contact.id,
         },

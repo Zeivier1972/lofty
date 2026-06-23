@@ -16,6 +16,7 @@ import { prisma } from "@/lib/prisma"
 import { researchViralContent, buildAIOSystemPrompt, ResearchBrief } from "./content-research"
 import { uploadVideoToYouTube } from "./youtube-upload"
 import { fetchSceneVideoUrl, getFallbackBackground } from "./pexels-video"
+import { generateGuideFromScript } from "./generate-guide"
 
 // ─── SDK init ────────────────────────────────────────────────────────────────
 
@@ -1357,6 +1358,7 @@ export async function triggerVideoOnly(): Promise<{ videoId: string | null; erro
     try { research = await researchViralContent(dayOfWeek) } catch { /* use defaults */ }
 
     const videoScript = await generateVideoScript(dayOfWeek, research)
+    generateGuideFromScript(videoScript).catch(e => console.error("[social-autopilot] Guide generation failed:", e))
     const videoId = await triggerHeyGenVideo(videoScript, dayOfWeek)
 
     if (!videoId) return { videoId: null, error: "HeyGen returned no video_id — check Railway logs" }
@@ -1450,6 +1452,7 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
   if (isVideoSlot && heygenConfigured) {
     try {
       const videoScript = await generateVideoScript(dayOfWeek, research)
+      generateGuideFromScript(videoScript).catch(e => console.error("[social-autopilot] Guide generation failed:", e))
       sharedVideoId = await triggerHeyGenVideo(videoScript, dayOfWeek)
       if (sharedVideoId) {
         console.log(`[social-autopilot] HeyGen video queued — videoId: ${sharedVideoId}`)

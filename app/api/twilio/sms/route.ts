@@ -51,7 +51,7 @@ export async function POST(req: Request) {
   }
 
   // ── Lead magnet keyword detection ─────────────────────────────────────────
-  const keyword = detectKeyword(body)
+  const keyword = await detectKeyword(body)
   if (keyword) {
     const deliveryContact = contact
       ? { id: contact.id, firstName: contact.firstName, phone: from, email: contact.email }
