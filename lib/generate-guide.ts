@@ -69,11 +69,14 @@ Responde SOLO con JSON válido:
 
   // Auto-create Instagram + Facebook campaigns so the keyword appears in the bot UI
   // and the existing campaign PDF delivery mechanism sends the guide at COMPLETE
+  const topicGreeting = `¡Hola! 🏠 Vi que comentaste en mi video sobre "${parsed.title}". Te envío la guía gratuita ahora mismo — solo necesito un par de datos rápidos. ¿Cuál es tu nombre?`
+
   const campaignData = {
     name: parsed.title,
     keywords: `${keyword},${slugify(keyword)}`,
     pdfUrl: guideUrl,
     pdfName: parsed.title,
+    greeting: topicGreeting,
     isActive: true,
   }
   await prisma.instagramBotCampaign.upsert({

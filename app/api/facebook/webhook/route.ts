@@ -175,13 +175,17 @@ export async function POST(req: Request) {
 
         if (!matchedCampaign && !matchesGeneral) continue
 
-        // For LeadMagnet keywords: tease the guide, collect info first, deliver at COMPLETE
+        // For LeadMagnet keywords: topic-specific greeting from campaign or magnet title
         const leadKeyword = await detectKeyword(commentText).catch(() => null)
         let greeting: string
         if (leadKeyword && leadKeyword !== "LISTO") {
-          const magnet = await prisma.leadMagnet.findUnique({ where: { keyword: leadKeyword } })
-          const topic = magnet?.title ?? leadKeyword
-          greeting = `¡Hola! 🏠 Vi que comentaste en mi video sobre ${topic}. Te envío la guía gratuita — solo necesito un par de datos rápidos para enviártela. ¿Cuál es tu nombre?`
+          if (matchedCampaign?.greeting) {
+            greeting = matchedCampaign.greeting
+          } else {
+            const magnet = await prisma.leadMagnet.findUnique({ where: { keyword: leadKeyword } })
+            const topic = magnet?.title ?? leadKeyword
+            greeting = `¡Hola! 🏠 Vi que comentaste en mi video sobre "${topic}". Te envío la guía gratuita ahora mismo — solo necesito un par de datos rápidos. ¿Cuál es tu nombre?`
+          }
         } else {
           greeting = matchedCampaign?.greeting || botConfig.msgGreeting
         }
@@ -206,8 +210,11 @@ export async function POST(req: Request) {
             })
           }
 
-          const privateSent = await privateReplyToComment(commentId, greeting)
-          if (!privateSent) {
+          // Always send the DM — private reply fires separately as confirmation on the comment
+          privateReplyToComment(commentId, "¡Hola! Te acabo de enviar un mensaje privado 📩").catch(() => {})
+          if (leadKeyword && leadKeyword !== "LISTO") {
+            await sendFacebookMessage(commenterId, greeting)
+          } else {
             await sendFacebookMessageWithQuickReplies(commenterId, greeting, greetingQuickReplies(botConfig))
           }
 

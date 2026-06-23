@@ -97,12 +97,17 @@ export async function POST(req: Request) {
           const leadKeyword = await detectKeyword(commentText).catch(() => null)
           const igCampaign = findCampaign(commentText)
 
-          // For LeadMagnet keywords: tease the guide but collect info first
+          // For LeadMagnet keywords: topic-specific greeting from campaign or magnet title
           let greeting: string
           if (leadKeyword && leadKeyword !== "LISTO") {
-            const magnet = await prisma.leadMagnet.findUnique({ where: { keyword: leadKeyword } })
-            const topic = magnet?.title ?? leadKeyword
-            greeting = `¡Hola! 🏠 Vi que comentaste en mi video sobre ${topic}. Te envío la guía gratuita — solo necesito un par de datos rápidos para enviártela. ¿Cuál es tu nombre?`
+            // Prefer the campaign greeting (set at guide creation time, already topic-specific)
+            if (igCampaign?.greeting) {
+              greeting = igCampaign.greeting
+            } else {
+              const magnet = await prisma.leadMagnet.findUnique({ where: { keyword: leadKeyword } })
+              const topic = magnet?.title ?? leadKeyword
+              greeting = `¡Hola! 🏠 Vi que comentaste en mi video sobre "${topic}". Te envío la guía gratuita ahora mismo — solo necesito un par de datos rápidos. ¿Cuál es tu nombre?`
+            }
           } else {
             greeting = igCampaign?.greeting || config.msgGreeting
           }
