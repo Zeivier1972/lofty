@@ -6,6 +6,7 @@ import { chatWithAI } from "@/lib/ai-agent"
 import { sendSMS } from "@/lib/sms"
 import { scoreContact } from "@/lib/scoring"
 import { handleLeadEngaged } from "@/lib/lead-flow"
+import { detectKeyword, deliverLeadMagnet } from "@/lib/lead-magnet-delivery"
 
 export async function POST(req: Request) {
   const formData = await req.formData()
@@ -47,6 +48,16 @@ export async function POST(req: Request) {
     prisma.activity.create({
       data: { type: "SMS", title: "Inbound SMS from contact", description: body.slice(0, 200), contactId: contact.id },
     }).catch(() => {})
+  }
+
+  // ── Lead magnet keyword detection ─────────────────────────────────────────
+  const keyword = detectKeyword(body)
+  if (keyword) {
+    const deliveryContact = contact
+      ? { id: contact.id, firstName: contact.firstName, phone: from, email: contact.email }
+      : { firstName: "Hola", phone: from }
+    await deliverLeadMagnet(keyword, deliveryContact, { sms: true, email: true, fbDm: false, igDm: false })
+    return new NextResponse("", { status: 200 })
   }
 
   // Log conversation in AI system

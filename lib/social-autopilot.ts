@@ -296,7 +296,7 @@ export async function generateVideoScript(dayOfWeek: number, research?: Research
   const hook = research?.viralHook
 
   // Rotate comment keyword so CTAs vary each week
-  const CTA_KEYWORDS = ["MIAMI", "CASA", "INFO", "QUIERO", "GRATIS", "INVERSIÓN", "LISTO"]
+  const CTA_KEYWORDS = ["INVERSIÓN", "CASA", "GRATIS", "LISTO"]
   const ctaWord = CTA_KEYWORDS[getDayIndex() % CTA_KEYWORDS.length]
 
   const hookLine = hook

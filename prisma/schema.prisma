@@ -95,6 +95,7 @@ model Contact {
   preferredSendHour   Int?
   facebookLeadId      String?
   facebookPsid        String?
+  instagramIgsid      String?
   lastScoreCalculatedAt DateTime?
   buyerBudgetMin Float?
   buyerBudgetMax Float?
@@ -132,6 +133,7 @@ model Contact {
   tags          ContactTag[]
   scheduledCalls ScheduledCall[]
   leadShares    LeadShare[]
+  leadMagnetDeliveries LeadMagnetDelivery[]
   assignedTo    User?     @relation(fields: [assignedToId], references: [id])
   assignedToId  String?
   customFields  String?
@@ -1080,4 +1082,28 @@ model BlogPost {
   publishedAt DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+// ─── Lead Magnets ─────────────────────────────────────────────────────────────
+
+model LeadMagnet {
+  id          String   @id @default(cuid())
+  keyword     String   @unique
+  title       String
+  description String
+  pdfUrl      String?
+  guideUrl    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deliveries  LeadMagnetDelivery[]
+}
+
+model LeadMagnetDelivery {
+  id           String     @id @default(cuid())
+  keyword      String
+  channel      String
+  deliveredAt  DateTime   @default(now())
+  contactId    String?
+  contact      Contact?   @relation(fields: [contactId], references: [id])
+  leadMagnet   LeadMagnet @relation(fields: [keyword], references: [keyword])
 }
