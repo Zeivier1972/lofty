@@ -123,13 +123,12 @@ export async function POST(req: Request) {
             })
           }
 
-          const replied = await replyToComment(commentId, greeting)
-          if (!replied) {
-            if (leadKeyword && leadKeyword !== "LISTO") {
-              await sendInstagramDM(igUserId, greeting)
-            } else {
-              await sendInstagramDMWithQuickReplies(igUserId, greeting, greetingQuickReplies(config))
-            }
+          // Always send the DM — replyToComment posts a public/private comment reply separately
+          replyToComment(commentId, "¡Hola! Te acabo de enviar un mensaje privado 📩").catch(() => {})
+          if (leadKeyword && leadKeyword !== "LISTO") {
+            await sendInstagramDM(igUserId, greeting)
+          } else {
+            await sendInstagramDMWithQuickReplies(igUserId, greeting, greetingQuickReplies(config))
           }
         }
       }
