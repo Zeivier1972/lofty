@@ -198,17 +198,12 @@ export async function POST(req: Request) {
           const fbNewState = leadKeyword && leadKeyword !== "LISTO" ? "ASKED_NAME" : "ASKED_OPTIN"
           const fbCampaignKeyword = leadKeyword || matchedCampaign?.keyword || null
 
-          if (existing) {
-            // Reset regardless of state — re-commenting a keyword restarts the flow
-            await prisma.facebookBotConversation.update({
-              where: { psid: commenterId },
-              data: { state: fbNewState, sourceCommentId: commentId, intent: null, firstName: null, email: null, phone: null, contactId: null, campaignKeyword: fbCampaignKeyword, pageId },
-            })
-          } else {
-            await prisma.facebookBotConversation.create({
-              data: { psid: commenterId, pageId, state: fbNewState, sourceCommentId: commentId, campaignKeyword: fbCampaignKeyword },
-            })
-          }
+          // Only start the flow once — if this person already has a conversation, skip
+          if (existing) continue
+
+          await prisma.facebookBotConversation.create({
+            data: { psid: commenterId, pageId, state: fbNewState, sourceCommentId: commentId, campaignKeyword: fbCampaignKeyword },
+          })
 
           // Always send the DM — private reply fires separately as confirmation on the comment
           privateReplyToComment(commentId, "¡Hola! Te acabo de enviar un mensaje privado 📩").catch(() => {})
@@ -274,19 +269,8 @@ export async function POST(req: Request) {
 
         if (convo.state === "OPTED_OUT") continue
 
-        if (convo.state === "COMPLETE") {
-          const keywords = botConfig.triggerKeywords
-            .split(",").map((k: string) => k.trim().toLowerCase()).filter(Boolean)
-          const matchesKeyword = (t: string) => keywords.some(k => t.toLowerCase().includes(k))
-          if (!matchesKeyword(text)) continue
-          // Re-start conversation
-          await prisma.facebookBotConversation.update({
-            where: { psid },
-            data: { state: "ASKED_OPTIN", intent: null, firstName: null, email: null, phone: null, contactId: null },
-          })
-          await sendFacebookMessageWithQuickReplies(psid, botConfig.msgGreeting, greetingQuickReplies(botConfig))
-          continue
-        }
+        // Flow already completed — don't repeat it
+        if (convo.state === "COMPLETE") continue
 
         if (isOptOut(text)) {
           await prisma.facebookBotConversation.update({ where: { psid }, data: { state: "OPTED_OUT" } })

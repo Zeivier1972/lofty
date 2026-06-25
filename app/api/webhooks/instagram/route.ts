@@ -116,17 +116,12 @@ export async function POST(req: Request) {
           const newCampaignKeyword = leadKeyword || igCampaign?.keyword || null
           const existing = await prisma.instagramConversation.findUnique({ where: { igUserId } })
 
-          if (existing) {
-            // Reset regardless of current state — re-commenting a keyword restarts the flow
-            await prisma.instagramConversation.update({
-              where: { igUserId },
-              data: { state: newState, sourceCommentId: commentId, intent: null, firstName: null, email: null, phone: null, contactId: null, campaignKeyword: newCampaignKeyword },
-            })
-          } else {
-            await prisma.instagramConversation.create({
-              data: { igUserId, igUsername, state: newState, sourceCommentId: commentId, campaignKeyword: newCampaignKeyword },
-            })
-          }
+          // Only start the flow once — if this person already has a conversation, skip
+          if (existing) continue
+
+          await prisma.instagramConversation.create({
+            data: { igUserId, igUsername, state: newState, sourceCommentId: commentId, campaignKeyword: newCampaignKeyword },
+          })
 
           // Always send the DM — replyToComment posts a public/private comment reply separately
           replyToComment(commentId, "¡Hola! Te acabo de enviar un mensaje privado 📩").catch(() => {})
@@ -159,16 +154,8 @@ export async function POST(req: Request) {
         }
 
         if (convo.state === "OPTED_OUT") continue
-        if (convo.state === "COMPLETE") {
-          if (!matchesKeyword(text)) continue
-          const campaign = findCampaign(text)
-          convo = await prisma.instagramConversation.update({
-            where: { igUserId },
-            data: { state: "ASKED_OPTIN", intent: null, firstName: null, email: null, phone: null, contactId: null, campaignKeyword: campaign?.keyword || null },
-          })
-          await sendInstagramDMWithQuickReplies(igUserId, campaign?.greeting || config.msgGreeting, greetingQuickReplies(config))
-          continue
-        }
+        // Flow already completed — don't repeat it
+        if (convo.state === "COMPLETE") continue
 
         if (isOptOut(text)) {
           await prisma.instagramConversation.update({
