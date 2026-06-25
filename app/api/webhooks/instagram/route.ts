@@ -210,7 +210,13 @@ export async function POST(req: Request) {
           await sendInstagramDM(igUserId, config.msgAskName)
 
         } else if (convo.state === "ASKED_NAME") {
-          const name = text.trim().split(/\s+/).slice(0, 3).join(" ")
+          const words = text.trim().split(/\s+/)
+          const isValidName = words.length <= 4 && text.trim().length <= 40 && /^[a-zA-ZÀ-ÖØ-öø-ÿ\s'\-.]+$/.test(text.trim())
+          if (!isValidName) {
+            await sendInstagramDM(igUserId, "Solo necesito tu nombre completo, por favor. Ej: María García")
+            continue
+          }
+          const name = words.slice(0, 3).join(" ")
           const nextMsg = config.msgAskEmail.replace("{name}", name.split(" ")[0])
           await prisma.instagramConversation.update({
             where: { igUserId },
@@ -220,8 +226,10 @@ export async function POST(req: Request) {
 
         } else if (convo.state === "ASKED_EMAIL") {
           const email = extractEmail(text)
-          if (!email) {
-            await sendInstagramDM(igUserId, "Hmm, no encontré un email válido en tu mensaje. ¿Puedes enviarlo de nuevo? Ej: tu@email.com")
+          const fakeDomains = ["example.com", "test.com", "mail.com", "fake.com", "none.com", "noemail.com", "no.com", "null.com"]
+          const isFakeDomain = email ? fakeDomains.some(d => email.toLowerCase().endsWith("@" + d)) : false
+          if (!email || isFakeDomain) {
+            await sendInstagramDM(igUserId, "Hmm, necesito un email real para enviarte la información. ¿Cuál es tu correo? Ej: maria@gmail.com")
             continue
           }
           const nextMsg = config.msgAskPhone.replace("{name}", convo.firstName?.split(" ")[0] || "")

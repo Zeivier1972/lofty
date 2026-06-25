@@ -313,15 +313,23 @@ export async function POST(req: Request) {
           await sendFacebookMessage(psid, botConfig.msgAskName)
 
         } else if (convo.state === "ASKED_NAME") {
-          const name = text.trim().split(/\s+/).slice(0, 3).join(" ")
+          const words = text.trim().split(/\s+/)
+          const isValidName = words.length <= 4 && text.trim().length <= 40 && /^[a-zA-ZÀ-ÖØ-öø-ÿ\s'\-.]+$/.test(text.trim())
+          if (!isValidName) {
+            await sendFacebookMessage(psid, "Solo necesito tu nombre completo, por favor. Ej: María García")
+            continue
+          }
+          const name = words.slice(0, 3).join(" ")
           const nextMsg = botConfig.msgAskEmail.replace("{name}", name.split(" ")[0])
           await prisma.facebookBotConversation.update({ where: { psid }, data: { firstName: name, state: "ASKED_EMAIL" } })
           await sendFacebookMessage(psid, nextMsg)
 
         } else if (convo.state === "ASKED_EMAIL") {
           const email = extractEmail(text)
-          if (!email) {
-            await sendFacebookMessage(psid, "Hmm, no encontré un email válido. ¿Puedes enviarlo de nuevo? Ej: tu@email.com")
+          const fakeDomains = ["example.com", "test.com", "mail.com", "fake.com", "none.com", "noemail.com", "no.com", "null.com"]
+          const isFakeDomain = email ? fakeDomains.some(d => email.toLowerCase().endsWith("@" + d)) : false
+          if (!email || isFakeDomain) {
+            await sendFacebookMessage(psid, "Hmm, necesito un email real para enviarte la información. ¿Cuál es tu correo? Ej: maria@gmail.com")
             continue
           }
           const nextMsg = botConfig.msgAskPhone.replace("{name}", convo.firstName?.split(" ")[0] || "")
