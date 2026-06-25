@@ -8,6 +8,7 @@ import {
   extractEmail, extractPhone, isOptOut, parseIntent,
 } from "@/lib/instagram"
 import { ingestLead } from "@/lib/lead-ingest"
+import { generateSocialAIReply } from "@/lib/social-ai-chat"
 
 function greetingQuickReplies(config: any) {
   return (config.greetingButtons || "Sí, me interesa,Quiero más info")
@@ -116,8 +117,15 @@ export async function POST(req: Request) {
           const newCampaignKeyword = leadKeyword || igCampaign?.keyword || null
           const existing = await prisma.instagramConversation.findUnique({ where: { igUserId } })
 
-          // Only start the flow once — if this person already has a conversation, skip
-          if (existing) continue
+          // If person already has a conversation, reply contextually but don't restart
+          if (existing) {
+            if (existing.state === "OPTED_OUT") continue
+            const nudge = existing.state === "COMPLETE"
+              ? "¡Hola! Ya tenemos tu información 😊 Si tienes preguntas, escríbeme aquí por DM y con gusto te ayudo."
+              : "¡Hola! Ya te escribí por mensaje privado 📩 Revisa tu bandeja de DMs para continuar."
+            replyToComment(commentId, nudge).catch(() => {})
+            continue
+          }
 
           await prisma.instagramConversation.create({
             data: { igUserId, igUsername, state: newState, sourceCommentId: commentId, campaignKeyword: newCampaignKeyword },
@@ -154,8 +162,17 @@ export async function POST(req: Request) {
         }
 
         if (convo.state === "OPTED_OUT") continue
-        // Flow already completed — don't repeat it
-        if (convo.state === "COMPLETE") continue
+        if (convo.state === "COMPLETE") {
+          // AI takes over the conversation after lead info is gathered
+          const aiReply = await generateSocialAIReply(text, {
+            firstName: convo.firstName,
+            intent: convo.intent,
+            campaignKeyword: convo.campaignKeyword,
+            platform: "INSTAGRAM",
+          }).catch(() => null)
+          if (aiReply) await sendInstagramDM(igUserId, aiReply)
+          continue
+        }
 
         if (isOptOut(text)) {
           await prisma.instagramConversation.update({
