@@ -1438,8 +1438,10 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
     }
   }
 
-  // 4 (was 3). Is this a video slot? Evening + (Tuesday=2 or Friday=5)
-  const isVideoSlot = slot === "evening" && (dayOfWeek === 2 || dayOfWeek === 5)
+  // 4. Is this a video slot? Evening + (Tuesday=2 or Friday=5) + videoEnabled toggle
+  const isVideoSlot = slot === "evening"
+    && (dayOfWeek === 2 || dayOfWeek === 5)
+    && ((config as any).videoEnabled !== false)
   const heygenConfigured = !!process.env.HEYGEN_API_KEY
 
   // 5. Pre-generate shared assets (one script + one HeyGen video for all accounts)

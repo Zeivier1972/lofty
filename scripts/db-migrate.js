@@ -71,6 +71,7 @@ const STMTS = [
     CONSTRAINT "LeadMagnetDelivery_pkey" PRIMARY KEY ("id")
   )`,
   `ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "instagramIgsid" TEXT`,
+  `ALTER TABLE "SocialAutoPilotConfig" ADD COLUMN IF NOT EXISTS "videoEnabled" BOOLEAN NOT NULL DEFAULT TRUE`,
 ]
 
 // ─── Email templates ─────────────────────────────────────────────────────────

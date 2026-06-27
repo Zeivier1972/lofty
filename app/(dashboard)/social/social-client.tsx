@@ -74,6 +74,7 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
   const [posts, setPosts] = useState<SocialPost[]>(initialPosts)
   const [activeTab, setActiveTab] = useState<"composer" | "calendar" | "analytics" | "accounts" | "blog">("composer")
   const [autoPilotEnabled, setAutoPilotEnabled] = useState(false)
+  const [videoEnabled, setVideoEnabled] = useState(true)
   const [autoPilotLoading, setAutoPilotLoading] = useState(false)
   const [runningNow, setRunningNow] = useState(false)
   const [runResult, setRunResult] = useState<{ ok: boolean; posted: number; failed: number; blogPublished?: boolean; error?: string } | null>(null)
@@ -82,7 +83,10 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
   useEffect(() => {
     fetch("/api/social/autopilot-config")
       .then(r => r.json())
-      .then(d => setAutoPilotEnabled(d.isEnabled ?? false))
+      .then(d => {
+        setAutoPilotEnabled(d.isEnabled ?? false)
+        setVideoEnabled(d.videoEnabled !== false)
+      })
       .catch(() => {})
   }, [])
 
@@ -627,6 +631,43 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
                 className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed ${autoPilotEnabled ? "bg-green-500" : "bg-gray-300"}`}
               >
                 <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${autoPilotEnabled ? "translate-x-5" : "translate-x-0"}`} />
+              </button>
+            </div>
+
+            {/* Video posting toggle (Tue/Fri) */}
+            <div className={`flex items-center justify-between gap-3 px-4 py-3 rounded-xl border ${videoEnabled ? "bg-blue-50 border-blue-200" : "bg-gray-50 border-gray-200"}`}>
+              <div className="flex items-center gap-3">
+                <span className="text-lg">{videoEnabled ? "🎬" : "📝"}</span>
+                <div>
+                  <p className={`text-sm font-semibold ${videoEnabled ? "text-blue-800" : "text-gray-700"}`}>
+                    Videos automáticos (Mar y Vie) — {videoEnabled ? "Activado" : "Desactivado"}
+                  </p>
+                  <p className={`text-xs ${videoEnabled ? "text-blue-700" : "text-gray-500"}`}>
+                    {videoEnabled
+                      ? "Los martes y viernes en la noche se genera un video de HeyGen automáticamente"
+                      : "Solo se publicarán imágenes y texto — sin video esos días"}
+                  </p>
+                </div>
+              </div>
+              <button
+                disabled={autoPilotLoading}
+                onClick={async () => {
+                  setAutoPilotLoading(true)
+                  try {
+                    const res = await fetch("/api/social/autopilot-config", {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ videoEnabled: !videoEnabled }),
+                    })
+                    const d = await res.json()
+                    setVideoEnabled(d.videoEnabled !== false)
+                  } finally {
+                    setAutoPilotLoading(false)
+                  }
+                }}
+                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-40 ${videoEnabled ? "bg-blue-500" : "bg-gray-300"}`}
+              >
+                <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${videoEnabled ? "translate-x-5" : "translate-x-0"}`} />
               </button>
             </div>
 

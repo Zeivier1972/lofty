@@ -161,18 +161,23 @@ export async function POST(req: Request) {
         if (!commentId || !commenterId || !commentText) continue
         if (!botConfig?.isEnabled) continue
 
+        // Accent-insensitive normalize for matching
+        const normFb = (s: string) => s.toLowerCase()
+          .replace(/[áä]/g, "a").replace(/[éë]/g, "e").replace(/[íï]/g, "i")
+          .replace(/[óö]/g, "o").replace(/[úü]/g, "u").replace(/ñ/g, "n")
+
         // Check campaign keywords first (higher priority), then general keywords
         const campaigns = await prisma.facebookBotCampaign.findMany({ where: { isActive: true } })
+        const t = normFb(commentText)
         const matchedCampaign = campaigns.find(c => {
-          const allKws = c.keywords ? c.keywords.split(",").map((k: string) => k.trim()).filter(Boolean) : [c.keyword]
-          return allKws.some((kw: string) => commentText.toLowerCase().includes(kw.toLowerCase()))
+          const allKws = c.keywords ? c.keywords.split(",").map((k: string) => k.trim()).filter(Boolean) : []
+          allKws.push(c.keyword)
+          return allKws.some((kw: string) => t.includes(normFb(kw)))
         })
 
         const generalKeywords = botConfig.triggerKeywords
-          .split(",")
-          .map((k: string) => k.trim().toLowerCase())
-          .filter(Boolean)
-        const matchesGeneral = generalKeywords.some(k => commentText.toLowerCase().includes(k))
+          .split(",").map((k: string) => k.trim().toLowerCase()).filter(Boolean)
+        const matchesGeneral = generalKeywords.some(k => t.includes(normFb(k)))
 
         if (!matchedCampaign && !matchesGeneral) continue
 
@@ -369,41 +374,37 @@ export async function POST(req: Request) {
             .replace("{website}", botConfig.websiteUrl || "")
           await sendFacebookMessage(psid, thankYou)
 
-          // Send lead magnet guide if campaignKeyword matches a LeadMagnet
+          // Deliver guide/PDF — single path to avoid duplicates
           if (convo.campaignKeyword) {
             const lmKeyword = await detectKeyword(convo.campaignKeyword).catch(() => null)
             if (lmKeyword) {
+              // LeadMagnet guide: send link via FB DM directly, SMS + email via deliverLeadMagnet
+              const magnet = await prisma.leadMagnet.findUnique({ where: { keyword: lmKeyword } })
+              if (magnet?.guideUrl) {
+                await sendFacebookMessage(psid,
+                  `📚 Aquí está tu guía "${magnet.title}":\n${magnet.guideUrl}\n\n¡Cualquier pregunta, escríbeme aquí! 😊`
+                )
+              }
               deliverLeadMagnet(lmKeyword, {
                 id: contactId,
                 firstName: convo.firstName?.split(" ")[0] || "",
                 phone,
                 email: convo.email || undefined,
-                facebookPsid: psid,
-              }, { sms: true, email: !!convo.email, fbDm: true, igDm: false }).catch(e =>
-                console.error("[FB bot] lead magnet delivery at complete failed:", e)
+              }, { sms: true, email: !!convo.email, fbDm: false, igDm: false }).catch(e =>
+                console.error("[FB bot] SMS/email guide delivery failed:", e)
               )
-            }
-          }
-
-          // Send campaign PDF if this conversation was triggered by a campaign keyword
-          if (convo.campaignKeyword) {
-            try {
-              const campaign = await prisma.facebookBotCampaign.findUnique({
-                where: { keyword: convo.campaignKeyword },
-              })
+            } else {
+              // External PDF campaign — send brochure link
+              const campaign = await prisma.facebookBotCampaign.findUnique({ where: { keyword: convo.campaignKeyword } })
               if (campaign?.pdfUrl) {
-                const appUrl = process.env.NEXT_PUBLIC_APP_URL || ""
-                const brochureUrl = `${appUrl}/brochure/${convo.campaignKeyword}`
-                const pdfMsg = `📄 ${campaign.pdfName || "Documento exclusivo"}:\n${brochureUrl}`
-                await sendFacebookMessage(psid, pdfMsg)
-                await prisma.facebookBotCampaign.update({
-                  where: { keyword: convo.campaignKeyword },
-                  data: { leads: { increment: 1 } },
-                })
+                const brochureUrl = `${process.env.NEXT_PUBLIC_APP_URL || ""}/brochure/${convo.campaignKeyword}`
+                await sendFacebookMessage(psid, `📄 ${campaign.pdfName || "Documento exclusivo"}:\n${brochureUrl}`)
               }
-            } catch (e) {
-              console.error("[FB bot] campaign PDF send error:", e)
             }
+            await prisma.facebookBotCampaign.update({
+              where: { keyword: convo.campaignKeyword },
+              data: { leads: { increment: 1 } },
+            }).catch(() => {})
           }
 
           // Send matching property listings if enabled
