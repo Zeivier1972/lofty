@@ -95,7 +95,7 @@ function userToken() {
 }
 
 export async function sendFacebookMessage(psid: string, text: string): Promise<string | null> {
-  if (!token()) return null
+  if (!token()) { console.error("[FB] sendFacebookMessage: FB_PAGE_ACCESS_TOKEN not set"); return null }
   try {
     const res = await fetch(`${GRAPH}/me/messages?access_token=${token()}`, {
       method: "POST",
@@ -107,8 +107,15 @@ export async function sendFacebookMessage(psid: string, text: string): Promise<s
       }),
     })
     const data = await res.json()
+    if (!res.ok) {
+      console.error("[FB] sendFacebookMessage error:", JSON.stringify(data))
+      return null
+    }
     return data.message_id || null
-  } catch { return null }
+  } catch (e) {
+    console.error("[FB] sendFacebookMessage exception:", e)
+    return null
+  }
 }
 
 type QuickReply = { title: string; payload: string }

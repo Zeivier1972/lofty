@@ -197,6 +197,8 @@ export async function POST(req: Request) {
         const fbCampaignKeyword = leadKeyword || matchedCampaign?.keyword || null
 
         try {
+          console.log(`[FB bot] Comment from ${commenterId}: "${commentText.slice(0, 50)}" — campaign: ${matchedCampaign?.keyword || "none"}, general: ${matchesGeneral}`)
+
           const existing = await prisma.facebookBotConversation.findUnique({
             where: { psid: commenterId },
           })
@@ -207,7 +209,7 @@ export async function POST(req: Request) {
             const nudge = existing.state === "COMPLETE"
               ? "¡Hola! Ya tenemos tu información 😊 Si tienes preguntas, escríbeme aquí por DM y con gusto te ayudo."
               : "¡Hola! Ya te escribí por mensaje privado 📩 Revisa tu bandeja de mensajes para continuar."
-            privateReplyToComment(commentId, nudge).catch(() => {})
+            await privateReplyToComment(commentId, nudge)
             continue
           }
 
@@ -216,11 +218,14 @@ export async function POST(req: Request) {
             data: { psid: commenterId, pageId, state: "ASKED_NAME", sourceCommentId: commentId, campaignKeyword: fbCampaignKeyword },
           })
 
-          // Fire comment reply + DM independently
-          privateReplyToComment(commentId, "¡Hola! Te acabo de enviar un mensaje privado 📩").catch(() => {})
-          await sendFacebookMessage(commenterId, greeting)
+          // privateReplyToComment is the correct API for cold-contact (no prior DM needed)
+          // sendFacebookMessage also attempted in case the user has an existing messaging session
+          const privateOk = await privateReplyToComment(commentId, greeting)
+          console.log(`[FB bot] privateReplyToComment result: ${privateOk}`)
+          const dmOk = await sendFacebookMessage(commenterId, greeting)
+          console.log(`[FB bot] sendFacebookMessage result: ${dmOk}`)
 
-          await postPublicCommentReply(commentId, "¡Hola! Te enviamos info por mensaje privado 📩")
+          postPublicCommentReply(commentId, "¡Hola! Te enviamos info por mensaje privado 📩").catch(() => {})
         } catch (e) {
           console.error("[FB webhook feed comment]", e)
         }
