@@ -8,7 +8,7 @@ import {
   extractEmail, extractPhone, isOptOut,
 } from "@/lib/instagram"
 import { ingestLead } from "@/lib/lead-ingest"
-import { generateSocialAIReply } from "@/lib/social-ai-chat"
+import { generateSocialAIReply, getMatchingProperties, notifyCatherineAboutLead } from "@/lib/social-ai-chat"
 
 const INTENT_TAG_COLORS: Record<string, string> = {
   comprador_vivienda: "#22C55E",
@@ -148,13 +148,38 @@ export async function POST(req: Request) {
 
         // COMPLETE — AI takes over, no more data collection
         if (convo.state === "COMPLETE") {
-          const aiReply = await generateSocialAIReply(text, {
+          const result = await generateSocialAIReply(text, {
             firstName: convo.firstName,
             intent: convo.intent,
             campaignKeyword: convo.campaignKeyword,
             platform: "INSTAGRAM",
           }).catch(() => null)
-          if (aiReply) await sendInstagramDM(igUserId, aiReply)
+          if (!result) continue
+
+          await sendInstagramDM(igUserId, result.reply)
+
+          if (result.sendProperties) {
+            const listings = await getMatchingProperties(convo.intent)
+            if (listings.length > 0) {
+              for (const msg of listings) await sendInstagramDM(igUserId, msg)
+            } else {
+              await sendInstagramDM(igUserId, "🏠 En este momento estamos actualizando nuestro inventario. Catherine te enviará opciones personalizadas muy pronto.")
+            }
+          }
+
+          if (result.notifyCatherine) {
+            const aiConfig = await prisma.aIConfig.findFirst()
+            if (aiConfig?.calendlyUrl) {
+              await sendInstagramDM(igUserId, `📅 Puedes agendar una llamada con Catherine directamente aquí: ${aiConfig.calendlyUrl}`)
+            }
+            notifyCatherineAboutLead({
+              firstName: convo.firstName,
+              phone: convo.phone,
+              email: convo.email,
+              message: text,
+              platform: "INSTAGRAM",
+            }).catch(() => {})
+          }
           continue
         }
 

@@ -16,7 +16,7 @@ import {
   parseIntent,
 } from "@/lib/facebook"
 import { ingestLead } from "@/lib/lead-ingest"
-import { generateSocialAIReply } from "@/lib/social-ai-chat"
+import { generateSocialAIReply, getMatchingProperties, notifyCatherineAboutLead } from "@/lib/social-ai-chat"
 
 function greetingQuickReplies(config: any) {
   return (config.greetingButtons || "Sí, me interesa,Quiero más info")
@@ -288,14 +288,38 @@ export async function POST(req: Request) {
         if (convo.state === "OPTED_OUT") continue
 
         if (convo.state === "COMPLETE") {
-          // AI takes over the conversation after lead info is gathered
-          const aiReply = await generateSocialAIReply(text, {
+          const result = await generateSocialAIReply(text, {
             firstName: convo.firstName,
             intent: convo.intent,
             campaignKeyword: convo.campaignKeyword,
             platform: "FACEBOOK",
           }).catch(() => null)
-          if (aiReply) await sendFacebookMessage(psid, aiReply)
+          if (!result) continue
+
+          await sendFacebookMessage(psid, result.reply)
+
+          if (result.sendProperties) {
+            const listings = await getMatchingProperties(convo.intent)
+            if (listings.length > 0) {
+              for (const msg of listings) await sendFacebookMessage(psid, msg)
+            } else {
+              await sendFacebookMessage(psid, "🏠 En este momento estamos actualizando nuestro inventario. Catherine te enviará opciones personalizadas muy pronto.")
+            }
+          }
+
+          if (result.notifyCatherine) {
+            const aiConfig = await prisma.aIConfig.findFirst()
+            if (aiConfig?.calendlyUrl) {
+              await sendFacebookMessage(psid, `📅 Puedes agendar una llamada con Catherine directamente aquí: ${aiConfig.calendlyUrl}`)
+            }
+            notifyCatherineAboutLead({
+              firstName: convo.firstName,
+              phone: convo.phone,
+              email: convo.email,
+              message: text,
+              platform: "FACEBOOK",
+            }).catch(() => {})
+          }
           continue
         }
 
