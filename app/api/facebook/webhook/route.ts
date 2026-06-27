@@ -176,28 +176,25 @@ export async function POST(req: Request) {
 
         if (!matchedCampaign && !matchesGeneral) continue
 
-        // For LeadMagnet keywords: topic-specific greeting from campaign or magnet title
+        // Build topic-specific greeting: prefer campaign greeting, then magnet title, then generic
         const leadKeyword = await detectKeyword(commentText).catch(() => null)
         let greeting: string
-        if (leadKeyword && leadKeyword !== "LISTO") {
-          if (matchedCampaign?.greeting) {
-            greeting = matchedCampaign.greeting
-          } else {
-            const magnet = await prisma.leadMagnet.findUnique({ where: { keyword: leadKeyword } })
-            const topic = magnet?.title ?? leadKeyword
-            greeting = `¡Hola! 🏠 Vi que comentaste en mi video sobre "${topic}". Te envío la guía gratuita ahora mismo — solo necesito un par de datos rápidos. ¿Cuál es tu nombre?`
-          }
+        if (matchedCampaign?.greeting) {
+          greeting = matchedCampaign.greeting
+        } else if (leadKeyword && leadKeyword !== "LISTO") {
+          const magnet = await prisma.leadMagnet.findUnique({ where: { keyword: leadKeyword } })
+          const topic = magnet?.title ?? leadKeyword
+          greeting = `¡Hola! 🏠 Vi que comentaste en mi video sobre "${topic}". Te envío la guía gratuita ahora mismo — solo necesito un par de datos rápidos. ¿Cuál es tu nombre?`
         } else {
-          greeting = matchedCampaign?.greeting || botConfig.msgGreeting
+          greeting = `¡Hola! 🏠 Vi tu comentario y quiero enviarte más información. Solo necesito un par de datos rápidos. ¿Cuál es tu nombre?`
         }
+
+        const fbCampaignKeyword = leadKeyword || matchedCampaign?.keyword || null
 
         try {
           const existing = await prisma.facebookBotConversation.findUnique({
             where: { psid: commenterId },
           })
-
-          const fbNewState = leadKeyword && leadKeyword !== "LISTO" ? "ASKED_NAME" : "ASKED_OPTIN"
-          const fbCampaignKeyword = leadKeyword || matchedCampaign?.keyword || null
 
           // If person already has a conversation, reply contextually but don't restart
           if (existing) {
@@ -209,17 +206,14 @@ export async function POST(req: Request) {
             continue
           }
 
+          // Always start at ASKED_NAME — no optin or intent buttons
           await prisma.facebookBotConversation.create({
-            data: { psid: commenterId, pageId, state: fbNewState, sourceCommentId: commentId, campaignKeyword: fbCampaignKeyword },
+            data: { psid: commenterId, pageId, state: "ASKED_NAME", sourceCommentId: commentId, campaignKeyword: fbCampaignKeyword },
           })
 
-          // Always send the DM — private reply fires separately as confirmation on the comment
+          // Fire comment reply + DM independently
           privateReplyToComment(commentId, "¡Hola! Te acabo de enviar un mensaje privado 📩").catch(() => {})
-          if (leadKeyword && leadKeyword !== "LISTO") {
-            await sendFacebookMessage(commenterId, greeting)
-          } else {
-            await sendFacebookMessageWithQuickReplies(commenterId, greeting, greetingQuickReplies(botConfig))
-          }
+          await sendFacebookMessage(commenterId, greeting)
 
           await postPublicCommentReply(commentId, "¡Hola! Te enviamos info por mensaje privado 📩")
         } catch (e) {
@@ -295,24 +289,7 @@ export async function POST(req: Request) {
           continue
         }
 
-        if (convo.state === "ASKED_OPTIN") {
-          await prisma.facebookBotConversation.update({ where: { psid }, data: { state: "ASKED_INTENT" } })
-          await sendFacebookMessageWithQuickReplies(psid, botConfig.msgAskIntent, intentQuickReplies(botConfig))
-
-        } else if (convo.state === "ASKED_INTENT") {
-          const intentFromPayload = quickReplyPayload === "A" ? "comprador_vivienda"
-            : quickReplyPayload === "B" ? "inversionista"
-            : quickReplyPayload === "C" ? "explorando"
-            : null
-          const intent = intentFromPayload || parseIntent(text)
-          if (!intent) {
-            await sendFacebookMessageWithQuickReplies(psid, "Por favor elige una opción 🙂", intentQuickReplies(botConfig))
-            continue
-          }
-          await prisma.facebookBotConversation.update({ where: { psid }, data: { intent, state: "ASKED_NAME" } })
-          await sendFacebookMessage(psid, botConfig.msgAskName)
-
-        } else if (convo.state === "ASKED_NAME") {
+        if (convo.state === "ASKED_NAME") {
           const words = text.trim().split(/\s+/)
           const isValidName = words.length <= 4 && text.trim().length <= 40 && /^[a-zA-ZÀ-ÖØ-öø-ÿ\s'\-.]+$/.test(text.trim())
           if (!isValidName) {
@@ -486,16 +463,17 @@ export async function POST(req: Request) {
         const matchesGeneral = generalKeywords.some(k => text.toLowerCase().includes(k))
 
         if (matchedCampaign || matchesGeneral) {
-          const greeting = matchedCampaign?.greeting || botConfig.msgGreeting
+          const greeting = matchedCampaign?.greeting
+            || `¡Hola! 🏠 Quiero enviarte más información. Solo necesito un par de datos rápidos. ¿Cuál es tu nombre?`
           await prisma.facebookBotConversation.create({
             data: {
               psid,
               pageId,
-              state: "ASKED_OPTIN",
+              state: "ASKED_NAME",
               campaignKeyword: matchedCampaign?.keyword || null,
             },
           })
-          await sendFacebookMessageWithQuickReplies(psid, greeting, greetingQuickReplies(botConfig))
+          await sendFacebookMessage(psid, greeting)
         } else {
         // ── Non-bot Messenger DM handling ───────────────────────────────────
         let contact = await prisma.contact.findFirst({ where: { facebookPsid: psid } })

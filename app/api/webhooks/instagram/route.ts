@@ -98,22 +98,20 @@ export async function POST(req: Request) {
           const leadKeyword = await detectKeyword(commentText).catch(() => null)
           const igCampaign = findCampaign(commentText)
 
-          // For LeadMagnet keywords: topic-specific greeting from campaign or magnet title
+          // Build a topic-specific greeting: prefer campaign greeting, then magnet title, then generic
           let greeting: string
-          if (leadKeyword && leadKeyword !== "LISTO") {
-            // Prefer the campaign greeting (set at guide creation time, already topic-specific)
-            if (igCampaign?.greeting) {
-              greeting = igCampaign.greeting
-            } else {
-              const magnet = await prisma.leadMagnet.findUnique({ where: { keyword: leadKeyword } })
-              const topic = magnet?.title ?? leadKeyword
-              greeting = `¡Hola! 🏠 Vi que comentaste en mi video sobre "${topic}". Te envío la guía gratuita ahora mismo — solo necesito un par de datos rápidos. ¿Cuál es tu nombre?`
-            }
+          if (igCampaign?.greeting) {
+            greeting = igCampaign.greeting
+          } else if (leadKeyword && leadKeyword !== "LISTO") {
+            const magnet = await prisma.leadMagnet.findUnique({ where: { keyword: leadKeyword } })
+            const topic = magnet?.title ?? leadKeyword
+            greeting = `¡Hola! 🏠 Vi que comentaste en mi video sobre "${topic}". Te envío la guía gratuita ahora mismo — solo necesito un par de datos rápidos. ¿Cuál es tu nombre?`
           } else {
-            greeting = igCampaign?.greeting || config.msgGreeting
+            // Generic fallback: still go straight to asking name
+            const topic = igCampaign?.name ?? commentText.toUpperCase()
+            greeting = `¡Hola! 🏠 Vi tu comentario y quiero enviarte más información. Solo necesito un par de datos rápidos. ¿Cuál es tu nombre?`
           }
 
-          const newState = leadKeyword && leadKeyword !== "LISTO" ? "ASKED_NAME" : "ASKED_OPTIN"
           const newCampaignKeyword = leadKeyword || igCampaign?.keyword || null
           const existing = await prisma.instagramConversation.findUnique({ where: { igUserId } })
 
@@ -127,17 +125,14 @@ export async function POST(req: Request) {
             continue
           }
 
+          // Always start at ASKED_NAME — no optin or intent buttons, just collect name/email/phone
           await prisma.instagramConversation.create({
-            data: { igUserId, igUsername, state: newState, sourceCommentId: commentId, campaignKeyword: newCampaignKeyword },
+            data: { igUserId, igUsername, state: "ASKED_NAME", sourceCommentId: commentId, campaignKeyword: newCampaignKeyword },
           })
 
-          // Always send the DM — replyToComment posts a public/private comment reply separately
+          // Fire comment reply + DM independently
           replyToComment(commentId, "¡Hola! Te acabo de enviar un mensaje privado 📩").catch(() => {})
-          if (leadKeyword && leadKeyword !== "LISTO") {
-            await sendInstagramDM(igUserId, greeting)
-          } else {
-            await sendInstagramDMWithQuickReplies(igUserId, greeting, greetingQuickReplies(config))
-          }
+          await sendInstagramDM(igUserId, greeting)
         }
       }
 
@@ -154,10 +149,12 @@ export async function POST(req: Request) {
         if (!convo) {
           if (!matchesKeyword(text)) continue
           const campaign = findCampaign(text)
+          const dmGreeting = campaign?.greeting
+            || `¡Hola! 🏠 Quiero enviarte más información. Solo necesito un par de datos rápidos. ¿Cuál es tu nombre?`
           convo = await prisma.instagramConversation.create({
-            data: { igUserId, state: "ASKED_OPTIN", campaignKeyword: campaign?.keyword || null },
+            data: { igUserId, state: "ASKED_NAME", campaignKeyword: campaign?.keyword || null },
           })
-          await sendInstagramDMWithQuickReplies(igUserId, campaign?.greeting || config.msgGreeting, greetingQuickReplies(config))
+          await sendInstagramDM(igUserId, dmGreeting)
           continue
         }
 
@@ -184,32 +181,7 @@ export async function POST(req: Request) {
         }
 
         // ── State machine ─────────────────────────────────────────────────
-        if (convo.state === "ASKED_OPTIN") {
-          // Any non-opt-out reply counts as a yes → qualification question
-          await prisma.instagramConversation.update({
-            where: { igUserId },
-            data: { state: "ASKED_INTENT" },
-          })
-          await sendInstagramDMWithQuickReplies(igUserId, config.msgAskIntent, intentQuickReplies(config))
-
-        } else if (convo.state === "ASKED_INTENT") {
-          const quickReplyPayload: string = (msg.message as any)?.quick_reply?.payload || ""
-          const intentFromPayload = quickReplyPayload === "A" ? "comprador_vivienda"
-            : quickReplyPayload === "B" ? "inversionista_airbnb"
-            : quickReplyPayload === "C" ? "solo_explorando"
-            : null
-          const intent = intentFromPayload || parseIntent(text)
-          if (!intent) {
-            await sendInstagramDMWithQuickReplies(igUserId, "Por favor elige una opción 🙂", intentQuickReplies(config))
-            continue
-          }
-          await prisma.instagramConversation.update({
-            where: { igUserId },
-            data: { intent, state: "ASKED_NAME" },
-          })
-          await sendInstagramDM(igUserId, config.msgAskName)
-
-        } else if (convo.state === "ASKED_NAME") {
+        if (convo.state === "ASKED_NAME") {
           const words = text.trim().split(/\s+/)
           const isValidName = words.length <= 4 && text.trim().length <= 40 && /^[a-zA-ZÀ-ÖØ-öø-ÿ\s'\-.]+$/.test(text.trim())
           if (!isValidName) {
