@@ -215,14 +215,23 @@ export async function POST(req: Request) {
             continue
           }
 
-          // Note: don't create conversation record yet — wait for the user to DM us
-          // (Reels don't support private_replies, and cold sendFacebookMessage is blocked by policy)
-          // Instead, post a public reply with a one-tap m.me link that pre-fills the keyword in Messenger
           const keyword = matchedCampaign?.keyword || fbCampaignKeyword || "INFO"
-          const meLink = `https://m.me/${pageId}?text=${encodeURIComponent(keyword.toUpperCase())}`
-          postPublicCommentReply(commentId,
-            `¡Hola! 👋 Toca aquí para recibir la info gratis en un solo clic 👉 ${meLink}`
-          ).catch(e => console.error("[FB] postPublicCommentReply:", e))
+
+          // Try private reply first (works on regular posts, fails on Reels)
+          // Private reply sends greeting directly to Messenger — best UX, no click needed
+          await prisma.facebookBotConversation.create({
+            data: { psid: commenterId, pageId, state: "ASKED_NAME", sourceCommentId: commentId, campaignKeyword: fbCampaignKeyword },
+          })
+          const privateOk = await privateReplyToComment(commentId, greeting)
+          console.log(`[FB bot] privateReplyToComment result: ${privateOk}`)
+
+          if (!privateOk) {
+            // Reel or missing permission — fall back to public reply with one-tap m.me link
+            const meLink = `https://m.me/${pageId}?text=${encodeURIComponent(keyword.toUpperCase())}`
+            postPublicCommentReply(commentId,
+              `¡Hola! 👋 Toca aquí para recibir la info gratis en un solo clic 👉 ${meLink}`
+            ).catch(e => console.error("[FB] postPublicCommentReply:", e))
+          }
         } catch (e) {
           console.error("[FB webhook feed comment]", e)
         }
