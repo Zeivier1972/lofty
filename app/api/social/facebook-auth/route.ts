@@ -37,6 +37,8 @@ export async function GET() {
       "pages_manage_posts",
       "pages_read_engagement",
       "pages_show_list",
+      "pages_messaging",
+      "pages_manage_engagement",
       "instagram_basic",
       "instagram_content_publish",
     ].join(","),
