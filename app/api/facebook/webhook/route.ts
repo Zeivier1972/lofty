@@ -215,16 +215,13 @@ export async function POST(req: Request) {
             continue
           }
 
-          // Store the pending campaign so when the user DMs us, we resume with the right context
-          await prisma.facebookBotConversation.create({
-            data: { psid: commenterId, pageId, state: "ASKED_NAME", sourceCommentId: commentId, campaignKeyword: fbCampaignKeyword },
-          })
-
-          // Reels don't support private_replies API — use public reply directing user to DM
-          // When user DMs with the keyword, the messaging handler picks up and sends the greeting
-          const keyword = matchedCampaign?.keyword || "INFO"
+          // Note: don't create conversation record yet — wait for the user to DM us
+          // (Reels don't support private_replies, and cold sendFacebookMessage is blocked by policy)
+          // Instead, post a public reply with a one-tap m.me link that pre-fills the keyword in Messenger
+          const keyword = matchedCampaign?.keyword || fbCampaignKeyword || "INFO"
+          const meLink = `https://m.me/${pageId}?text=${encodeURIComponent(keyword.toUpperCase())}`
           postPublicCommentReply(commentId,
-            `¡Hola! 👋 Envíame un mensaje directo con la palabra "${keyword.toUpperCase()}" y te mando la info ahora mismo 📩`
+            `¡Hola! 👋 Toca aquí para recibir la info gratis en un solo clic 👉 ${meLink}`
           ).catch(e => console.error("[FB] postPublicCommentReply:", e))
         } catch (e) {
           console.error("[FB webhook feed comment]", e)
