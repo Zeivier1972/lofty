@@ -160,6 +160,8 @@ export async function POST(req: Request) {
 
         if (!commentId || !commenterId || !commentText) continue
         if (!botConfig?.isEnabled) continue
+        // Skip comments posted by the page itself (prevents processing bot's own replies)
+        if (commenterId === pageId) continue
 
         // Accent-insensitive normalize for matching
         const normFb = (s: string) => s.toLowerCase()
@@ -213,19 +215,17 @@ export async function POST(req: Request) {
             continue
           }
 
-          // Always start at ASKED_NAME — no optin or intent buttons
+          // Store the pending campaign so when the user DMs us, we resume with the right context
           await prisma.facebookBotConversation.create({
             data: { psid: commenterId, pageId, state: "ASKED_NAME", sourceCommentId: commentId, campaignKeyword: fbCampaignKeyword },
           })
 
-          // privateReplyToComment is the correct API for cold-contact (no prior DM needed)
-          // sendFacebookMessage also attempted in case the user has an existing messaging session
-          const privateOk = await privateReplyToComment(commentId, greeting)
-          console.log(`[FB bot] privateReplyToComment result: ${privateOk}`)
-          const dmOk = await sendFacebookMessage(commenterId, greeting)
-          console.log(`[FB bot] sendFacebookMessage result: ${dmOk}`)
-
-          postPublicCommentReply(commentId, "¡Hola! Te enviamos info por mensaje privado 📩").catch(() => {})
+          // Reels don't support private_replies API — use public reply directing user to DM
+          // When user DMs with the keyword, the messaging handler picks up and sends the greeting
+          const keyword = matchedCampaign?.keyword || "INFO"
+          postPublicCommentReply(commentId,
+            `¡Hola! 👋 Envíame un mensaje directo con la palabra "${keyword.toUpperCase()}" y te mando la info ahora mismo 📩`
+          ).catch(e => console.error("[FB] postPublicCommentReply:", e))
         } catch (e) {
           console.error("[FB webhook feed comment]", e)
         }
@@ -459,14 +459,19 @@ export async function POST(req: Request) {
 
       } else if (botConfig?.isEnabled && !convo) {
         // ── No active convo: check if DM text matches a campaign or general keyword ──
+        const normDm = (s: string) => s.toLowerCase()
+          .replace(/[áä]/g, "a").replace(/[éë]/g, "e").replace(/[íï]/g, "i")
+          .replace(/[óö]/g, "o").replace(/[úü]/g, "u").replace(/ñ/g, "n")
+        const tDm = normDm(text)
         const campaigns = await prisma.facebookBotCampaign.findMany({ where: { isActive: true } })
         const matchedCampaign = campaigns.find(c => {
-          const allKws = c.keywords ? c.keywords.split(",").map((k: string) => k.trim()).filter(Boolean) : [c.keyword]
-          return allKws.some((kw: string) => text.toLowerCase().includes(kw.toLowerCase()))
+          const allKws = c.keywords ? c.keywords.split(",").map((k: string) => k.trim()).filter(Boolean) : []
+          allKws.push(c.keyword)
+          return allKws.some((kw: string) => tDm.includes(normDm(kw)))
         })
         const generalKeywords = botConfig.triggerKeywords
           .split(",").map((k: string) => k.trim().toLowerCase()).filter(Boolean)
-        const matchesGeneral = generalKeywords.some(k => text.toLowerCase().includes(k))
+        const matchesGeneral = generalKeywords.some(k => tDm.includes(normDm(k)))
 
         if (matchedCampaign || matchesGeneral) {
           const greeting = matchedCampaign?.greeting
