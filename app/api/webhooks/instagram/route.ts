@@ -237,23 +237,29 @@ export async function POST(req: Request) {
             .replace("{website}", config.websiteUrl || "")
           await sendInstagramDM(igUserId, thankYou)
 
-          // Deliver guide/PDF — single delivery path to avoid duplicates
+          // Deliver guide/PDF
           if (convo.campaignKeyword) {
             const leadKw = await detectKeyword(convo.campaignKeyword).catch(() => null)
 
             if (leadKw) {
-              // LeadMagnet guide: deliver via SMS + email + IG DM (one message total on IG)
+              // LeadMagnet guide: send link directly via IG DM (same token as the whole flow)
+              const magnet = await prisma.leadMagnet.findUnique({ where: { keyword: leadKw } })
+              if (magnet?.guideUrl) {
+                await sendInstagramDM(igUserId,
+                  `📚 Aquí está tu guía "${magnet.title}":\n${magnet.guideUrl}\n\n¡Cualquier pregunta, escríbeme aquí! 😊`
+                )
+              }
+              // Also send via SMS and email (fire and forget)
               deliverLeadMagnet(leadKw, {
                 id: contactId,
                 firstName: nameParts[0],
                 phone,
                 email: convo.email || undefined,
-                instagramIgsid: igUserId,
-              }, { sms: true, email: !!convo.email, fbDm: false, igDm: true }).catch(e =>
-                console.error("[IG bot] guide delivery failed:", e)
+              }, { sms: true, email: !!convo.email, fbDm: false, igDm: false }).catch(e =>
+                console.error("[IG bot] SMS/email guide delivery failed:", e)
               )
             } else {
-              // External PDF campaign (e.g. BRICKELL) — send brochure link
+              // External PDF campaign (e.g. BRICKELL) — send brochure link via IG DM
               const campaign = await prisma.instagramBotCampaign.findUnique({
                 where: { keyword: convo.campaignKeyword },
               })
@@ -263,7 +269,6 @@ export async function POST(req: Request) {
               }
             }
 
-            // Increment campaign lead count
             await prisma.instagramBotCampaign.update({
               where: { keyword: convo.campaignKeyword },
               data: { leads: { increment: 1 } },
