@@ -2,6 +2,7 @@ FROM node:22-bookworm-slim
 
 # System libraries required by Playwright's Chromium at runtime
 RUN apt-get update && apt-get install -y \
+    python3 make g++ \
     libglib2.0-0 \
     libatk1.0-0 \
     libatk-bridge2.0-0 \
