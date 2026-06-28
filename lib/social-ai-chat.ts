@@ -111,28 +111,59 @@ export async function getMatchingProperties(intent?: string | null, limit = 3) {
 
 // Fetch pre-construction communities — lead-safe: hides builder, community name, and direct URL
 export async function getMatchingPreConstruction(userMessage: string, calendlyUrl: string, limit = 3) {
-  const row = await prisma.setting.findUnique({ where: { key: "preconstruction_projects" } })
-  if (!row) return []
-  let projects: any[] = []
-  try { projects = JSON.parse(row.value) } catch { return [] }
+  // Load both scraped (auto) and manually-entered communities
+  const [scrapedRow, manualRow] = await Promise.all([
+    prisma.setting.findUnique({ where: { key: "preconstruction_scraped" } }),
+    prisma.setting.findUnique({ where: { key: "preconstruction_projects" } }),
+  ])
 
-  // Active only (not completed)
-  const active = projects.filter((p: any) => p.status !== "completed")
+  let scraped: any[] = []
+  try {
+    if (scrapedRow) {
+      const parsed = JSON.parse(scrapedRow.value)
+      // Payload is { communities: [...], scrapedAt, count }
+      scraped = Array.isArray(parsed) ? parsed : (parsed.communities || [])
+    }
+  } catch {}
+
+  let manual: any[] = []
+  try { if (manualRow) manual = JSON.parse(manualRow.value) } catch {}
+
+  // Normalize manual entries to same shape as scraped
+  const manualNorm = manual
+    .filter((p: any) => p.status !== "completed")
+    .map((p: any) => ({
+      area: `${p.neighborhood || p.city}, FL`,
+      city: p.city || "",
+      zipCode: p.zipCode,
+      priceMin: p.priceMin,
+      priceMax: p.priceMax,
+      bedrooms: p.bedrooms,
+      deliveryDate: p.deliveryDate,
+      status: p.status,
+      description: p.description,
+      downPayment: p.downPayment,
+      _source: "manual",
+    }))
+
+  const scrapedNorm = scraped.map((p: any) => ({ ...p, _source: "scraped" }))
+
+  // Merge: scraped first (more up-to-date), manual as fallback
+  const all = [...scrapedNorm, ...manualNorm]
 
   // Extract zipcode or area from the user's message for filtering
   const zipMatch = userMessage.match(/\b(3[0-9]{4})\b/)
   const zip = zipMatch?.[1]
+  const lower = userMessage.toLowerCase()
 
-  let matched = active
+  let matched = all
   if (zip) {
-    const byZip = active.filter((p: any) => p.zipCode === zip)
+    const byZip = all.filter((p: any) => p.zipCode === zip)
     if (byZip.length > 0) matched = byZip
   } else {
-    // Try to match city/neighborhood mentioned in the message
-    const lower = userMessage.toLowerCase()
-    const byArea = active.filter((p: any) =>
+    const byArea = all.filter((p: any) =>
       (p.city && lower.includes(p.city.toLowerCase())) ||
-      (p.neighborhood && lower.includes(p.neighborhood.toLowerCase()))
+      (p.area && lower.includes(p.area.toLowerCase().replace(", fl", "").replace(" fl", "")))
     )
     if (byArea.length > 0) matched = byArea
   }
@@ -142,8 +173,8 @@ export async function getMatchingPreConstruction(userMessage: string, calendlyUr
 
   return selected.map((p: any) => {
     const priceRange = p.priceMin && p.priceMax
-      ? `$${p.priceMin.toLocaleString("en-US")} – $${p.priceMax.toLocaleString("en-US")}`
-      : p.priceMin ? `Desde $${p.priceMin.toLocaleString("en-US")}` : null
+      ? `$${Number(p.priceMin).toLocaleString("en-US")} – $${Number(p.priceMax).toLocaleString("en-US")}`
+      : p.priceMin ? `Desde $${Number(p.priceMin).toLocaleString("en-US")}` : null
 
     const statusLabel: Record<string, string> = {
       pre_launch: "Pre-lanzamiento",
@@ -153,7 +184,7 @@ export async function getMatchingPreConstruction(userMessage: string, calendlyUr
     }
 
     return [
-      `🏗️ Nueva construcción — ${p.neighborhood || p.city}, FL`,
+      `🏗️ Nueva construcción — ${p.area || `${p.city}, FL`}`,
       priceRange ? `💰 ${priceRange}` : null,
       p.bedrooms ? `🛏 ${p.bedrooms}` : null,
       p.deliveryDate ? `📅 Entrega: ${p.deliveryDate}` : null,

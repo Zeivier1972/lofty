@@ -4,7 +4,7 @@ import { useState } from "react"
 import {
   Building2, Plus, Trash2, Edit, ExternalLink, X, Save, Loader2,
   TrendingUp, MapPin, Calendar, DollarSign, Users, ChevronDown, ChevronUp,
-  Search, AlertCircle,
+  Search, AlertCircle, RefreshCw, CheckCircle2, Bot,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -41,14 +41,20 @@ const EMPTY_FORM: Partial<Project> = {
   investmentHighlights: "", estimatedROI: "", downPayment: "", bedrooms: "", deliveryDate: "",
 }
 
-interface Props { initialProjects: Project[] }
+interface Props {
+  initialProjects: Project[]
+  scrapedCount?: number
+  scrapedAt?: string
+}
 
-export default function PreConstructionClient({ initialProjects }: Props) {
+export default function PreConstructionClient({ initialProjects, scrapedCount, scrapedAt }: Props) {
   const [projects, setProjects] = useState<Project[]>(initialProjects)
   const [form, setForm] = useState<Partial<Project> | null>(null)
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState("")
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [syncing, setSyncing] = useState(false)
+  const [syncResult, setSyncResult] = useState<{ count: number; strategy: string; errors?: string[] } | null>(null)
 
   const filtered = projects.filter(p =>
     `${p.name} ${p.developer} ${p.neighborhood} ${p.city}`.toLowerCase().includes(search.toLowerCase())
@@ -84,20 +90,72 @@ export default function PreConstructionClient({ initialProjects }: Props) {
   const f = (field: keyof Project, value: any) =>
     setForm(prev => prev ? { ...prev, [field]: value } : prev)
 
+  async function syncShowingNew() {
+    setSyncing(true)
+    setSyncResult(null)
+    try {
+      const res = await fetch("/api/pre-construction/sync", { method: "POST" })
+      if (!res.ok) {
+        setSyncResult({ count: 0, strategy: "error", errors: ["Server returned " + res.status] })
+        return
+      }
+      const data = await res.json()
+      setSyncResult({ count: data.count || 0, strategy: data.strategy || "unknown", errors: data.errors })
+    } catch (e: any) {
+      setSyncResult({ count: 0, strategy: "error", errors: [e?.message] })
+    } finally {
+      setSyncing(false)
+    }
+  }
+
   return (
     <div className="flex flex-col h-full bg-gray-50">
       {/* Header */}
-      <div className="bg-white border-b px-6 py-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Pre-Construction Projects</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Investment properties available for Colombian and Latin American buyers</p>
+      <div className="bg-white border-b px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Pre-Construction Projects</h1>
+            <p className="text-sm text-gray-500 mt-0.5">Investment properties available for Colombian and Latin American buyers</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={syncShowingNew}
+              disabled={syncing}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium disabled:opacity-40"
+            >
+              {syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+              Sync ShowingNew
+            </button>
+            <button
+              onClick={() => setForm({ ...EMPTY_FORM })}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium"
+            >
+              <Plus className="w-4 h-4" /> Add Project
+            </button>
+          </div>
         </div>
-        <button
-          onClick={() => setForm({ ...EMPTY_FORM })}
-          className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium"
-        >
-          <Plus className="w-4 h-4" /> Add Project
-        </button>
+
+        {/* ShowingNew sync status */}
+        {(scrapedCount != null || syncResult) && (
+          <div className={cn(
+            "mt-3 flex items-center gap-2 text-xs px-3 py-2 rounded-lg",
+            syncResult?.strategy === "error" ? "bg-red-50 text-red-700" : "bg-blue-50 text-blue-700"
+          )}>
+            <Bot className="w-3.5 h-3.5 flex-shrink-0" />
+            {syncResult ? (
+              syncResult.strategy === "error"
+                ? `Sync failed: ${syncResult.errors?.[0] || "unknown error"}`
+                : syncResult.count === 0
+                  ? `Sync complete — no communities found (strategy: ${syncResult.strategy}). ShowingNew may require JavaScript to load. Try again or add projects manually.`
+                  : `Synced ${syncResult.count} communities from ShowingNew (strategy: ${syncResult.strategy})`
+            ) : (
+              `${scrapedCount} communities auto-synced from ShowingNew${scrapedAt ? ` · Last sync: ${new Date(scrapedAt).toLocaleDateString()}` : ""}`
+            )}
+            {syncResult && syncResult.errors && syncResult.errors.length > 0 && syncResult.strategy !== "error" && (
+              <span className="text-blue-500 ml-1">({syncResult.errors.length} fetch errors)</span>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-auto p-6">
