@@ -7,15 +7,13 @@ import { v2 as cloudinary } from "cloudinary"
 import OpenAI from "openai"
 import Anthropic from "@anthropic-ai/sdk"
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-})
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-
 async function generateAndUploadImage(prompt: string): Promise<string | null> {
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+  })
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
   const FALLBACKS = [
     "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1080&q=80",
     "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1080&q=80",
