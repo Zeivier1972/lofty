@@ -32,6 +32,7 @@ export async function POST() {
   return NextResponse.json({
     ok: true,
     count: communities.length,
+    communities,
     strategy,
     elapsedMs: Date.now() - start,
     chromiumPath: chromiumPath || null,

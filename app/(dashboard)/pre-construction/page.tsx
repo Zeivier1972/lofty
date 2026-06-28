@@ -5,7 +5,7 @@ import PreConstructionClient from "./pre-construction-client"
 
 export default async function PreConstructionPage() {
   let projects: any[] = []
-  let scrapedCount: number | undefined
+  let scrapedCommunities: any[] = []
   let scrapedAt: string | undefined
 
   const [manualRow, scrapedRow] = await Promise.all([
@@ -17,7 +17,7 @@ export default async function PreConstructionPage() {
   try {
     if (scrapedRow) {
       const parsed = JSON.parse(scrapedRow.value)
-      scrapedCount = parsed.count ?? (Array.isArray(parsed) ? parsed.length : 0)
+      scrapedCommunities = parsed.communities ?? []
       scrapedAt = parsed.scrapedAt
     }
   } catch {}
@@ -25,7 +25,7 @@ export default async function PreConstructionPage() {
   return (
     <PreConstructionClient
       initialProjects={JSON.parse(JSON.stringify(projects))}
-      scrapedCount={scrapedCount}
+      scrapedCommunities={JSON.parse(JSON.stringify(scrapedCommunities))}
       scrapedAt={scrapedAt}
     />
   )
