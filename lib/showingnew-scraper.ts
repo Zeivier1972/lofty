@@ -115,8 +115,10 @@ function parseHtmlServerSide(html: string): ScrapedCommunity[] {
 
     // Prices
     const prices: number[] = []
-    for (const m of text.matchAll(/\$\s*([\d,]+)/g)) {
-      const n = parseFloat(m[1].replace(/,/g, ""))
+    const priceRe = /\$\s*([\d,]+)/g
+    let pm: RegExpExecArray | null
+    while ((pm = priceRe.exec(text)) !== null) {
+      const n = parseFloat(pm[1].replace(/,/g, ""))
       if (n >= 50000 && n <= 20000000) prices.push(n)
     }
     prices.sort((a, b) => a - b)
