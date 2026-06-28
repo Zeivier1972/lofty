@@ -1,14 +1,11 @@
 /**
  * ShowingNew scraper — NewHomeSource Professional platform by BDX.
  *
- * All search pages (homepage, /homes/*, /communities/*) lazy-load results
- * via AJAX (IntersectionObserver + AjaxHelper.load). An ASP.NET session
- * cookie must first be set by visiting the homepage.
+ * All search pages lazy-load results via AJAX (IntersectionObserver).
+ * An ASP.NET session cookie must first be set by visiting the homepage.
  *
- * Approach:
- * 1. Visit homepage → session cookie
- * 2. For each search page: navigate, scroll progressively, capture AJAX HTML
- * 3. Parse whichever AJAX response contains listing data
+ * Primary: parse communityresults/getresultshomes JSON → clean city/price/beds data
+ * Fallback: parse visible text by price-boundary segmentation
  *
  * NEVER exposes builder name, community name, or direct URL to leads.
  */
@@ -65,21 +62,100 @@ function hasPriceOrCity(text: string): boolean {
   return /\$\s*[\d,]{4,}/.test(text) || /[A-Z][a-zA-Z-]+,?\s*FL\b/.test(text)
 }
 
-/** Extract communities from a block of visible text using regex segmentation */
+/**
+ * Parse the communityresults/getresultshomes JSON response.
+ * Returns one ScrapedCommunity per city listed in FacetsCounts.Cities,
+ * using the shared PrRange and BrRange for the search page.
+ * Builder names and community names are intentionally NOT stored.
+ */
+function parseGetResultsHomesJson(body: string, pageUrl: string): ScrapedCommunity[] {
+  let json: any
+  try { json = JSON.parse(body) } catch { return [] }
+
+  const facets = json && json.FacetsCounts
+  if (!facets) return []
+
+  const now = new Date().toISOString()
+
+  // Parse price range "439900-924900"
+  let priceMin: number | undefined
+  let priceMax: number | undefined
+  if (facets.PrRange && typeof facets.PrRange === "string") {
+    const parts = (facets.PrRange as string).split("-")
+    const lo = parseInt(parts[0] || "", 10)
+    const hi = parseInt(parts[1] || "", 10)
+    if (!isNaN(lo) && lo > 0) priceMin = lo
+    if (!isNaN(hi) && hi > 0) priceMax = hi
+  }
+
+  // Parse bedroom range "3-4" or "3"
+  let bedrooms: string | undefined
+  if (facets.BrRange && typeof facets.BrRange === "string") {
+    bedrooms = (facets.BrRange as string).trim()
+  }
+
+  // Extract readable area from page URL
+  // e.g. ".../miami-dade-county" → "Miami-Dade County"
+  // e.g. ".../city-homestead" → "Homestead"
+  const urlSegs = pageUrl.replace(/\/$/, "").split("/")
+  const lastSeg = urlSegs[urlSegs.length - 1] || ""
+  let areaLabel = lastSeg.replace(/^city-/, "").replace(/-/g, " ")
+    .replace(/\b\w/g, function(l: string) { return l.toUpperCase() })
+  if (!areaLabel) areaLabel = "South Florida"
+
+  const cities: string[] = []
+  if (facets.Cities && Array.isArray(facets.Cities)) {
+    for (let i = 0; i < facets.Cities.length; i++) {
+      const v = facets.Cities[i] && facets.Cities[i].Value
+      if (typeof v === "string" && v.trim()) cities.push(v.trim())
+    }
+  }
+
+  // If no cities found in facets, create one entry for the area
+  if (cities.length === 0) {
+    if (!priceMin && !priceMax) return []
+    return [{
+      area: areaLabel + ", FL",
+      city: areaLabel,
+      priceMin,
+      priceMax,
+      bedrooms,
+      description: areaLabel + " new construction homes",
+      scrapedAt: now,
+    }]
+  }
+
+  const results: ScrapedCommunity[] = []
+  for (let i = 0; i < cities.length; i++) {
+    results.push({
+      area: cities[i] + ", FL",
+      city: cities[i],
+      priceMin,
+      priceMax,
+      bedrooms,
+      description: cities[i] + " new construction homes",
+      scrapedAt: now,
+    })
+  }
+  return results
+}
+
+/** Extract communities from a block of visible text using regex segmentation (fallback) */
 function parseFromVisibleText(text: string): ScrapedCommunity[] {
   if (!text || text.length < 100) return []
   const now = new Date().toISOString()
   const communities: ScrapedCommunity[] = []
 
   // Split visible text at price boundaries to get one block per listing
-  // e.g. "Miami, FL ... From $450,000 ... 3 Beds | Broward, FL ... From $380,000 ..."
   const chunks = text.split(/(?=\$\s*[\d,]{6,})/)
 
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i].substring(0, 400)
     if (!hasPriceOrCity(chunk)) continue
 
-    const cityM = chunk.match(/([A-Z][a-zA-Z-]+(?:\s+[A-Z][a-zA-Z-]+)*)\s*,?\s*FL\b/)
+    // Only match city if immediately before ", FL" with no uppercase prefix noise
+    // Require the city name to start a word boundary after a space or line start
+    const cityM = chunk.match(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s*,?\s*FL\b/)
     const priceRe = /\$\s*([\d,]+)/g
     const prices: number[] = []
     let pm: RegExpExecArray | null
@@ -122,19 +198,29 @@ async function scrapePageWithPlaywright(
   page: any,
   url: string
 ): Promise<ScrapedCommunity[]> {
+  const capturedJson: string[] = []
   const capturedHtml: string[] = []
 
-  // Capture AJAX HTML responses from showingnew.com
   const handler = async (res: any) => {
     try {
       const resUrl: string = res.url()
       if (!resUrl.includes("showingnew.com")) return
       if (resUrl === url || resUrl === AGENT_URL) return
       if (/\.(css|js|png|jpg|gif|woff|ico|svg|webp)/i.test(resUrl)) return
+
       const ct: string = res.headers()["content-type"] || ""
-      if (!ct.includes("html")) return
       const body = await res.text().catch(() => "")
-      if (body.length > 200 && hasPriceOrCity(body)) {
+      if (body.length < 50) return
+
+      // Priority: capture getresultshomes JSON (contains clean city/price/beds data)
+      if (resUrl.includes("getresultshomes")) {
+        console.log("[ShowingNew] JSON: " + resUrl.substring(0, 80) + " (" + body.length + "b)")
+        capturedJson.push(body)
+        return
+      }
+
+      // Also capture HTML AJAX responses as fallback
+      if (ct.includes("html") && body.length > 200 && hasPriceOrCity(body)) {
         console.log("[ShowingNew] AJAX HTML: " + resUrl.substring(0, 80) + " (" + body.length + "b)")
         capturedHtml.push(body)
       }
@@ -143,7 +229,6 @@ async function scrapePageWithPlaywright(
   page.on("response", handler)
 
   try {
-    // Navigate
     try { await page.goto(url, { timeout: 35000, waitUntil: "networkidle" }) } catch {
       try { await page.goto(url, { timeout: 25000, waitUntil: "load" }) } catch {}
     }
@@ -165,13 +250,22 @@ async function scrapePageWithPlaywright(
 
     await page.waitForTimeout(3000)
 
-    // Use captured AJAX HTML if available (most reliable)
+    // Primary: parse getresultshomes JSON responses
+    for (let i = 0; i < capturedJson.length; i++) {
+      const found = parseGetResultsHomesJson(capturedJson[i], url)
+      if (found.length > 0) {
+        console.log("[ShowingNew] JSON parse: " + found.length + " cities from " + url)
+        return found
+      }
+    }
+
+    // Fallback: parse AJAX HTML responses
     for (let i = 0; i < capturedHtml.length; i++) {
       const found = parseFromVisibleText(capturedHtml[i].replace(/<[^>]+>/g, " ").replace(/\s+/g, " "))
       if (found.length > 0) return found
     }
 
-    // Fall back to page visible text
+    // Last resort: page visible text
     const visibleText: string = await page.evaluate(function() {
       return (document.body?.innerText || "").replace(/\s+/g, " ")
     }).catch(() => "") as string
@@ -179,7 +273,7 @@ async function scrapePageWithPlaywright(
     const fromText = parseFromVisibleText(visibleText)
     if (fromText.length > 0) return fromText
 
-    console.log("[ShowingNew] " + url + " — text sample: " + visibleText.substring(0, 300))
+    console.log("[ShowingNew] " + url + " — nothing found, text sample: " + visibleText.substring(0, 300))
     return []
   } finally {
     page.off("response", handler)
@@ -232,7 +326,7 @@ async function scrapeWithPlaywright(): Promise<{ communities: ScrapedCommunity[]
     }
 
     if (allCommunities.length > 0) {
-      return { communities: allCommunities, errors: [], strategy: "playwright-scroll" }
+      return { communities: allCommunities, errors: [], strategy: "playwright-json" }
     }
     return { communities: [], errors: ["no communities on any page"], strategy: "none" }
 
