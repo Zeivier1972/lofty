@@ -68,30 +68,52 @@ function parsePrice(s: string | undefined | null): number | undefined {
   return isNaN(n) ? undefined : n
 }
 
-// Find the system Chromium path
-function getChromiumPath(): string | undefined {
-  // Railway/Nixpacks sets this env var
-  if (process.env.SHOWINGNEW_CHROMIUM_PATH) return process.env.SHOWINGNEW_CHROMIUM_PATH
-  // Common system paths
+// Find the system Chromium path — tries env var, which, and hardcoded paths
+export function getChromiumPath(): string | null {
+  const { execSync } = require("child_process")
+
+  // 1. Explicit env var (set this on Railway if auto-detection fails)
+  if (process.env.SHOWINGNEW_CHROMIUM_PATH) {
+    console.log("[ShowingNew] Using SHOWINGNEW_CHROMIUM_PATH:", process.env.SHOWINGNEW_CHROMIUM_PATH)
+    return process.env.SHOWINGNEW_CHROMIUM_PATH
+  }
+
+  // 2. which — works in both Nix and Debian environments
+  const whichCandidates = ["chromium", "chromium-browser", "google-chrome", "google-chrome-stable"]
+  for (const bin of whichCandidates) {
+    try {
+      const p = execSync(`which ${bin} 2>/dev/null`, { encoding: "utf8" }).trim()
+      if (p) { console.log("[ShowingNew] Found chromium via which:", p); return p }
+    } catch {}
+  }
+
+  // 3. Hardcoded common paths
   const candidates = [
     "/usr/bin/chromium",
     "/usr/bin/chromium-browser",
     "/usr/bin/google-chrome",
     "/usr/bin/google-chrome-stable",
     "/snap/bin/chromium",
+    "/nix/var/nix/profiles/system/sw/bin/chromium",
+    "/root/.nix-profile/bin/chromium",
+    "/run/current-system/sw/bin/chromium",
   ]
-  const { execSync } = require("child_process")
   for (const p of candidates) {
     try {
       execSync(`test -f "${p}"`, { stdio: "ignore" })
+      console.log("[ShowingNew] Found chromium at:", p)
       return p
     } catch {}
   }
-  // Try which
+
+  // 4. Last resort: find in PATH
   try {
-    return execSync("which chromium chromium-browser google-chrome 2>/dev/null", { encoding: "utf8" }).trim().split("\n")[0]
+    const found = execSync("find /nix /usr /opt /snap -name 'chromium' -type f 2>/dev/null | head -1", { encoding: "utf8" }).trim()
+    if (found) { console.log("[ShowingNew] Found chromium via find:", found); return found }
   } catch {}
-  return undefined
+
+  console.error("[ShowingNew] No Chromium found. Set SHOWINGNEW_CHROMIUM_PATH env var on Railway.")
+  return null
 }
 
 /** Extract all community data visible on the page using multiple selector strategies */
@@ -180,10 +202,7 @@ async function scrapeWithPlaywright(searchTerm?: string): Promise<ScrapedCommuni
   }
 
   const executablePath = getChromiumPath()
-  if (!executablePath) {
-    console.warn("[ShowingNew] No system Chromium found. Set SHOWINGNEW_CHROMIUM_PATH env var.")
-    return []
-  }
+  if (!executablePath) return []
 
   let browser: any = null
   try {

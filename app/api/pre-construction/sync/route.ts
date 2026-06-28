@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { scrapeShowingNew } from "@/lib/showingnew-scraper"
+import { scrapeShowingNew, getChromiumPath } from "@/lib/showingnew-scraper"
 
 const SCRAPED_KEY = "preconstruction_scraped"
 
@@ -13,6 +13,7 @@ export async function POST() {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const start = Date.now()
+  const chromiumPath = getChromiumPath()
   const { communities, errors, strategy } = await scrapeShowingNew()
 
   const payload = {
@@ -33,6 +34,7 @@ export async function POST() {
     count: communities.length,
     strategy,
     elapsedMs: Date.now() - start,
+    chromiumPath: chromiumPath || null,
     errors: errors.length > 0 ? errors.slice(0, 5) : undefined,
   })
 }

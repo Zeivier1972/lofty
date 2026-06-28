@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { scrapeShowingNew } from "@/lib/showingnew-scraper"
+import { scrapeShowingNew, getChromiumPath } from "@/lib/showingnew-scraper"
 
 const SCRAPED_KEY = "preconstruction_scraped"
 
@@ -15,7 +15,8 @@ export async function GET(req: Request) {
   }
 
   const start = Date.now()
-  console.log("[Cron] Starting ShowingNew scrape...")
+  const chromiumPath = getChromiumPath()
+  console.log("[Cron] Starting ShowingNew scrape. Chromium:", chromiumPath || "NOT FOUND")
 
   const { communities, errors, strategy } = await scrapeShowingNew()
 
@@ -40,6 +41,7 @@ export async function GET(req: Request) {
     count: communities.length,
     strategy,
     elapsedMs: elapsed,
+    chromiumPath: chromiumPath || null,
     errors: errors.length > 0 ? errors.slice(0, 10) : undefined,
   })
 }

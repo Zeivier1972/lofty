@@ -54,7 +54,7 @@ export default function PreConstructionClient({ initialProjects, scrapedCount, s
   const [search, setSearch] = useState("")
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
-  const [syncResult, setSyncResult] = useState<{ count: number; strategy: string; errors?: string[] } | null>(null)
+  const [syncResult, setSyncResult] = useState<{ count: number; strategy: string; chromiumPath?: string | null; errors?: string[] } | null>(null)
 
   const filtered = projects.filter(p =>
     `${p.name} ${p.developer} ${p.neighborhood} ${p.city}`.toLowerCase().includes(search.toLowerCase())
@@ -100,7 +100,7 @@ export default function PreConstructionClient({ initialProjects, scrapedCount, s
         return
       }
       const data = await res.json()
-      setSyncResult({ count: data.count || 0, strategy: data.strategy || "unknown", errors: data.errors })
+      setSyncResult({ count: data.count || 0, strategy: data.strategy || "unknown", chromiumPath: data.chromiumPath, errors: data.errors })
     } catch (e: any) {
       setSyncResult({ count: 0, strategy: "error", errors: [e?.message] })
     } finally {
@@ -145,14 +145,13 @@ export default function PreConstructionClient({ initialProjects, scrapedCount, s
             {syncResult ? (
               syncResult.strategy === "error"
                 ? `Sync failed: ${syncResult.errors?.[0] || "unknown error"}`
-                : syncResult.count === 0
-                  ? `Sync complete — no communities found (strategy: ${syncResult.strategy}). ShowingNew may require JavaScript to load. Try again or add projects manually.`
-                  : `Synced ${syncResult.count} communities from ShowingNew (strategy: ${syncResult.strategy})`
+                : syncResult.count > 0
+                  ? `Synced ${syncResult.count} communities from ShowingNew`
+                  : syncResult.chromiumPath
+                    ? `Chromium found at ${syncResult.chromiumPath} but no communities extracted — check Railway logs for details`
+                    : `Chromium not found on server. Set SHOWINGNEW_CHROMIUM_PATH in Railway environment variables.`
             ) : (
               `${scrapedCount} communities auto-synced from ShowingNew${scrapedAt ? ` · Last sync: ${new Date(scrapedAt).toLocaleDateString()}` : ""}`
-            )}
-            {syncResult && syncResult.errors && syncResult.errors.length > 0 && syncResult.strategy !== "error" && (
-              <span className="text-blue-500 ml-1">({syncResult.errors.length} fetch errors)</span>
             )}
           </div>
         )}
