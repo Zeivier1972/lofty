@@ -47,4 +47,4 @@ COPY . .
 RUN npx prisma generate && npm run build
 
 EXPOSE 3000
-CMD ["sh", "-c", "node scripts/db-migrate.js && ./node_modules/.bin/next start -H 0.0.0.0"]
+CMD ["./node_modules/.bin/next", "start", "-H", "0.0.0.0"]

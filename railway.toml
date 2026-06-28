@@ -1,7 +1,8 @@
 [build]
 
 [deploy]
-startCommand = "node scripts/db-migrate.js && ./node_modules/.bin/next start -H 0.0.0.0"
+preDeployCommand = "node scripts/db-migrate.js"
+startCommand = "./node_modules/.bin/next start -H 0.0.0.0"
 healthcheckPath = "/api/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
