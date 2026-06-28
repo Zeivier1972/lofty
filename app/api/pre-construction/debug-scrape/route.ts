@@ -5,11 +5,9 @@ import { auth } from "@/lib/auth"
 import { getChromiumPath } from "@/lib/showingnew-scraper"
 
 const AGENT_URL = "https://www.showingnew.com/catherinegomez"
-const BSXN_PATH = "/catherinegomez/home/getbuildersection"
 const COMMUNITIES_URL = "https://www.showingnew.com/catherinegomez/communities/florida/miami-dade-county"
 
-// Debug endpoint: navigates to ShowingNew homepage, then fetches BSXN endpoint
-// with the session cookie — shows raw HTML so we can see the community structure.
+// Debug: visit homepage (session), fetch communities page, show what we get.
 export async function GET() {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -27,7 +25,6 @@ export async function GET() {
       headless: true,
       args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
     })
-
     const ctx = await browser.newContext({
       ignoreHTTPSErrors: true,
       userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -35,64 +32,63 @@ export async function GET() {
     })
     const page = await ctx.newPage()
 
-    // 1. Navigate to homepage → establishes ASP.NET session cookie
-    let navError = ""
-    try {
-      await page.goto(AGENT_URL, { timeout: 40000, waitUntil: "networkidle" })
-    } catch (e: any) {
-      navError = e?.message?.split("\n")[0] || ""
-      try { await page.goto(AGENT_URL, { timeout: 25000, waitUntil: "load" }) } catch {}
-    }
-    await page.waitForTimeout(1500)
+    // Step 1: homepage → session cookie
+    try { await page.goto(AGENT_URL, { timeout: 35000, waitUntil: "networkidle" }) } catch {}
+    await page.waitForTimeout(1000)
 
-    // 2. Fetch BSXN endpoint with session cookies
-    const bsxn = await page.evaluate(async (path: string) => {
+    // Step 2: fetch communities page with session cookie
+    const result = await page.evaluate(async (url: string) => {
       try {
-        const r = await fetch(path, {
-          method: "GET",
-          headers: { "X-Requested-With": "XMLHttpRequest", "Accept": "text/html, */*" },
+        const res = await fetch(url, {
+          headers: { Accept: "text/html, */*", "Accept-Language": "en-US,en;q=0.9" },
           credentials: "same-origin",
         })
-        const html = await r.text()
-        return { status: r.status, html, length: html.length }
-      } catch (e: any) {
-        return { status: 0, html: "", length: 0, error: e.message }
-      }
-    }, BSXN_PATH)
+        const html = await res.text()
 
-    // 3. Fetch communities page with session cookies
-    const communities = await page.evaluate(async (url: string) => {
-      try {
-        const r = await fetch(url, {
-          headers: { Accept: "text/html, */*" },
-          credentials: "same-origin",
-        })
-        const html = await r.text()
-        return { status: r.status, html: html.substring(0, 3000), length: html.length }
+        // Count patterns to verify community data is in the HTML
+        const priceRe = /\$\s*([\d,]+)/g
+        let pm: RegExpExecArray | null
+        const prices: string[] = []
+        while ((pm = priceRe.exec(html)) !== null) prices.push(pm[1])
+
+        const cityRe = /([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)\s*,?\s*FL\b/g
+        const cities: string[] = []
+        let cm: RegExpExecArray | null
+        while ((cm = cityRe.exec(html)) !== null) cities.push(cm[1])
+
+        const imgRe = /akamaized\.net[^"'\s]*\.(?:jpg|png|webp)/gi
+        const imgs = html.match(imgRe) || []
+
+        // Try to find community cards with multiple selectors
+        const doc = new DOMParser().parseFromString(html, "text/html")
+        const selectorResults: Record<string, number> = {}
+        const sels = [
+          "[class*='community']", "[class*='BSXN']", "[class*='search-result']",
+          "[class*='listing']", ".col-sm-6", ".col-md-4", ".col-md-3",
+          ".panel", "li[class]", "article",
+        ]
+        for (let i = 0; i < sels.length; i++) {
+          try { selectorResults[sels[i]] = doc.querySelectorAll(sels[i]).length } catch (_) {}
+        }
+
+        return {
+          status: res.status,
+          length: html.length,
+          // Show body section (skip head)
+          bodyPreview: (html.match(/<body[^>]*>([\s\S]{0,4000})/) || ["", ""])[1],
+          priceCount: prices.length,
+          uniquePrices: Array.from(new Set(prices)).slice(0, 20),
+          cityCount: cities.length,
+          uniqueCities: Array.from(new Set(cities)).slice(0, 20),
+          imgCount: imgs.length,
+          selectorHits: selectorResults,
+        }
       } catch (e: any) {
-        return { status: 0, html: "", length: 0, error: e.message }
+        return { status: 0, error: e.message }
       }
     }, COMMUNITIES_URL)
 
-    return NextResponse.json({
-      chromiumPath: executablePath,
-      navError: navError || null,
-      homepageTitle: await page.title().catch(() => ""),
-      bsxn: {
-        path: BSXN_PATH,
-        status: (bsxn as any).status,
-        length: (bsxn as any).length,
-        preview: (bsxn as any).html?.substring(0, 3000) || "",
-        error: (bsxn as any).error || null,
-      },
-      communities: {
-        url: COMMUNITIES_URL,
-        status: (communities as any).status,
-        length: (communities as any).length,
-        preview: (communities as any).html || "",
-        error: (communities as any).error || null,
-      },
-    })
+    return NextResponse.json({ chromiumPath: executablePath, communities: result })
   } catch (e: any) {
     return NextResponse.json({ error: e?.message }, { status: 500 })
   } finally {

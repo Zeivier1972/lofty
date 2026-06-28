@@ -2,11 +2,14 @@
  * ShowingNew scraper — fetches new construction communities from the agent's
  * ShowingNew page (NewHomeSource Professional platform by BDX).
  *
- * The server requires an ASP.NET session cookie set by the homepage before
- * any AJAX endpoints return content. Strategy:
- * 1. Navigate to the homepage with Playwright (establishes session cookie)
- * 2. Fetch the BSXN endpoint within the page context (sends cookie automatically)
- * 3. Fall back to navigating to the communities page directly
+ * The server requires an ASP.NET session cookie (set by homepage visit) before
+ * the communities search page will load. The /home/getbuildersection AJAX
+ * endpoint always returns empty even with a valid session.
+ *
+ * Strategy:
+ * 1. Navigate to homepage to establish the ASP.NET session cookie
+ * 2. Fetch the communities search page in-browser (has session cookie)
+ * 3. Parse the 100KB+ server-rendered HTML with DOMParser to find community cards
  *
  * Data stored: area, price range, beds, delivery, description, image, zipCode.
  * Data NEVER stored or shown to leads: builder name, community name, direct URL.
@@ -27,7 +30,8 @@ export interface ScrapedCommunity {
 }
 
 const AGENT_URL = "https://www.showingnew.com/catherinegomez"
-const BSXN_PATH = "/catherinegomez/home/getbuildersection"
+// Communities search page — confirmed to return 104KB of server-rendered HTML
+// when fetched with a valid ASP.NET session (established by homepage visit).
 const COMMUNITIES_URL = "https://www.showingnew.com/catherinegomez/communities/florida/miami-dade-county"
 
 /** Find the full Chromium binary */
@@ -54,30 +58,37 @@ export function getChromiumPath(): string | null {
   return null
 }
 
-/** Parse community cards from an HTML string using DOMParser in the browser context */
+/** Parse community cards from HTML using DOMParser inside the browser context */
 async function parseHtmlWithDom(page: any, html: string): Promise<ScrapedCommunity[]> {
-  if (!html || html.length < 100) return []
+  if (!html || html.length < 500) return []
 
   const raw = await page.evaluate((htmlStr: string) => {
     try {
       const doc = new DOMParser().parseFromString(htmlStr, "text/html")
 
-      // Try progressively broader selectors — BDX/NewHomeSource uses Bootstrap grid
+      // BDX/NewHomeSource communities page uses Bootstrap grid — try many selectors
       const selectorSets = [
         "[class*='BSXN']", "[class*='bsxn']",
         "[class*='community-card']", "[class*='community-listing']",
-        "[class*='community-result']", "[class*='plan-card']",
-        "[class*='builder-card']", "[class*='listing-card']",
-        ".col-xs-12.col-sm-6", ".col-sm-6", ".col-md-4",
+        "[class*='community-result']", "[class*='community-item']",
+        "[class*='search-result']", "[class*='listing-card']",
+        "[class*='plan-card']", "[class*='builder-card']",
+        ".col-xs-12.col-sm-6", ".col-sm-6.col-md-4", ".col-sm-6",
+        ".col-md-4", ".col-md-3", ".col-lg-4",
         ".panel.panel-default", ".panel",
-        "li[class]", "article",
+        "li.community", "li[class]",
+        "article",
       ]
 
       let cards: Element[] = []
       for (let i = 0; i < selectorSets.length; i++) {
-        const found = Array.from(doc.querySelectorAll(selectorSets[i]))
-        if (found.length >= 2) { cards = found; break }
+        try {
+          const found = Array.from(doc.querySelectorAll(selectorSets[i]))
+          // Need ≥2 cards (skip single container elements)
+          if (found.length >= 2) { cards = found; break }
+        } catch (_) {}
       }
+
       // Fall back to body's direct children
       if (cards.length < 2 && doc.body && doc.body.children.length >= 2) {
         cards = Array.from(doc.body.children)
@@ -87,12 +98,12 @@ async function parseHtmlWithDom(page: any, html: string): Promise<ScrapedCommuni
       return cards.map(function(card) {
         const text = (card.textContent || "").replace(/\s+/g, " ").trim()
         const img = card.querySelector("img") as HTMLImageElement | null
-        const imgSrc = img ? (img.getAttribute("src") || img.getAttribute("data-src") || "") : ""
+        const imgSrc = img
+          ? (img.getAttribute("src") || img.getAttribute("data-src") || img.getAttribute("data-lazy") || "")
+          : ""
 
-        // City, FL
         const cityM = text.match(/([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)\s*,?\s*FL\b/)
 
-        // Prices via exec loop (no matchAll — ES5 compat)
         const prices: number[] = []
         const priceRe = /\$\s*([\d,]+)/g
         let pm: RegExpExecArray | null
@@ -118,7 +129,7 @@ async function parseHtmlWithDom(page: any, html: string): Promise<ScrapedCommuni
       }).filter(function(c: any) {
         return c.text.length > 30 && (c.city || c.prices.length > 0)
       })
-    } catch (e) {
+    } catch (_) {
       return []
     }
   }, html)
@@ -170,25 +181,21 @@ async function scrapeWithPlaywright(): Promise<{ communities: ScrapedCommunity[]
     })
     const page = await ctx.newPage()
 
-    // ── Step 1: Navigate to homepage to establish ASP.NET session cookie ──
-    console.log("[ShowingNew] Loading homepage to establish session…")
+    // ── Step 1: Navigate to homepage → establishes ASP.NET session cookie ──
+    console.log("[ShowingNew] Visiting homepage to establish session…")
     try {
-      await page.goto(AGENT_URL, { timeout: 40000, waitUntil: "networkidle" })
+      await page.goto(AGENT_URL, { timeout: 35000, waitUntil: "networkidle" })
     } catch {
-      try { await page.goto(AGENT_URL, { timeout: 30000, waitUntil: "load" }) } catch {}
+      try { await page.goto(AGENT_URL, { timeout: 25000, waitUntil: "load" }) } catch {}
     }
-    await page.waitForTimeout(1500)
+    await page.waitForTimeout(1000)
 
-    // ── Step 2: Fetch BSXN endpoint within the browser (uses session cookie) ──
-    console.log("[ShowingNew] Fetching BSXN endpoint with session cookie…")
-    const bsxnResult = await page.evaluate(async (path: string) => {
+    // ── Step 2: Fetch communities page with session cookie (server-renders all cards) ──
+    console.log("[ShowingNew] Fetching communities page with session…")
+    const fetched = await page.evaluate(async (url: string) => {
       try {
-        const res = await fetch(path, {
-          method: "GET",
-          headers: {
-            "X-Requested-With": "XMLHttpRequest",
-            "Accept": "text/html, */*; q=0.1",
-          },
+        const res = await fetch(url, {
+          headers: { "Accept": "text/html, */*", "Accept-Language": "en-US,en;q=0.9" },
           credentials: "same-origin",
         })
         const html = await res.text()
@@ -196,58 +203,40 @@ async function scrapeWithPlaywright(): Promise<{ communities: ScrapedCommunity[]
       } catch (e: any) {
         return { status: 0, html: "", length: 0, error: e.message }
       }
-    }, BSXN_PATH).catch(() => ({ status: 0, html: "", length: 0 })) as { status: number; html: string; length: number }
+    }, COMMUNITIES_URL).catch(() => ({ status: 0, html: "", length: 0 })) as any
 
-    console.log(`[ShowingNew] BSXN: ${bsxnResult.status}, ${bsxnResult.length}b`)
+    console.log(`[ShowingNew] Communities fetch: ${fetched.status}, ${fetched.length}b`)
 
-    if (bsxnResult.html && bsxnResult.length > 100) {
-      const communities = await parseHtmlWithDom(page, bsxnResult.html)
+    if (fetched.html && fetched.length > 500) {
+      const communities = await parseHtmlWithDom(page, fetched.html)
       if (communities.length > 0) {
-        console.log(`[ShowingNew] BSXN fetch → ${communities.length} communities`)
-        return { communities, errors: [], strategy: "bsxn-in-browser" }
+        console.log(`[ShowingNew] Parsed ${communities.length} communities from fetch`)
+        return { communities, errors: [], strategy: "communities-fetch" }
       }
+      console.log("[ShowingNew] Fetch returned HTML but no communities parsed — trying navigation")
     }
 
-    // ── Step 3: Navigate to communities page (has session cookie now) ──
+    // ── Step 3: Navigate to communities page (JavaScript will run, may render more) ──
     console.log("[ShowingNew] Navigating to communities page…")
     try {
       await page.goto(COMMUNITIES_URL, { timeout: 35000, waitUntil: "networkidle" })
     } catch {
       try { await page.goto(COMMUNITIES_URL, { timeout: 25000, waitUntil: "load" }) } catch {}
     }
-    await page.waitForTimeout(2000)
+    await page.waitForTimeout(3000)
 
-    const commHtml: string = await page.content().catch(() => "")
-    if (commHtml.length > 500) {
-      const communities = await parseHtmlWithDom(page, commHtml)
+    const navHtml: string = await page.content().catch(() => "")
+    if (navHtml.length > 500) {
+      const communities = await parseHtmlWithDom(page, navHtml)
       if (communities.length > 0) {
-        console.log(`[ShowingNew] Communities page → ${communities.length} communities`)
-        return { communities, errors: [], strategy: "communities-page" }
+        console.log(`[ShowingNew] Parsed ${communities.length} communities from navigation`)
+        return { communities, errors: [], strategy: "communities-navigate" }
       }
     }
 
-    // ── Step 4: Also try fetching communities page in-page (same session) ──
-    const commFetch = await page.evaluate(async (url: string) => {
-      try {
-        const res = await fetch(url, { credentials: "same-origin", headers: { Accept: "text/html,*/*" } })
-        const html = await res.text()
-        return { status: res.status, html, length: html.length }
-      } catch (e: any) {
-        return { status: 0, html: "", length: 0 }
-      }
-    }, COMMUNITIES_URL).catch(() => ({ status: 0, html: "", length: 0 })) as any
-
-    if (commFetch.html && commFetch.length > 500) {
-      const communities = await parseHtmlWithDom(page, commFetch.html)
-      if (communities.length > 0) {
-        console.log(`[ShowingNew] Communities fetch → ${communities.length} communities`)
-        return { communities, errors: [], strategy: "communities-fetch" }
-      }
-    }
-
-    const txt: string = await page.evaluate(() => (document.body?.innerText || "").substring(0, 500)).catch(() => "")
-    console.log("[ShowingNew] All strategies failed. Page text:", txt)
-    return { communities: [], errors: ["no communities found in any strategy"], strategy: "none" }
+    const txt: string = await page.evaluate(() => (document.body?.innerText || "").substring(0, 600)).catch(() => "")
+    console.log("[ShowingNew] No communities found. Page text:", txt)
+    return { communities: [], errors: ["no communities found"], strategy: "none" }
 
   } catch (e: any) {
     return { communities: [], errors: [e?.message || "unknown"], strategy: "none" }
