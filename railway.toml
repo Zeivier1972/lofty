@@ -1,3 +1,6 @@
+[build]
+# nixpacks.toml installs system Chromium for the ShowingNew scraper
+
 [deploy]
 startCommand = "node scripts/db-migrate.js && next start -H 0.0.0.0"
 healthcheckPath = "/api/health"

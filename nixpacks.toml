@@ -1,0 +1,8 @@
+[phases.setup]
+nixPkgs = ["chromium", "nss", "nspr", "dbus", "expat", "glib", "libxkbcommon"]
+
+[variables]
+# Tell Playwright to skip downloading its own browsers; we use system Chromium
+PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1"
+# Path to system Chromium binary (Nix puts it at /usr/bin/chromium)
+SHOWINGNEW_CHROMIUM_PATH = "/usr/bin/chromium"
