@@ -20,10 +20,11 @@ export async function GET() {
   return NextResponse.json({
     env: {
       PATH: process.env.PATH,
+      HOME: process.env.HOME,
+      RAILWAY_ENVIRONMENT: process.env.RAILWAY_ENVIRONMENT || "(not set)",
       SHOWINGNEW_CHROMIUM_PATH: process.env.SHOWINGNEW_CHROMIUM_PATH || "(not set)",
       PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH || "(not set)",
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: process.env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD || "(not set)",
-      HOME: process.env.HOME,
     },
     which: {
       chromium: run("which chromium 2>/dev/null || echo 'not found'"),
