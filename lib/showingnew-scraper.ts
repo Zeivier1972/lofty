@@ -30,6 +30,8 @@ const AGENT_URL = "https://www.showingnew.com/catherinegomez"
 
 const SEARCH_PAGES = [
   "https://www.showingnew.com/catherinegomez/homes/florida/miami-dade-county",
+  "https://www.showingnew.com/catherinegomez/homes/florida/miami-dade-county/city-homestead",
+  "https://www.showingnew.com/catherinegomez/homes/florida/miami-dade-county/city-florida-city",
   "https://www.showingnew.com/catherinegomez/homes/florida/broward-county-ft.-lauderdale/",
   "https://www.showingnew.com/catherinegomez/homes/florida/palm-beach-county/city-west-palm-beach",
   "https://www.showingnew.com/catherinegomez/communities/florida/miami-dade-county",
