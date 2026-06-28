@@ -35,6 +35,7 @@ WORKDIR /app
 # Install node deps (skip playwright auto-download — we control it below)
 COPY package*.json ./
 COPY prisma ./prisma/
+COPY scripts ./scripts/
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 RUN npm ci
 
