@@ -1004,6 +1004,7 @@ async function main() {
   await seedBrickellKeywords(db).catch(e => console.warn("[db-migrate] Brickell keywords skip:", e.message))
   await db.$disconnect()
   console.log("[db-migrate] done")
+  process.exit(0)
 }
 
 main().catch(e => { console.error("[db-migrate] fatal:", e); process.exit(1) })
