@@ -8,6 +8,7 @@ const AGENT_URL = "https://www.showingnew.com/catherinegomez"
 const SEARCH_PAGES = [
   "https://www.showingnew.com/catherinegomez/homes/florida/miami-dade-county",
   "https://www.showingnew.com/catherinegomez/homes/florida/broward-county-ft.-lauderdale/",
+  "https://www.showingnew.com/catherinegomez/homes/florida/palm-beach-county/city-west-palm-beach",
 ]
 
 export async function GET() {
