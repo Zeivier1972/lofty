@@ -1,8 +1,44 @@
 [phases.setup]
-nixPkgs = ["chromium", "nss", "nspr", "dbus", "expat", "glib", "libxkbcommon"]
+# System libraries required by Playwright's bundled Chromium
+nixPkgs = [
+  "alsa-lib",
+  "at-spi2-atk",
+  "at-spi2-core",
+  "atk",
+  "cairo",
+  "cups",
+  "dbus",
+  "expat",
+  "fontconfig",
+  "freetype",
+  "gdk-pixbuf",
+  "glib",
+  "gtk3",
+  "libdrm",
+  "libxkbcommon",
+  "mesa",
+  "nspr",
+  "nss",
+  "pango",
+  "xorg.libX11",
+  "xorg.libXcomposite",
+  "xorg.libXcursor",
+  "xorg.libXdamage",
+  "xorg.libXext",
+  "xorg.libXfixes",
+  "xorg.libXi",
+  "xorg.libXrandr",
+  "xorg.libxshmfence",
+  "xorg.libXtst",
+  "xorg.libxcb",
+]
+
+[phases.install]
+# Install node packages, then download Playwright's own Chromium binary
+cmds = [
+  "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm ci",
+  "npx playwright install chromium",
+]
 
 [variables]
-# Tell Playwright to skip downloading its own browsers; we use system Chromium
 PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1"
-# Path to system Chromium binary (Nix puts it at /usr/bin/chromium)
-SHOWINGNEW_CHROMIUM_PATH = "/usr/bin/chromium"
