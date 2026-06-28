@@ -22,7 +22,12 @@ import { generateGuideFromScript } from "./generate-guide"
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+// Lazy so Docker build (no env vars) doesn't throw during module load
+let _openai: OpenAI | null = null
+function getOpenAI(): OpenAI {
+  if (!_openai) _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  return _openai
+}
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -266,7 +271,7 @@ async function generateAndUploadImage(
 
     const imagePrompt = `Professional South Florida real estate photography. Subject: ${subject}. Perspective: ${angle}. Thematic context: ${theme}. Clear blue sky, lush tropical landscaping, modern architecture, bright natural daylight. Ultra-realistic, no text, no watermarks, no people. Date reference: ${dateStr}.`
 
-    const response = await openai.images.generate({
+    const response = await getOpenAI().images.generate({
       model: "dall-e-3",
       prompt: imagePrompt,
       n: 1,
@@ -675,7 +680,7 @@ async function generateSectionImage(prompt: string, folder = "lofty-blog"): Prom
     "https://images.unsplash.com/photo-1449844908441-8829872d2607?w=1080&q=80",
   ]
   try {
-    const response = await openai.images.generate({
+    const response = await getOpenAI().images.generate({
       model: "dall-e-3",
       prompt: `Professional Miami real estate photography. ${prompt}. Luxury properties, blue sky, palm trees, modern architecture. Photorealistic, bright daylight, no text or watermarks.`,
       n: 1,
