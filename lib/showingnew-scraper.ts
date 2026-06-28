@@ -1,6 +1,9 @@
 /**
  * ShowingNew scraper — fetches new construction communities from the agent's
- * ShowingNew page using a headless browser (Playwright).
+ * ShowingNew page (NewHomeSource Professional platform by BDX).
+ *
+ * Communities load via HTML AJAX (AjaxHelper.load) into #home-builders.
+ * The AJAX URL is stored in the page's JS config as the `getBSXN` parameter.
  *
  * Data stored: area, price range, beds, delivery, description, image, zipCode.
  * Data NEVER stored or shown to leads: builder name, community name, direct URL.
@@ -22,29 +25,9 @@ export interface ScrapedCommunity {
 
 const AGENT_URL = "https://www.showingnew.com/catherinegomez"
 
-// FL cities to search — South + North Florida (include "FL" in every query)
-export const FL_SEARCH_TERMS = [
-  "Miami FL", "Doral FL", "Kendall FL", "Homestead FL", "Hollywood FL",
-  "Miramar FL", "Weston FL", "Aventura FL", "Miami Gardens FL", "Cutler Bay FL",
-  "Palmetto Bay FL", "Coral Gables FL", "Hialeah FL", "North Miami FL",
-  "Sunrise FL", "Davie FL", "Pembroke Pines FL", "Coral Springs FL",
-  "Plantation FL", "Fort Lauderdale FL", "Pompano Beach FL", "Deerfield Beach FL",
-  "Hallandale FL", "Boca Raton FL", "Delray Beach FL", "Boynton Beach FL",
-  "Lake Worth FL", "West Palm Beach FL", "Wellington FL", "Jupiter FL",
-  "Palm Beach Gardens FL", "Royal Palm Beach FL", "Tamarac FL",
-  "Margate FL", "Coconut Creek FL", "Lauderhill FL",
-]
-
-function parsePrice(s: string | undefined | null): number | undefined {
-  if (!s) return undefined
-  const n = parseFloat(s.replace(/[^0-9.]/g, ""))
-  return isNaN(n) ? undefined : n
-}
-
-/** Find the full Chromium binary (NOT the headless shell) */
+/** Find the full Chromium binary */
 export function getChromiumPath(): string | null {
   const { execSync } = require("child_process")
-
   if (process.env.SHOWINGNEW_CHROMIUM_PATH) return process.env.SHOWINGNEW_CHROMIUM_PATH
 
   const searches = [
@@ -58,26 +41,145 @@ export function getChromiumPath(): string | null {
       if (p) { console.log("[ShowingNew] Chromium:", p); return p }
     } catch {}
   }
-
   for (const bin of ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser"]) {
     try {
       const p = execSync(`which ${bin} 2>/dev/null`, { encoding: "utf8", timeout: 3000 }).trim()
-      if (p) { console.log("[ShowingNew] System Chrome:", p); return p }
+      if (p) return p
     } catch {}
   }
-
   console.error("[ShowingNew] No Chromium found")
   return null
 }
 
-/** Scrape ShowingNew with full stealth + multiple extraction strategies */
-async function scrapeWithPlaywright(searchTerm?: string): Promise<ScrapedCommunity[]> {
+/** Extract community data from an HTML string using DOMParser inside browser context */
+async function parseHtmlWithDom(page: any, html: string): Promise<ScrapedCommunity[]> {
+  if (!html || html.length < 100) return []
+
+  const raw = await page.evaluate((htmlStr: string) => {
+    try {
+      const parser = new DOMParser()
+      const doc = parser.parseFromString(htmlStr, "text/html")
+
+      // Try progressively broader selectors to find repeating community card elements
+      const selectorCandidates = [
+        "[class*='BSXN']",
+        "[class*='bsxn']",
+        "[class*='community-card']",
+        "[class*='community-listing']",
+        "[class*='community-result']",
+        "[class*='plan-card']",
+        "[class*='plan-listing']",
+        "[class*='builder-card']",
+        "[class*='builder-listing']",
+        "[class*='home-card']",
+        "[class*='listing-card']",
+        ".panel.panel-default",
+        ".panel",
+        "li[class]",
+        "article",
+        "[class*='col-'][class*='result']",
+      ]
+
+      let cards: Element[] = []
+      for (const sel of selectorCandidates) {
+        try {
+          const found = Array.from(doc.querySelectorAll(sel))
+          // Need at least 2 matches to be meaningful (avoid selecting the container itself)
+          if (found.length >= 2) {
+            cards = found
+            break
+          }
+        } catch {}
+      }
+
+      // If no repeating pattern, try body's direct children
+      if (cards.length < 2 && doc.body && doc.body.children.length >= 2) {
+        cards = Array.from(doc.body.children)
+      }
+
+      // If still nothing, use body as a single card
+      if (cards.length === 0 && doc.body) {
+        cards = [doc.body]
+      }
+
+      return cards.map(card => {
+        const text = (card.textContent || "").replace(/\s+/g, " ").trim()
+
+        // Resolve image src — in DOMParser context, relative URLs stay relative
+        const imgEl = card.querySelector("img") as HTMLImageElement | null
+        const imgSrc = imgEl
+          ? (imgEl.getAttribute("src") || imgEl.getAttribute("data-src") || imgEl.getAttribute("data-lazy") || "")
+          : ""
+
+        // City + FL (allow multi-word cities like "Fort Lauderdale")
+        const cityMatch = text.match(/([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)\s*,?\s*FL\b/)
+
+        // All dollar prices
+        const prices: number[] = []
+        const dollarRe = /\$\s*([\d,]+)/g
+        let pm: RegExpExecArray | null
+        while ((pm = dollarRe.exec(text)) !== null) {
+          const n = parseFloat(pm[1].replace(/,/g, ""))
+          if (n >= 50000 && n <= 20000000) prices.push(n)
+        }
+        prices.sort((a, b) => a - b)
+
+        // Beds
+        const bedMatch = text.match(/(\d+(?:\s*[-–]\s*\d+)?)\s*(?:Bed|bed|BD|BR)\b/i)
+
+        // Zip code (Florida zips start with 3)
+        const zipMatch = text.match(/\b(3[0-9]{4})\b/)
+
+        // Delivery / completion date
+        const dateMatch = text.match(
+          /(?:Q[1-4]\s*20\d{2}|(?:Spring|Summer|Fall|Winter)\s+20\d{2}|20\d{2})/i
+        )
+
+        return {
+          city: cityMatch ? cityMatch[1].trim() : "",
+          prices,
+          beds: bedMatch ? bedMatch[1].trim() : "",
+          zip: zipMatch ? zipMatch[1] : "",
+          date: dateMatch ? dateMatch[0] : "",
+          imgSrc,
+          textSample: text.substring(0, 300),
+        }
+      }).filter(c => c.textSample.length > 30 && (c.city || c.prices.length > 0))
+    } catch (err) {
+      return []
+    }
+  }, html)
+
+  if (!raw || raw.length === 0) return []
+
+  const now = new Date().toISOString()
+  const communities: ScrapedCommunity[] = (raw as any[]).map(r => ({
+    area: r.city ? `${r.city}, FL` : "South Florida",
+    city: r.city || "South Florida",
+    zipCode: r.zip || undefined,
+    priceMin: r.prices[0] || undefined,
+    priceMax: r.prices.length > 1 ? r.prices[r.prices.length - 1] : undefined,
+    bedrooms: r.beds || undefined,
+    deliveryDate: r.date || undefined,
+    imageUrl: r.imgSrc || undefined,
+    description: r.textSample || undefined,
+    scrapedAt: now,
+  }))
+
+  // Deduplicate: same city + priceMin = same community
+  const seen = new Set<string>()
+  return communities.filter(c => {
+    const k = `${c.city}|${c.priceMin}`
+    if (seen.has(k)) return false
+    seen.add(k)
+    return true
+  })
+}
+
+async function scrapeWithPlaywright(): Promise<ScrapedCommunity[]> {
   let chromium: any
-  try {
-    chromium = require("playwright").chromium
-  } catch {
-    console.warn("[ShowingNew] playwright not available")
-    return []
+  try { chromium = require("playwright").chromium } catch {
+    console.warn("[ShowingNew] playwright not available"); return []
   }
 
   const executablePath = getChromiumPath()
@@ -87,13 +189,9 @@ async function scrapeWithPlaywright(searchTerm?: string): Promise<ScrapedCommuni
     executablePath,
     headless: true,
     args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-gpu",
-      "--no-first-run",
+      "--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage",
+      "--disable-gpu", "--no-first-run",
       "--disable-blink-features=AutomationControlled",
-      "--disable-features=IsolateOrigins,site-per-process",
       "--window-size=1280,900",
     ],
   }).catch((e: any) => { console.error("[ShowingNew] launch failed:", e?.message); return null })
@@ -105,284 +203,230 @@ async function scrapeWithPlaywright(searchTerm?: string): Promise<ScrapedCommuni
       userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       viewport: { width: 1280, height: 900 },
       locale: "en-US",
-      extraHTTPHeaders: {
-        "Accept-Language": "en-US,en;q=0.9",
-      },
+      extraHTTPHeaders: { "Accept-Language": "en-US,en;q=0.9" },
     })
-
-    // Remove navigator.webdriver fingerprint
     await ctx.addInitScript(() => {
       Object.defineProperty(navigator, "webdriver", { get: () => undefined })
-      ;(window as any).chrome = { runtime: {} }
     })
 
     const page = await ctx.newPage()
 
-    // Collect ALL JSON API responses
-    const captured: any[] = []
+    // Track all AJAX responses from showingnew.com
+    const capturedHtmlBodies: Array<{ url: string; body: string }> = []
+    const capturedAjaxUrls: string[] = []
+
     page.on("response", async (res: any) => {
       try {
         const url: string = res.url()
+        if (!url.includes("showingnew.com")) return
+        if (url === AGENT_URL) return
+        if (url.includes("google") || url.includes("analytics") || url.includes("clarity")) return
+
+        capturedAjaxUrls.push(url)
+
         const ct: string = res.headers()["content-type"] || ""
-        if (!ct.includes("json")) return
-        if (url.includes("google") || url.includes("analytics") || url.includes("gtag") || url.includes("font")) return
-        const body = await res.text().catch(() => "")
-        if (body.length < 50) return
-        if (body[0] !== "{" && body[0] !== "[") return
-        try {
-          const data = JSON.parse(body)
-          console.log(`[ShowingNew] JSON from ${url.substring(0, 100)} (${body.length}b)`)
-          captured.push({ url, data })
-        } catch {}
+        if (ct.includes("html")) {
+          const body = await res.text().catch(() => "")
+          if (body.length > 300) {
+            console.log(`[ShowingNew] Captured AJAX HTML: ${url.substring(0, 120)} (${body.length}b)`)
+            capturedHtmlBodies.push({ url, body })
+          }
+        }
       } catch {}
     })
 
-    const url = searchTerm
-      ? `${AGENT_URL}?search=${encodeURIComponent(searchTerm)}`
-      : AGENT_URL
-
-    // Navigate — try networkidle first, fall back to domcontentloaded
+    // Navigate to the page
+    console.log("[ShowingNew] Loading page…")
     try {
-      await page.goto(url, { timeout: 35000, waitUntil: "networkidle" })
-    } catch {
-      try {
-        await page.goto(url, { timeout: 35000, waitUntil: "domcontentloaded" })
-      } catch (e: any) {
-        console.warn(`[ShowingNew] navigation failed "${searchTerm || "main"}":`, e?.message?.split("\n")[0])
-      }
+      await page.goto(AGENT_URL, { timeout: 35000, waitUntil: "domcontentloaded" })
+    } catch (e: any) {
+      console.warn("[ShowingNew] goto error:", e?.message?.split("\n")[0])
     }
 
-    // Wait extra time for React to render + scroll to trigger lazy loads
-    await page.waitForTimeout(5000)
-    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight)).catch(() => {})
-    await page.waitForTimeout(2000)
-    await page.evaluate(() => window.scrollTo(0, 0)).catch(() => {})
-    await page.waitForTimeout(1000)
+    // Scroll down to trigger lazy-loading of community cards
+    await page.evaluate(() => {
+      window.scrollTo(0, 600)
+      window.dispatchEvent(new Event("scroll"))
+    }).catch(() => {})
+    await page.waitForTimeout(1500)
 
-    // Strategy 1: Extract from __NEXT_DATA__ or window state
-    const nextData = await page.evaluate(() => {
+    // Wait for #home-builders to populate
+    await page.waitForFunction(
+      () => {
+        const el = document.getElementById("home-builders")
+        return el && el.innerHTML.trim().length > 200
+      },
+      { timeout: 18000 }
+    ).catch(() => console.log("[ShowingNew] #home-builders did not populate within 18s"))
+
+    await page.waitForTimeout(2000)
+
+    // ── Strategy 1: Extract getBSXN URL from page scripts and fetch it directly ──
+    const bsxnUrl: string | null = await page.evaluate(() => {
+      const patterns = [
+        /"getBSXN"\s*:\s*"([^"]+)"/,
+        /'getBSXN'\s*:\s*'([^']+)'/,
+        /getBSXN\s*:\s*["']([^"']+)["']/,
+        /getBSXN\s*=\s*["']([^"']+)["']/,
+        /AjaxHelper\.load\([^,]+,\s*["']([^"']+)["']/,
+        /AjaxHelper\.load\([^,]+,\s*(\w+)\.getBSXN/,  // t.getBSXN - won't give URL but signals presence
+      ]
+      const scripts = Array.from(document.querySelectorAll("script"))
+      for (const s of scripts) {
+        const text = s.textContent || s.innerText || ""
+        for (const p of patterns) {
+          const m = text.match(p)
+          if (m?.[1]?.startsWith("http")) return m[1]
+        }
+      }
+      // Also check window-level vars
       try {
-        const el = document.getElementById("__NEXT_DATA__")
-        if (el?.textContent) return JSON.parse(el.textContent)
-      } catch {}
-      try {
-        return (window as any).__INITIAL_STATE__ || (window as any).__APP_STATE__ || null
+        const w = window as any
+        if (w.getBSXN && typeof w.getBSXN === "string") return w.getBSXN
+        if (w.siteConfig?.getBSXN) return w.siteConfig.getBSXN
+        if (w.initParams?.getBSXN) return w.initParams.getBSXN
+        if (w.config?.getBSXN) return w.config.getBSXN
       } catch {}
       return null
     }).catch(() => null)
 
-    if (nextData) {
-      console.log("[ShowingNew] Found __NEXT_DATA__, extracting...")
-      const fromNext = extractCommunitiesFromJson(nextData)
-      if (fromNext.length > 0) {
-        console.log(`[ShowingNew] __NEXT_DATA__ → ${fromNext.length} communities`)
-        return fromNext
-      }
-    }
+    console.log(`[ShowingNew] getBSXN URL: ${bsxnUrl || "not found"}`)
 
-    // Strategy 2: Communities from captured JSON API responses
-    if (captured.length > 0) {
-      const all: ScrapedCommunity[] = []
-      for (const { url: apiUrl, data } of captured) {
-        const found = extractCommunitiesFromJson(data)
-        if (found.length > 0) {
-          console.log(`[ShowingNew] API ${apiUrl.substring(0, 80)} → ${found.length}`)
-          all.push(...found)
+    if (bsxnUrl) {
+      // Fetch the getBSXN URL from within the page (same origin = no CORS)
+      const ajaxHtml: string = await page.evaluate(async (url: string) => {
+        try {
+          const res = await fetch(url, {
+            headers: {
+              "X-Requested-With": "XMLHttpRequest",
+              "Accept": "text/html, */*; q=0.1",
+            },
+            credentials: "same-origin",
+          })
+          return await res.text()
+        } catch { return "" }
+      }, bsxnUrl).catch(() => "")
+
+      if (ajaxHtml && ajaxHtml.length > 300) {
+        console.log(`[ShowingNew] getBSXN HTML: ${ajaxHtml.length}b`)
+        const communities = await parseHtmlWithDom(page, ajaxHtml)
+        if (communities.length > 0) {
+          console.log(`[ShowingNew] Strategy 1 (getBSXN fetch) → ${communities.length} communities`)
+          return communities
         }
       }
-      if (all.length > 0) return all
     }
 
-    // Strategy 3: DOM extraction with flexible selectors
-    const domResults = await extractFromDom(page)
-    if (domResults.length > 0) {
-      console.log(`[ShowingNew] DOM "${searchTerm || "main"}" → ${domResults.length}`)
-      return domResults
+    // ── Strategy 2: Try captured AJAX HTML bodies ──
+    for (const { url, body } of capturedHtmlBodies) {
+      const communities = await parseHtmlWithDom(page, body)
+      if (communities.length > 0) {
+        console.log(`[ShowingNew] Strategy 2 (captured AJAX from ${url.substring(0, 80)}) → ${communities.length} communities`)
+        return communities
+      }
     }
 
-    // Log what the page actually shows for debugging
-    const pageText = await page.evaluate(() => document.body?.innerText?.substring(0, 500)).catch(() => "")
-    console.log(`[ShowingNew] Page text preview: ${pageText}`)
-    console.log(`[ShowingNew] Captured ${captured.length} JSON responses, 0 communities extracted`)
+    // ── Strategy 3: Re-fetch any showingnew.com AJAX URLs we captured ──
+    for (const ajaxUrl of capturedAjaxUrls.filter(u => !u.includes(".js") && !u.includes(".css") && !u.includes(".png") && !u.includes(".jpg"))) {
+      const refetchHtml: string = await page.evaluate(async (url: string) => {
+        try {
+          const res = await fetch(url, {
+            headers: { "X-Requested-With": "XMLHttpRequest", "Accept": "text/html,*/*" },
+            credentials: "same-origin",
+          })
+          const ct = res.headers.get("content-type") || ""
+          if (!ct.includes("html")) return ""
+          return await res.text()
+        } catch { return "" }
+      }, ajaxUrl).catch(() => "")
+
+      if (refetchHtml && refetchHtml.length > 300) {
+        const communities = await parseHtmlWithDom(page, refetchHtml)
+        if (communities.length > 0) {
+          console.log(`[ShowingNew] Strategy 3 (re-fetch ${ajaxUrl.substring(0, 80)}) → ${communities.length} communities`)
+          return communities
+        }
+      }
+    }
+
+    // ── Strategy 4: Extract from current #home-builders DOM ──
+    const homeBuilderHtml: string = await page.evaluate(() => {
+      const el = document.getElementById("home-builders")
+      return el ? el.innerHTML : ""
+    }).catch(() => "")
+
+    if (homeBuilderHtml && homeBuilderHtml.length > 200) {
+      console.log(`[ShowingNew] #home-builders HTML: ${homeBuilderHtml.length}b`)
+      const communities = await parseHtmlWithDom(page, homeBuilderHtml)
+      if (communities.length > 0) {
+        console.log(`[ShowingNew] Strategy 4 (DOM) → ${communities.length} communities`)
+        return communities
+      }
+    }
+
+    // ── Strategy 5: Click "See All" button then re-extract ──
+    const clickedSeeAll = await page.evaluate(() => {
+      const all = Array.from(document.querySelectorAll("a, button"))
+      const btn = all.find(el => {
+        const text = (el.textContent || "").toLowerCase()
+        return text.includes("see all") || text.includes("view all") || text.includes("all communities")
+      }) as HTMLElement | undefined
+      if (btn) { btn.click(); return true }
+      return false
+    }).catch(() => false)
+
+    if (clickedSeeAll) {
+      console.log("[ShowingNew] Clicked 'See All' — waiting for content…")
+      await page.waitForTimeout(3000)
+      const afterClickHtml: string = await page.evaluate(() => {
+        const el = document.getElementById("home-builders")
+        return el ? el.innerHTML : document.body.innerHTML
+      }).catch(() => "")
+      const communities = await parseHtmlWithDom(page, afterClickHtml)
+      if (communities.length > 0) {
+        console.log(`[ShowingNew] Strategy 5 (See All click) → ${communities.length} communities`)
+        return communities
+      }
+    }
+
+    // ── Strategy 6: Full page DOM as last resort ──
+    const fullHtml: string = await page.content().catch(() => "")
+    if (fullHtml) {
+      const communities = await parseHtmlWithDom(page, fullHtml)
+      if (communities.length > 0) {
+        console.log(`[ShowingNew] Strategy 6 (full page) → ${communities.length} communities`)
+        return communities
+      }
+    }
+
+    const txt: string = await page.evaluate(() => (document.body?.innerText || "").substring(0, 800)).catch(() => "")
+    console.log(`[ShowingNew] No communities found. Page text: ${txt}`)
     return []
 
   } catch (e: any) {
-    console.warn(`[ShowingNew] error "${searchTerm || "main"}":`, e?.message?.split("\n")[0])
+    console.warn("[ShowingNew] scrape error:", e?.message?.split("\n")[0])
     return []
   } finally {
     await browser.close().catch(() => {})
   }
 }
 
-async function extractFromDom(page: any): Promise<ScrapedCommunity[]> {
-  const raw = await page.evaluate(() => {
-    const results: any[] = []
-
-    // Try many selectors that community/property card platforms use
-    const selectorSets = [
-      "[class*='community']", "[class*='Community']",
-      "[class*='listing']", "[class*='Listing']",
-      "[class*='property']", "[class*='Property']",
-      "[class*='card']", "[class*='Card']",
-      "[class*='home']", "[class*='Home']",
-      "[data-testid]", "article",
-      ".MuiCard-root", "[class*='MuiCard']",
-      "[class*='result']", "[class*='Result']",
-    ]
-
-    for (const sel of selectorSets) {
-      let els: Element[]
-      try { els = Array.from(document.querySelectorAll(sel)) } catch { continue }
-      if (els.length < 1) continue
-
-      const candidates = els.filter(el => {
-        const text = (el as HTMLElement).innerText || ""
-        return text.match(/\$[\d,]+/) || text.match(/\d+\s*(?:bed|ba|sqft)/i)
-      })
-      if (candidates.length === 0) continue
-
-      for (const el of candidates) {
-        const text = (el as HTMLElement).innerText || ""
-        const cityMatch = text.match(/([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?),?\s*FL/i)
-        const priceMatch = text.match(/\$\s*([\d,]+)/)
-        const priceMaxMatch = text.match(/[-–]\s*\$\s*([\d,]+)/)
-        const bedsMatch = text.match(/(\d+(?:\s*[-–]\s*\d+)?)\s*(?:bed|BR|bd)/i)
-        const zipMatch = text.match(/\b(3[0-9]{4})\b/)
-        const imgEl = (el as HTMLElement).querySelector("img")
-
-        results.push({
-          city: cityMatch ? cityMatch[1].trim() : "",
-          priceMin: priceMatch ? priceMatch[1].replace(/,/g, "") : null,
-          priceMax: priceMaxMatch ? priceMaxMatch[1].replace(/,/g, "") : null,
-          bedrooms: bedsMatch ? bedsMatch[1].trim() : null,
-          zipCode: zipMatch ? zipMatch[1] : null,
-          imageUrl: imgEl?.getAttribute("src") || imgEl?.getAttribute("data-src") || null,
-        })
-      }
-      if (results.length > 0) break
-    }
-    return results
-  }).catch(() => [] as any[])
-
-  return (raw as any[])
-    .filter((c: any) => c.city || c.priceMin)
-    .map((c: any) => ({
-      area: `${c.city || "South Florida"}, FL`,
-      city: (c.city || "").replace(/,?\s*fl$/i, "").trim(),
-      zipCode: c.zipCode || undefined,
-      priceMin: c.priceMin ? parseFloat(c.priceMin) : undefined,
-      priceMax: c.priceMax ? parseFloat(c.priceMax) : undefined,
-      bedrooms: c.bedrooms || undefined,
-      imageUrl: c.imageUrl || undefined,
-      scrapedAt: new Date().toISOString(),
-    }))
-}
-
-function extractCommunitiesFromJson(obj: any, depth = 0): ScrapedCommunity[] {
-  if (depth > 10 || !obj) return []
-  const results: ScrapedCommunity[] = []
-
-  if (Array.isArray(obj)) {
-    for (const item of obj) results.push(...extractCommunitiesFromJson(item, depth + 1))
-    return results
-  }
-
-  if (typeof obj === "object") {
-    const keys = Object.keys(obj).map(k => k.toLowerCase())
-    const hasLocation = keys.some(k => ["city", "location", "address", "area", "neighborhood", "county", "state", "zip", "zipcode"].includes(k))
-    const hasPrice = keys.some(k => k.includes("price") || k.includes("starting") || k.includes("from") || k.includes("cost"))
-
-    if (hasLocation && hasPrice) {
-      const c = parseCommunityObject(obj)
-      if (c) { results.push(c); return results }
-    }
-
-    // Also try arrays nested in this object
-    for (const val of Object.values(obj)) {
-      if (val && typeof val === "object") {
-        results.push(...extractCommunitiesFromJson(val, depth + 1))
-      }
-    }
-  }
-
-  return results
-}
-
-function parseCommunityObject(obj: any): ScrapedCommunity | null {
-  // Try many field name variations ShowingNew or similar platforms might use
-  const city = obj.city || obj.City || obj.cityName ||
-    obj.location || obj.Location ||
-    obj.area || obj.Area ||
-    obj.neighborhood || obj.Neighborhood ||
-    obj.municipality || obj.market ||
-    ""
-  if (!city || typeof city !== "string") return null
-
-  const cleanCity = city.toString().replace(/,?\s*fl$/i, "").trim()
-  if (!cleanCity) return null
-
-  return {
-    area: `${cleanCity}, FL`,
-    city: cleanCity,
-    zipCode: (obj.zipCode || obj.zip || obj.postalCode || obj.postal_code || obj.ZipCode)?.toString() || undefined,
-    priceMin: parsePrice(
-      (obj.priceMin || obj.price || obj.startingPrice || obj.starting_price ||
-        obj.fromPrice || obj.from_price || obj.minPrice || obj.loPrice ||
-        obj.basePrice || obj.base_price || obj.Price || obj.priceFrom)?.toString()
-    ),
-    priceMax: parsePrice(
-      (obj.priceMax || obj.toPrice || obj.maxPrice || obj.highPrice ||
-        obj.hiPrice || obj.priceTo || obj.priceThrough)?.toString()
-    ),
-    bedrooms: (obj.bedrooms || obj.beds || obj.bedroomRange || obj.bedroom_range ||
-      obj.minBeds || obj.maxBeds || obj.bed_count)?.toString() || undefined,
-    deliveryDate: (obj.deliveryDate || obj.completionDate || obj.delivery ||
-      obj.moveInDate || obj.move_in_date || obj.estCompletion)?.toString() || undefined,
-    status: (obj.status || obj.phase || obj.saleStatus || obj.sale_status)?.toString() || undefined,
-    description: ((obj.description || obj.shortDescription || obj.short_description ||
-      obj.summary || obj.overview || "") as string).substring(0, 300) || undefined,
-    imageUrl: obj.imageUrl || obj.image || obj.heroImage || obj.hero_image ||
-      obj.photo || obj.thumbnail || obj.coverImage || obj.cover_image ||
-      obj.mainImage || obj.main_image || obj.primaryImage || undefined,
-    scrapedAt: new Date().toISOString(),
-  }
-}
-
-/** Main entry: scrape ShowingNew for all FL cities */
 export async function scrapeShowingNew(): Promise<{
   communities: ScrapedCommunity[]
   errors: string[]
   strategy: string
 }> {
   const errors: string[] = []
-
-  // Step 1: Main page (gets all communities at once)
-  const mainResults = await scrapeWithPlaywright().catch((e: any) => {
-    errors.push(`main: ${e?.message}`)
+  const results = await scrapeWithPlaywright().catch((e: any) => {
+    errors.push(e?.message || "unknown error")
     return [] as ScrapedCommunity[]
   })
 
-  if (mainResults.length > 0) {
-    return { communities: dedup(mainResults), errors, strategy: "playwright-main" }
+  return {
+    communities: dedup(results),
+    errors,
+    strategy: results.length > 0 ? "playwright-dom" : "none",
   }
-
-  // Step 2: Per-city search if main page yielded nothing
-  const allResults: ScrapedCommunity[] = []
-  let strategy = "none"
-
-  // Only try a subset of cities to avoid timeout — prioritize South Florida
-  const priorityCities = FL_SEARCH_TERMS.slice(0, 12)
-  for (const city of priorityCities) {
-    const found = await scrapeWithPlaywright(city).catch((e: any) => {
-      errors.push(`${city}: ${e?.message}`)
-      return [] as ScrapedCommunity[]
-    })
-    allResults.push(...found)
-    if (found.length > 0) strategy = "playwright-per-city"
-    if (allResults.length >= 30) break // enough
-  }
-
-  return { communities: dedup(allResults), errors, strategy }
 }
 
 function dedup(communities: ScrapedCommunity[]): ScrapedCommunity[] {
