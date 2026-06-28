@@ -8,7 +8,7 @@ import {
   extractEmail, extractPhone, isOptOut,
 } from "@/lib/instagram"
 import { ingestLead } from "@/lib/lead-ingest"
-import { generateSocialAIReply, getMatchingProperties, notifyCatherineAboutLead } from "@/lib/social-ai-chat"
+import { generateSocialAIReply, getMatchingProperties, getMatchingPreConstruction, notifyCatherineAboutLead } from "@/lib/social-ai-chat"
 
 const INTENT_TAG_COLORS: Record<string, string> = {
   comprador_vivienda: "#22C55E",
@@ -164,6 +164,17 @@ export async function POST(req: Request) {
               for (const msg of listings) await sendInstagramDM(igUserId, msg)
             } else {
               await sendInstagramDM(igUserId, "🏠 En este momento estamos actualizando nuestro inventario. Catherine te enviará opciones personalizadas muy pronto.")
+            }
+          }
+
+          if (result.sendPreConstruction) {
+            const aiConfig = await prisma.aIConfig.findFirst()
+            const communities = await getMatchingPreConstruction(text, aiConfig?.calendlyUrl || "")
+            if (communities.length > 0) {
+              await sendInstagramDM(igUserId, "🏗️ Tengo algunas opciones de nueva construcción para ti:")
+              for (const msg of communities) await sendInstagramDM(igUserId, msg)
+            } else {
+              await sendInstagramDM(igUserId, `🏗️ Tengo acceso a desarrollos exclusivos de nueva construcción en Miami. Para conocer los detalles y hacer un tour privado con Catherine sin costo:${(await prisma.aIConfig.findFirst())?.calendlyUrl ? `\n📅 ${(await prisma.aIConfig.findFirst())?.calendlyUrl}` : "\n📱 Escríbele directamente a Catherine."}`)
             }
           }
 

@@ -16,7 +16,7 @@ import {
   parseIntent,
 } from "@/lib/facebook"
 import { ingestLead } from "@/lib/lead-ingest"
-import { generateSocialAIReply, getMatchingProperties, notifyCatherineAboutLead } from "@/lib/social-ai-chat"
+import { generateSocialAIReply, getMatchingProperties, getMatchingPreConstruction, notifyCatherineAboutLead } from "@/lib/social-ai-chat"
 
 function greetingQuickReplies(config: any) {
   return (config.greetingButtons || "Sí, me interesa,Quiero más info")
@@ -297,6 +297,17 @@ export async function POST(req: Request) {
           if (!result) continue
 
           await sendFacebookMessage(psid, result.reply)
+
+          if (result.sendPreConstruction) {
+            const aiConfig = await prisma.aIConfig.findFirst()
+            const communities = await getMatchingPreConstruction(text, aiConfig?.calendlyUrl || "")
+            if (communities.length > 0) {
+              await sendFacebookMessage(psid, "🏗️ Tengo algunas opciones de nueva construcción para ti:")
+              for (const msg of communities) await sendFacebookMessage(psid, msg)
+            } else {
+              await sendFacebookMessage(psid, `🏗️ Tengo acceso a desarrollos exclusivos de nueva construcción en Miami. Para conocer los detalles y hacer un tour privado con Catherine sin costo:${aiConfig?.calendlyUrl ? `\n📅 ${aiConfig.calendlyUrl}` : "\n📱 Escríbele directamente a Catherine."}`)
+            }
+          }
 
           if (result.sendProperties) {
             const listings = await getMatchingProperties(convo.intent)

@@ -13,11 +13,15 @@ const INTENT_LABELS: Record<string, string> = {
 export interface AIReplyResult {
   reply: string
   sendProperties: boolean
+  sendPreConstruction: boolean
   notifyCatherine: boolean
 }
 
 // Keywords that signal the lead wants to see properties
 const PROPERTY_KEYWORDS = /casa|casas|propiedad|propiedades|listing|listado|precio|barrio|vecindario|dormitorio|rec[aá]mara|ba[ñn]o|piscina|garage|sq\s?ft|metros|comprar|invertir|airbnb|disponible|ver\s+opcion|mostrar|manda|env[íi]a/i
+
+// Keywords that signal pre-construction / new construction interest
+const PRECONSTRUCTION_KEYWORDS = /nuevo|nueva|preconstrucci[oó]n|pre.construcci[oó]n|new construction|builder|construir|off.plan|planos|preventa|estrenar|sin\s+uso|nuevo\s+desarroll|development|entrega|unidades/i
 
 // Keywords that signal the lead wants to speak with Catherine
 const CATHERINE_KEYWORDS = /hablar|llamar|contactar|catherine|agente|cita|reunion|reuni[oó]n|schedule|appointment|call|speak|talk|quiero\s+hablar|puedo\s+llamar|cuando\s+puedo|me\s+llama/i
@@ -52,7 +56,8 @@ export async function generateSocialAIReply(
   const intentLine = context.intent ? `Objetivo declarado: ${INTENT_LABELS[context.intent] || context.intent}` : ""
   const scheduleLine = calendlyUrl ? ` o agendar cita: ${calendlyUrl}` : ""
 
-  const sendProperties = PROPERTY_KEYWORDS.test(userMessage)
+  const sendPreConstruction = PRECONSTRUCTION_KEYWORDS.test(userMessage)
+  const sendProperties = !sendPreConstruction && PROPERTY_KEYWORDS.test(userMessage)
   const notifyCatherine = CATHERINE_KEYWORDS.test(userMessage)
 
   const response = await anthropic.messages.create({
@@ -79,7 +84,7 @@ Reglas:
   })
 
   const reply = response.content[0].type === "text" ? response.content[0].text.trim() : ""
-  return { reply, sendProperties, notifyCatherine }
+  return { reply, sendProperties, sendPreConstruction, notifyCatherine }
 }
 
 // Fetch active property listings filtered by lead intent
@@ -101,6 +106,62 @@ export async function getMatchingProperties(intent?: string | null, limit = 3) {
       p.sqft != null ? `${p.sqft.toLocaleString()} sqft` : null,
     ].filter(Boolean).join(" · ")
     return `🏠 ${p.address}, ${p.city}\n💰 $${price}${details ? `\n🛏 ${details}` : ""}\n🔗 ${appUrl}/site/listing/${p.id}`
+  })
+}
+
+// Fetch pre-construction communities — lead-safe: hides builder, community name, and direct URL
+export async function getMatchingPreConstruction(userMessage: string, calendlyUrl: string, limit = 3) {
+  const row = await prisma.setting.findUnique({ where: { key: "preconstruction_projects" } })
+  if (!row) return []
+  let projects: any[] = []
+  try { projects = JSON.parse(row.value) } catch { return [] }
+
+  // Active only (not completed)
+  const active = projects.filter((p: any) => p.status !== "completed")
+
+  // Extract zipcode or area from the user's message for filtering
+  const zipMatch = userMessage.match(/\b(3[0-9]{4})\b/)
+  const zip = zipMatch?.[1]
+
+  let matched = active
+  if (zip) {
+    const byZip = active.filter((p: any) => p.zipCode === zip)
+    if (byZip.length > 0) matched = byZip
+  } else {
+    // Try to match city/neighborhood mentioned in the message
+    const lower = userMessage.toLowerCase()
+    const byArea = active.filter((p: any) =>
+      (p.city && lower.includes(p.city.toLowerCase())) ||
+      (p.neighborhood && lower.includes(p.neighborhood.toLowerCase()))
+    )
+    if (byArea.length > 0) matched = byArea
+  }
+
+  const selected = matched.slice(0, limit)
+  const bookingLine = calendlyUrl ? `\n📅 Tour privado con Catherine: ${calendlyUrl}` : ""
+
+  return selected.map((p: any) => {
+    const priceRange = p.priceMin && p.priceMax
+      ? `$${p.priceMin.toLocaleString("en-US")} – $${p.priceMax.toLocaleString("en-US")}`
+      : p.priceMin ? `Desde $${p.priceMin.toLocaleString("en-US")}` : null
+
+    const statusLabel: Record<string, string> = {
+      pre_launch: "Pre-lanzamiento",
+      launching: "En lanzamiento",
+      under_construction: "En construcción",
+      completed: "Completado",
+    }
+
+    return [
+      `🏗️ Nueva construcción — ${p.neighborhood || p.city}, FL`,
+      priceRange ? `💰 ${priceRange}` : null,
+      p.bedrooms ? `🛏 ${p.bedrooms}` : null,
+      p.deliveryDate ? `📅 Entrega: ${p.deliveryDate}` : null,
+      p.downPayment ? `💵 Down payment: ${p.downPayment}` : null,
+      p.status ? `🔖 ${statusLabel[p.status] || p.status}` : null,
+      p.description ? `✨ ${p.description}` : null,
+      `\n🔐 Para conocer el nombre del desarrollo y agendar un tour exclusivo con Catherine (sin costo):${bookingLine}`,
+    ].filter(Boolean).join("\n")
   })
 }
 

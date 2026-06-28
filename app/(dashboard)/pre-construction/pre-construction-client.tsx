@@ -14,6 +14,7 @@ type Project = {
   developer: string
   neighborhood: string
   city: string
+  zipCode?: string
   priceMin?: number
   priceMax?: number
   bedrooms?: string
@@ -35,7 +36,7 @@ const STATUS_OPTIONS = [
 ]
 
 const EMPTY_FORM: Partial<Project> = {
-  name: "", developer: "", neighborhood: "", city: "Miami",
+  name: "", developer: "", neighborhood: "", city: "Miami", zipCode: "",
   status: "pre_launch", description: "", url: "",
   investmentHighlights: "", estimatedROI: "", downPayment: "", bedrooms: "", deliveryDate: "",
 }
@@ -144,6 +145,10 @@ export default function PreConstructionClient({ initialProjects }: Props) {
               <div>
                 <label className="text-xs font-semibold text-gray-600 mb-1 block">City</label>
                 <input value={form.city || ""} onChange={e => f("city", e.target.value)} placeholder="Miami" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">Zip Code <span className="text-gray-400 font-normal">(for AI filtering)</span></label>
+                <input value={form.zipCode || ""} onChange={e => f("zipCode", e.target.value)} placeholder="e.g. 33131" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
               </div>
               <div>
                 <label className="text-xs font-semibold text-gray-600 mb-1 block">Price Min ($)</label>

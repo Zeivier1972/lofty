@@ -13,6 +13,7 @@ type Project = {
   developer: string
   neighborhood: string
   city: string
+  zipCode?: string
   priceMin?: number
   priceMax?: number
   bedrooms?: string
@@ -52,7 +53,7 @@ export async function POST(req: Request) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const body = await req.json()
-  const { id, name, developer, neighborhood, city, priceMin, priceMax, bedrooms,
+  const { id, name, developer, neighborhood, city, zipCode, priceMin, priceMax, bedrooms,
     deliveryDate, status, description, url, investmentHighlights, estimatedROI, downPayment, units } = body
 
   if (!name?.trim()) return NextResponse.json({ error: "name required" }, { status: 400 })
@@ -65,6 +66,7 @@ export async function POST(req: Request) {
     developer: developer?.trim() || "",
     neighborhood: neighborhood?.trim() || "",
     city: city?.trim() || "Miami",
+    zipCode: zipCode?.trim() || undefined,
     priceMin: priceMin ? Number(priceMin) : undefined,
     priceMax: priceMax ? Number(priceMax) : undefined,
     bedrooms: bedrooms?.trim() || undefined,
