@@ -4,8 +4,7 @@
  * All search pages lazy-load results via AJAX (IntersectionObserver).
  * An ASP.NET session cookie must first be set by visiting the homepage.
  *
- * Primary: parse communityresults/getresultshomes JSON → clean city/price/beds data
- * Fallback: parse visible text by price-boundary segmentation
+ * Primary: intercept communityresults/getresultshomes via page.route() → clean city/price/beds data
  *
  * NEVER exposes builder name, community name, or direct URL to leads.
  */
@@ -56,10 +55,6 @@ export function getChromiumPath(): string | null {
     } catch {}
   }
   return null
-}
-
-function hasPriceOrCity(text: string): boolean {
-  return /\$\s*[\d,]{4,}/.test(text) || /[A-Z][a-zA-Z-]+,?\s*FL\b/.test(text)
 }
 
 /**
@@ -140,93 +135,29 @@ function parseGetResultsHomesJson(body: string, pageUrl: string): ScrapedCommuni
   return results
 }
 
-/** Extract communities from a block of visible text using regex segmentation (fallback) */
-function parseFromVisibleText(text: string): ScrapedCommunity[] {
-  if (!text || text.length < 100) return []
-  const now = new Date().toISOString()
-  const communities: ScrapedCommunity[] = []
-
-  // Split visible text at price boundaries to get one block per listing
-  const chunks = text.split(/(?=\$\s*[\d,]{6,})/)
-
-  for (let i = 0; i < chunks.length; i++) {
-    const chunk = chunks[i].substring(0, 400)
-    if (!hasPriceOrCity(chunk)) continue
-
-    // Only match city if immediately before ", FL" with no uppercase prefix noise
-    // Require the city name to start a word boundary after a space or line start
-    const cityM = chunk.match(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s*,?\s*FL\b/)
-    const priceRe = /\$\s*([\d,]+)/g
-    const prices: number[] = []
-    let pm: RegExpExecArray | null
-    while ((pm = priceRe.exec(chunk)) !== null) {
-      const n = parseFloat(pm[1].replace(/,/g, ""))
-      if (n >= 50000 && n <= 20000000) prices.push(n)
-    }
-    prices.sort(function(a, b) { return a - b })
-
-    const bedM = chunk.match(/(\d+(?:\s*[-–]\s*\d+)?)\s*(?:Bed|bed|BD|BR)\b/i)
-    const zipM = chunk.match(/\b(3[0-9]{4})\b/)
-    const dateM = chunk.match(/(?:Q[1-4]\s*20\d{2}|(?:Spring|Summer|Fall|Winter)\s+20\d{2})/i)
-
-    const city = cityM ? cityM[1].trim() : ""
-    if (!city && prices.length === 0) continue
-
-    communities.push({
-      area: city ? city + ", FL" : "South Florida",
-      city: city || "South Florida",
-      zipCode: zipM ? zipM[1] : undefined,
-      priceMin: prices[0],
-      priceMax: prices.length > 1 ? prices[prices.length - 1] : undefined,
-      bedrooms: bedM ? bedM[1].trim() : undefined,
-      deliveryDate: dateM ? dateM[0] : undefined,
-      description: chunk.trim().substring(0, 200),
-      scrapedAt: now,
-    })
-  }
-
-  const seen = new Set<string>()
-  return communities.filter(function(c) {
-    const k = c.city + "|" + c.priceMin
-    if (seen.has(k)) return false
-    seen.add(k)
-    return true
-  })
-}
-
 async function scrapePageWithPlaywright(
   page: any,
   url: string
 ): Promise<ScrapedCommunity[]> {
   const capturedJson: string[] = []
-  const capturedHtml: string[] = []
 
-  const handler = async (res: any) => {
+  // Use page.route() — intercepts at the network layer before browser processes it,
+  // so response body is always available (unlike page.on("response") which can miss it)
+  const routeHandler = async (route: any) => {
+    let fulfilled = false
     try {
-      const resUrl: string = res.url()
-      if (!resUrl.includes("showingnew.com")) return
-      if (resUrl === url || resUrl === AGENT_URL) return
-      if (/\.(css|js|png|jpg|gif|woff|ico|svg|webp)/i.test(resUrl)) return
-
-      const ct: string = res.headers()["content-type"] || ""
-      const body = await res.text().catch(() => "")
-      if (body.length < 50) return
-
-      // Priority: capture getresultshomes JSON (contains clean city/price/beds data)
-      if (resUrl.includes("getresultshomes")) {
-        console.log("[ShowingNew] JSON: " + resUrl.substring(0, 80) + " (" + body.length + "b)")
+      const response = await route.fetch()
+      const body = await response.text().catch(() => "")
+      if (body && body.length >= 50) {
+        console.log("[ShowingNew] route:getresultshomes " + body.length + "b from " + url)
         capturedJson.push(body)
-        return
       }
-
-      // Also capture HTML AJAX responses as fallback
-      if (ct.includes("html") && body.length > 200 && hasPriceOrCity(body)) {
-        console.log("[ShowingNew] AJAX HTML: " + resUrl.substring(0, 80) + " (" + body.length + "b)")
-        capturedHtml.push(body)
-      }
+      await route.fulfill({ response })
+      fulfilled = true
     } catch (_) {}
+    if (!fulfilled) { await route.continue().catch(() => {}) }
   }
-  page.on("response", handler)
+  await page.route("**/*getresultshomes*", routeHandler).catch(() => {})
 
   try {
     try { await page.goto(url, { timeout: 35000, waitUntil: "networkidle" }) } catch {
@@ -250,7 +181,7 @@ async function scrapePageWithPlaywright(
 
     await page.waitForTimeout(3000)
 
-    // Primary: parse getresultshomes JSON responses
+    // Parse all captured getresultshomes JSON responses
     for (let i = 0; i < capturedJson.length; i++) {
       const found = parseGetResultsHomesJson(capturedJson[i], url)
       if (found.length > 0) {
@@ -259,24 +190,14 @@ async function scrapePageWithPlaywright(
       }
     }
 
-    // Fallback: parse AJAX HTML responses
-    for (let i = 0; i < capturedHtml.length; i++) {
-      const found = parseFromVisibleText(capturedHtml[i].replace(/<[^>]+>/g, " ").replace(/\s+/g, " "))
-      if (found.length > 0) return found
+    if (capturedJson.length === 0) {
+      console.log("[ShowingNew] " + url + " — no getresultshomes response captured")
+    } else {
+      console.log("[ShowingNew] " + url + " — getresultshomes captured but no cities/prices in response")
     }
-
-    // Last resort: page visible text
-    const visibleText: string = await page.evaluate(function() {
-      return (document.body?.innerText || "").replace(/\s+/g, " ")
-    }).catch(() => "") as string
-
-    const fromText = parseFromVisibleText(visibleText)
-    if (fromText.length > 0) return fromText
-
-    console.log("[ShowingNew] " + url + " — nothing found, text sample: " + visibleText.substring(0, 300))
     return []
   } finally {
-    page.off("response", handler)
+    await page.unroute("**/*getresultshomes*", routeHandler).catch(() => {})
   }
 }
 
