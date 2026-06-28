@@ -41,42 +41,35 @@ function parsePrice(s: string | undefined | null): number | undefined {
   return isNaN(n) ? undefined : n
 }
 
-/** Resolve Playwright's bundled Chromium path at runtime */
+/** Find the full Chromium binary (NOT the headless shell — it has stricter library requirements) */
 export function getChromiumPath(): string | null {
-  // 1. Explicit env override (set on Railway if auto-detection fails)
+  const { execSync } = require("child_process")
+
+  // 1. Explicit env override
   if (process.env.SHOWINGNEW_CHROMIUM_PATH) return process.env.SHOWINGNEW_CHROMIUM_PATH
 
-  // 2. Let Playwright find its own browser (returns undefined if not downloaded)
-  try {
-    const { chromium } = require("playwright")
-    const info = chromium.executablePath?.()
-    if (info) return info
-  } catch {}
-
-  // 3. Search common system and Playwright cache paths
-  const { execSync } = require("child_process")
-  const searches = [
-    "which chromium 2>/dev/null",
-    "which chromium-browser 2>/dev/null",
-    "which google-chrome 2>/dev/null",
-    "find /root/.cache/ms-playwright -name 'chrome' -type f 2>/dev/null | head -1",
-    "find /home -name 'chrome' -path '*/ms-playwright/*' -type f 2>/dev/null | head -1",
-    "find /usr -name 'chromium' -type f 2>/dev/null | head -1",
-    "find /nix -name 'chromium' -type f 2>/dev/null | head -1",
+  // 2. Find full Chrome in Playwright's cache — prefer non-headless-shell binary
+  const playwrightSearches = [
+    // Full Chrome binary (not headless shell)
+    "find /root/.cache/ms-playwright/chromium-* -name 'chrome' -not -name 'chrome-headless-shell' -type f 2>/dev/null | head -1",
+    "find /home -path '*/ms-playwright/chromium-*/chrome-linux64/chrome' -type f 2>/dev/null | head -1",
   ]
-  for (const cmd of searches) {
+  for (const cmd of playwrightSearches) {
     try {
-      const p = execSync(cmd, { encoding: "utf8", timeout: 5000 }).trim()
-      if (p && !p.includes("(error")) {
-        console.log("[ShowingNew] Found chromium:", p, "via:", cmd.split(" ")[0])
-        return p
-      }
+      const p = execSync(cmd, { encoding: "utf8", timeout: 8000 }).trim()
+      if (p) { console.log("[ShowingNew] Using Playwright full Chrome:", p); return p }
     } catch {}
   }
 
-  console.error("[ShowingNew] No Chromium found. Options: " +
-    "1) Set SHOWINGNEW_CHROMIUM_PATH env var on Railway, " +
-    "2) Ensure nixpacks.toml runs 'npx playwright install chromium' during build")
+  // 3. System Chrome/Chromium
+  for (const bin of ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser"]) {
+    try {
+      const p = execSync(`which ${bin} 2>/dev/null`, { encoding: "utf8", timeout: 3000 }).trim()
+      if (p) { console.log("[ShowingNew] Using system Chrome:", p); return p }
+    } catch {}
+  }
+
+  console.error("[ShowingNew] No Chromium found. Using Dockerfile ensures system libs and Playwright Chrome are available.")
   return null
 }
 
@@ -90,7 +83,13 @@ async function scrapeWithPlaywright(searchTerm?: string): Promise<ScrapedCommuni
     return []
   }
 
+  // Always use the full Chrome binary explicitly — avoids the headless shell
+  // which has stricter shared library requirements
+  const executablePath = getChromiumPath()
+  if (!executablePath) return []
+
   const launchOptions: any = {
+    executablePath,
     headless: true,
     args: [
       "--no-sandbox",
@@ -98,15 +97,7 @@ async function scrapeWithPlaywright(searchTerm?: string): Promise<ScrapedCommuni
       "--disable-dev-shm-usage",
       "--disable-gpu",
       "--no-first-run",
-      "--no-zygote",
-      "--single-process",
     ],
-  }
-
-  // Use system/env chromium path if Playwright's own isn't available
-  const executablePath = getChromiumPath()
-  if (executablePath && !executablePath.includes("ms-playwright")) {
-    launchOptions.executablePath = executablePath
   }
 
   let browser: any = null
