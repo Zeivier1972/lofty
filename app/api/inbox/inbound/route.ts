@@ -118,30 +118,54 @@ async function runTool(name: string, input: any, contactId: string): Promise<str
         communities = Array.isArray(parsed) ? parsed : (parsed.communities || [])
       } catch { return "No hay datos de pre-construcción disponibles ahora." }
 
-      // Filter by criteria
-      if (input.city) {
-        const q = input.city.toLowerCase()
-        communities = communities.filter((c: any) =>
-          (c.city || "").toLowerCase().includes(q) || (c.area || "").toLowerCase().includes(q)
-        )
-      }
-      if (input.price_max) {
-        communities = communities.filter((c: any) => !c.priceMin || c.priceMin <= input.price_max)
-      }
-      if (input.bedrooms_min) {
-        communities = communities.filter((c: any) => {
-          if (!c.bedrooms) return true
-          const min = parseInt(String(c.bedrooms).split("-")[0]) || 0
-          return min >= input.bedrooms_min
-        })
+      const allCommunities = [...communities]
+
+      const matchCity = (c: any, q: string) =>
+        (c.city || "").toLowerCase().includes(q) || (c.area || "").toLowerCase().includes(q)
+      const matchPrice = (c: any, max: number) => !c.priceMin || c.priceMin <= max
+      const matchBeds = (c: any, min: number) => {
+        if (!c.bedrooms) return true
+        const bedMin = parseInt(String(c.bedrooms).split("-")[0]) || 0
+        return bedMin >= min
       }
 
-      if (communities.length === 0) {
-        return "No encontré pre-construcciones con esos criterios exactos. Tenemos opciones en Miami, Homestead, Davie, Fort Lauderdale, Parkland y West Palm Beach. ¿Alguna de esas áreas te interesa?"
+      // Exact match: city + price + beds
+      let filtered = [...allCommunities]
+      if (input.city) filtered = filtered.filter((c: any) => matchCity(c, input.city.toLowerCase()))
+      if (input.price_max) filtered = filtered.filter((c: any) => matchPrice(c, input.price_max))
+      if (input.bedrooms_min) filtered = filtered.filter((c: any) => matchBeds(c, input.bedrooms_min))
+
+      let fallbackNote = ""
+
+      if (filtered.length === 0 && input.city) {
+        // Relax price: show same city at any price
+        let sameCity = allCommunities.filter((c: any) => matchCity(c, input.city.toLowerCase()))
+        if (input.bedrooms_min) sameCity = sameCity.filter((c: any) => matchBeds(c, input.bedrooms_min))
+        if (sameCity.length > 0) {
+          filtered = sameCity
+          const minPrice = Math.min(...sameCity.map((c: any) => c.priceMin || 0).filter((p: number) => p > 0))
+          fallbackNote = `⚠️ No hay opciones en ${input.city} dentro de ese presupuesto. Las opciones disponibles en esa área arrancan desde $${minPrice.toLocaleString()}:\n\n`
+        }
+      }
+
+      if (filtered.length === 0) {
+        // Relax city: show any area within price budget (and beds)
+        let withinBudget = [...allCommunities]
+        if (input.price_max) withinBudget = withinBudget.filter((c: any) => matchPrice(c, input.price_max))
+        if (input.bedrooms_min) withinBudget = withinBudget.filter((c: any) => matchBeds(c, input.bedrooms_min))
+        if (withinBudget.length > 0) {
+          filtered = withinBudget
+          fallbackNote = `⚠️ No hay opciones en ${input.city || "esa área"} con esos criterios. Aquí hay alternativas dentro del presupuesto:\n\n`
+        }
+      }
+
+      if (filtered.length === 0) {
+        const cities = [...new Set(allCommunities.map((c: any) => c.city || c.area).filter(Boolean))].slice(0, 8).join(", ")
+        return `No encontré pre-construcciones con esos criterios. Tenemos opciones en: ${cities}. ¿Alguna te interesa?`
       }
 
       // Return up to 3 — NEVER include builder or community name
-      return communities.slice(0, 3).map((c: any) => {
+      return fallbackNote + filtered.slice(0, 3).map((c: any) => {
         const lines: string[] = [`📍 ${c.area || (c.city + ", FL")}`]
         if (c.zipCode) lines[0] += ` · ${c.zipCode}`
         if (c.priceMin) {
