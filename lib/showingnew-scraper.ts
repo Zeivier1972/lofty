@@ -2,7 +2,7 @@
  * ShowingNew scraper — NewHomeSource Professional platform by BDX.
  *
  * Injects XHR + fetch interception via addInitScript so it runs
- * before any page JavaScript, capturing getresultshomes response bodies.
+ * before any page JavaScript, capturing communityresults response bodies.
  *
  * NEVER exposes builder name, community name, or direct URL to leads.
  */
@@ -31,7 +31,9 @@ const SEARCH_PAGES = [
   "https://www.showingnew.com/catherinegomez/communities/florida/miami-dade-county",
 ]
 
-// Injected before any page JS. Patches XHR + fetch to store getresultshomes bodies.
+// Injected before any page JS. Patches XHR + fetch to store communityresults response bodies.
+// Broad match on 'communityresults' so we catch any variant URL (getresultshomes, etc.).
+// Also captures the request body so we can replay if needed.
 // Uses old-style JS (no arrow functions, no const) for maximum compatibility.
 const CAPTURE_SCRIPT = `(function() {
   window.__bdxCaptures = [];
@@ -42,16 +44,20 @@ const CAPTURE_SCRIPT = `(function() {
 
   XMLHttpRequest.prototype.open = function(method, url) {
     this._bdxUrl = String(url || '');
+    this._bdxMethod = String(method || '');
     return _open.apply(this, arguments);
   };
 
   XMLHttpRequest.prototype.send = function(body) {
     var self = this;
-    if (self._bdxUrl && self._bdxUrl.toLowerCase().indexOf('getresultshomes') !== -1) {
+    if (self._bdxUrl && self._bdxUrl.toLowerCase().indexOf('communityresults') !== -1) {
+      self._bdxReqBody = (typeof body === 'string') ? body : '';
       self.addEventListener('load', function() {
         try {
           window.__bdxCaptures.push({
             url: self._bdxUrl,
+            method: self._bdxMethod,
+            reqBody: self._bdxReqBody,
             status: self.status,
             body: self.responseText
           });
@@ -71,11 +77,11 @@ const CAPTURE_SCRIPT = `(function() {
     window.fetch = function(input, init) {
       var url = typeof input === 'string' ? input : (input && input.url) || '';
       var p = _fetch.apply(this, arguments);
-      if (url && url.toLowerCase().indexOf('getresultshomes') !== -1) {
+      if (url && url.toLowerCase().indexOf('communityresults') !== -1) {
         p = p.then(function(response) {
           var clone = response.clone();
           clone.text().then(function(text) {
-            window.__bdxCaptures.push({ url: url, status: response.status, body: text });
+            window.__bdxCaptures.push({ url: url, method: 'fetch', reqBody: '', status: response.status, body: text });
             console.log('[BDX-HOOK] fetch captured url=' + url + ' len=' + text.length);
           }).catch(function(e) {
             console.log('[BDX-HOOK] fetch clone error: ' + e);
@@ -116,88 +122,140 @@ export function getChromiumPath(): string | null {
 
 /**
  * Parse the communityresults/getresultshomes JSON response.
- * Returns one ScrapedCommunity per city listed in FacetsCounts.Cities,
- * using the shared PrRange and BrRange for the search page.
+ *
+ * Tries multiple JSON structures since BDX response shapes vary:
+ *   1. FacetsCounts.Cities[] + PrRange + BrRange (original assumption)
+ *   2. Communities[] array with per-community city/price/beds fields
+ *   3. Homes[] / Plans[] array, grouped by city
+ *
  * Builder names and community names are intentionally NOT stored.
  */
 function parseGetResultsHomesJson(body: string, pageUrl: string): ScrapedCommunity[] {
   let json: any
   try { json = JSON.parse(body) } catch { return [] }
 
-  const facets = json && json.FacetsCounts
-  if (!facets) {
-    console.log("[ShowingNew] No FacetsCounts. Top-level keys: " + Object.keys(json || {}).join(", "))
-    return []
-  }
-
-  console.log("[ShowingNew] FacetsCounts keys: " + Object.keys(facets).join(", "))
+  const topKeys = Object.keys(json || {})
+  console.log("[ShowingNew] JSON top-level keys: " + topKeys.join(", "))
 
   const now = new Date().toISOString()
 
-  // Parse price range — try multiple field name variants
-  let priceMin: number | undefined
-  let priceMax: number | undefined
-  const prRaw: string = facets.PrRange || facets.PriceRange || facets.MinMaxPrice || ""
-  console.log("[ShowingNew] PrRange raw=" + JSON.stringify(prRaw) + " BrRange=" + JSON.stringify(facets.BrRange || facets.BdRange || "") + " Cities.length=" + (Array.isArray(facets.Cities) ? facets.Cities.length : "N/A"))
-  if (prRaw && typeof prRaw === "string") {
-    const parts = prRaw.split("-")
-    const lo = parseInt(parts[0] || "", 10)
-    const hi = parseInt(parts[1] || "", 10)
-    if (!isNaN(lo) && lo > 0) priceMin = lo
-    if (!isNaN(hi) && hi > 0) priceMax = hi
-  } else if (typeof facets.MinPrice === "number" && facets.MinPrice > 0) {
-    priceMin = facets.MinPrice
-    priceMax = facets.MaxPrice || undefined
-  }
-
-  // Parse bedroom range "3-4" or "3" — try multiple field name variants
-  let bedrooms: string | undefined
-  const brRaw: string = facets.BrRange || facets.BdRange || facets.BedroomRange || ""
-  if (brRaw && typeof brRaw === "string") {
-    bedrooms = brRaw.trim()
-  }
-
-  // Extract readable area from page URL
+  // Derive area label from page URL
   const urlSegs = pageUrl.replace(/\/$/, "").split("/")
   const lastSeg = urlSegs[urlSegs.length - 1] || ""
   let areaLabel = lastSeg.replace(/^city-/, "").replace(/-/g, " ")
     .replace(/\b\w/g, function(l: string) { return l.toUpperCase() })
   if (!areaLabel) areaLabel = "South Florida"
 
-  const cities: string[] = []
-  if (facets.Cities && Array.isArray(facets.Cities)) {
-    for (let i = 0; i < facets.Cities.length; i++) {
-      const v = facets.Cities[i] && facets.Cities[i].Value
-      if (typeof v === "string" && v.trim()) cities.push(v.trim())
+  // ── Strategy 1: FacetsCounts ─────────────────────────────────────────────
+  const facets = json.FacetsCounts
+  if (facets) {
+    const facetKeys = Object.keys(facets)
+    console.log("[ShowingNew] FacetsCounts keys (" + facetKeys.length + "): " + facetKeys.slice(0, 30).join(", "))
+
+    let priceMin: number | undefined
+    let priceMax: number | undefined
+    const prRaw: string = facets.PrRange || facets.PriceRange || facets.MinMaxPrice || ""
+    if (prRaw && typeof prRaw === "string" && prRaw.indexOf("-") !== -1) {
+      const parts = prRaw.split("-")
+      const lo = parseInt(parts[0] || "", 10)
+      const hi = parseInt(parts[1] || "", 10)
+      if (!isNaN(lo) && lo > 0) priceMin = lo
+      if (!isNaN(hi) && hi > 0) priceMax = hi
+    } else if (typeof facets.MinPrice === "number" && facets.MinPrice > 0) {
+      priceMin = facets.MinPrice
+      priceMax = typeof facets.MaxPrice === "number" ? facets.MaxPrice : undefined
+    }
+
+    let bedrooms: string | undefined
+    const brRaw: string = facets.BrRange || facets.BdRange || facets.BedroomRange || ""
+    if (brRaw && typeof brRaw === "string") bedrooms = brRaw.trim()
+
+    const cities: string[] = []
+    const citiesArr: any[] = facets.Cities || facets.CityList || []
+    if (Array.isArray(citiesArr)) {
+      for (let i = 0; i < citiesArr.length; i++) {
+        const entry = citiesArr[i]
+        const v: string = (typeof entry === "string") ? entry : (entry && (entry.Value || entry.Name || entry.City || ""))
+        if (typeof v === "string" && v.trim()) cities.push(v.trim())
+      }
+    }
+
+    console.log("[ShowingNew] FacetsCounts → priceMin=" + priceMin + " priceMax=" + priceMax + " bedrooms=" + bedrooms + " cities=" + cities.length)
+
+    if (cities.length > 0 || priceMin || priceMax) {
+      if (cities.length === 0) {
+        return [{ area: areaLabel + ", FL", city: areaLabel, priceMin, priceMax, bedrooms, description: areaLabel + " new construction homes", scrapedAt: now }]
+      }
+      return cities.map(function(city) {
+        return { area: city + ", FL", city, priceMin, priceMax, bedrooms, description: city + " new construction homes", scrapedAt: now }
+      })
     }
   }
 
-  if (cities.length === 0) {
-    if (!priceMin && !priceMax) return []
-    return [{
-      area: areaLabel + ", FL",
-      city: areaLabel,
-      priceMin,
-      priceMax,
-      bedrooms,
-      description: areaLabel + " new construction homes",
-      scrapedAt: now,
-    }]
+  // ── Strategy 2: Communities / Homes array ────────────────────────────────
+  const listKeys = ["Communities", "Homes", "Results", "SearchResults", "Items", "Plans", "HomeList", "CommunityList"]
+  for (let li = 0; li < listKeys.length; li++) {
+    const arr: any[] = json[listKeys[li]]
+    if (!Array.isArray(arr) || arr.length === 0) continue
+
+    const firstItem = arr[0] || {}
+    const itemKeys = Object.keys(firstItem)
+    console.log("[ShowingNew] Found json." + listKeys[li] + " length=" + arr.length + " item keys: " + itemKeys.slice(0, 25).join(", "))
+
+    // Group by city, aggregate price + bed ranges
+    const byCity = new Map<string, { priceMin: number; priceMax: number; bedsMin: number; bedsMax: number }>()
+    for (let i = 0; i < arr.length; i++) {
+      const c = arr[i]
+      if (!c) continue
+
+      // City — try various field names
+      const cityRaw: string = c.CityName || c.City || c.CityStateZip || c.Location || c.Area || ""
+      const city = typeof cityRaw === "string" ? cityRaw.split(",")[0].trim() : ""
+      if (!city) continue
+
+      const minP: number = c.MinPrice || c.PriceFrom || c.BasePrice || c.StartingPrice || c.LowPrice || 0
+      const maxP: number = c.MaxPrice || c.PriceTo || c.HighPrice || c.TopPrice || 0
+      const minBr: number = c.MinBedrooms || c.BedMin || c.BedsFrom || c.MinBeds || c.Bedrooms || 0
+      const maxBr: number = c.MaxBedrooms || c.BedMax || c.BedsTo || c.MaxBeds || 0
+
+      const prev = byCity.get(city)
+      if (!prev) {
+        byCity.set(city, { priceMin: minP, priceMax: maxP, bedsMin: minBr, bedsMax: maxBr })
+      } else {
+        byCity.set(city, {
+          priceMin: (prev.priceMin && minP) ? Math.min(prev.priceMin, minP) : (prev.priceMin || minP),
+          priceMax: Math.max(prev.priceMax, maxP),
+          bedsMin: (prev.bedsMin && minBr) ? Math.min(prev.bedsMin, minBr) : (prev.bedsMin || minBr),
+          bedsMax: Math.max(prev.bedsMax, maxBr),
+        })
+      }
+    }
+
+    console.log("[ShowingNew] Strategy2 → " + byCity.size + " cities")
+
+    if (byCity.size > 0) {
+      const results: ScrapedCommunity[] = []
+      byCity.forEach(function(stats, city) {
+        let bedrooms: string | undefined
+        if (stats.bedsMin && stats.bedsMax && stats.bedsMin !== stats.bedsMax) bedrooms = stats.bedsMin + "-" + stats.bedsMax
+        else if (stats.bedsMin) bedrooms = String(stats.bedsMin)
+        results.push({
+          area: city + ", FL",
+          city,
+          priceMin: stats.priceMin || undefined,
+          priceMax: stats.priceMax || undefined,
+          bedrooms,
+          description: city + " new construction homes",
+          scrapedAt: now,
+        })
+      })
+      return results
+    }
   }
 
-  const results: ScrapedCommunity[] = []
-  for (let i = 0; i < cities.length; i++) {
-    results.push({
-      area: cities[i] + ", FL",
-      city: cities[i],
-      priceMin,
-      priceMax,
-      bedrooms,
-      description: cities[i] + " new construction homes",
-      scrapedAt: now,
-    })
-  }
-  return results
+  // Nothing worked — show more of the body for diagnostics
+  console.log("[ShowingNew] Parse failed. Body[0..1000]: " + body.substring(0, 1000))
+  return []
 }
 
 async function scrapePageWithInterception(
@@ -205,11 +263,13 @@ async function scrapePageWithInterception(
   url: string,
 ): Promise<ScrapedCommunity[]> {
   try {
-    try { await page.goto(url, { timeout: 35000, waitUntil: "networkidle" }) } catch {
-      try { await page.goto(url, { timeout: 25000, waitUntil: "load" }) } catch {}
+    // Use "load" only — "networkidle" can time out and trigger a second goto() which
+    // resets window.__bdxCaptures, wiping captures already accumulated.
+    try { await page.goto(url, { timeout: 45000, waitUntil: "load" }) } catch (e: any) {
+      console.log("[ShowingNew] goto load error on " + url + ": " + (e?.message || e))
     }
 
-    // Progressive scroll to trigger IntersectionObserver / lazy load AJAX
+    // Progressive scroll to trigger IntersectionObserver / lazy-load AJAX
     await page.evaluate(function() {
       return new Promise<void>(function(resolve) {
         let pos = 0
@@ -222,44 +282,46 @@ async function scrapePageWithInterception(
           if (pos > max) { clearInterval(id); window.scrollTo(0, 0); resolve() }
         }, 120)
       })
-    }).catch(() => {})
+    }).catch(function() {})
 
-    // Wait up to 8 s for the XHR/fetch hook to fire, or fall through
+    // Wait up to 12 s for the XHR/fetch hook to fire
     try {
       await page.waitForFunction(
         function() { return Array.isArray((window as any).__bdxCaptures) && (window as any).__bdxCaptures.length > 0 },
-        { timeout: 8000 }
+        { timeout: 12000 }
       )
     } catch {
-      // timeout — no captures yet, will check anyway
+      // timeout — no captures yet; check anyway
     }
 
-    // Extra 1-second buffer for in-flight fetch clones to resolve
-    await page.waitForTimeout(1000)
+    // Extra buffer for in-flight fetch clones to resolve
+    await page.waitForTimeout(800)
 
-    const captures: Array<{ url: string; status: number; body: string }> =
-      await page.evaluate(function() { return (window as any).__bdxCaptures || [] }).catch(() => [])
+    const captures: Array<{ url: string; method: string; reqBody: string; status: number; body: string }> =
+      await page.evaluate(function() { return (window as any).__bdxCaptures || [] }).catch(function() { return [] })
 
     console.log("[ShowingNew] JS captures: " + captures.length + " from " + url)
 
     for (let i = 0; i < captures.length; i++) {
       const cap = captures[i]
-      console.log("[ShowingNew] Capture[" + i + "] url=" + cap.url.substring(0, 80) + " status=" + cap.status + " len=" + (cap.body || "").length)
+      console.log("[ShowingNew] Capture[" + i + "] " + cap.method + " " + cap.url.substring(0, 80) + " status=" + cap.status + " len=" + (cap.body || "").length + " reqBodyLen=" + (cap.reqBody || "").length)
+      if (cap.reqBody && cap.reqBody.length > 0) {
+        console.log("[ShowingNew] Capture[" + i + "] reqBody: " + cap.reqBody.substring(0, 300))
+      }
       if (cap.status === 200 && cap.body && cap.body.length >= 50) {
         const found = parseGetResultsHomesJson(cap.body, url)
         if (found.length > 0) {
           console.log("[ShowingNew] Parsed " + found.length + " cities from " + url)
           return found
         }
-        console.log("[ShowingNew] Body ok but no cities/prices; preview: " + cap.body.substring(0, 500))
       }
     }
 
     if (captures.length === 0) {
-      const title = await page.title().catch(() => "?")
+      const title = await page.title().catch(function() { return "?" })
       const bodyPreview: string = await page.evaluate(function() {
-        return document.body ? document.body.innerText.replace(/\s+/g, " ").substring(0, 250) : ""
-      }).catch(() => "")
+        return document.body ? document.body.innerText.replace(/\s+/g, " ").substring(0, 300) : ""
+      }).catch(function() { return "" })
       console.log("[ShowingNew] No captures. Title='" + title + "' body='" + bodyPreview + "'")
     }
 
@@ -286,7 +348,7 @@ async function scrapeWithPlaywright(): Promise<{ communities: ScrapedCommunity[]
       "--disable-gpu", "--no-first-run",
       "--disable-blink-features=AutomationControlled",
     ],
-  }).catch((e: any) => { console.error("[ShowingNew] launch failed:", e?.message); return null })
+  }).catch(function(e: any) { console.error("[ShowingNew] launch failed:", e?.message); return null })
   if (!browser) return { communities: [], errors: ["browser launch failed"], strategy: "none" }
 
   try {
@@ -297,22 +359,17 @@ async function scrapeWithPlaywright(): Promise<{ communities: ScrapedCommunity[]
       extraHTTPHeaders: { "Accept-Language": "en-US,en;q=0.9" },
     })
 
-    // Mask navigator.webdriver to avoid bot detection
     await ctx.addInitScript("Object.defineProperty(navigator,'webdriver',{get:()=>false})")
-
-    // Install XHR + fetch interceptor — runs before any page JavaScript
     await ctx.addInitScript(CAPTURE_SCRIPT)
 
     const page = await ctx.newPage()
 
     // Establish ASP.NET session cookie by visiting the agent homepage first
     console.log("[ShowingNew] Homepage (session)…")
-    try { await page.goto(AGENT_URL, { timeout: 30000, waitUntil: "networkidle" }) } catch {
-      try { await page.goto(AGENT_URL, { timeout: 20000, waitUntil: "load" }) } catch {}
-    }
-    const homeTitle = await page.title().catch(() => "?")
+    try { await page.goto(AGENT_URL, { timeout: 30000, waitUntil: "load" }) } catch {}
+    const homeTitle = await page.title().catch(function() { return "?" })
     console.log("[ShowingNew] Homepage title: '" + homeTitle + "'")
-    await page.waitForTimeout(800)
+    await page.waitForTimeout(1000)
 
     const allCommunities: ScrapedCommunity[] = []
     const seen = new Set<string>()
@@ -336,7 +393,7 @@ async function scrapeWithPlaywright(): Promise<{ communities: ScrapedCommunity[]
   } catch (e: any) {
     return { communities: [], errors: [e?.message || "unknown"], strategy: "none" }
   } finally {
-    await browser.close().catch(() => {})
+    await browser.close().catch(function() {})
   }
 }
 
@@ -345,11 +402,13 @@ export async function scrapeShowingNew(): Promise<{
   errors: string[]
   strategy: string
 }> {
-  const result = await scrapeWithPlaywright().catch((e: any) => ({
-    communities: [] as ScrapedCommunity[],
-    errors: [e?.message || "unknown"],
-    strategy: "none",
-  }))
+  const result = await scrapeWithPlaywright().catch(function(e: any) {
+    return {
+      communities: [] as ScrapedCommunity[],
+      errors: [e?.message || "unknown"],
+      strategy: "none",
+    }
+  })
   return {
     communities: dedup(result.communities),
     errors: result.errors,
