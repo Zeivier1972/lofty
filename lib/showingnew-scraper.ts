@@ -1,10 +1,8 @@
 /**
  * ShowingNew scraper — NewHomeSource Professional platform by BDX.
  *
- * All search pages lazy-load results via AJAX (IntersectionObserver).
- * An ASP.NET session cookie must first be set by visiting the homepage.
- *
- * Primary: intercept communityresults/getresultshomes via page.route() → clean city/price/beds data
+ * Uses CDP (Chrome DevTools Protocol) Network domain to capture
+ * getresultshomes response bodies — the same mechanism Chrome DevTools uses.
  *
  * NEVER exposes builder name, community name, or direct URL to leads.
  */
@@ -90,8 +88,6 @@ function parseGetResultsHomesJson(body: string, pageUrl: string): ScrapedCommuni
   }
 
   // Extract readable area from page URL
-  // e.g. ".../miami-dade-county" → "Miami-Dade County"
-  // e.g. ".../city-homestead" → "Homestead"
   const urlSegs = pageUrl.replace(/\/$/, "").split("/")
   const lastSeg = urlSegs[urlSegs.length - 1] || ""
   let areaLabel = lastSeg.replace(/^city-/, "").replace(/-/g, " ")
@@ -106,7 +102,6 @@ function parseGetResultsHomesJson(body: string, pageUrl: string): ScrapedCommuni
     }
   }
 
-  // If no cities found in facets, create one entry for the area
   if (cities.length === 0) {
     if (!priceMin && !priceMax) return []
     return [{
@@ -135,38 +130,15 @@ function parseGetResultsHomesJson(body: string, pageUrl: string): ScrapedCommuni
   return results
 }
 
-async function scrapePageWithPlaywright(
+async function scrapePageWithCDP(
   page: any,
-  url: string
+  url: string,
+  cdp: any,
+  matchedIds: string[]
 ): Promise<ScrapedCommunity[]> {
-  // Passively capture the getresultshomes request metadata (URL, method, headers).
-  // We don't intercept — the browser makes the call normally. After the page loads
-  // and scrolls, we replay the request from Node.js where response.text() is reliable.
-  const capturedReqs: Array<{
-    reqUrl: string
-    method: string
-    headers: Record<string, string>
-    postData: string | undefined
-  }> = []
-
-  const onRequest = (req: any) => {
-    try {
-      const reqUrl: string = typeof req.url === "function" ? req.url() : ""
-      if (reqUrl.toLowerCase().includes("getresultshomes")) {
-        capturedReqs.push({
-          reqUrl,
-          method: typeof req.method === "function" ? req.method() : "GET",
-          headers: typeof req.headers === "function" ? (req.headers() || {}) : {},
-          postData: typeof req.postData === "function" ? (req.postData() || undefined) : undefined,
-        })
-        console.log("[ShowingNew] Request observed: " + reqUrl.substring(0, 120))
-      }
-    } catch {}
-  }
+  matchedIds.length = 0 // clear before this page's navigation
 
   try {
-    page.on("request", onRequest)
-
     try { await page.goto(url, { timeout: 35000, waitUntil: "networkidle" }) } catch {
       try { await page.goto(url, { timeout: 25000, waitUntil: "load" }) } catch {}
     }
@@ -175,59 +147,53 @@ async function scrapePageWithPlaywright(
     await page.evaluate(function() {
       return new Promise<void>(function(resolve) {
         let pos = 0
-        const step = 250
-        const max = Math.min(document.body.scrollHeight, 4000)
+        const step = 300
+        const max = Math.min(document.body.scrollHeight, 5000)
         const id = setInterval(function() {
           window.scrollTo(0, pos)
           window.dispatchEvent(new Event("scroll"))
           pos += step
           if (pos > max) { clearInterval(id); window.scrollTo(0, 0); resolve() }
-        }, 150)
+        }, 120)
       })
     }).catch(() => {})
 
-    await page.waitForTimeout(3000)
+    await page.waitForTimeout(4000)
 
-    console.log("[ShowingNew] " + capturedReqs.length + " getresultshomes request(s) observed from " + url)
+    console.log("[ShowingNew] CDP captured " + matchedIds.length + " getresultshomes ID(s) from " + url)
 
-    if (capturedReqs.length === 0) {
-      console.log("[ShowingNew] " + url + " — AJAX not triggered; site may need JS or a different scroll trigger")
+    if (matchedIds.length === 0) {
+      // Log page title as diagnostic — tells us if the page loaded or got blocked
+      const title = await page.title().catch(() => "?")
+      console.log("[ShowingNew] Page title: '" + title + "' — no getresultshomes AJAX seen")
       return []
     }
 
-    // Replay each captured request from Node.js — response.text() here is always reliable
-    for (let i = 0; i < capturedReqs.length; i++) {
-      const { reqUrl, method, headers, postData } = capturedReqs[i]
+    for (let i = 0; i < matchedIds.length; i++) {
       try {
-        // Strip HTTP/2 pseudo-headers that Node.js fetch rejects
-        const cleanHeaders: Record<string, string> = {}
-        for (const [k, v] of Object.entries(headers)) {
-          if (!k.startsWith(":")) cleanHeaders[k] = v
-        }
+        const result = await cdp.send("Network.getResponseBody", { requestId: matchedIds[i] })
+        const body: string = result.base64Encoded
+          ? Buffer.from(result.body as string, "base64").toString("utf8")
+          : (result.body || "")
+        console.log("[ShowingNew] CDP body len=" + body.length + " from " + url)
 
-        const fetchInit: any = { method, headers: cleanHeaders }
-        if (postData && method !== "GET" && method !== "HEAD") fetchInit.body = postData
-
-        const res = await fetch(reqUrl, fetchInit)
-        const body = await res.text()
-        console.log("[ShowingNew] Replayed " + method + " → status=" + res.status + " len=" + body.length + " " + reqUrl.substring(0, 80))
-
-        if (res.ok && body.length >= 50) {
+        if (body.length >= 50) {
           const found = parseGetResultsHomesJson(body, url)
           if (found.length > 0) {
             console.log("[ShowingNew] Parsed " + found.length + " cities from " + url)
             return found
           }
-          console.log("[ShowingNew] Response OK but no cities/prices; body start: " + body.substring(0, 150))
+          console.log("[ShowingNew] Body ok but no cities/prices; preview: " + body.substring(0, 200))
         }
       } catch (e: any) {
-        console.log("[ShowingNew] Replay failed: " + (e?.message || e))
+        console.log("[ShowingNew] getResponseBody failed: " + (e?.message || e))
       }
     }
 
     return []
-  } finally {
-    try { page.off("request", onRequest) } catch {}
+  } catch (e: any) {
+    console.log("[ShowingNew] scrapePageWithCDP error on " + url + ": " + (e?.message || e))
+    return []
   }
 }
 
@@ -242,7 +208,11 @@ async function scrapeWithPlaywright(): Promise<{ communities: ScrapedCommunity[]
   const browser = await chromium.launch({
     executablePath,
     headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--no-first-run"],
+    args: [
+      "--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage",
+      "--disable-gpu", "--no-first-run",
+      "--disable-blink-features=AutomationControlled", // prevent webdriver detection
+    ],
   }).catch((e: any) => { console.error("[ShowingNew] launch failed:", e?.message); return null })
   if (!browser) return { communities: [], errors: ["browser launch failed"], strategy: "none" }
 
@@ -253,14 +223,61 @@ async function scrapeWithPlaywright(): Promise<{ communities: ScrapedCommunity[]
       viewport: { width: 1280, height: 900 },
       extraHTTPHeaders: { "Accept-Language": "en-US,en;q=0.9" },
     })
+
+    // Mask navigator.webdriver to avoid bot detection
+    await ctx.addInitScript("Object.defineProperty(navigator,'webdriver',{get:()=>false})")
+
     const page = await ctx.newPage()
+
+    // Open a CDP session — this is what Chrome DevTools itself uses to read response bodies.
+    // Network.enable with buffer sizes keeps bodies available until we call getResponseBody.
+    const matchedIds: string[] = []
+    let cdp: any = null
+    try {
+      cdp = await ctx.newCDPSession(page)
+      await cdp.send("Network.enable", {
+        maxResourceBufferSize: 10 * 1024 * 1024,  // 10 MB per response
+        maxTotalBufferSize:    50 * 1024 * 1024,  // 50 MB total
+      })
+
+      // Log ALL network activity on showingnew.com for diagnosis
+      cdp.on("Network.responseReceived", (ev: any) => {
+        const u: string = ev?.response?.url || ""
+        const status: number = ev?.response?.status || 0
+        if (u.includes("showingnew.com") || u.includes("bdx.com") || u.includes("communityresults")) {
+          console.log("[ShowingNew] NET " + status + " " + u.substring(0, 120))
+        }
+        if (u.toLowerCase().includes("getresultshomes")) {
+          matchedIds.push(ev.requestId)
+          console.log("[ShowingNew] >>> MATCH getresultshomes requestId=" + ev.requestId)
+        }
+      })
+
+      cdp.on("Network.requestWillBeSent", (ev: any) => {
+        const u: string = ev?.request?.url || ""
+        if (u.toLowerCase().includes("getresultshomes")) {
+          console.log("[ShowingNew] >>> REQUEST " + ev?.request?.method + " " + u.substring(0, 120))
+        }
+      })
+
+      console.log("[ShowingNew] CDP Network enabled")
+    } catch (e: any) {
+      console.log("[ShowingNew] CDP setup failed: " + (e?.message || e) + " — falling back to no-CDP")
+    }
 
     // Establish ASP.NET session
     console.log("[ShowingNew] Homepage (session)…")
     try { await page.goto(AGENT_URL, { timeout: 30000, waitUntil: "networkidle" }) } catch {
       try { await page.goto(AGENT_URL, { timeout: 20000, waitUntil: "load" }) } catch {}
     }
+    const homeTitle = await page.title().catch(() => "?")
+    console.log("[ShowingNew] Homepage title: '" + homeTitle + "'")
     await page.waitForTimeout(800)
+    matchedIds.length = 0 // discard any homepage network captures
+
+    if (!cdp) {
+      return { communities: [], errors: ["CDP session could not be created"], strategy: "none" }
+    }
 
     const allCommunities: ScrapedCommunity[] = []
     const seen = new Set<string>()
@@ -268,7 +285,7 @@ async function scrapeWithPlaywright(): Promise<{ communities: ScrapedCommunity[]
     for (let i = 0; i < SEARCH_PAGES.length; i++) {
       const url = SEARCH_PAGES[i]
       console.log("[ShowingNew] Scraping: " + url)
-      const found = await scrapePageWithPlaywright(page, url)
+      const found = await scrapePageWithCDP(page, url, cdp, matchedIds)
       console.log("[ShowingNew] Found " + found.length + " from " + url)
       for (let j = 0; j < found.length; j++) {
         const key = found[j].city + "|" + found[j].priceMin
@@ -277,7 +294,7 @@ async function scrapeWithPlaywright(): Promise<{ communities: ScrapedCommunity[]
     }
 
     if (allCommunities.length > 0) {
-      return { communities: allCommunities, errors: [], strategy: "playwright-json" }
+      return { communities: allCommunities, errors: [], strategy: "playwright-cdp" }
     }
     return { communities: [], errors: ["no communities on any page"], strategy: "none" }
 
