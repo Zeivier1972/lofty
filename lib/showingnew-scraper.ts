@@ -125,25 +125,36 @@ function parseGetResultsHomesJson(body: string, pageUrl: string): ScrapedCommuni
   try { json = JSON.parse(body) } catch { return [] }
 
   const facets = json && json.FacetsCounts
-  if (!facets) return []
+  if (!facets) {
+    console.log("[ShowingNew] No FacetsCounts. Top-level keys: " + Object.keys(json || {}).join(", "))
+    return []
+  }
+
+  console.log("[ShowingNew] FacetsCounts keys: " + Object.keys(facets).join(", "))
 
   const now = new Date().toISOString()
 
-  // Parse price range "439900-924900"
+  // Parse price range — try multiple field name variants
   let priceMin: number | undefined
   let priceMax: number | undefined
-  if (facets.PrRange && typeof facets.PrRange === "string") {
-    const parts = (facets.PrRange as string).split("-")
+  const prRaw: string = facets.PrRange || facets.PriceRange || facets.MinMaxPrice || ""
+  console.log("[ShowingNew] PrRange raw=" + JSON.stringify(prRaw) + " BrRange=" + JSON.stringify(facets.BrRange || facets.BdRange || "") + " Cities.length=" + (Array.isArray(facets.Cities) ? facets.Cities.length : "N/A"))
+  if (prRaw && typeof prRaw === "string") {
+    const parts = prRaw.split("-")
     const lo = parseInt(parts[0] || "", 10)
     const hi = parseInt(parts[1] || "", 10)
     if (!isNaN(lo) && lo > 0) priceMin = lo
     if (!isNaN(hi) && hi > 0) priceMax = hi
+  } else if (typeof facets.MinPrice === "number" && facets.MinPrice > 0) {
+    priceMin = facets.MinPrice
+    priceMax = facets.MaxPrice || undefined
   }
 
-  // Parse bedroom range "3-4" or "3"
+  // Parse bedroom range "3-4" or "3" — try multiple field name variants
   let bedrooms: string | undefined
-  if (facets.BrRange && typeof facets.BrRange === "string") {
-    bedrooms = (facets.BrRange as string).trim()
+  const brRaw: string = facets.BrRange || facets.BdRange || facets.BedroomRange || ""
+  if (brRaw && typeof brRaw === "string") {
+    bedrooms = brRaw.trim()
   }
 
   // Extract readable area from page URL
@@ -240,7 +251,7 @@ async function scrapePageWithInterception(
           console.log("[ShowingNew] Parsed " + found.length + " cities from " + url)
           return found
         }
-        console.log("[ShowingNew] Body ok but no cities/prices; preview: " + cap.body.substring(0, 200))
+        console.log("[ShowingNew] Body ok but no cities/prices; preview: " + cap.body.substring(0, 500))
       }
     }
 
