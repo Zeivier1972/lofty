@@ -134,135 +134,66 @@ function parseGetResultsHomesJson(body: string, pageUrl: string): ScrapedCommuni
   let json: any
   try { json = JSON.parse(body) } catch { return [] }
 
-  const topKeys = Object.keys(json || {})
-  console.log("[ShowingNew] JSON top-level keys: " + topKeys.join(", "))
-
   const now = new Date().toISOString()
 
-  // Derive area label from page URL
+  // Derive area label from page URL (each search URL is already city/county-scoped)
   const urlSegs = pageUrl.replace(/\/$/, "").split("/")
   const lastSeg = urlSegs[urlSegs.length - 1] || ""
   let areaLabel = lastSeg.replace(/^city-/, "").replace(/-/g, " ")
     .replace(/\b\w/g, function(l: string) { return l.toUpperCase() })
   if (!areaLabel) areaLabel = "South Florida"
 
-  // ── Strategy 1: FacetsCounts.Facets (actual BDX structure) ──────────────
-  // PrRange and BrRange live inside FacetsCounts.Facets, NOT directly in FacetsCounts.
+  // BDX structure: FacetsCounts.Facets contains PrRange, BrRange, Cities[]
   const facetsCounts = json.FacetsCounts
-  if (facetsCounts) {
-    console.log("[ShowingNew] FacetsCounts keys (" + Object.keys(facetsCounts).length + "): " + Object.keys(facetsCounts).slice(0, 20).join(", "))
-    const filters = facetsCounts.Facets || facetsCounts
-    if (facetsCounts.Facets) {
-      console.log("[ShowingNew] FacetsCounts.Facets keys (" + Object.keys(filters).length + "): " + Object.keys(filters).slice(0, 30).join(", "))
-    }
+  if (!facetsCounts) return []
 
-    let priceMin: number | undefined
-    let priceMax: number | undefined
-    const prRaw: string = filters.PrRange || filters.PriceRange || filters.MinMaxPrice || ""
-    if (prRaw && typeof prRaw === "string" && prRaw.indexOf("-") !== -1) {
-      const parts = prRaw.split("-")
-      const lo = parseInt(parts[0] || "", 10)
-      const hi = parseInt(parts[1] || "", 10)
-      if (!isNaN(lo) && lo > 0) priceMin = lo
-      if (!isNaN(hi) && hi > 0) priceMax = hi
-    } else if (typeof filters.MinPrice === "number" && filters.MinPrice > 0) {
-      priceMin = filters.MinPrice
-      priceMax = typeof filters.MaxPrice === "number" ? filters.MaxPrice : undefined
-    }
+  const filters = facetsCounts.Facets || facetsCounts
 
-    let bedrooms: string | undefined
-    const brRaw: string = filters.BrRange || filters.BdRange || filters.BedroomRange || ""
-    if (brRaw && typeof brRaw === "string") bedrooms = brRaw.trim()
+  let priceMin: number | undefined
+  let priceMax: number | undefined
+  const prRaw: string = filters.PrRange || filters.PriceRange || filters.MinMaxPrice || ""
+  if (prRaw && typeof prRaw === "string" && prRaw.indexOf("-") !== -1) {
+    const parts = prRaw.split("-")
+    const lo = parseInt(parts[0] || "", 10)
+    const hi = parseInt(parts[1] || "", 10)
+    if (!isNaN(lo) && lo > 0) priceMin = lo
+    if (!isNaN(hi) && hi > 0) priceMax = hi
+  } else if (typeof filters.MinPrice === "number" && filters.MinPrice > 0) {
+    priceMin = filters.MinPrice
+    priceMax = typeof filters.MaxPrice === "number" ? filters.MaxPrice : undefined
+  }
 
-    // Try Cities list from filters (might exist further in JSON)
-    const cities: string[] = []
-    const citiesArr: any[] = filters.Cities || filters.CityList || []
-    if (Array.isArray(citiesArr)) {
-      for (let i = 0; i < citiesArr.length; i++) {
-        const entry = citiesArr[i]
-        const v: string = (typeof entry === "string") ? entry : (entry && (entry.Value || entry.Name || entry.City || ""))
-        if (typeof v === "string" && v.trim()) cities.push(v.trim())
-      }
-    }
+  // Require at least a price to consider this a real result
+  if (!priceMin && !priceMax) return []
 
-    console.log("[ShowingNew] Parsed → priceMin=" + priceMin + " priceMax=" + priceMax + " bedrooms=" + bedrooms + " cities=" + cities.length)
+  let bedrooms: string | undefined
+  const brRaw: string = filters.BrRange || filters.BdRange || filters.BedroomRange || ""
+  // Discard "-" (no range, means no homes) or single "0"
+  if (brRaw && typeof brRaw === "string" && brRaw !== "-" && brRaw !== "0") {
+    bedrooms = brRaw.trim()
+  }
 
-    // Even with no city list, if we have price data, return one result using URL-derived area.
-    // Each search URL is already scoped to a specific city or county.
-    if (priceMin || priceMax || bedrooms) {
-      if (cities.length === 0) {
-        return [{ area: areaLabel + ", FL", city: areaLabel, priceMin, priceMax, bedrooms, description: areaLabel + " new construction homes", scrapedAt: now }]
-      }
-      return cities.map(function(city) {
-        return { area: city + ", FL", city, priceMin, priceMax, bedrooms, description: city + " new construction homes", scrapedAt: now }
-      })
+  // Cities list in FacetsCounts.Facets.Cities (confirmed present in BDX API)
+  const cities: string[] = []
+  const citiesArr: any[] = filters.Cities || filters.CityList || []
+  if (Array.isArray(citiesArr)) {
+    for (let i = 0; i < citiesArr.length; i++) {
+      const entry = citiesArr[i]
+      const v: string = (typeof entry === "string") ? entry : (entry && (entry.Value || entry.Name || entry.City || ""))
+      if (typeof v === "string" && v.trim()) cities.push(v.trim())
     }
   }
 
-  // ── Strategy 2: Communities / Homes array ────────────────────────────────
-  const listKeys = ["Communities", "Homes", "Results", "SearchResults", "Items", "Plans", "HomeList", "CommunityList"]
-  for (let li = 0; li < listKeys.length; li++) {
-    const arr: any[] = json[listKeys[li]]
-    if (!Array.isArray(arr) || arr.length === 0) continue
+  console.log("[ShowingNew] Parsed → priceMin=" + priceMin + " priceMax=" + priceMax + " bedrooms=" + bedrooms + " cities=" + cities.length)
 
-    const firstItem = arr[0] || {}
-    const itemKeys = Object.keys(firstItem)
-    console.log("[ShowingNew] Found json." + listKeys[li] + " length=" + arr.length + " item keys: " + itemKeys.slice(0, 25).join(", "))
-
-    // Group by city, aggregate price + bed ranges
-    const byCity = new Map<string, { priceMin: number; priceMax: number; bedsMin: number; bedsMax: number }>()
-    for (let i = 0; i < arr.length; i++) {
-      const c = arr[i]
-      if (!c) continue
-
-      // City — try various field names
-      const cityRaw: string = c.CityName || c.City || c.CityStateZip || c.Location || c.Area || ""
-      const city = typeof cityRaw === "string" ? cityRaw.split(",")[0].trim() : ""
-      if (!city) continue
-
-      const minP: number = c.MinPrice || c.PriceFrom || c.BasePrice || c.StartingPrice || c.LowPrice || 0
-      const maxP: number = c.MaxPrice || c.PriceTo || c.HighPrice || c.TopPrice || 0
-      const minBr: number = c.MinBedrooms || c.BedMin || c.BedsFrom || c.MinBeds || c.Bedrooms || 0
-      const maxBr: number = c.MaxBedrooms || c.BedMax || c.BedsTo || c.MaxBeds || 0
-
-      const prev = byCity.get(city)
-      if (!prev) {
-        byCity.set(city, { priceMin: minP, priceMax: maxP, bedsMin: minBr, bedsMax: maxBr })
-      } else {
-        byCity.set(city, {
-          priceMin: (prev.priceMin && minP) ? Math.min(prev.priceMin, minP) : (prev.priceMin || minP),
-          priceMax: Math.max(prev.priceMax, maxP),
-          bedsMin: (prev.bedsMin && minBr) ? Math.min(prev.bedsMin, minBr) : (prev.bedsMin || minBr),
-          bedsMax: Math.max(prev.bedsMax, maxBr),
-        })
-      }
-    }
-
-    console.log("[ShowingNew] Strategy2 → " + byCity.size + " cities")
-
-    if (byCity.size > 0) {
-      const results: ScrapedCommunity[] = []
-      byCity.forEach(function(stats, city) {
-        let bedrooms: string | undefined
-        if (stats.bedsMin && stats.bedsMax && stats.bedsMin !== stats.bedsMax) bedrooms = stats.bedsMin + "-" + stats.bedsMax
-        else if (stats.bedsMin) bedrooms = String(stats.bedsMin)
-        results.push({
-          area: city + ", FL",
-          city,
-          priceMin: stats.priceMin || undefined,
-          priceMax: stats.priceMax || undefined,
-          bedrooms,
-          description: city + " new construction homes",
-          scrapedAt: now,
-        })
-      })
-      return results
-    }
+  if (cities.length === 0) {
+    // Fall back to URL-derived area when no city list
+    return [{ area: areaLabel + ", FL", city: areaLabel, priceMin, priceMax, bedrooms, description: areaLabel + " new construction homes", scrapedAt: now }]
   }
+  return cities.map(function(city) {
+    return { area: city + ", FL", city, priceMin, priceMax, bedrooms, description: city + " new construction homes", scrapedAt: now }
+  })
 
-  // Nothing worked — show more of the body for diagnostics
-  console.log("[ShowingNew] Parse failed. Body[0..1000]: " + body.substring(0, 1000))
-  return []
 }
 
 async function scrapePageWithInterception(
@@ -311,10 +242,7 @@ async function scrapePageWithInterception(
 
     for (let i = 0; i < captures.length; i++) {
       const cap = captures[i]
-      console.log("[ShowingNew] Capture[" + i + "] " + cap.method + " " + cap.url.substring(0, 80) + " status=" + cap.status + " len=" + (cap.body || "").length + " reqBodyLen=" + (cap.reqBody || "").length)
-      if (cap.reqBody && cap.reqBody.length > 0) {
-        console.log("[ShowingNew] Capture[" + i + "] reqBody: " + cap.reqBody.substring(0, 300))
-      }
+      console.log("[ShowingNew] Capture[" + i + "] " + cap.method + " " + cap.url.substring(0, 80) + " status=" + cap.status + " len=" + (cap.body || "").length)
       if (cap.status === 200 && cap.body && cap.body.length >= 50) {
         const found = parseGetResultsHomesJson(cap.body, url)
         if (found.length > 0) {
