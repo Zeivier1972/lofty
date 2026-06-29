@@ -1,8 +1,8 @@
 /**
  * ShowingNew scraper — NewHomeSource Professional platform by BDX.
  *
- * Uses CDP (Chrome DevTools Protocol) Network domain to capture
- * getresultshomes response bodies — the same mechanism Chrome DevTools uses.
+ * Injects XHR + fetch interception via addInitScript so it runs
+ * before any page JavaScript, capturing getresultshomes response bodies.
  *
  * NEVER exposes builder name, community name, or direct URL to leads.
  */
@@ -30,6 +30,65 @@ const SEARCH_PAGES = [
   "https://www.showingnew.com/catherinegomez/homes/florida/palm-beach-county/city-west-palm-beach",
   "https://www.showingnew.com/catherinegomez/communities/florida/miami-dade-county",
 ]
+
+// Injected before any page JS. Patches XHR + fetch to store getresultshomes bodies.
+// Uses old-style JS (no arrow functions, no const) for maximum compatibility.
+const CAPTURE_SCRIPT = `(function() {
+  window.__bdxCaptures = [];
+
+  /* ---- XMLHttpRequest (jQuery / ASP.NET UpdatePanel) ---- */
+  var _open = XMLHttpRequest.prototype.open;
+  var _send = XMLHttpRequest.prototype.send;
+
+  XMLHttpRequest.prototype.open = function(method, url) {
+    this._bdxUrl = String(url || '');
+    return _open.apply(this, arguments);
+  };
+
+  XMLHttpRequest.prototype.send = function(body) {
+    var self = this;
+    if (self._bdxUrl && self._bdxUrl.toLowerCase().indexOf('getresultshomes') !== -1) {
+      self.addEventListener('load', function() {
+        try {
+          window.__bdxCaptures.push({
+            url: self._bdxUrl,
+            status: self.status,
+            body: self.responseText
+          });
+          console.log('[BDX-HOOK] XHR captured url=' + self._bdxUrl + ' len=' + self.responseText.length);
+        } catch(e) {}
+      });
+      self.addEventListener('error', function() {
+        console.log('[BDX-HOOK] XHR error on ' + self._bdxUrl);
+      });
+    }
+    return _send.apply(this, arguments);
+  };
+
+  /* ---- fetch (modern pattern) ---- */
+  if (typeof window.fetch === 'function') {
+    var _fetch = window.fetch;
+    window.fetch = function(input, init) {
+      var url = typeof input === 'string' ? input : (input && input.url) || '';
+      var p = _fetch.apply(this, arguments);
+      if (url && url.toLowerCase().indexOf('getresultshomes') !== -1) {
+        p = p.then(function(response) {
+          var clone = response.clone();
+          clone.text().then(function(text) {
+            window.__bdxCaptures.push({ url: url, status: response.status, body: text });
+            console.log('[BDX-HOOK] fetch captured url=' + url + ' len=' + text.length);
+          }).catch(function(e) {
+            console.log('[BDX-HOOK] fetch clone error: ' + e);
+          });
+          return response;
+        });
+      }
+      return p;
+    };
+  }
+
+  console.log('[BDX-HOOK] XHR+fetch interception installed');
+})();`
 
 /** Find the full Chromium binary */
 export function getChromiumPath(): string | null {
@@ -130,20 +189,16 @@ function parseGetResultsHomesJson(body: string, pageUrl: string): ScrapedCommuni
   return results
 }
 
-async function scrapePageWithCDP(
+async function scrapePageWithInterception(
   page: any,
   url: string,
-  cdp: any,
-  matchedIds: string[]
 ): Promise<ScrapedCommunity[]> {
-  matchedIds.length = 0 // clear before this page's navigation
-
   try {
     try { await page.goto(url, { timeout: 35000, waitUntil: "networkidle" }) } catch {
       try { await page.goto(url, { timeout: 25000, waitUntil: "load" }) } catch {}
     }
 
-    // Progressive scroll to trigger IntersectionObserver lazy loading
+    // Progressive scroll to trigger IntersectionObserver / lazy load AJAX
     await page.evaluate(function() {
       return new Promise<void>(function(resolve) {
         let pos = 0
@@ -158,41 +213,48 @@ async function scrapePageWithCDP(
       })
     }).catch(() => {})
 
-    await page.waitForTimeout(4000)
-
-    console.log("[ShowingNew] CDP captured " + matchedIds.length + " getresultshomes ID(s) from " + url)
-
-    if (matchedIds.length === 0) {
-      // Log page title as diagnostic — tells us if the page loaded or got blocked
-      const title = await page.title().catch(() => "?")
-      console.log("[ShowingNew] Page title: '" + title + "' — no getresultshomes AJAX seen")
-      return []
+    // Wait up to 8 s for the XHR/fetch hook to fire, or fall through
+    try {
+      await page.waitForFunction(
+        function() { return Array.isArray((window as any).__bdxCaptures) && (window as any).__bdxCaptures.length > 0 },
+        { timeout: 8000 }
+      )
+    } catch {
+      // timeout — no captures yet, will check anyway
     }
 
-    for (let i = 0; i < matchedIds.length; i++) {
-      try {
-        const result = await cdp.send("Network.getResponseBody", { requestId: matchedIds[i] })
-        const body: string = result.base64Encoded
-          ? Buffer.from(result.body as string, "base64").toString("utf8")
-          : (result.body || "")
-        console.log("[ShowingNew] CDP body len=" + body.length + " from " + url)
+    // Extra 1-second buffer for in-flight fetch clones to resolve
+    await page.waitForTimeout(1000)
 
-        if (body.length >= 50) {
-          const found = parseGetResultsHomesJson(body, url)
-          if (found.length > 0) {
-            console.log("[ShowingNew] Parsed " + found.length + " cities from " + url)
-            return found
-          }
-          console.log("[ShowingNew] Body ok but no cities/prices; preview: " + body.substring(0, 200))
+    const captures: Array<{ url: string; status: number; body: string }> =
+      await page.evaluate(function() { return (window as any).__bdxCaptures || [] }).catch(() => [])
+
+    console.log("[ShowingNew] JS captures: " + captures.length + " from " + url)
+
+    for (let i = 0; i < captures.length; i++) {
+      const cap = captures[i]
+      console.log("[ShowingNew] Capture[" + i + "] url=" + cap.url.substring(0, 80) + " status=" + cap.status + " len=" + (cap.body || "").length)
+      if (cap.status === 200 && cap.body && cap.body.length >= 50) {
+        const found = parseGetResultsHomesJson(cap.body, url)
+        if (found.length > 0) {
+          console.log("[ShowingNew] Parsed " + found.length + " cities from " + url)
+          return found
         }
-      } catch (e: any) {
-        console.log("[ShowingNew] getResponseBody failed: " + (e?.message || e))
+        console.log("[ShowingNew] Body ok but no cities/prices; preview: " + cap.body.substring(0, 200))
       }
+    }
+
+    if (captures.length === 0) {
+      const title = await page.title().catch(() => "?")
+      const bodyPreview: string = await page.evaluate(function() {
+        return document.body ? document.body.innerText.replace(/\s+/g, " ").substring(0, 250) : ""
+      }).catch(() => "")
+      console.log("[ShowingNew] No captures. Title='" + title + "' body='" + bodyPreview + "'")
     }
 
     return []
   } catch (e: any) {
-    console.log("[ShowingNew] scrapePageWithCDP error on " + url + ": " + (e?.message || e))
+    console.log("[ShowingNew] scrapePageWithInterception error on " + url + ": " + (e?.message || e))
     return []
   }
 }
@@ -211,7 +273,7 @@ async function scrapeWithPlaywright(): Promise<{ communities: ScrapedCommunity[]
     args: [
       "--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage",
       "--disable-gpu", "--no-first-run",
-      "--disable-blink-features=AutomationControlled", // prevent webdriver detection
+      "--disable-blink-features=AutomationControlled",
     ],
   }).catch((e: any) => { console.error("[ShowingNew] launch failed:", e?.message); return null })
   if (!browser) return { communities: [], errors: ["browser launch failed"], strategy: "none" }
@@ -227,45 +289,12 @@ async function scrapeWithPlaywright(): Promise<{ communities: ScrapedCommunity[]
     // Mask navigator.webdriver to avoid bot detection
     await ctx.addInitScript("Object.defineProperty(navigator,'webdriver',{get:()=>false})")
 
+    // Install XHR + fetch interceptor — runs before any page JavaScript
+    await ctx.addInitScript(CAPTURE_SCRIPT)
+
     const page = await ctx.newPage()
 
-    // Open a CDP session — this is what Chrome DevTools itself uses to read response bodies.
-    // Network.enable with buffer sizes keeps bodies available until we call getResponseBody.
-    const matchedIds: string[] = []
-    let cdp: any = null
-    try {
-      cdp = await ctx.newCDPSession(page)
-      await cdp.send("Network.enable", {
-        maxResourceBufferSize: 10 * 1024 * 1024,  // 10 MB per response
-        maxTotalBufferSize:    50 * 1024 * 1024,  // 50 MB total
-      })
-
-      // Log ALL network activity on showingnew.com for diagnosis
-      cdp.on("Network.responseReceived", (ev: any) => {
-        const u: string = ev?.response?.url || ""
-        const status: number = ev?.response?.status || 0
-        if (u.includes("showingnew.com") || u.includes("bdx.com") || u.includes("communityresults")) {
-          console.log("[ShowingNew] NET " + status + " " + u.substring(0, 120))
-        }
-        if (u.toLowerCase().includes("getresultshomes")) {
-          matchedIds.push(ev.requestId)
-          console.log("[ShowingNew] >>> MATCH getresultshomes requestId=" + ev.requestId)
-        }
-      })
-
-      cdp.on("Network.requestWillBeSent", (ev: any) => {
-        const u: string = ev?.request?.url || ""
-        if (u.toLowerCase().includes("getresultshomes")) {
-          console.log("[ShowingNew] >>> REQUEST " + ev?.request?.method + " " + u.substring(0, 120))
-        }
-      })
-
-      console.log("[ShowingNew] CDP Network enabled")
-    } catch (e: any) {
-      console.log("[ShowingNew] CDP setup failed: " + (e?.message || e) + " — falling back to no-CDP")
-    }
-
-    // Establish ASP.NET session
+    // Establish ASP.NET session cookie by visiting the agent homepage first
     console.log("[ShowingNew] Homepage (session)…")
     try { await page.goto(AGENT_URL, { timeout: 30000, waitUntil: "networkidle" }) } catch {
       try { await page.goto(AGENT_URL, { timeout: 20000, waitUntil: "load" }) } catch {}
@@ -273,19 +302,14 @@ async function scrapeWithPlaywright(): Promise<{ communities: ScrapedCommunity[]
     const homeTitle = await page.title().catch(() => "?")
     console.log("[ShowingNew] Homepage title: '" + homeTitle + "'")
     await page.waitForTimeout(800)
-    matchedIds.length = 0 // discard any homepage network captures
-
-    if (!cdp) {
-      return { communities: [], errors: ["CDP session could not be created"], strategy: "none" }
-    }
 
     const allCommunities: ScrapedCommunity[] = []
     const seen = new Set<string>()
 
     for (let i = 0; i < SEARCH_PAGES.length; i++) {
       const url = SEARCH_PAGES[i]
-      console.log("[ShowingNew] Scraping: " + url)
-      const found = await scrapePageWithCDP(page, url, cdp, matchedIds)
+      console.log("[ShowingNew] Scraping [" + (i + 1) + "/" + SEARCH_PAGES.length + "]: " + url)
+      const found = await scrapePageWithInterception(page, url)
       console.log("[ShowingNew] Found " + found.length + " from " + url)
       for (let j = 0; j < found.length; j++) {
         const key = found[j].city + "|" + found[j].priceMin
@@ -294,7 +318,7 @@ async function scrapeWithPlaywright(): Promise<{ communities: ScrapedCommunity[]
     }
 
     if (allCommunities.length > 0) {
-      return { communities: allCommunities, errors: [], strategy: "playwright-cdp" }
+      return { communities: allCommunities, errors: [], strategy: "playwright-xhr" }
     }
     return { communities: [], errors: ["no communities on any page"], strategy: "none" }
 
