@@ -48,6 +48,8 @@ type ScrapedCommunity = {
   priceMin?: number
   priceMax?: number
   bedrooms?: string
+  bathrooms?: string
+  sqft?: number
   deliveryDate?: string
   status?: string
   description?: string
@@ -307,9 +309,18 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
                         {c.priceMax ? `$${c.priceMax.toLocaleString()}` : ""}
                       </div>
                     )}
-                    {c.bedrooms && (
+                    {(c.bedrooms || c.bathrooms) && (
                       <div className="flex items-center gap-1.5 text-xs text-gray-600">
-                        <Users className="w-3 h-3 text-gray-400" /> {c.bedrooms} beds
+                        <Users className="w-3 h-3 text-gray-400" />
+                        {c.bedrooms && <span>{c.bedrooms} beds</span>}
+                        {c.bedrooms && c.bathrooms && <span className="text-gray-300">·</span>}
+                        {c.bathrooms && <span>{c.bathrooms} baths</span>}
+                      </div>
+                    )}
+                    {c.sqft && (
+                      <div className="flex items-center gap-1.5 text-xs text-gray-600">
+                        <span className="text-gray-400 font-mono text-[10px]">sqft</span>
+                        {c.sqft.toLocaleString()} sq ft
                       </div>
                     )}
                     {c.deliveryDate && (
