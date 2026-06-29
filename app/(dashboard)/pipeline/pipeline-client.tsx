@@ -6,7 +6,7 @@ import {
   Plus, GitBranch, DollarSign, Settings,
   MoreVertical, Phone, Mail, Calendar, ChevronDown,
   Pencil, Trash2, Check, Loader2, CheckSquare, Square,
-  MoveRight, UserPlus, Search, X,
+  MoveRight, UserPlus, Search, X, Clock, Flame, SlidersHorizontal,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -288,6 +288,151 @@ function AddContactsDialog({ stageId, stageName, onAdded }: {
   )
 }
 
+function daysAgo(date: string | null | undefined): number | null {
+  if (!date) return null
+  return Math.floor((Date.now() - new Date(date).getTime()) / (1000 * 60 * 60 * 24))
+}
+
+function LeadEditPanel({ lead, onClose, onSaved }: {
+  lead: any
+  onClose: () => void
+  onSaved: (updated: any) => void
+}) {
+  const { toast } = useToast()
+  const [value, setValue] = useState<string>(lead.value != null ? String(lead.value) : "")
+  const [probability, setProbability] = useState<string>(lead.probability != null ? String(lead.probability) : "")
+  const [expectedClose, setExpectedClose] = useState<string>(lead.expectedClose ? lead.expectedClose.slice(0, 10) : "")
+  const [notes, setNotes] = useState<string>(lead.notes || "")
+  const [saving, setSaving] = useState(false)
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/pipeline/leads/${lead.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          value: value !== "" ? Number(value) : null,
+          probability: probability !== "" ? Number(probability) : null,
+          expectedClose: expectedClose ? new Date(expectedClose).toISOString() : null,
+          notes: notes || null,
+        }),
+      })
+      if (!res.ok) throw new Error()
+      onSaved({
+        ...lead,
+        value: value !== "" ? Number(value) : null,
+        probability: probability !== "" ? Number(probability) : null,
+        expectedClose: expectedClose ? new Date(expectedClose).toISOString() : null,
+        notes: notes || null,
+      })
+      toast({ title: "Deal updated" })
+      onClose()
+    } catch {
+      toast({ title: "Failed to save deal", variant: "destructive" })
+    } finally { setSaving(false) }
+  }
+
+  const inStage = daysAgo(lead.enteredAt)
+  const lastSeen = daysAgo(lead.contact.lastContacted)
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-3">
+            <Avatar className="w-9 h-9">
+              <AvatarFallback className="bg-lofty-100 text-lofty-700 text-sm">
+                {getInitials(`${lead.contact.firstName} ${lead.contact.lastName}`)}
+              </AvatarFallback>
+            </Avatar>
+            <div>
+              <p className="font-semibold text-gray-900">{lead.contact.firstName} {lead.contact.lastName}</p>
+              <div className="flex items-center gap-3 text-xs text-gray-400 font-normal mt-0.5">
+                {inStage !== null && (
+                  <span className={cn("flex items-center gap-1", inStage > 14 && "text-amber-500 font-medium")}>
+                    <Clock className="w-3 h-3" />{inStage}d in stage
+                  </span>
+                )}
+                {lastSeen !== null && (
+                  <span className={cn("flex items-center gap-1", lastSeen > 7 && "text-red-400 font-medium")}>
+                    <Flame className="w-3 h-3" />{lastSeen === 0 ? "Contacted today" : `Last contact ${lastSeen}d ago`}
+                  </span>
+                )}
+              </div>
+            </div>
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 pt-1">
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Deal Value</label>
+            <div className="relative mt-1">
+              <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="number"
+                value={value}
+                onChange={e => setValue(e.target.value)}
+                placeholder="0"
+                className="w-full border border-gray-300 rounded-xl pl-9 pr-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              Probability — <span className="text-indigo-600">{probability || 0}%</span>
+            </label>
+            <input
+              type="range" min="0" max="100"
+              value={probability || 0}
+              onChange={e => setProbability(e.target.value)}
+              className="w-full mt-2 accent-indigo-600"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Expected Close Date</label>
+            <input
+              type="date"
+              value={expectedClose}
+              onChange={e => setExpectedClose(e.target.value)}
+              className="w-full mt-1 border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Notes</label>
+            <textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              rows={3}
+              placeholder="Add notes about this deal…"
+              className="w-full mt-1 border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
+            />
+          </div>
+
+          <div className="flex justify-between items-center pt-1">
+            <a
+              href={`/contacts/${lead.contact.id}`}
+              className="text-sm text-indigo-600 hover:underline"
+            >
+              View full contact →
+            </a>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={onClose}>Cancel</Button>
+              <Button onClick={handleSave} disabled={saving} className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2">
+                {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+                Save
+              </Button>
+            </div>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export default function PipelineClient({ pipeline, allPipelines }: PipelineClientProps) {
   const { toast } = useToast()
   const [stages, setStages] = useState(pipeline?.stages || [])
@@ -297,6 +442,28 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
   const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set())
   const [bulkMoving, setBulkMoving] = useState(false)
   const [bulkDeleting, setBulkDeleting] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [editLead, setEditLead] = useState<any>(null)
+
+  const filteredStages = searchQuery.trim()
+    ? stages.map((s: any) => ({
+        ...s,
+        leads: s.leads.filter((l: any) =>
+          `${l.contact.firstName} ${l.contact.lastName}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (l.contact.email || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (l.contact.phone || "").includes(searchQuery)
+        ),
+      }))
+    : stages
+
+  const handleLeadUpdated = (updated: any) => {
+    setStages((prev: any[]) =>
+      prev.map((stage: any) => ({
+        ...stage,
+        leads: stage.leads.map((l: any) => l.id === updated.id ? { ...l, ...updated } : l),
+      }))
+    )
+  }
 
   const toggleSelect = (id: string) => setSelectedLeads(prev => {
     const next = new Set(prev)
@@ -469,6 +636,22 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
         </div>
       </div>
 
+      {/* Search bar */}
+      <div className="relative max-w-xs mb-5">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <input
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          placeholder="Search leads…"
+          className="w-full border border-gray-200 rounded-xl pl-9 pr-8 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+        />
+        {searchQuery && (
+          <button onClick={() => setSearchQuery("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+
       {/* Stage summary pills */}
       <div className="flex gap-3 mb-5 overflow-x-auto pb-2">
         {stages.map((stage: any) => {
@@ -487,7 +670,7 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
 
       {/* Kanban board */}
       <div className="flex gap-4 overflow-x-auto pb-4">
-        {stages.map((stage: any) => (
+        {filteredStages.map((stage: any) => (
           <div
             key={stage.id}
             className={cn(
@@ -529,10 +712,10 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
                     draggable={!selectMode}
                     onDragStart={(e) => !selectMode && handleDragStart(e, lead.id)}
                     onDragEnd={() => setDragging(null)}
-                    onClick={() => selectMode && toggleSelect(lead.id)}
+                    onClick={() => selectMode ? toggleSelect(lead.id) : setEditLead(lead)}
                     className={cn(
                       "bg-white rounded-lg border p-3 transition-all",
-                      selectMode ? "cursor-pointer" : "cursor-grab active:cursor-grabbing hover:shadow-sm",
+                      selectMode ? "cursor-pointer" : "cursor-pointer hover:shadow-md hover:border-indigo-200",
                       dragging === lead.id && "opacity-50",
                       isSelected ? "border-indigo-400 bg-indigo-50 shadow-sm" : "border-gray-200"
                     )}
@@ -553,7 +736,7 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
                         <Link
                           href={`/contacts/${lead.contact.id}`}
                           className="text-sm font-medium text-gray-900 hover:text-lofty-600 truncate"
-                          onClick={(e) => selectMode && e.preventDefault()}
+                          onClick={(e) => { if (selectMode) e.preventDefault(); e.stopPropagation() }}
                         >
                           {lead.contact.firstName} {lead.contact.lastName}
                         </Link>
@@ -589,6 +772,26 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
                         ))}
                       </div>
                     )}
+
+                    {/* Days in stage + last contacted */}
+                    {(() => {
+                      const inStage = daysAgo(lead.enteredAt)
+                      const lastSeen = daysAgo(lead.contact.lastContacted)
+                      return (inStage !== null || lastSeen !== null) ? (
+                        <div className="mt-2 flex items-center gap-3 text-xs text-gray-400">
+                          {inStage !== null && (
+                            <span className={cn("flex items-center gap-1", inStage > 14 && "text-amber-500 font-medium")}>
+                              <Clock className="w-3 h-3" />{inStage}d
+                            </span>
+                          )}
+                          {lastSeen !== null && (
+                            <span className={cn("flex items-center gap-1", lastSeen > 7 && "text-red-400 font-medium")}>
+                              <Flame className="w-3 h-3" />{lastSeen === 0 ? "Today" : `${lastSeen}d`}
+                            </span>
+                          )}
+                        </div>
+                      ) : null
+                    })()}
 
                     {lead.value && (
                       <div className="mt-2 flex items-center gap-1 text-sm font-semibold text-green-600">
@@ -642,6 +845,15 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
           </div>
         ))}
       </div>
+
+      {/* Lead edit panel */}
+      {editLead && (
+        <LeadEditPanel
+          lead={editLead}
+          onClose={() => setEditLead(null)}
+          onSaved={(updated) => { handleLeadUpdated(updated); setEditLead(null) }}
+        />
+      )}
 
       {/* Bulk action bar */}
       {selectMode && selectedLeads.size > 0 && (
