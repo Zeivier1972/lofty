@@ -139,7 +139,34 @@ async function scrapePageWithPlaywright(
   page: any,
   url: string
 ): Promise<ScrapedCommunity[]> {
+  // Passively capture the getresultshomes request metadata (URL, method, headers).
+  // We don't intercept — the browser makes the call normally. After the page loads
+  // and scrolls, we replay the request from Node.js where response.text() is reliable.
+  const capturedReqs: Array<{
+    reqUrl: string
+    method: string
+    headers: Record<string, string>
+    postData: string | undefined
+  }> = []
+
+  const onRequest = (req: any) => {
+    try {
+      const reqUrl: string = typeof req.url === "function" ? req.url() : ""
+      if (reqUrl.toLowerCase().includes("getresultshomes")) {
+        capturedReqs.push({
+          reqUrl,
+          method: typeof req.method === "function" ? req.method() : "GET",
+          headers: typeof req.headers === "function" ? (req.headers() || {}) : {},
+          postData: typeof req.postData === "function" ? (req.postData() || undefined) : undefined,
+        })
+        console.log("[ShowingNew] Request observed: " + reqUrl.substring(0, 120))
+      }
+    } catch {}
+  }
+
   try {
+    page.on("request", onRequest)
+
     try { await page.goto(url, { timeout: 35000, waitUntil: "networkidle" }) } catch {
       try { await page.goto(url, { timeout: 25000, waitUntil: "load" }) } catch {}
     }
@@ -161,27 +188,46 @@ async function scrapePageWithPlaywright(
 
     await page.waitForTimeout(3000)
 
-    // Read bodies captured by the JS interceptor injected via addInitScript
-    const capturedAjax: string[] = await page.evaluate("(window.__capturedAjax || [])").catch(() => [] as string[])
-    console.log("[ShowingNew] JS-intercept: " + capturedAjax.length + " getresultshomes response(s) from " + url)
+    console.log("[ShowingNew] " + capturedReqs.length + " getresultshomes request(s) observed from " + url)
 
-    for (let i = 0; i < capturedAjax.length; i++) {
-      const found = parseGetResultsHomesJson(capturedAjax[i], url)
-      if (found.length > 0) {
-        console.log("[ShowingNew] Parsed " + found.length + " cities from " + url)
-        return found
+    if (capturedReqs.length === 0) {
+      console.log("[ShowingNew] " + url + " — AJAX not triggered; site may need JS or a different scroll trigger")
+      return []
+    }
+
+    // Replay each captured request from Node.js — response.text() here is always reliable
+    for (let i = 0; i < capturedReqs.length; i++) {
+      const { reqUrl, method, headers, postData } = capturedReqs[i]
+      try {
+        // Strip HTTP/2 pseudo-headers that Node.js fetch rejects
+        const cleanHeaders: Record<string, string> = {}
+        for (const [k, v] of Object.entries(headers)) {
+          if (!k.startsWith(":")) cleanHeaders[k] = v
+        }
+
+        const fetchInit: any = { method, headers: cleanHeaders }
+        if (postData && method !== "GET" && method !== "HEAD") fetchInit.body = postData
+
+        const res = await fetch(reqUrl, fetchInit)
+        const body = await res.text()
+        console.log("[ShowingNew] Replayed " + method + " → status=" + res.status + " len=" + body.length + " " + reqUrl.substring(0, 80))
+
+        if (res.ok && body.length >= 50) {
+          const found = parseGetResultsHomesJson(body, url)
+          if (found.length > 0) {
+            console.log("[ShowingNew] Parsed " + found.length + " cities from " + url)
+            return found
+          }
+          console.log("[ShowingNew] Response OK but no cities/prices; body start: " + body.substring(0, 150))
+        }
+      } catch (e: any) {
+        console.log("[ShowingNew] Replay failed: " + (e?.message || e))
       }
     }
 
-    if (capturedAjax.length === 0) {
-      console.log("[ShowingNew] " + url + " — no getresultshomes intercepted by JS injector")
-    } else {
-      console.log("[ShowingNew] " + url + " — intercepted but no cities/prices parsed")
-    }
     return []
-  } catch (e: any) {
-    console.log("[ShowingNew] error on " + url + ": " + (e?.message || e))
-    return []
+  } finally {
+    try { page.off("request", onRequest) } catch {}
   }
 }
 
@@ -208,45 +254,6 @@ async function scrapeWithPlaywright(): Promise<{ communities: ScrapedCommunity[]
       extraHTTPHeaders: { "Accept-Language": "en-US,en;q=0.9" },
     })
     const page = await ctx.newPage()
-
-    // Inject JS interceptor before any page script runs on every navigation.
-    // Wraps window.fetch and XMLHttpRequest to capture getresultshomes response bodies
-    // inside the browser — avoids route.fetch() which makes a second outbound request
-    // that can fail silently under Railway's network policy.
-    await page.addInitScript(`
-window.__capturedAjax = [];
-(function() {
-  var origFetch = window.fetch;
-  if (origFetch) {
-    window.fetch = function() {
-      var url = typeof arguments[0] === 'string' ? arguments[0] : (arguments[0] && arguments[0].url) || '';
-      return origFetch.apply(window, arguments).then(function(response) {
-        if (url.toLowerCase().indexOf('getresultshomes') !== -1) {
-          response.clone().text().then(function(text) {
-            if (text) window.__capturedAjax.push(text);
-          }).catch(function(){});
-        }
-        return response;
-      });
-    };
-  }
-  var origOpen = XMLHttpRequest.prototype.open;
-  var origSend = XMLHttpRequest.prototype.send;
-  XMLHttpRequest.prototype.open = function() {
-    if (arguments.length >= 2) this.__captureUrl = arguments[1] || '';
-    return origOpen.apply(this, arguments);
-  };
-  XMLHttpRequest.prototype.send = function() {
-    var xhr = this;
-    xhr.addEventListener('load', function() {
-      if (xhr.__captureUrl && xhr.__captureUrl.toLowerCase().indexOf('getresultshomes') !== -1 && xhr.responseText) {
-        window.__capturedAjax.push(xhr.responseText);
-      }
-    });
-    return origSend.apply(this, arguments);
-  };
-})();
-`).catch(() => {})
 
     // Establish ASP.NET session
     console.log("[ShowingNew] Homepage (session)…")
