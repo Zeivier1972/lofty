@@ -139,26 +139,6 @@ async function scrapePageWithPlaywright(
   page: any,
   url: string
 ): Promise<ScrapedCommunity[]> {
-  const capturedJson: string[] = []
-
-  // Use page.route() — intercepts at the network layer before browser processes it,
-  // so response body is always available (unlike page.on("response") which can miss it)
-  const routeHandler = async (route: any) => {
-    let fulfilled = false
-    try {
-      const response = await route.fetch()
-      const body = await response.text().catch(() => "")
-      if (body && body.length >= 50) {
-        console.log("[ShowingNew] route:getresultshomes " + body.length + "b from " + url)
-        capturedJson.push(body)
-      }
-      await route.fulfill({ response })
-      fulfilled = true
-    } catch (_) {}
-    if (!fulfilled) { await route.continue().catch(() => {}) }
-  }
-  await page.route("**/*getresultshomes*", routeHandler).catch(() => {})
-
   try {
     try { await page.goto(url, { timeout: 35000, waitUntil: "networkidle" }) } catch {
       try { await page.goto(url, { timeout: 25000, waitUntil: "load" }) } catch {}
@@ -181,23 +161,27 @@ async function scrapePageWithPlaywright(
 
     await page.waitForTimeout(3000)
 
-    // Parse all captured getresultshomes JSON responses
-    for (let i = 0; i < capturedJson.length; i++) {
-      const found = parseGetResultsHomesJson(capturedJson[i], url)
+    // Read bodies captured by the JS interceptor injected via addInitScript
+    const capturedAjax: string[] = await page.evaluate("(window.__capturedAjax || [])").catch(() => [] as string[])
+    console.log("[ShowingNew] JS-intercept: " + capturedAjax.length + " getresultshomes response(s) from " + url)
+
+    for (let i = 0; i < capturedAjax.length; i++) {
+      const found = parseGetResultsHomesJson(capturedAjax[i], url)
       if (found.length > 0) {
-        console.log("[ShowingNew] JSON parse: " + found.length + " cities from " + url)
+        console.log("[ShowingNew] Parsed " + found.length + " cities from " + url)
         return found
       }
     }
 
-    if (capturedJson.length === 0) {
-      console.log("[ShowingNew] " + url + " — no getresultshomes response captured")
+    if (capturedAjax.length === 0) {
+      console.log("[ShowingNew] " + url + " — no getresultshomes intercepted by JS injector")
     } else {
-      console.log("[ShowingNew] " + url + " — getresultshomes captured but no cities/prices in response")
+      console.log("[ShowingNew] " + url + " — intercepted but no cities/prices parsed")
     }
     return []
-  } finally {
-    await page.unroute("**/*getresultshomes*", routeHandler).catch(() => {})
+  } catch (e: any) {
+    console.log("[ShowingNew] error on " + url + ": " + (e?.message || e))
+    return []
   }
 }
 
@@ -224,6 +208,45 @@ async function scrapeWithPlaywright(): Promise<{ communities: ScrapedCommunity[]
       extraHTTPHeaders: { "Accept-Language": "en-US,en;q=0.9" },
     })
     const page = await ctx.newPage()
+
+    // Inject JS interceptor before any page script runs on every navigation.
+    // Wraps window.fetch and XMLHttpRequest to capture getresultshomes response bodies
+    // inside the browser — avoids route.fetch() which makes a second outbound request
+    // that can fail silently under Railway's network policy.
+    await page.addInitScript(`
+window.__capturedAjax = [];
+(function() {
+  var origFetch = window.fetch;
+  if (origFetch) {
+    window.fetch = function() {
+      var url = typeof arguments[0] === 'string' ? arguments[0] : (arguments[0] && arguments[0].url) || '';
+      return origFetch.apply(window, arguments).then(function(response) {
+        if (url.toLowerCase().indexOf('getresultshomes') !== -1) {
+          response.clone().text().then(function(text) {
+            if (text) window.__capturedAjax.push(text);
+          }).catch(function(){});
+        }
+        return response;
+      });
+    };
+  }
+  var origOpen = XMLHttpRequest.prototype.open;
+  var origSend = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.open = function() {
+    if (arguments.length >= 2) this.__captureUrl = arguments[1] || '';
+    return origOpen.apply(this, arguments);
+  };
+  XMLHttpRequest.prototype.send = function() {
+    var xhr = this;
+    xhr.addEventListener('load', function() {
+      if (xhr.__captureUrl && xhr.__captureUrl.toLowerCase().indexOf('getresultshomes') !== -1 && xhr.responseText) {
+        window.__capturedAjax.push(xhr.responseText);
+      }
+    });
+    return origSend.apply(this, arguments);
+  };
+})();
+`).catch(() => {})
 
     // Establish ASP.NET session
     console.log("[ShowingNew] Homepage (session)…")
