@@ -1056,31 +1056,47 @@ type PostLike = {
 async function publishToFacebook(account: AccountLike, post: PostLike): Promise<string> {
   if (!account.accessToken || !account.pageId) throw new Error("Facebook: missing credentials")
 
-  const isVideo = !!(post.mediaUrl?.includes(".mp4") || post.mediaUrl?.includes("video"))
+  const isVideo = !!(post.mediaUrl?.match(/\.(mp4|mov|avi|m4v)(\?|$)/i) || post.mediaUrl?.includes("heygen") || post.mediaUrl?.includes("creatomate"))
   const isImage = !!(post.mediaUrl && !isVideo)
 
-  let endpoint: string
-  const body: Record<string, string> = { access_token: account.accessToken }
+  let res: Response
 
   if (isVideo) {
-    endpoint = `https://graph.facebook.com/v19.0/${account.pageId}/videos`
-    body.description = post.content
-    body.file_url = post.mediaUrl!
+    const body = new URLSearchParams({
+      access_token: account.accessToken,
+      description: post.content,
+      file_url: post.mediaUrl!,
+    })
+    res = await fetch(`https://graph.facebook.com/v19.0/${account.pageId}/videos`, { method: "POST", body })
   } else if (isImage) {
-    // Photo post — use /photos endpoint with caption + url
-    endpoint = `https://graph.facebook.com/v19.0/${account.pageId}/photos`
-    body.caption = post.content
-    body.url = post.mediaUrl!
+    // Download image to memory and upload as binary — avoids code 324 (FB can't fetch remote URLs)
+    try {
+      const imgRes = await fetch(post.mediaUrl!)
+      if (!imgRes.ok) throw new Error(`Image fetch ${imgRes.status}`)
+      const imgBuffer = await imgRes.arrayBuffer()
+      const contentType = imgRes.headers.get("content-type") || "image/jpeg"
+
+      const formData = new FormData()
+      formData.append("access_token", account.accessToken)
+      formData.append("caption", post.content)
+      formData.append("source", new Blob([imgBuffer], { type: contentType }), "photo.jpg")
+
+      res = await fetch(`https://graph.facebook.com/v19.0/${account.pageId}/photos`, { method: "POST", body: formData })
+    } catch (imgErr) {
+      // Fallback: post text-only rather than fail entirely
+      console.warn("[facebook] Image download failed, posting text-only:", imgErr)
+      res = await fetch(`https://graph.facebook.com/v19.0/${account.pageId}/feed`, {
+        method: "POST",
+        body: new URLSearchParams({ access_token: account.accessToken, message: post.content }),
+      })
+    }
   } else {
-    // Text-only post
-    endpoint = `https://graph.facebook.com/v19.0/${account.pageId}/feed`
-    body.message = post.content
+    res = await fetch(`https://graph.facebook.com/v19.0/${account.pageId}/feed`, {
+      method: "POST",
+      body: new URLSearchParams({ access_token: account.accessToken, message: post.content }),
+    })
   }
 
-  const res = await fetch(endpoint, {
-    method: "POST",
-    body: new URLSearchParams(body),
-  })
   const data = await res.json()
   if (data.error) throw new Error(`Facebook API: ${data.error.message} (code ${data.error.code})`)
   return (data.post_id ?? data.id) as string
