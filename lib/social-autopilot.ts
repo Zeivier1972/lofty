@@ -296,13 +296,17 @@ async function generateAndUploadImage(
 
 // ─── HeyGen video generation ──────────────────────────────────────────────────
 
-export async function generateVideoScript(dayOfWeek: number, research?: ResearchBrief): Promise<string> {
+export async function generateVideoScript(dayOfWeek: number, research?: ResearchBrief, usedKeywords: string[] = []): Promise<string> {
   const theme = research?.trendingTopic ?? DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
   const keywords = research?.additionalKeywords?.slice(0, 3) ?? pickKeywords(dayOfWeek)
   const hook = research?.viralHook
 
   const hookLine = hook
     ? `\nUSA ESTA PRIMERA LÍNEA EXACTA o muy similar (es el hook viral): "${hook}"`
+    : ""
+
+  const usedKeywordsLine = usedKeywords.length > 0
+    ? `\n\n⚠️ PALABRAS CLAVE YA USADAS EN GUÍAS ANTERIORES — NO REPITAS NINGUNA: ${usedKeywords.join(", ")}. Elige una palabra DIFERENTE y NUEVA para el CTA de este guión.`
     : ""
 
   const message = await anthropic.messages.create({
@@ -320,7 +324,7 @@ Catherine habla en español natural, primera persona, tono cercano y de autorida
     messages: [
       {
         role: "user",
-        content: `Escribe un script de video de EXACTAMENTE 4 escenas sobre: "${theme}".${hookLine}
+        content: `Escribe un script de video de EXACTAMENTE 4 escenas sobre: "${theme}".${hookLine}${usedKeywordsLine}
 
 ESTRUCTURA OBLIGATORIA — separa cada escena con una línea en blanco:
 
@@ -334,7 +338,7 @@ ESCENA 3 - SOLUCIÓN + CREDENCIAL (45-55 palabras):
 Empieza con "Soy Catherine Gomez, Realtor en Miami." + dato específico del mercado de South Florida que demuestra expertise + exactamente cómo ella resuelve este problema para familias hispanas. Incluye naturalmente: ${keywords.join(", ")}.
 
 ESCENA 4 - CTA ESPECÍFICO (20-25 palabras):
-"Comenta '[KEYWORD]' abajo" donde [KEYWORD] es UNA PALABRA en español todo en mayúsculas que resuma el tema del video (ejemplos: INVERSIÓN, CREDITO, HIPOTECA, CALIFICA, VENDEDOR, RENTAR, MIAMI — inventa la que sea más relevante para este guión específico). Explica exactamente qué van a recibir (guía gratis, los números reales, paso a paso).
+"Comenta '[KEYWORD]' abajo" donde [KEYWORD] es UNA PALABRA NUEVA en español todo en mayúsculas que resuma el tema del video (ejemplos: INVERSIÓN, CREDITO, HIPOTECA, CALIFICA, VENDEDOR, RENTAR, MIAMI — inventa la que sea más relevante para este guión específico). Explica exactamente qué van a recibir (guía gratis, los números reales, paso a paso).
 
 Devuelve SOLO las 4 escenas en texto corrido. Sin etiquetas "ESCENA X", sin corchetes, sin acotaciones. Solo el texto que Catherine dice, separado por una línea en blanco entre cada escena.`,
       },

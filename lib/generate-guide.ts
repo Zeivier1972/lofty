@@ -16,13 +16,23 @@ function slugify(keyword: string): string {
 }
 
 export async function generateGuideFromScript(
-  script: string
-): Promise<{ keyword: string; title: string; guideUrl: string } | null> {
+  script: string,
+  { overwrite = false }: { overwrite?: boolean } = {}
+): Promise<{ keyword: string; title: string; guideUrl: string; skipped?: boolean } | null> {
   const keyword = extractKeyword(script)
   if (!keyword) return null
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
   const guideUrl = `${appUrl}/guides/${slugify(keyword)}`
+
+  // If this keyword already has a guide and we're not explicitly overwriting, skip
+  if (!overwrite) {
+    const existing = await prisma.leadMagnet.findUnique({ where: { keyword } })
+    if (existing) {
+      console.log(`[generate-guide] Keyword "${keyword}" already has a guide — skipping regeneration`)
+      return { keyword, title: existing.title, guideUrl: existing.guideUrl ?? guideUrl, skipped: true }
+    }
+  }
 
   const message = await anthropic.messages.create({
     model: "claude-haiku-4-5-20251001",
@@ -64,7 +74,7 @@ Responde SOLO con JSON válido:
   await prisma.leadMagnet.upsert({
     where: { keyword },
     create: { keyword, title: parsed.title, description: parsed.description, content: parsed.content, scriptSource: script, guideUrl },
-    update: { title: parsed.title, description: parsed.description, content: parsed.content, scriptSource: script, guideUrl },
+    update: overwrite ? { title: parsed.title, description: parsed.description, content: parsed.content, scriptSource: script, guideUrl } : {},
   })
 
   // Auto-create Instagram + Facebook campaigns so the keyword appears in the bot UI
