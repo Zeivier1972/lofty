@@ -6,10 +6,41 @@ import { auth } from "@/lib/auth"
 
 async function publishToFacebook(account: { accessToken: string | null; pageId: string | null }, content: string, mediaUrl?: string | null) {
   if (!account.accessToken || !account.pageId) throw new Error("Facebook not connected")
-  const url = `https://graph.facebook.com/v18.0/${account.pageId}/feed`
-  const body: Record<string, string> = { message: content, access_token: account.accessToken }
-  if (mediaUrl) body.link = mediaUrl
-  const res = await fetch(url, { method: "POST", body: new URLSearchParams(body) })
+
+  const isVideo = !!(mediaUrl?.match(/\.(mp4|mov|avi|m4v)(\?|$)/i) || mediaUrl?.includes("heygen") || mediaUrl?.includes("creatomate"))
+  const isImage = !!(mediaUrl && !isVideo)
+
+  if (isVideo) {
+    const body = new URLSearchParams({ access_token: account.accessToken, description: content, file_url: mediaUrl! })
+    const res = await fetch(`https://graph.facebook.com/v19.0/${account.pageId}/videos`, { method: "POST", body })
+    const data = await res.json()
+    if (data.error) throw new Error(data.error.message)
+    return (data.post_id ?? data.id) as string
+  }
+
+  if (isImage) {
+    // Download image and upload as binary to avoid code 324
+    try {
+      const imgRes = await fetch(mediaUrl!)
+      if (!imgRes.ok) throw new Error(`Image fetch ${imgRes.status}`)
+      const imgBuffer = await imgRes.arrayBuffer()
+      const contentType = imgRes.headers.get("content-type") || "image/jpeg"
+      const formData = new FormData()
+      formData.append("access_token", account.accessToken)
+      formData.append("caption", content)
+      formData.append("source", new Blob([imgBuffer], { type: contentType }), "photo.jpg")
+      const res = await fetch(`https://graph.facebook.com/v19.0/${account.pageId}/photos`, { method: "POST", body: formData })
+      const data = await res.json()
+      if (data.error) throw new Error(data.error.message)
+      return (data.post_id ?? data.id) as string
+    } catch {
+      // Fallback to text-only
+    }
+  }
+
+  // Text-only (or image fallback)
+  const body = new URLSearchParams({ access_token: account.accessToken, message: content })
+  const res = await fetch(`https://graph.facebook.com/v19.0/${account.pageId}/feed`, { method: "POST", body })
   const data = await res.json()
   if (data.error) throw new Error(data.error.message)
   return data.id as string
