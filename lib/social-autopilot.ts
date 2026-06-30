@@ -151,7 +151,7 @@ async function generateContent(
     return research.youtubeDescription
   }
 
-  const theme = research?.trendingTopic ?? DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
+  const theme = research?.trendingTopic ?? DAILY_THEMES[Math.floor(Math.random() * DAILY_THEMES.length)]
   const keywords = research?.additionalKeywords?.length
     ? research.additionalKeywords
     : pickKeywords(dayOfWeek)
@@ -261,7 +261,7 @@ async function generateAndUploadImage(
   research?: ResearchBrief,
   usedUrls = new Set<string>()
 ): Promise<string | null> {
-  const theme = research?.trendingTopic ?? DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
+  const theme = research?.trendingTopic ?? DAILY_THEMES[Math.floor(Math.random() * DAILY_THEMES.length)]
 
   // 1st priority: Pexels professional real estate photos — free, public CDN, Facebook-compatible
   try {
@@ -309,7 +309,7 @@ async function generateAndUploadImage(
 // ─── HeyGen video generation ──────────────────────────────────────────────────
 
 export async function generateVideoScript(dayOfWeek: number, research?: ResearchBrief, usedKeywords: string[] = []): Promise<string> {
-  const theme = research?.trendingTopic ?? DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
+  const theme = research?.trendingTopic ?? DAILY_THEMES[Math.floor(Math.random() * DAILY_THEMES.length)]
   const keywords = research?.additionalKeywords?.slice(0, 3) ?? pickKeywords(dayOfWeek)
   const hook = research?.viralHook
 
@@ -595,7 +595,7 @@ async function generateBlogPostContent(
   dayOfWeek: number,
   research?: ResearchBrief
 ): Promise<BlogPostData | null> {
-  const theme = research?.trendingTopic ?? DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
+  const theme = research?.trendingTopic ?? DAILY_THEMES[Math.floor(Math.random() * DAILY_THEMES.length)]
   const keywords = research?.additionalKeywords ?? pickKeywords(dayOfWeek)
   const hook = research?.viralHook ?? ""
   const now = new Date()
@@ -727,7 +727,7 @@ async function publishBlogPost(dayOfWeek: number, research?: ResearchBrief): Pro
     const data = await generateBlogPostContent(dayOfWeek, research)
     if (!data) return null
 
-    const theme = research?.trendingTopic ?? DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
+    const theme = research?.trendingTopic ?? DAILY_THEMES[Math.floor(Math.random() * DAILY_THEMES.length)]
 
     // Generate cover + up to 2 section images in parallel (non-fatal if any fail)
     const coverPrompt = `${theme}, luxurious Miami waterfront property, golden hour`
@@ -801,7 +801,7 @@ export async function publishBlogPostOnly(): Promise<{ ok: boolean; title?: stri
     const data = await generateBlogPostContent(dayOfWeek, research)
     if (!data) return { ok: false, error: "Content generation returned null" }
 
-    const theme = research?.trendingTopic ?? DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
+    const theme = research?.trendingTopic ?? DAILY_THEMES[Math.floor(Math.random() * DAILY_THEMES.length)]
     const coverPrompt = `${theme}, luxurious Miami waterfront property, golden hour`
     const [coverImage, sectionImg1, sectionImg2] = await Promise.all([
       generateSectionImage(coverPrompt, "lofty-blog"),
@@ -1523,7 +1523,7 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
         youtubeDescription: research.youtubeDescription,
         youtubeTags: research.youtubeTags,
       })
-    : DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
+    : DAILY_THEMES[Math.floor(Math.random() * DAILY_THEMES.length)]
 
   // 7. Fetch recently used images once — shared across all accounts this run
   const usedMediaUrls = await getRecentlyUsedMediaUrls()
