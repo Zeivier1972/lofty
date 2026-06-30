@@ -33,6 +33,16 @@ export async function GET(req: Request) {
   const blogOnly  = slotParam === "blog"
   const slot = slotParam === "evening" ? "evening" : "morning"
 
+  // Always respect the master on/off toggle (blog and video slots must also honour it)
+  if (!checkOnly) {
+    const { prisma: db } = await import("@/lib/prisma")
+    const config = await db.socialAutoPilotConfig.findFirst()
+    if (!config?.isEnabled) {
+      console.log("[cron/social-autopilot] Auto-pilot is disabled — skipping all slots")
+      return NextResponse.json({ ok: true, skipped: true, reason: "autopilot_disabled", slot: slotParam })
+    }
+  }
+
   // blog-only mode: publish today's blog post without any social posts
   if (blogOnly) {
     try {

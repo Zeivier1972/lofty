@@ -5,10 +5,7 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { fetchListings, bridgeToProperty } from "@/lib/bridge"
 import { sendEmail } from "@/lib/email"
-import { scoreProperty, scoreColor, scoreLabel } from "@/lib/property-scoring"
-import Anthropic from "@anthropic-ai/sdk"
-
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || "" })
+import { scoreProperty } from "@/lib/property-scoring"
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
@@ -58,105 +55,43 @@ async function syncFreshListings(): Promise<{ created: number; updated: number }
   return { created, updated }
 }
 
-// ─── Step 2: AI explanations for a contact's top matches ─────────────────────
-
-async function generateExplanations(
-  matches: { property: { address: string; city: string; price: number; bedrooms: number | null; bathrooms: number | null }; score: number; reasons: string[] }[],
-  prefs: { buyerBudgetMax?: number | null; buyerBedroomsMin?: number | null; buyerLocation?: string | null; buyerPropertyType?: string | null }
-): Promise<string[]> {
-  const prefSummary = [
-    prefs.buyerBudgetMax ? `budget up to $${prefs.buyerBudgetMax.toLocaleString()}` : null,
-    prefs.buyerBedroomsMin ? `${prefs.buyerBedroomsMin}+ bedrooms` : null,
-    prefs.buyerLocation ? `in ${prefs.buyerLocation}` : null,
-    prefs.buyerPropertyType ? prefs.buyerPropertyType.replace(/_/g, " ").toLowerCase() : null,
-  ].filter(Boolean).join(", ")
-
-  const prompt = `You are Sofia, a friendly real estate AI assistant for Catherine Gomez. Generate a warm 1-sentence explanation for why each property is a great match. Be specific and mention the key reason. Under 20 words each. Bilingual feel is fine.
-
-Buyer wants: ${prefSummary || "a great home"}
-
-Properties:
-${matches.map((m, i) => `${i + 1}. ${m.property.address}, ${m.property.city} — $${m.property.price.toLocaleString()}, ${m.property.bedrooms ?? "?"}bd/${m.property.bathrooms ?? "?"}ba, ${m.score}% match, Reasons: ${m.reasons.join(", ")}`).join("\n")}
-
-Respond ONLY with a JSON array of ${matches.length} strings. Example: ["explanation 1","explanation 2"]`
-
-  try {
-    const response = await anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 400,
-      messages: [{ role: "user", content: prompt }],
-    })
-    const text = response.content[0].type === "text" ? response.content[0].text : ""
-    const parsed = JSON.parse(text)
-    if (Array.isArray(parsed)) return parsed.map(String)
-  } catch { /* fall back to empty */ }
-
-  return matches.map(() => "")
-}
-
-// ─── Step 3: Build property alert email ──────────────────────────────────────
+// ─── Step 2: Build property alert email ──────────────────────────────────────
 
 function buildAlertEmail(opts: {
   firstName: string
-  matches: {
-    property: {
-      id: string; address: string; city: string; state: string
-      price: number; bedrooms: number | null; bathrooms: number | null; sqft: number | null
-      images: string | null
-    }
-    score: number
-    reasons: string[]
-    explanation: string
-  }[]
+  count: number
+  criteriaSummary: string
   agentName: string
   agentPhone: string
   appUrl: string
+  searchUrl: string
 }): string {
-  const { firstName, matches, agentName, agentPhone, appUrl } = opts
-  const n = matches.length
+  const { firstName, count: n, criteriaSummary, agentName, agentPhone, appUrl, searchUrl } = opts
 
-  function getImg(raw: string | null): string {
-    try { const a = JSON.parse(raw || "[]"); return Array.isArray(a) && a[0] ? a[0] : "" } catch { return "" }
-  }
+  // MLS/IDX compliance: listing details (address, price, photos) may only be
+  // displayed on the public search website — never pushed in an email alert.
+  // So this email is a notification that drives the lead to the search page.
+  const criteriaLine = criteriaSummary
+    ? `<p style="color:#6b7280;font-size:13px;margin:0 0 16px;text-align:center">Basado en lo que buscas: <strong>${criteriaSummary}</strong></p>`
+    : ""
 
-  const propertyCards = matches.map(({ property: p, score, reasons, explanation }) => {
-    const img = getImg(p.images)
-    const color = scoreColor(score)
-    const label = scoreLabel(score)
-    const reasonChips = reasons.slice(0, 3).map(r =>
-      `<span style="display:inline-block;background:#f0fdf4;color:#166534;font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;margin:2px 3px 2px 0;border:1px solid #bbf7d0">✓ ${r}</span>`
-    ).join("")
-
-    return `
-    <div style="border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;margin:0 0 20px">
-      ${img ? `<img src="${img}" width="100%" height="200" style="display:block;object-fit:cover;height:200px" alt="${p.address}" />` : `<div style="background:#f3f4f6;height:140px;display:flex;align-items:center;justify-content:center"><span style="font-size:36px">🏠</span></div>`}
-      <div style="padding:18px">
-        <table width="100%" cellpadding="0" cellspacing="0">
-          <tr>
-            <td>
-              <p style="font-size:22px;font-weight:900;color:#059669;margin:0">${p.price.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}</p>
-            </td>
-            <td align="right">
-              <span style="background:${color};color:white;font-size:12px;font-weight:700;padding:5px 13px;border-radius:20px;white-space:nowrap">${score}% · ${label}</span>
-            </td>
-          </tr>
-        </table>
-        <p style="font-weight:700;color:#111827;margin:8px 0 2px;font-size:15px">${p.address}</p>
-        <p style="color:#6b7280;font-size:13px;margin:0 0 10px">${p.city}, ${p.state}</p>
-        <p style="color:#6b7280;font-size:13px;margin:0 0 10px">
-          ${p.bedrooms ? `🛏 ${p.bedrooms} bd &nbsp;` : ""}${p.bathrooms ? `🚿 ${p.bathrooms} ba &nbsp;` : ""}${p.sqft ? `📐 ${p.sqft.toLocaleString()} sqft` : ""}
-        </p>
-        ${reasonChips ? `<div style="margin:0 0 12px">${reasonChips}</div>` : ""}
-        ${explanation ? `
-        <div style="background:#f5f3ff;border-left:3px solid #7c3aed;padding:10px 14px;border-radius:0 8px 8px 0;margin:0 0 14px">
-          <p style="color:#5b21b6;font-size:13px;font-style:italic;margin:0">✨ ${explanation}</p>
-        </div>` : ""}
-        <a href="${appUrl}/portal/matches" style="display:inline-block;background:#0e1f3d;color:white;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px">
-          Ver en Portal →
-        </a>
-      </div>
+  const propertyCards = `
+    <div style="border:1px solid #e5e7eb;border-radius:14px;padding:28px 20px;text-align:center;margin:0 0 20px;background:#f9fafb">
+      <div style="font-size:44px;margin:0 0 8px">🏠</div>
+      <p style="font-size:24px;font-weight:900;color:#0e1f3d;margin:0 0 4px">
+        ${n} nueva${n > 1 ? "s propiedades" : " propiedad"}
+      </p>
+      <p style="color:#6b7280;font-size:14px;margin:0 0 18px">
+        coincide${n > 1 ? "n" : ""} con lo que buscas
+      </p>
+      ${criteriaLine}
+      <a href="${searchUrl}" style="display:inline-block;background:#0e1f3d;color:white;padding:13px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">
+        Ver las propiedades →
+      </a>
+      <p style="color:#9ca3af;font-size:12px;margin:16px 0 0">
+        Fotos, precios y detalles completos en el sitio
+      </p>
     </div>`
-  }).join("")
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -206,8 +141,8 @@ function buildAlertEmail(opts: {
       <a href="${appUrl}/portal/preferences" style="display:inline-block;background:white;border:2px solid #1a2f50;color:#1a2f50;padding:9px 18px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px;margin:0 6px 8px">
         Update My Preferences
       </a>
-      <a href="${appUrl}/portal/matches" style="display:inline-block;background:#1a2f50;color:white;padding:9px 18px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px;margin:0 6px 8px">
-        View All My Matches →
+      <a href="${searchUrl}" style="display:inline-block;background:#1a2f50;color:white;padding:9px 18px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px;margin:0 6px 8px">
+        Search All Listings →
       </a>
     </div>
     <div style="text-align:center;margin-top:20px">
@@ -318,21 +253,25 @@ export async function GET(req: Request) {
 
         if (newMatches.length === 0) continue
 
-        // Generate AI explanations
-        const explanations = await generateExplanations(newMatches, prefs)
-
-        const matchesWithExplanations = newMatches.map((m, i) => ({
-          ...m,
-          explanation: explanations[i] || "",
-        }))
+        // MLS/IDX compliance: do NOT embed listing details in the alert email.
+        // Send a notification with a count + criteria and link the lead to the
+        // public search page where listings are displayed compliantly.
+        const criteriaSummary = [
+          prefs.buyerLocation ? prefs.buyerLocation : null,
+          prefs.buyerBedroomsMin ? `${prefs.buyerBedroomsMin}+ cuartos` : null,
+          prefs.buyerBudgetMax ? `hasta $${prefs.buyerBudgetMax.toLocaleString()}` : null,
+        ].filter(Boolean).join(" · ")
+        const searchUrl = `${appUrl}/search`
 
         // Build and send email
         const html = buildAlertEmail({
           firstName: contact.firstName,
-          matches: matchesWithExplanations,
+          count: newMatches.length,
+          criteriaSummary,
           agentName,
           agentPhone,
           appUrl,
+          searchUrl,
         })
 
         await sendEmail({
