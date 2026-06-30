@@ -191,6 +191,9 @@ async function runTool(name: string, input: any, contactId: string): Promise<{te
   }
 
   if (name === "search_properties") {
+    // MLS/IDX compliance: resale MLS listings may only be DISPLAYED on the public
+    // search website — never redistributed as listing detail over SMS/WhatsApp.
+    // So we direct the lead to the public IDX search page instead of texting MLS data.
     try {
       const where: any = { status: "ACTIVE" }
 
@@ -209,34 +212,29 @@ async function runTool(name: string, input: any, contactId: string): Promise<{te
         ]
       }
 
-      const props = await prisma.property.findMany({
-        where,
-        take: 3,
-        orderBy: { createdAt: "desc" },
-        select: { id: true, address: true, city: true, state: true, price: true, bedrooms: true, bathrooms: true, sqft: true, propertyType: true, description: true },
-      })
+      // Count only — used to gauge availability, NOT to redistribute listing fields
+      const count = await prisma.property.count({ where })
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
+      const searchUrl = `${appUrl}/search`
 
-      const noMedia: string[] = []
-      if (props.length === 0) {
-        return {text: "No se encontraron propiedades con esos criterios en este momento. Intenta ajustar el presupuesto o el área.", imageUrls: noMedia}
+      if (count === 0) {
+        return {
+          text: `INSTRUCCIÓN INTERNA: No hay coincidencias exactas ahora mismo, pero el inventario del MLS cambia a diario. NO inventes propiedades, direcciones ni precios. Comparte este enlace para que el cliente vea todas las propiedades activas del MLS con fotos y detalles: ${searchUrl}. Ofrece avisarle a Catherine para una búsqueda personalizada y coordinar una visita.`,
+          imageUrls: [],
+        }
       }
 
-      return {text: props.map(p =>
-        [
-          `Dirección: ${p.address}, ${p.city || "Miami"}, ${p.state || "FL"}`,
-          `Precio: $${p.price?.toLocaleString() ?? "Consultar"}`,
-          `Cuartos: ${p.bedrooms ?? "?"} | Baños: ${p.bathrooms ?? "?"} | Sqft: ${p.sqft?.toLocaleString() ?? "?"}`,
-          `Tipo: ${p.propertyType ?? ""}`,
-          p.description ? `Descripción: ${p.description.slice(0, 120)}` : "",
-        ].filter(Boolean).join("\n")
-      ).join("\n---\n"), imageUrls: noMedia}
+      return {
+        text: `INSTRUCCIÓN INTERNA: Hay propiedades activas en el MLS que coinciden con lo que busca el cliente. NO inventes ni cites direcciones, precios ni detalles específicos de listados — por reglas del MLS las propiedades solo se muestran en el sitio web. Comparte este enlace para que el cliente las vea con fotos, precios y todos los detalles: ${searchUrl}. Invita al cliente a explorar y ofrece coordinar una visita con Catherine para las que le gusten. 🏠`,
+        imageUrls: [],
+      }
     } catch (e: any) {
       return {text: "Error al buscar propiedades: " + (e.message || "desconocido"), imageUrls: []}
     }
   }
 
   if (name === "get_appointment_link") {
-    const base = process.env.NEXT_PUBLIC_APP_URL || "https://lofty-production.up.railway.app"
+    const base = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
     return {text: `${base}/book`, imageUrls: []}
   }
 
