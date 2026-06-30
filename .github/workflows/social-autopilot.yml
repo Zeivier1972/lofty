@@ -1,0 +1,60 @@
+name: Social Media Autopilot
+
+on:
+  schedule:
+    # Morning post — 9 AM ET (13:00 UTC)
+    - cron: "0 13 * * *"
+    # Evening post — 6 PM ET (22:00 UTC)
+    - cron: "0 22 * * *"
+    # Blog post — 10 PM ET (02:00 UTC next day)
+    - cron: "0 2 * * *"
+    # Poll HeyGen for completed videos — every 15 min
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      slot:
+        description: "Slot to run (morning, evening, blog, check, video)"
+        required: false
+        default: "morning"
+
+jobs:
+  run-autopilot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine slot
+        id: slot
+        run: |
+          HOUR=$(date -u +%H)
+          MINUTE=$(date -u +%M)
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "slot=${{ github.event.inputs.slot }}" >> $GITHUB_OUTPUT
+          elif [ "$HOUR" = "13" ] && [ "$MINUTE" = "00" ]; then
+            echo "slot=morning" >> $GITHUB_OUTPUT
+          elif [ "$HOUR" = "22" ] && [ "$MINUTE" = "00" ]; then
+            echo "slot=evening" >> $GITHUB_OUTPUT
+          elif [ "$HOUR" = "02" ] && [ "$MINUTE" = "00" ]; then
+            echo "slot=blog" >> $GITHUB_OUTPUT
+          else
+            echo "slot=check" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Call autopilot endpoint
+        run: |
+          SLOT="${{ steps.slot.outputs.slot }}"
+          echo "Running slot: $SLOT"
+
+          RESPONSE=$(curl -s -o /tmp/response.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.APP_URL }}/api/cron/social-autopilot?slot=$SLOT")
+
+          echo "HTTP status: $RESPONSE"
+          echo "Response body:"
+          cat /tmp/response.json | python3 -m json.tool 2>/dev/null || cat /tmp/response.json
+
+          if [ "$RESPONSE" -lt 200 ] || [ "$RESPONSE" -ge 300 ]; then
+            echo "❌ Autopilot call failed with HTTP $RESPONSE"
+            exit 1
+          fi
+
+          echo "✅ Autopilot ran successfully (slot=$SLOT)"

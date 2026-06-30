@@ -1,0 +1,27 @@
+name: Scrape Pre-Construction Listings
+
+on:
+  schedule:
+    # Every night at 3 AM ET (07:00 UTC)
+    - cron: "0 7 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call scrape endpoint
+        run: |
+          RESPONSE=$(curl -s -o /tmp/response.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.APP_URL }}/api/cron/scrape-preconstruction")
+
+          echo "HTTP status: $RESPONSE"
+          cat /tmp/response.json | python3 -m json.tool 2>/dev/null || cat /tmp/response.json
+
+          if [ "$RESPONSE" -lt 200 ] || [ "$RESPONSE" -ge 300 ]; then
+            echo "❌ Scrape failed with HTTP $RESPONSE"
+            exit 1
+          fi
+
+          echo "✅ Pre-construction scrape completed"
