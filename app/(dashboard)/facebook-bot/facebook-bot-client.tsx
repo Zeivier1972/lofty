@@ -316,9 +316,10 @@ export default function FacebookBotClient() {
           )}
 
           {campaigns.map(c => {
-            const allKeywords = c.keywords
-              ? c.keywords.split(",").map((k: string) => k.trim().toUpperCase()).filter(Boolean)
-              : [c.keyword.toUpperCase()]
+            const allKeywords = Array.from(new Set([
+              ...(c.keywords ? c.keywords.split(",").map((k: string) => k.trim().toUpperCase()).filter(Boolean) : []),
+              c.keyword.toUpperCase(),
+            ]))
             return (
             <div key={c.id} className="p-3 rounded-xl border border-gray-100 bg-gray-50">
               <div className="flex items-start gap-3">

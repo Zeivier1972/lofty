@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth"
+import { sendCapiEvent } from "@/lib/facebook"
 
 export async function GET(req: Request, { params }: { params: { id: string } }) {
   try {
@@ -34,10 +35,22 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     const data = await req.json()
     const { id, assignedTo, tags, notes, tasks, activities, pipelineLeads, enrollments, propertyInterests, emails, appointments, transactions, _count, ...updateData } = data
 
+    const prevContact = await prisma.contact.findUnique({ where: { id: params.id }, select: { status: true, email: true, phone: true, firstName: true, lastName: true, facebookLeadId: true } })
+
     const contact = await prisma.contact.update({
       where: { id: params.id },
       data: updateData,
     })
+
+    // Fire Facebook CAPI events on meaningful status transitions
+    if (updateData.status && updateData.status !== prevContact?.status) {
+      const capiUser = { email: contact.email, phone: contact.phone, firstName: contact.firstName, lastName: contact.lastName, facebookLeadId: contact.facebookLeadId }
+      if (updateData.status === "ACTIVE_CLIENT") {
+        sendCapiEvent("Contact", capiUser, { eventId: `contact-${contact.id}` }).catch(() => {})
+      } else if (updateData.status === "CLOSED" || updateData.status === "CLOSED_WON") {
+        sendCapiEvent("Purchase", capiUser, { eventId: `purchase-${contact.id}` }).catch(() => {})
+      }
+    }
 
     await prisma.activity.create({
       data: {

@@ -348,6 +348,15 @@ export async function GET(req: Request) {
           skipDuplicates: true,
         })
 
+        await prisma.activity.create({
+          data: {
+            type: "EMAIL_SENT",
+            title: `Match alert: ${newMatches.length} new home${newMatches.length > 1 ? "s" : ""} found`,
+            description: `Sofía sent ${newMatches.length} property match${newMatches.length > 1 ? "es" : ""} — top match: ${newMatches[0].property.address}`,
+            contactId: contact.id,
+          },
+        })
+
         // Notify Catherine about the alert sent
         await prisma.aINotification.create({
           data: {

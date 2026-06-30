@@ -4,6 +4,7 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { handleCallOutcome } from "@/lib/lead-flow"
 import { triggerOutboundCall } from "@/lib/vapi"
+import { sendEmail, wrapEmail } from "@/lib/email"
 
 async function searchProperties(input: any): Promise<string> {
   try {
@@ -59,6 +60,174 @@ async function updateLead(input: any, contactId: string): Promise<string> {
     return "Guardado."
   } catch {
     return "No se pudo guardar."
+  }
+}
+
+async function sendPropertyEmail(input: any, contactId: string): Promise<string> {
+  try {
+    const contact = await prisma.contact.findUnique({
+      where: { id: contactId },
+      select: { email: true, firstName: true, lastName: true },
+    })
+    if (!contact?.email) {
+      return "No tengo el correo electrónico del lead en el sistema. Pídele su correo para poder enviarle las propiedades."
+    }
+
+    const where: any = { status: "ACTIVE" }
+    if (input.price_min != null || input.price_max != null) {
+      where.price = {}
+      if (input.price_min != null) where.price.gte = input.price_min
+      if (input.price_max != null) where.price.lte = input.price_max
+    }
+    if (input.bedrooms_min != null) where.bedrooms = { gte: input.bedrooms_min }
+    if (input.property_type) where.propertyType = input.property_type
+    if (input.location) {
+      where.OR = [
+        { city: { contains: input.location, mode: "insensitive" } },
+        { address: { contains: input.location, mode: "insensitive" } },
+      ]
+    }
+
+    const props = await prisma.property.findMany({
+      where,
+      take: 5,
+      orderBy: { createdAt: "desc" },
+      select: { address: true, city: true, price: true, bedrooms: true, bathrooms: true, sqft: true, propertyType: true },
+    })
+
+    if (props.length === 0) {
+      return "No encontré propiedades activas con esos criterios ahora mismo. Le informaré al lead que Catherine lo contactará pronto con opciones exclusivas."
+    }
+
+    const propsHtml = props.map((p) => `
+      <div style="margin-bottom:20px;padding:16px;border:1px solid #e5e7eb;border-radius:8px;">
+        <p style="margin:0 0 4px;font-weight:bold;font-size:16px;">${p.address}${p.city ? ", " + p.city : ""}</p>
+        <p style="margin:0;color:#6b7280;font-size:14px;">${p.bedrooms ?? "?"} cuartos · ${p.bathrooms ?? "?"} baños${p.sqft ? " · " + p.sqft.toLocaleString() + " sqft" : ""}</p>
+        <p style="margin:8px 0 0;font-size:20px;font-weight:bold;color:#111827;">${p.price ? "$" + p.price.toLocaleString() : "Precio a consultar"}</p>
+      </div>
+    `).join("")
+
+    const bodyHtml = `
+      <h2 style="margin-bottom:8px;">Propiedades seleccionadas para ti</h2>
+      <p>Hola ${contact.firstName}, según los criterios que conversamos, aquí tienes algunas opciones que podrían interesarte:</p>
+      ${propsHtml}
+      <p style="margin-top:24px;">Para más información o para agendar una visita, comunícate directamente con Catherine.</p>
+      <p><a href="${process.env.NEXT_PUBLIC_APP_URL || "https://lofty-production.up.railway.app"}/book" style="display:inline-block;padding:12px 24px;background:#2563eb;color:white;text-decoration:none;border-radius:6px;font-weight:bold;">Agendar cita con Catherine</a></p>
+    `
+
+    await sendEmail({
+      to: contact.email,
+      subject: `Propiedades seleccionadas para ti — Catherine Gómez Realtor`,
+      html: wrapEmail(bodyHtml, { agentName: "Catherine Gómez Realtor" }),
+    })
+
+    await prisma.activity.create({
+      data: {
+        type: "EMAIL_SENT",
+        title: "Email de propiedades enviado por Sofía",
+        description: `Sofía envió ${props.length} propiedades durante la llamada`,
+        contactId,
+      },
+    })
+
+    return `Email enviado correctamente a ${contact.email} con ${props.length} propiedades.`
+  } catch (e: any) {
+    console.error("[sendPropertyEmail]", e)
+    return "No pude enviar el email en este momento. Por favor inténtalo más tarde."
+  }
+}
+
+async function createTaskForContact(input: any, contactId: string): Promise<string> {
+  try {
+    const contact = await prisma.contact.findUnique({
+      where: { id: contactId },
+      select: { assignedToId: true },
+    })
+
+    const dueDate = new Date(Date.now() + ((input.due_days ?? 1) * 24 * 60 * 60 * 1000))
+
+    await prisma.task.create({
+      data: {
+        title: input.title || "Seguimiento de llamada Sofía",
+        description: input.description || "Tarea creada automáticamente por Sofía durante una llamada",
+        priority: (["HIGH", "MEDIUM", "LOW"].includes(input.priority) ? input.priority : "HIGH") as any,
+        status: "PENDING",
+        type: "FOLLOW_UP",
+        contactId,
+        assignedToId: contact?.assignedToId ?? undefined,
+        dueDate,
+      },
+    })
+
+    await prisma.activity.create({
+      data: {
+        type: "NOTE",
+        title: "Tarea creada por Sofía",
+        description: input.title || "Seguimiento de llamada Sofía",
+        contactId,
+      },
+    })
+
+    return "Tarea creada exitosamente para Catherine."
+  } catch (e: any) {
+    console.error("[createTask]", e)
+    return "No pude crear la tarea. Inténtalo más tarde."
+  }
+}
+
+async function sendDocumentToContact(input: any, contactId: string): Promise<string> {
+  try {
+    const contact = await prisma.contact.findUnique({
+      where: { id: contactId },
+      select: { email: true, firstName: true, lastName: true },
+    })
+    if (!contact?.email) {
+      return "No tengo el correo electrónico del lead. Pídele su correo para enviarle el documento."
+    }
+
+    const brochureSetting = await prisma.setting.findUnique({ where: { key: "brochure_documents" } })
+    const brochures: { name: string; url: string; description?: string }[] =
+      brochureSetting ? JSON.parse(brochureSetting.value) : []
+
+    const query = (input.document_name || "").toLowerCase()
+    const doc = brochures.find(b =>
+      b.name.toLowerCase().includes(query) || query.includes(b.name.toLowerCase())
+    ) || brochures[0]
+
+    if (!doc) {
+      return "No hay documentos disponibles en el sistema. Infórmale al lead que Catherine se los enviará directamente."
+    }
+
+    const bodyHtml = `
+      <h2 style="margin-bottom:8px;">Información solicitada — Catherine Gómez Realtor</h2>
+      <p>Hola ${contact.firstName}, aquí tienes el documento que pediste:</p>
+      <div style="margin:20px 0;padding:16px;border:1px solid #e5e7eb;border-radius:8px;">
+        <p style="margin:0;font-weight:bold;font-size:16px;">${doc.name}</p>
+        ${doc.description ? `<p style="margin:4px 0 0;color:#6b7280;">${doc.description}</p>` : ""}
+      </div>
+      <p><a href="${doc.url}" style="display:inline-block;padding:12px 24px;background:#2563eb;color:white;text-decoration:none;border-radius:6px;font-weight:bold;">Ver / Descargar Documento</a></p>
+      <p style="margin-top:24px;">Para más información contacta a Catherine directamente.</p>
+    `
+
+    await sendEmail({
+      to: contact.email,
+      subject: `${doc.name} — Catherine Gómez Realtor`,
+      html: wrapEmail(bodyHtml, { agentName: "Catherine Gómez Realtor" }),
+    })
+
+    await prisma.activity.create({
+      data: {
+        type: "EMAIL_SENT",
+        title: "Documento enviado por Sofía",
+        description: `Sofía envió "${doc.name}" durante la llamada`,
+        contactId,
+      },
+    })
+
+    return `Documento "${doc.name}" enviado correctamente a ${contact.email}.`
+  } catch (e: any) {
+    console.error("[sendDocument]", e)
+    return "No pude enviar el documento. Inténtalo más tarde."
   }
 }
 
@@ -150,6 +319,12 @@ export async function POST(req: Request) {
           result = `El link para agendar la cita con Catherine es: ${base}/book`
         } else if (name === "updateLead" && contactId) {
           result = await updateLead(args, contactId)
+        } else if (name === "sendPropertyEmail" && contactId) {
+          result = await sendPropertyEmail(args, contactId)
+        } else if (name === "createTask" && contactId) {
+          result = await createTaskForContact(args, contactId)
+        } else if (name === "sendDocument" && contactId) {
+          result = await sendDocumentToContact(args, contactId)
         } else {
           result = "OK"
         }

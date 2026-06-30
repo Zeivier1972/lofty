@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
-import { runAutopilot, checkHeygenVideos } from "@/lib/social-autopilot"
+import { runAutopilot, checkHeygenVideos, triggerVideoOnly, publishBlogPostOnly } from "@/lib/social-autopilot"
 import { auth } from "@/lib/auth"
 
 export async function GET(req: Request) {
@@ -25,11 +25,37 @@ export async function GET(req: Request) {
   }
 
   const slotParam = searchParams.get("slot")
+  // "check"  = only poll HeyGen for completed videos, don't post new content
+  // "video"  = only trigger HeyGen video generation, no social posts
+  // "blog"   = only publish one blog post, no social posts
+  const checkOnly = slotParam === "check"
+  const videoOnly = slotParam === "video"
+  const blogOnly  = slotParam === "blog"
   const slot = slotParam === "evening" ? "evening" : "morning"
+
+  // blog-only mode: publish today's blog post without any social posts
+  if (blogOnly) {
+    try {
+      const result = await publishBlogPostOnly()
+      return NextResponse.json({ ok: result.ok, blog: result, timestamp: new Date().toISOString() })
+    } catch (err) {
+      return NextResponse.json({ ok: false, error: String(err) }, { status: 500 })
+    }
+  }
+
+  // video-only mode: trigger HeyGen without creating any social posts
+  if (videoOnly) {
+    try {
+      const result = await triggerVideoOnly()
+      return NextResponse.json({ ok: !result.error, ...result, timestamp: new Date().toISOString() })
+    } catch (err) {
+      return NextResponse.json({ ok: false, error: String(err) }, { status: 500 })
+    }
+  }
 
   try {
     const videoResult = await checkHeygenVideos()
-    const autopilotResult = await runAutopilot(slot)
+    const autopilotResult = checkOnly ? { posted: 0, failed: 0, videoQueued: 0, skipped: 0 } : await runAutopilot(slot)
 
     // Fetch the last 10 posts so failures show their error context
     const { prisma } = await import("@/lib/prisma")
@@ -42,6 +68,7 @@ export async function GET(req: Request) {
         content: true,
         createdAt: true,
         externalId: true,
+        errorMessage: true,
       },
     })
 

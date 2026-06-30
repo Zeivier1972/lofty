@@ -65,6 +65,7 @@ const navGroups: NavGroup[] = [
     items: [
       { href: "/ai-agent", icon: Bot, label: "AI Agent (Sofía & Aria)" },
       { href: "/dialer", icon: Phone, label: "Power Dialer" },
+      { href: "/investment-advisor", icon: TrendingUp, label: "Investment Advisor" },
       { href: "/smart-plans", icon: Zap, label: "Smart Plans" },
       { href: "/property-alerts", icon: BellRing, label: "Property Alerts" },
       { href: "/homeowner-agent", icon: UserCheck, label: "Homeowner Agent" },
@@ -77,6 +78,7 @@ const navGroups: NavGroup[] = [
     icon: Home,
     items: [
       { href: "/properties", icon: Home, label: "Properties" },
+      { href: "/pre-construction", icon: Building2, label: "Pre-Construction" },
       { href: "/cma", icon: ClipboardList, label: "CMA Reports" },
       { href: "/transactions", icon: FileText, label: "Transactions" },
       { href: "/open-house", icon: Key, label: "Open House" },

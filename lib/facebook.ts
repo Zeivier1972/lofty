@@ -1,5 +1,7 @@
 const GRAPH = "https://graph.facebook.com/v25.0"
 
+import crypto from "crypto"
+
 // Page Access Token — used for Messenger, lead form creation, page posts
 function token() {
   return process.env.FB_PAGE_ACCESS_TOKEN || process.env.FACEBOOK_PAGE_ACCESS_TOKEN || ""
@@ -93,7 +95,7 @@ function userToken() {
 }
 
 export async function sendFacebookMessage(psid: string, text: string): Promise<string | null> {
-  if (!token()) return null
+  if (!token()) { console.error("[FB] sendFacebookMessage: FB_PAGE_ACCESS_TOKEN not set"); return null }
   try {
     const res = await fetch(`${GRAPH}/me/messages?access_token=${token()}`, {
       method: "POST",
@@ -105,8 +107,15 @@ export async function sendFacebookMessage(psid: string, text: string): Promise<s
       }),
     })
     const data = await res.json()
+    if (!res.ok) {
+      console.error("[FB] sendFacebookMessage error:", JSON.stringify(data))
+      return null
+    }
     return data.message_id || null
-  } catch { return null }
+  } catch (e) {
+    console.error("[FB] sendFacebookMessage exception:", e)
+    return null
+  }
 }
 
 type QuickReply = { title: string; payload: string }
@@ -152,15 +161,25 @@ export async function getFacebookUserProfile(psid: string): Promise<{ firstName:
 
 // Fetch a submitted lead's field data from Meta
 export async function getFacebookLeadData(leadgenId: string): Promise<Record<string, string> | null> {
-  if (!token()) return null
+  if (!token()) {
+    console.error("[FB] getFacebookLeadData: FB_PAGE_ACCESS_TOKEN is not set")
+    return null
+  }
   try {
     const res = await fetch(`${GRAPH}/${leadgenId}?fields=field_data&access_token=${token()}`)
-    if (!res.ok) return null
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}))
+      console.error("[FB] getFacebookLeadData failed — likely expired token:", res.status, JSON.stringify(errData))
+      return null
+    }
     const d = await res.json()
     const result: Record<string, string> = {}
     for (const f of d.field_data || []) result[f.name] = f.values?.[0] || ""
     return result
-  } catch { return null }
+  } catch (e) {
+    console.error("[FB] getFacebookLeadData exception:", e)
+    return null
+  }
 }
 
 // ─── Meta Marketing API ───────────────────────────────────────────────────────
@@ -419,4 +438,85 @@ export async function createFacebookAdCampaign(payload: FbAdPayload) {
   }
 
   return { campaignId, adSetId, creativeIds, adIds, leadFormId }
+}
+
+// ─── Conversions API (CAPI) — server-side event reporting ────────────────────
+// Sends real CRM signals to Facebook so ad campaigns optimise for quality leads
+// rather than volume. All PII is SHA-256 hashed before transmission.
+
+function sha256(value: string): string {
+  return crypto.createHash("sha256").update(value.trim().toLowerCase()).digest("hex")
+}
+
+export type CapiEventName =
+  | "Lead"           // new contact ingested
+  | "Contact"        // contact became active / booked a call
+  | "Schedule"       // appointment scheduled
+  | "Purchase"       // deal closed
+
+interface CapiUserData {
+  email?: string | null
+  phone?: string | null
+  firstName?: string | null
+  lastName?: string | null
+  facebookLeadId?: string | null
+  // Browser signals — improve event match quality score significantly
+  clientIp?: string | null
+  clientUserAgent?: string | null
+  fbp?: string | null   // _fbp cookie — ties server event to browser session
+  fbc?: string | null   // _fbc cookie — ties to a specific Facebook ad click
+}
+
+export async function sendCapiEvent(
+  eventName: CapiEventName,
+  userData: CapiUserData,
+  opts: { value?: number; currency?: string; eventId?: string } = {}
+): Promise<void> {
+  const pixelId = process.env.FACEBOOK_PIXEL_ID
+  const capiToken = process.env.FACEBOOK_CAPI_TOKEN
+  if (!pixelId || !capiToken) {
+    console.log(`[CAPI] Skipped ${eventName} — FACEBOOK_PIXEL_ID or FACEBOOK_CAPI_TOKEN not set`)
+    return
+  }
+
+  const ud: Record<string, string | string[]> = {}
+  if (userData.email)           ud.em           = [sha256(userData.email)]
+  if (userData.phone)           ud.ph           = [sha256(userData.phone.replace(/\D/g, ""))]
+  if (userData.firstName)       ud.fn           = [sha256(userData.firstName)]
+  if (userData.lastName)        ud.ln           = [sha256(userData.lastName)]
+  if (userData.facebookLeadId)  ud.lead_id      = userData.facebookLeadId
+  if (userData.clientIp)        ud.client_ip_address  = userData.clientIp
+  if (userData.clientUserAgent) ud.client_user_agent  = userData.clientUserAgent
+  if (userData.fbp)             ud.fbp          = userData.fbp
+  if (userData.fbc)             ud.fbc          = userData.fbc
+
+  const event: Record<string, unknown> = {
+    event_name: eventName,
+    event_time: Math.floor(Date.now() / 1000),
+    action_source: "crm",
+    user_data: ud,
+  }
+  if (opts.value !== undefined) {
+    event.custom_data = { value: opts.value, currency: opts.currency ?? "USD" }
+  }
+  if (opts.eventId) event.event_id = opts.eventId
+
+  try {
+    const res = await fetch(
+      `https://graph.facebook.com/v19.0/${pixelId}/events?access_token=${capiToken}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data: [event] }),
+      }
+    )
+    const data = await res.json()
+    if (data.error) {
+      console.error(`[CAPI] ${eventName} error:`, data.error.message)
+    } else {
+      console.log(`[CAPI] ${eventName} sent — events_received: ${data.events_received}`)
+    }
+  } catch (err) {
+    console.error(`[CAPI] ${eventName} failed:`, err)
+  }
 }

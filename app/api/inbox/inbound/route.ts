@@ -14,45 +14,63 @@ PROCESO (sigue este orden naturalmente en la conversación):
 1. Saluda calurosamente en el primer mensaje
 2. Pregunta qué buscan: ¿comprar, vender o invertir?
 3. Califica al lead: presupuesto, área preferida, cuartos, tipo de propiedad
-4. Usa search_properties para buscar opciones reales que coincidan
-5. Comparte 2-3 propiedades con entusiasmo y detalles clave
+4. Busca propiedades según su interés (ver CUÁNDO USAR CADA BÚSQUEDA abajo)
+5. Comparte 2-3 opciones con entusiasmo y detalles clave
 6. Cuando haya interés, usa get_appointment_link y empuja para agendar con Catherine
 7. Siempre guarda lo que el lead te dice con update_lead_preferences
 
-CUÁNDO BUSCAR PROPIEDADES:
-- Tan pronto tengas al menos: precio aproximado O área O número de cuartos
-- No esperes tener todos los datos — busca con lo que tengas y refina después
-- Si no encuentras resultados, ajusta los filtros y vuelve a buscar
+CUÁNDO USAR CADA BÚSQUEDA:
+- search_preconstruction: si el lead es inversionista, menciona pre-construcción, nuevas construcciones, off-plan, planos, preventa, o quiere invertir en desarrollo nuevo. TAMBIÉN úsala si el contexto del lead indica que es inversionista.
+- search_properties: para todo lo demás — resale, MLS, propiedades ya construidas, condos existentes, etc.
+- Busca tan pronto tengas al menos: precio aproximado O área O cuartos. No esperes todos los datos.
 
 FORMATO DE RESPUESTA PARA SMS:
 - Máximo 3 oraciones antes de una pregunta o propiedades
-- Para propiedades, usa este formato exacto por cada una:
+- Para propiedades de pre-construcción:
+  🏗 [Ciudad], FL [código postal]
+  💰 $[precio] | [cuartos]BR/[baños]BA | [sqft] sqft
+  🗓 Entrega: [fecha si disponible]
+  [1 frase sobre la oportunidad de inversión]
+- Para propiedades MLS:
   🏠 [dirección], [ciudad]
   💰 $[precio] | [cuartos]BR/[baños]BA | [sqft] sqft
   [1 oración sobre por qué es buena opción]
 - Después de las propiedades, siempre pregunta: "¿Cuál te llama más la atención?"
 
 PARA AGENDAR CITA:
-- Cuando el lead muestre interés en UNA propiedad específica, obtén el link con get_appointment_link
-- Di: "¡Perfecto! Catherine puede mostrarte esa propiedad esta semana. Agenda tu cita aquí: [link]"
-- Si dicen que quieren verla, insiste amablemente: "Solo toma 2 minutos agendar. Te aseguro que vale la pena."
+- Cuando el lead muestre interés en UNA propiedad, obtén el link con get_appointment_link
+- Di: "¡Perfecto! Catherine puede darte más detalles exclusivos de esa oportunidad. Agenda aquí: [link]"
 
 REGLAS:
 - Responde SIEMPRE en español (inglés solo si el lead escribe en inglés)
 - Sé cálida, entusiasta — como una amiga experta, no un robot
 - Nunca inventes propiedades o precios — solo usa datos reales del sistema
-- Si no hay propiedades en la base de datos aún, di que estás buscando y que Catherine les llamará
+- Para pre-construcción: NUNCA menciones el nombre del constructor ni la comunidad — solo área, precio, cuartos y entrega
+- Si no hay propiedades disponibles, di que estás buscando y que Catherine les llamará
 - Actualiza update_lead_preferences CADA VEZ que el lead comparta información nueva
 
 CATHERINE GOMEZ:
-- Experta en Miami con amplia experiencia
-- Especialista: Brickell, Miami Beach, Coral Gables, Doral, Kendall, Aventura, Sunny Isles
+- Experta en Miami con amplia experiencia en pre-construcción e inversiones
+- Especialista: Brickell, Miami Beach, Coral Gables, Doral, Kendall, Aventura, Sunny Isles, Broward, West Palm Beach
 - Habla español e inglés | Disponible 7 días a la semana`
 
 const TOOLS: Anthropic.Tool[] = [
   {
+    name: "search_preconstruction",
+    description: "Busca propiedades de pre-construcción (nuevas construcciones) disponibles. Úsala cuando: el lead sea inversionista, mencione pre-construcción, nuevas construcciones, off-plan, planos, preventa, o quiera invertir en algo nuevo.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        city: { type: "string", description: "Ciudad o área: Miami, Homestead, Davie, Fort Lauderdale, Parkland, West Palm Beach" },
+        price_max: { type: "number", description: "Presupuesto máximo en dólares" },
+        bedrooms_min: { type: "number", description: "Número mínimo de cuartos" },
+      },
+      required: [],
+    },
+  },
+  {
     name: "search_properties",
-    description: "Busca propiedades activas en la base de datos del MLS según los criterios del comprador. Úsala tan pronto tengas algún criterio.",
+    description: "Busca propiedades activas en la base de datos del MLS (ya construidas, resale). Úsala para compradores de vivienda existente — NO para pre-construcción ni inversión en desarrollo nuevo.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -88,7 +106,90 @@ const TOOLS: Anthropic.Tool[] = [
   },
 ]
 
-async function runTool(name: string, input: any, contactId: string): Promise<string> {
+async function runTool(name: string, input: any, contactId: string): Promise<{text: string, imageUrls: string[]}> {
+  if (name === "search_preconstruction") {
+    const noImg: string[] = []
+    try {
+      const setting = await prisma.setting.findFirst({ where: { key: "preconstruction_scraped" } })
+      if (!setting?.value) return {text: "No hay propiedades de pre-construcción disponibles en este momento. Catherine les puede dar información actualizada.", imageUrls: noImg}
+
+      let communities: any[] = []
+      try {
+        const parsed = JSON.parse(setting.value as string)
+        communities = Array.isArray(parsed) ? parsed : (parsed.communities || [])
+      } catch { return {text: "No hay datos de pre-construcción disponibles ahora.", imageUrls: noImg} }
+
+      const allCommunities = [...communities]
+
+      const matchCity = (c: any, q: string) =>
+        (c.city || "").toLowerCase().includes(q) || (c.area || "").toLowerCase().includes(q)
+      const matchPrice = (c: any, max: number) => !c.priceMin || c.priceMin <= max
+      const matchBeds = (c: any, min: number) => {
+        if (!c.bedrooms) return true
+        const bedMin = parseInt(String(c.bedrooms).split("-")[0]) || 0
+        return bedMin >= min
+      }
+
+      // Exact match: city + price + beds
+      let filtered = [...allCommunities]
+      if (input.city) filtered = filtered.filter((c: any) => matchCity(c, input.city.toLowerCase()))
+      if (input.price_max) filtered = filtered.filter((c: any) => matchPrice(c, input.price_max))
+      if (input.bedrooms_min) filtered = filtered.filter((c: any) => matchBeds(c, input.bedrooms_min))
+
+      let fallbackNote = ""
+
+      if (filtered.length === 0 && input.city) {
+        // Relax price: show same city at any price
+        let sameCity = allCommunities.filter((c: any) => matchCity(c, input.city.toLowerCase()))
+        if (input.bedrooms_min) sameCity = sameCity.filter((c: any) => matchBeds(c, input.bedrooms_min))
+        if (sameCity.length > 0) {
+          filtered = sameCity
+          const minPrice = Math.min(...sameCity.map((c: any) => c.priceMin || 0).filter((p: number) => p > 0))
+          fallbackNote = `⚠️ No hay opciones en ${input.city} dentro de ese presupuesto. Las opciones disponibles en esa área arrancan desde $${minPrice.toLocaleString()}:\n\n`
+        }
+      }
+
+      if (filtered.length === 0) {
+        // Relax city: show any area within price budget (and beds)
+        let withinBudget = [...allCommunities]
+        if (input.price_max) withinBudget = withinBudget.filter((c: any) => matchPrice(c, input.price_max))
+        if (input.bedrooms_min) withinBudget = withinBudget.filter((c: any) => matchBeds(c, input.bedrooms_min))
+        if (withinBudget.length > 0) {
+          filtered = withinBudget
+          fallbackNote = `⚠️ No hay opciones en ${input.city || "esa área"} con esos criterios. Aquí hay alternativas dentro del presupuesto:\n\n`
+        }
+      }
+
+      if (filtered.length === 0) {
+        const cities = Array.from(new Set(allCommunities.map((c: any) => c.city || c.area).filter(Boolean))).slice(0, 8).join(", ")
+        return {text: `No encontré pre-construcciones con esos criterios. Tenemos opciones en: ${cities}. ¿Alguna te interesa?`, imageUrls: noImg}
+      }
+
+      const top3 = filtered.slice(0, 3)
+      const imageUrls = top3.map((c: any) => c.imageUrl).filter((u: any) => typeof u === "string" && u.startsWith("http"))
+
+      // Return up to 3 — NEVER include builder or community name
+      const text = fallbackNote + top3.map((c: any) => {
+        const lines: string[] = [`📍 ${c.area || (c.city + ", FL")}`]
+        if (c.zipCode) lines[0] += ` · ${c.zipCode}`
+        if (c.priceMin) {
+          const price = `$${c.priceMin.toLocaleString()}`
+          const priceStr = (c.priceMax && c.priceMax !== c.priceMin) ? `${price} – $${c.priceMax.toLocaleString()}` : price
+          lines.push(`💰 ${priceStr}`)
+        }
+        const bedsLine = [c.bedrooms ? `${c.bedrooms} cuartos` : null, c.bathrooms ? `${c.bathrooms} baños` : null, c.sqft ? `${c.sqft.toLocaleString()} sq ft` : null].filter(Boolean).join(" | ")
+        if (bedsLine) lines.push(`🏠 ${bedsLine}`)
+        if (c.deliveryDate) lines.push(`🗓 Entrega: ${c.deliveryDate}`)
+        lines.push("💼 Para detalles exclusivos agenda con Catherine")
+        return lines.join("\n")
+      }).join("\n\n---\n\n")
+
+      return {text, imageUrls}
+    } catch (e: any) {
+      return {text: "Error al buscar pre-construcciones: " + (e?.message || "desconocido"), imageUrls: []}
+    }
+  }
+
   if (name === "search_properties") {
     try {
       const where: any = { status: "ACTIVE" }
@@ -115,11 +216,12 @@ async function runTool(name: string, input: any, contactId: string): Promise<str
         select: { id: true, address: true, city: true, state: true, price: true, bedrooms: true, bathrooms: true, sqft: true, propertyType: true, description: true },
       })
 
+      const noMedia: string[] = []
       if (props.length === 0) {
-        return "No se encontraron propiedades con esos criterios en este momento. Intenta ajustar el presupuesto o el área."
+        return {text: "No se encontraron propiedades con esos criterios en este momento. Intenta ajustar el presupuesto o el área.", imageUrls: noMedia}
       }
 
-      return props.map(p =>
+      return {text: props.map(p =>
         [
           `Dirección: ${p.address}, ${p.city || "Miami"}, ${p.state || "FL"}`,
           `Precio: $${p.price?.toLocaleString() ?? "Consultar"}`,
@@ -127,15 +229,15 @@ async function runTool(name: string, input: any, contactId: string): Promise<str
           `Tipo: ${p.propertyType ?? ""}`,
           p.description ? `Descripción: ${p.description.slice(0, 120)}` : "",
         ].filter(Boolean).join("\n")
-      ).join("\n---\n")
+      ).join("\n---\n"), imageUrls: noMedia}
     } catch (e: any) {
-      return "Error al buscar propiedades: " + (e.message || "desconocido")
+      return {text: "Error al buscar propiedades: " + (e.message || "desconocido"), imageUrls: []}
     }
   }
 
   if (name === "get_appointment_link") {
     const base = process.env.NEXT_PUBLIC_APP_URL || "https://lofty-production.up.railway.app"
-    return `${base}/book`
+    return {text: `${base}/book`, imageUrls: []}
   }
 
   if (name === "update_lead_preferences") {
@@ -154,13 +256,13 @@ async function runTool(name: string, input: any, contactId: string): Promise<str
       if (Object.keys(data).length > 0) {
         await prisma.contact.update({ where: { id: contactId }, data })
       }
-      return "Preferencias guardadas."
+      return {text: "Preferencias guardadas.", imageUrls: []}
     } catch {
-      return "No se pudieron guardar las preferencias."
+      return {text: "No se pudieron guardar las preferencias.", imageUrls: []}
     }
   }
 
-  return "Herramienta no encontrada."
+  return {text: "Herramienta no encontrada.", imageUrls: []}
 }
 
 export async function POST(req: Request) {
@@ -194,6 +296,7 @@ export async function POST(req: Request) {
         id: true, firstName: true, lastName: true, phone: true, status: true,
         buyerBudgetMin: true, buyerBudgetMax: true, buyerBedroomsMin: true,
         buyerLocation: true, buyerPropertyType: true, doNotText: true,
+        tags: { select: { tag: { select: { name: true } } } },
       },
     })
 
@@ -204,6 +307,7 @@ export async function POST(req: Request) {
           id: true, firstName: true, lastName: true, phone: true, status: true,
           buyerBudgetMin: true, buyerBudgetMax: true, buyerBedroomsMin: true,
           buyerLocation: true, buyerPropertyType: true, doNotText: true,
+          tags: { select: { tag: { select: { name: true } } } },
         },
       })
     }
@@ -240,7 +344,11 @@ export async function POST(req: Request) {
     // Build contact context for Claude
     const isNew = contact.firstName === "Lead"
     const name = isNew ? "Cliente nuevo" : `${contact.firstName} ${contact.lastName}`.trim()
+    const tags: string[] = Array.isArray(contact.tags) ? contact.tags.map((ct: any) => ct.tag?.name || "").filter(Boolean) : []
+    const isInvestor = tags.some(t => /investor|inversionista/i.test(t))
     const ctx: string[] = [`Nombre: ${name}`, `Estado CRM: ${contact.status}`]
+    if (tags.length > 0) ctx.push(`Etiquetas CRM: ${tags.join(", ")}`)
+    if (isInvestor) ctx.push("⚠️ ESTE LEAD ES UN INVERSIONISTA — usa search_preconstruction como primera opción cuando pregunte por propiedades o inversiones.")
     if (contact.buyerBudgetMin || contact.buyerBudgetMax)
       ctx.push(`Presupuesto conocido: $${(contact.buyerBudgetMin || 0).toLocaleString()} – $${(contact.buyerBudgetMax || 0).toLocaleString()}`)
     if (contact.buyerBedroomsMin) ctx.push(`Cuartos mínimos: ${contact.buyerBedroomsMin}`)
@@ -259,6 +367,7 @@ export async function POST(req: Request) {
 
     // Agentic loop — Claude calls tools until it has a final answer
     let reply = "Hola, soy Sofía de Catherine Gomez Realtor. ¿En qué puedo ayudarte hoy?"
+    const collectedImages: string[] = []
     const MAX = 6
 
     for (let i = 0; i < MAX; i++) {
@@ -283,7 +392,8 @@ export async function POST(req: Request) {
         for (const block of res.content) {
           if (block.type === "tool_use") {
             const out = await runTool(block.name, block.input, contact.id)
-            results.push({ type: "tool_result", tool_use_id: block.id, content: out })
+            if (out.imageUrls?.length) collectedImages.push(...out.imageUrls)
+            results.push({ type: "tool_result", tool_use_id: block.id, content: out.text })
           }
         }
 
@@ -304,8 +414,14 @@ export async function POST(req: Request) {
       await prisma.whatsAppMessage.create({
         data: { body: reply, fromNumber: to, toNumber: phone, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
       })
+      // Send property images as separate messages (up to 3)
+      for (const imgUrl of collectedImages.slice(0, 3)) {
+        try {
+          await sendWhatsApp(toNum, "", imgUrl)
+        } catch { /* non-fatal if image fails */ }
+      }
     } else {
-      await sendSMS(toNum, reply)
+      await sendSMS(toNum, reply, collectedImages.slice(0, 3))
       await prisma.sMSMessage.create({
         data: { body: reply, fromNumber: to, toNumber: phone, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
       })

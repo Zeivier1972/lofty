@@ -15,7 +15,7 @@ import HelpPanel from "@/components/help-panel"
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = "blog" | "images" | "research" | "posts" | "video"
+type Tab = "blog" | "images" | "research" | "posts" | "video" | "listing"
 
 const AUDIENCES = [
   { id: "buyers", label: "Buyers", icon: Home },
@@ -113,6 +113,7 @@ export default function ContentStudioClient() {
             { id: "research" as Tab, label: "Research", icon: Search },
             { id: "posts" as Tab, label: "My Posts", icon: List },
             { id: "video" as Tab, label: "Video Ads", icon: Clapperboard },
+            { id: "listing" as Tab, label: "Listing Video", icon: Home },
           ].map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setTab(id)}
               className={cn("flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all",
@@ -128,6 +129,7 @@ export default function ContentStudioClient() {
         {tab === "research" && <ResearchTool toast={toast} />}
         {tab === "posts" && <PostsManager toast={toast} />}
         {tab === "video" && <VideoStudio toast={toast} campaignKeyword={campaignParam} />}
+        {tab === "listing" && <ListingVideoStudio toast={toast} />}
       </div>
     </div>
   )
@@ -784,8 +786,8 @@ const RATIO_OPTIONS = [
 const VIDEO_STYLES = [
   {
     id: "none",
-    name: "Auto",
-    desc: "Fondo neutro por defecto",
+    name: "Sin fondo",
+    desc: "Avatar sin fondo adicional",
     bg: "bg-gray-100",
     border: "border-gray-300",
     text: "text-gray-600",
@@ -793,82 +795,82 @@ const VIDEO_STYLES = [
   },
   {
     id: "cinematic",
-    name: "Cinematic",
-    desc: "Primer plano, fondo negro",
-    bg: "bg-gray-950",
-    border: "border-gray-700",
-    text: "text-gray-100",
-    dot: "bg-gray-100",
+    name: "Lujo Miami",
+    desc: "Casa de lujo, hora dorada",
+    bg: "bg-amber-900",
+    border: "border-amber-600",
+    text: "text-amber-100",
+    dot: "bg-amber-300",
   },
   {
     id: "thriller",
-    name: "Thriller",
-    desc: "Azul oscuro y dramático",
-    bg: "bg-[#1A1A2E]",
-    border: "border-[#3A3A6E]",
-    text: "text-blue-200",
+    name: "High-Rise Noche",
+    desc: "Edificio de lujo nocturno",
+    bg: "bg-slate-900",
+    border: "border-slate-600",
+    text: "text-slate-200",
     dot: "bg-blue-400",
   },
   {
     id: "retro_tech",
-    name: "Retro Tech",
-    desc: "Estético tech oscuro",
-    bg: "bg-[#0D1117]",
-    border: "border-green-700",
-    text: "text-green-400",
-    dot: "bg-green-400",
+    name: "Arquitectura Moderna",
+    desc: "Minimalista y contemporáneo",
+    bg: "bg-zinc-800",
+    border: "border-zinc-500",
+    text: "text-zinc-100",
+    dot: "bg-white",
   },
   {
-    id: "iconic",
-    name: "Iconic Artist",
-    desc: "Primer plano, morado vibrante",
-    bg: "bg-violet-700",
-    border: "border-violet-400",
+    id: "pop_culture",
+    name: "Miami Beach",
+    desc: "Frente al mar, South Florida",
+    bg: "bg-cyan-600",
+    border: "border-cyan-300",
     text: "text-white",
     dot: "bg-yellow-300",
   },
   {
-    id: "pop_culture",
-    name: "Pop Culture",
-    desc: "Fondo magenta vibrante",
-    bg: "bg-[#FF006E]",
-    border: "border-pink-300",
-    text: "text-white",
-    dot: "bg-white",
-  },
-  {
     id: "modern",
-    name: "Modern",
-    desc: "Fondo azul profesional",
-    bg: "bg-blue-600",
-    border: "border-blue-300",
-    text: "text-white",
-    dot: "bg-sky-200",
+    name: "Casa Blanca Moderna",
+    desc: "Propiedad limpia y elegante",
+    bg: "bg-gray-200",
+    border: "border-gray-400",
+    text: "text-gray-800",
+    dot: "bg-gray-600",
   },
   {
     id: "warm",
-    name: "Warm",
-    desc: "Naranja cálido — familias",
-    bg: "bg-orange-500",
-    border: "border-orange-200",
-    text: "text-white",
-    dot: "bg-amber-200",
+    name: "Hogar Familiar",
+    desc: "Casa suburbana cálida",
+    bg: "bg-orange-100",
+    border: "border-orange-400",
+    text: "text-orange-900",
+    dot: "bg-orange-500",
   },
   {
     id: "handmade",
-    name: "Handmade",
-    desc: "Crema artesanal",
-    bg: "bg-amber-50",
-    border: "border-amber-300",
-    text: "text-amber-800",
-    dot: "bg-amber-600",
+    name: "Piscina & Jardín",
+    desc: "Home con piscina de lujo",
+    bg: "bg-emerald-700",
+    border: "border-emerald-400",
+    text: "text-white",
+    dot: "bg-emerald-200",
+  },
+  {
+    id: "iconic",
+    name: "Penthouse Interior",
+    desc: "Interior de lujo, primer plano",
+    bg: "bg-neutral-800",
+    border: "border-yellow-500",
+    text: "text-yellow-200",
+    dot: "bg-yellow-400",
   },
   {
     id: "print",
-    name: "Print",
-    desc: "Negro editorial y elegante",
-    bg: "bg-stone-950",
-    border: "border-stone-600",
+    name: "Exterior Dramático",
+    desc: "Fachada arquitectónica bold",
+    bg: "bg-stone-800",
+    border: "border-stone-400",
     text: "text-stone-100",
     dot: "bg-stone-300",
   },
@@ -876,20 +878,44 @@ const VIDEO_STYLES = [
 
 const SCRIPT_TEMPLATES = [
   {
-    label: "Inversión desde Colombia",
-    script: "¡Hola! Soy Catherine Gomez, Realtor en Miami. ¿Sabías que puedes invertir en propiedades en Florida desde Colombia sin necesitar la residencia? Solo necesitas tu pasaporte. Miami ha valorizado más del 60% en los últimos 5 años. Tu dinero seguro en dólares. Yo te guío paso a paso. Agenda tu consulta gratuita — el enlace está en mi perfil.",
+    label: "Hook: $0 inicial — Miami",
+    script: `¿Sabías que hay un programa del gobierno de Florida que te da hasta $25,000 para tu pago inicial — y el 90% de las familias hispanas no lo sabe?
+
+Cada mes que sigues pagando renta, estás pagando la hipoteca de tu casero. Mientras tanto, las propiedades en South Florida siguen subiendo y tu oportunidad se va reduciendo.
+
+Soy Catherine Gomez, Realtor en Miami con más de 15 años ayudando a familias hispanas a comprar su primera casa en Florida. He cerrado más de 200 transacciones con compradores colombianos, venezolanos y cubanos usando exactamente este programa.
+
+Comenta 'CASA' abajo y te mando GRATIS los requisitos para calificar hoy mismo.`,
   },
   {
-    label: "Preconstrucción Sur de Florida",
-    script: "¿Buscas tu próxima inversión en el Sur de Florida? Tengo unidades de preconstrucción disponibles desde $250,000 con solo el 10% de depósito hoy. Los precios siguen subiendo cada trimestre. No esperes más. Escríbeme o agenda una llamada gratuita y te cuento todo sobre las mejores oportunidades disponibles ahora mismo.",
+    label: "Hook: Inversión desde Colombia",
+    script: `El 70% de los colombianos que compraron en Brickell hace 5 años ya duplicaron su inversión — sin salir de Colombia.
+
+El error más grande que cometen los inversores latinoamericanos es esperar a tener la residencia para comprar. Solo necesitas tu pasaporte y el dinero de entrada — yo me encargo del resto.
+
+Soy Catherine Gomez, Realtor en Miami. He ayudado a más de 150 familias colombianas a invertir en propiedades en South Florida. Miami ha valorizado más del 60% en los últimos 5 años y los precios siguen subiendo cada trimestre.
+
+Comenta 'COLOMBIA' abajo y te mando el paso a paso de cómo comprar en Miami desde el exterior.`,
   },
   {
-    label: "Compradores de primera vez",
-    script: "¡Hola! Soy Catherine Gomez, tu Realtor en Miami. Si estás pensando en comprar tu primera casa en el Sur de Florida, tengo una noticia increíble — puedes calificar para hasta $25,000 en asistencia para el pago inicial. El proceso es más sencillo de lo que crees. Agenda tu consulta hoy, es gratis y completamente en español.",
+    label: "Hook: Airbnb Orlando $4K/mes",
+    script: `Orlando recibe 75 millones de turistas al año — y una sola propiedad puede generarte entre $3,000 y $5,000 al mes con Airbnb.
+
+La mayoría cree que necesita estar físicamente en Florida para manejar un Airbnb. La realidad: con los servicios de administración correctos, puedes generar ingresos pasivos en dólares desde Colombia, sin pisar el país.
+
+Soy Catherine Gomez, Realtor en Florida. Especializada en propiedades de renta vacacional en Orlando y South Florida. El retorno de inversión promedio supera el 12% anual — más que cualquier banco o CDT.
+
+Comenta 'ORLANDO' abajo y te mando los números reales: precio, renta mensual y ROI de propiedades disponibles hoy.`,
   },
   {
-    label: "Airbnb en Orlando",
-    script: "¡Hola! Soy Catherine Gomez, Realtor en Florida. Orlando recibe más de 75 millones de turistas al año — y tú puedes generar entre $2,500 y $4,000 al mes con un Airbnb aquí. Lo mejor: puedes manejarlo todo desde Colombia. Yo te ayudo a encontrar la propiedad perfecta. Agenda tu consulta gratuita hoy mismo.",
+    label: "Hook: Por qué no esperar",
+    script: `Cada mes que esperas para comprar en Miami, estás perdiendo dinero. Las propiedades en South Florida subieron 9% en promedio este año — eso es $36,000 más en una propiedad de $400,000.
+
+El mercado no espera. Y las tasas de interés, aunque altas hoy, bajarán — y cuando bajen, todos van a querer comprar al mismo tiempo.
+
+Soy Catherine Gomez, Realtor en Miami. He visto este ciclo tres veces en 15 años. Los que compraron cuando todos tenían miedo son los que hoy tienen patrimonio real en dólares.
+
+Comenta 'LISTO' abajo y agendamos tu consulta gratuita esta semana — completamente en español.`,
   },
 ]
 
@@ -899,14 +925,31 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
   const [avatarId, setAvatarId] = useState("")
   const [voiceId, setVoiceId] = useState("")
   const [script, setScript] = useState("")
-  const [ratio, setRatio] = useState("16:9")
+  const [ratio, setRatio] = useState("9:16")
   const [styleId, setStyleId] = useState("none")
+  const [broll, setBroll] = useState(true)
   const [loadingData, setLoadingData] = useState(true)
   const [generating, setGenerating] = useState(false)
-  const [status, setStatus] = useState<"idle" | "processing" | "completed" | "failed">("idle")
+  const [researchingScript, setResearchingScript] = useState(false)
+  const [researchBrief, setResearchBrief] = useState<{ topic?: string; hook?: string } | null>(null)
+  const [status, setStatus] = useState<"idle" | "processing" | "captions" | "completed" | "failed">("idle")
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null)
+  const [pasteUrl, setPasteUrl] = useState("")
+  const [generatingGuide, setGeneratingGuide] = useState(false)
+  const [guideUrl, setGuideUrl] = useState<string | null>(null)
+  const [postPlatform, setPostPlatform] = useState("INSTAGRAM")
+  const [postCaption, setPostCaption] = useState("")
+  const [generatingCaption, setGeneratingCaption] = useState(false)
+  const [publishing, setPublishing] = useState(false)
+  const [publishResult, setPublishResult] = useState<"idle" | "success" | "error">("idle")
+  const [publishError, setPublishError] = useState("")
   const pollRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Remotion state
+  const [rConfig, setRConfig] = useState<any>(null)
+  const [rLoading, setRLoading] = useState(false)
+  const [rCopied, setRCopied] = useState(false)
 
   useEffect(() => {
     // Pre-fill script from campaign keyword if navigated from a campaign card
@@ -922,23 +965,27 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
     ]).then(([avatarData, voiceData]) => {
       const avatarList: any[] = avatarData?.data?.avatars || []
       const allVoices: any[] = voiceData?.data?.voices || []
-      const spanishVoices = allVoices.filter((v: any) => {
-        const lang = (v.language || v.locale || "").toLowerCase()
-        return lang.includes("es") || lang.includes("spanish")
-      })
+      // Use exact language match — .includes("es") incorrectly matches Portuguese/Vietnamese/Japanese
+      const isSpanishVoice = (v: any) =>
+        v.language === "es" || v.locale?.startsWith("es-") || v.locale === "es" ||
+        v.name?.toLowerCase().includes("catherine")
+      const spanishVoices = allVoices.filter(isSpanishVoice)
 
       // Catherine's avatars come first (tagged with group:"Catherine Gomez" by the API)
       const catherineAvatars = avatarList.filter((a: any) => a.group === "Catherine Gomez")
       const stockAvatars = avatarList.filter((a: any) => a.group !== "Catherine Gomez")
-      // Store grouped for the dropdown
       setAvatars([...catherineAvatars, ...stockAvatars])
       setVoices(spanishVoices.length > 0 ? spanishVoices : allVoices)
 
-      // Auto-select first Catherine avatar (her personal face, not a stock one)
+      // Auto-select first Catherine avatar
       if (catherineAvatars[0]) setAvatarId(catherineAvatars[0].avatar_id)
       else if (avatarList[0]) setAvatarId(avatarList[0].avatar_id)
 
-      const firstSpanish = spanishVoices[0] || allVoices[0]
+      // Prefer Catalina voice (used in HeyGen for Catherine); fall back to first Spanish
+      const catherineVoice = spanishVoices.find((v: any) =>
+        v.name?.toLowerCase().includes("catalina") || v.name?.toLowerCase().includes("catherine")
+      )
+      const firstSpanish = catherineVoice || spanishVoices[0] || allVoices[0]
       if (firstSpanish) setVoiceId(firstSpanish.voice_id)
     }).catch(() => {
       toast({ title: "Error cargando HeyGen", variant: "destructive" })
@@ -946,6 +993,29 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
 
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [campaignKeyword])
+
+  const pollCaptionsStatus = (renderId: string, fallbackVideoUrl: string) => {
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/creatomate/status?renderId=${renderId}`)
+        const data = await res.json()
+        if (data.status === "succeeded" && data.url) {
+          clearInterval(pollRef.current!)
+          pollRef.current = null
+          setStatus("completed")
+          setVideoUrl(data.url)
+          toast({ title: "¡Video con captions listo! 🎬✨" })
+        } else if (data.status === "failed") {
+          clearInterval(pollRef.current!)
+          pollRef.current = null
+          // Fall back to raw HeyGen video
+          setStatus("completed")
+          setVideoUrl(fallbackVideoUrl)
+          toast({ title: "Video listo (sin kinetic captions)", variant: "default" })
+        }
+      } catch { /* keep polling */ }
+    }, 5000)
+  }
 
   const pollStatus = (videoId: string) => {
     pollRef.current = setInterval(async () => {
@@ -956,10 +1026,32 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
         if (s === "completed") {
           clearInterval(pollRef.current!)
           pollRef.current = null
-          setStatus("completed")
-          setVideoUrl(data.data.video_url)
+          const heygenUrl: string = data.data.video_url
           setThumbnailUrl(data.data.thumbnail_url || null)
-          toast({ title: "¡Video listo! 🎬" })
+
+          // Submit to Creatomate for kinetic captions
+          setStatus("captions")
+          toast({ title: "Video generado — aplicando kinetic captions... ✨" })
+          try {
+            const ctRes = await fetch("/api/creatomate/captions", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ videoUrl: heygenUrl, width: 720, height: 1280 }),
+            })
+            const ctData = await ctRes.json()
+            if (ctData.renderId) {
+              pollCaptionsStatus(ctData.renderId, heygenUrl)
+            } else {
+              // Creatomate not available — show raw video
+              setStatus("completed")
+              setVideoUrl(heygenUrl)
+              toast({ title: "¡Video listo! 🎬" })
+            }
+          } catch {
+            setStatus("completed")
+            setVideoUrl(heygenUrl)
+            toast({ title: "¡Video listo! 🎬" })
+          }
         } else if (s === "failed") {
           clearInterval(pollRef.current!)
           pollRef.current = null
@@ -968,6 +1060,97 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
         }
       } catch { /* keep polling */ }
     }, 6000)
+  }
+
+  const generateCaption = async () => {
+    setGeneratingCaption(true)
+    setPostCaption("")
+    try {
+      const res = await fetch("/api/heygen/video-caption", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ platform: postPlatform, script, topic: researchBrief?.topic }),
+      })
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      setPostCaption(data.content || "")
+      toast({ title: "Texto generado con IA ✨" })
+    } catch (e: any) {
+      toast({ title: "Error generando texto", description: e.message, variant: "destructive" })
+    } finally {
+      setGeneratingCaption(false)
+    }
+  }
+
+  const publishVideo = async () => {
+    if (!videoUrl || !postCaption.trim()) return
+    setPublishing(true)
+    setPublishResult("idle")
+    setPublishError("")
+    try {
+      const res = await fetch("/api/heygen/post-video", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ platform: postPlatform, videoUrl, content: postCaption }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) throw new Error(data.error || "Publicación falló")
+      setPublishResult("success")
+      toast({ title: `¡Publicado en ${postPlatform}! 🎉` })
+    } catch (e: any) {
+      setPublishResult("error")
+      setPublishError(e.message)
+      toast({ title: "Error al publicar", description: e.message, variant: "destructive" })
+    } finally {
+      setPublishing(false)
+    }
+  }
+
+  const generateAIScript = async () => {
+    setResearchingScript(true)
+    setResearchBrief(null)
+    try {
+      const res = await fetch("/api/heygen/research")
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      const generatedScript = data.script || ""
+      setScript(generatedScript)
+      if (data.topic || data.hook) setResearchBrief({ topic: data.topic, hook: data.hook })
+      toast({ title: "Guión generado con investigación viral ✨" })
+      // Fire-and-forget: generate the lead magnet guide in the background
+      if (generatedScript) {
+        fetch("/api/ai/generate-guide", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ script: generatedScript }),
+        }).catch(() => undefined)
+      }
+    } catch (e: any) {
+      toast({ title: "Error generando guión", description: e.message, variant: "destructive" })
+    } finally {
+      setResearchingScript(false)
+    }
+  }
+
+  const generateGuide = async () => {
+    if (!script.trim()) { toast({ title: "Escribe el guión primero", variant: "destructive" }); return }
+    setGeneratingGuide(true)
+    setGuideUrl(null)
+    try {
+      const res = await fetch("/api/ai/generate-guide", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ script }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setGuideUrl(data.guideUrl)
+      toast({ title: `Guía creada para "${data.keyword}" ✅`, description: data.title })
+    } catch (e: any) {
+      toast({ title: "Error creando guía", description: e.message, variant: "destructive" })
+    } finally {
+      setGeneratingGuide(false)
+    }
   }
 
   const generate = async () => {
@@ -981,11 +1164,18 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
     setVideoUrl(null)
     setThumbnailUrl(null)
 
+    // Fire-and-forget: generate the lead magnet guide from this script
+    fetch("/api/ai/generate-guide", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ script }),
+    }).catch(() => undefined)
+
     try {
       const res = await fetch("/api/heygen/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ avatarId, voiceId, script, ratio, styleId: styleId !== "none" ? styleId : undefined }),
+        body: JSON.stringify({ avatarId, voiceId, script, ratio, styleId: styleId !== "none" ? styleId : undefined, broll }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
@@ -997,6 +1187,41 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
     } finally {
       setGenerating(false)
     }
+  }
+
+  const generateVideoAdConfig = async () => {
+    if (!script.trim()) {
+      toast({ title: "Escribe el guión primero", variant: "destructive" })
+      return
+    }
+    setRLoading(true)
+    setRConfig(null)
+    try {
+      const res = await fetch("/api/remotion/video-ad", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ script }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setRConfig(data)
+      toast({ title: `Config lista — ${data.meta.sceneCount} escenas, ${data.meta.totalSeconds}s` })
+    } catch (e: any) {
+      toast({ title: "Error generando config", description: e.message, variant: "destructive" })
+    } finally {
+      setRLoading(false)
+    }
+  }
+
+  const downloadVideoAdConfig = () => {
+    if (!rConfig) return
+    const blob = new Blob([JSON.stringify(rConfig, null, 2)], { type: "application/json" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `video-ad-${Date.now()}.json`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   if (loadingData) {
@@ -1103,8 +1328,8 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
 
       {/* Style / Brand System */}
       <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-        <h2 className="text-base font-semibold text-gray-800 mb-1">3. Estilo visual</h2>
-        <p className="text-xs text-gray-400 mb-4">Elige el look del video — fondo, iluminación y encuadre del avatar</p>
+        <h2 className="text-base font-semibold text-gray-800 mb-1">3. Fondo de bienes raíces</h2>
+        <p className="text-xs text-gray-400 mb-4">Selecciona la imagen de propiedad que aparecerá detrás de Catherine en el video</p>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
           {VIDEO_STYLES.map(s => (
             <button
@@ -1129,20 +1354,87 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
         </div>
       </div>
 
+      {/* B-Roll toggle */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-gray-800">4. B-Roll (multi-escena)</h2>
+            <p className="text-xs text-gray-400 mt-1">
+              {broll
+                ? "El guión se divide en 2–4 escenas, cada una con una imagen de propiedad diferente — como en HeyGen Studio"
+                : "Video de una sola escena con el fondo seleccionado arriba"}
+            </p>
+          </div>
+          <button
+            onClick={() => setBroll(b => !b)}
+            className={cn(
+              "relative inline-flex h-7 w-12 items-center rounded-full transition-colors flex-shrink-0",
+              broll ? "bg-purple-600" : "bg-gray-200"
+            )}
+          >
+            <span
+              className={cn(
+                "inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform",
+                broll ? "translate-x-6" : "translate-x-1"
+              )}
+            />
+          </button>
+        </div>
+        {broll && (
+          <div className="mt-3 grid grid-cols-3 sm:grid-cols-5 gap-1.5">
+            {[
+              { label: "Lujo Miami", color: "bg-amber-800" },
+              { label: "High-Rise", color: "bg-slate-800" },
+              { label: "Moderna", color: "bg-zinc-700" },
+              { label: "Miami Beach", color: "bg-cyan-600" },
+              { label: "Piscina", color: "bg-emerald-700" },
+            ].map(s => (
+              <div key={s.label} className={cn("rounded-lg h-8 flex items-center justify-center text-white text-[10px] font-medium", s.color)}>
+                {s.label}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Script */}
       <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold text-gray-800">4. Guión del video</h2>
+          <h2 className="text-base font-semibold text-gray-800">5. Guión del video</h2>
           <span className="text-xs text-gray-400">{script.length} / 1500 caracteres</span>
         </div>
 
         {!campaignKeyword && (
-          <div className="mb-3">
-            <p className="text-xs text-gray-400 mb-2">Plantillas rápidas:</p>
-            <div className="flex flex-wrap gap-2">
+          <div className="mb-3 space-y-3">
+            {/* AI Research Button */}
+            <button
+              onClick={generateAIScript}
+              disabled={researchingScript}
+              className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl text-sm font-semibold hover:from-purple-700 hover:to-indigo-700 transition-all disabled:opacity-60">
+              {researchingScript
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> Investigando tendencias virales y generando guión…</>
+                : <><Sparkles className="w-4 h-4" /> Generar guión viral con IA — 4 escenas + SEO + CTA</>}
+            </button>
+
+            {researchBrief && (
+              <div className="bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3 text-xs text-indigo-800 space-y-1">
+                {researchBrief.topic && <p><strong>Tema:</strong> {researchBrief.topic}</p>}
+                {researchBrief.hook && <p><strong>Gancho:</strong> {researchBrief.hook}</p>}
+              </div>
+            )}
+
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-800 space-y-1">
+              <p className="font-semibold">Estructura de 4 escenas (separa con línea en blanco):</p>
+              <p>🎯 <strong>Escena 1 — Hook:</strong> Dato sorprendente o pregunta que para el scroll</p>
+              <p>💥 <strong>Escena 2 — Problema:</strong> El dolor real del espectador (crea urgencia)</p>
+              <p>✅ <strong>Escena 3 — Solución:</strong> Catherine como experta + dato de mercado + keywords SEO</p>
+              <p>📣 <strong>Escena 4 — CTA:</strong> "Comenta 'PALABRA' abajo" + qué van a recibir</p>
+            </div>
+            <p className="text-xs text-gray-400">O usa una plantilla lista:</p>
+            <div className="grid grid-cols-2 gap-2">
               {SCRIPT_TEMPLATES.map(t => (
                 <button key={t.label} onClick={() => setScript(t.script)}
-                  className="px-3 py-1 bg-purple-50 text-purple-700 text-xs rounded-lg border border-purple-100 hover:bg-purple-100 transition-colors">
+                  className="text-left px-3 py-2 bg-purple-50 text-purple-700 text-xs rounded-lg border border-purple-100 hover:bg-purple-100 transition-colors leading-snug">
                   {t.label}
                 </button>
               ))}
@@ -1152,54 +1444,290 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
 
         <textarea
           value={script}
-          onChange={e => setScript(e.target.value.slice(0, 1500))}
+          onChange={e => { setScript(e.target.value.slice(0, 1500)); setGuideUrl(null) }}
           placeholder="Escribe el guión del video en español. Habla como si estuvieras frente a la cámara..."
           rows={7}
           className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none"
         />
 
         <button
+          onClick={generateGuide}
+          disabled={generatingGuide || !script.trim()}
+          className="mt-2 w-full flex items-center justify-center gap-2 py-2.5 bg-amber-500 text-white rounded-xl text-sm font-semibold hover:bg-amber-600 transition-colors disabled:opacity-50">
+          {generatingGuide
+            ? <><Loader2 className="w-4 h-4 animate-spin" /> Generando guía con IA…</>
+            : <>📄 Crear Guía PDF del guión</>}
+        </button>
+        {guideUrl && (
+          <div className="mt-2 bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-sm text-green-800 flex items-center gap-2">
+            <span>✅ Guía lista:</span>
+            <a href={guideUrl} target="_blank" rel="noreferrer" className="underline font-medium truncate">{guideUrl}</a>
+          </div>
+        )}
+
+        <button
           onClick={generate}
-          disabled={generating || !script.trim() || !avatarId || !voiceId || status === "processing"}
+          disabled={generating || !script.trim() || !avatarId || !voiceId || status === "processing" || status === "captions"}
           className="mt-4 w-full flex items-center justify-center gap-2 py-3 bg-purple-600 text-white rounded-xl font-semibold text-sm hover:bg-purple-700 transition-colors disabled:opacity-50">
           {generating
             ? <><Loader2 className="w-4 h-4 animate-spin" /> Enviando a HeyGen…</>
             : status === "processing"
             ? <><Loader2 className="w-4 h-4 animate-spin" /> Generando video… (2–5 min)</>
-            : <><Clapperboard className="w-4 h-4" /> Generar Video Ad</>}
+            : status === "captions"
+            ? <><Loader2 className="w-4 h-4 animate-spin" /> Aplicando kinetic captions…</>
+            : <><Clapperboard className="w-4 h-4" /> Generar Video Ad con HeyGen</>}
         </button>
       </div>
 
-      {/* Processing */}
+      {/* ── Remotion — Render locally ────────────────────────────────────── */}
+      <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-6 shadow-lg border border-gray-700">
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <h2 className="text-base font-semibold text-white">Remotion — Render desde tu terminal</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Renderiza el guión como video profesional con captions animados, Ken Burns y B-roll de Pexels.</p>
+          </div>
+          <span className="text-[10px] font-bold px-2 py-1 bg-orange-500 text-white rounded-full uppercase tracking-wide">Local</span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          {[
+            ["Captions", "kinéticos estilo Reels"],
+            ["B-roll", "Pexels por tema del guión"],
+            ["Ken Burns", "en fotos de propiedad"],
+            ["Branding", "tu nombre en el CTA final"],
+          ].map(([title, desc]) => (
+            <div key={title} className="bg-white/5 rounded-xl p-2.5 text-xs">
+              <span className="text-orange-400 font-semibold">{title}</span>
+              <span className="text-gray-400"> — {desc}</span>
+            </div>
+          ))}
+        </div>
+
+        <button
+          onClick={generateVideoAdConfig}
+          disabled={rLoading || !script.trim()}
+          className="w-full flex items-center justify-center gap-2 py-3 bg-orange-500 text-white rounded-xl font-semibold text-sm hover:bg-orange-600 transition-all disabled:opacity-50">
+          {rLoading
+            ? <><Loader2 className="w-4 h-4 animate-spin" /> Generando config de Remotion…</>
+            : <><Video className="w-4 h-4" /> Generar Config (usa el guión escrito arriba)</>}
+        </button>
+
+        {rConfig && (
+          <div className="mt-4 space-y-3">
+            <div className="flex gap-3 text-xs">
+              <span className="bg-white/10 text-gray-300 px-2 py-1 rounded-lg">{rConfig.meta.sceneCount} escenas</span>
+              <span className="bg-white/10 text-gray-300 px-2 py-1 rounded-lg">{rConfig.meta.totalSeconds}s</span>
+              <span className="bg-white/10 text-gray-300 px-2 py-1 rounded-lg">720×1280 · 30fps</span>
+            </div>
+
+            <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+              {rConfig.scenes.map((s: any, i: number) => (
+                <div key={i} className="rounded-lg p-2.5 text-xs bg-white/5 border border-white/10 flex gap-2">
+                  <span className="flex-shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded self-start mt-0.5 bg-orange-600 text-white">
+                    {s.asset_type === "video" ? "BROLL" : "FOTO"}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-gray-300">{i + 1}. {s.name} <span className="text-gray-500">({s.duration_seconds}s)</span></p>
+                    <p className="text-gray-400 leading-snug text-[11px] mt-0.5 line-clamp-2">{s.script}</p>
+                    <p className="text-gray-500 mt-0.5">Caption: <strong className="text-gray-400">{s.caption}</strong></p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <button
+              onClick={downloadVideoAdConfig}
+              className="w-full flex items-center justify-center gap-2 py-2.5 bg-white/10 hover:bg-white/15 text-white rounded-xl text-sm font-semibold transition-colors border border-white/20">
+              <Download className="w-4 h-4" /> Descargar video-ad-config.json
+            </button>
+
+            <div className="bg-black/50 rounded-xl p-4 border border-gray-700">
+              <p className="text-xs text-gray-400 mb-2 font-semibold uppercase tracking-wide">Terminal</p>
+              <div className="flex items-start gap-2">
+                <code className="flex-1 text-xs text-green-400 font-mono break-all">
+                  node scripts/render-listing.mjs --config video-ad-config.json
+                </code>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText("node scripts/render-listing.mjs --config video-ad-config.json")
+                    setRCopied(true)
+                    setTimeout(() => setRCopied(false), 2000)
+                  }}
+                  className="flex-shrink-0 p-1.5 bg-white/10 hover:bg-white/20 rounded-lg transition-colors">
+                  {rCopied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5 text-gray-400" />}
+                </button>
+              </div>
+              <p className="text-[11px] text-gray-500 mt-2">Descarga el JSON → ponlo en la raíz del proyecto → corre el comando</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Paste external HeyGen URL ─────────────────────────────────────── */}
+      {status === "idle" && (
+        <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+          <h2 className="text-base font-semibold text-gray-800 mb-1">¿Ya tienes un video de HeyGen?</h2>
+          <p className="text-xs text-gray-400 mb-3">Pega el link del video para generar el texto SEO y publicarlo directamente.</p>
+          <div className="flex gap-2">
+            <input
+              value={pasteUrl}
+              onChange={e => setPasteUrl(e.target.value)}
+              placeholder="https://resource.heygen.com/video/..."
+              className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+            />
+            <button
+              disabled={!pasteUrl.trim().startsWith("http")}
+              onClick={() => {
+                setVideoUrl(pasteUrl.trim())
+                setStatus("completed")
+                setPasteUrl("")
+              }}
+              className="px-4 py-2.5 bg-purple-600 text-white rounded-xl text-sm font-semibold hover:bg-purple-700 transition-colors disabled:opacity-40"
+            >
+              Usar este video
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Processing — HeyGen rendering */}
       {status === "processing" && (
         <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6 text-center">
           <Loader2 className="w-8 h-8 text-blue-500 animate-spin mx-auto mb-3" />
           <p className="font-semibold text-blue-800">HeyGen está generando tu video…</p>
           <p className="text-sm text-blue-600 mt-1">Esto toma entre 2 y 5 minutos. No cierres esta pantalla.</p>
+          <div className="mt-4 flex items-center justify-center gap-6 text-xs text-blue-500">
+            <span className="flex items-center gap-1.5 font-semibold text-blue-700"><span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />Avatar intro</span>
+            <span>→</span>
+            <span>B-roll clips</span>
+            <span>→</span>
+            <span>Avatar outro</span>
+          </div>
+        </div>
+      )}
+
+      {/* Processing — Creatomate kinetic captions */}
+      {status === "captions" && (
+        <div className="bg-purple-50 border border-purple-200 rounded-2xl p-6 text-center">
+          <Loader2 className="w-8 h-8 text-purple-500 animate-spin mx-auto mb-3" />
+          <p className="font-semibold text-purple-800">Aplicando kinetic captions… ✨</p>
+          <p className="text-sm text-purple-600 mt-1">Creatomate está agregando captions animadas palabra por palabra.</p>
+          <div className="mt-3 inline-flex items-center gap-2 bg-purple-100 text-purple-700 text-xs font-bold px-3 py-1.5 rounded-full uppercase tracking-wide">
+            <span className="w-2 h-2 bg-yellow-400 rounded-full" /> Gold highlight · Montserrat Bold
+          </div>
         </div>
       )}
 
       {/* Result */}
       {status === "completed" && videoUrl && (
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="bg-gray-900 flex items-center justify-center p-4">
-            <video src={videoUrl} controls poster={thumbnailUrl || undefined}
-              className="max-w-full rounded-xl" style={{ maxHeight: 400 }} />
-          </div>
-          <div className="p-4 flex items-center gap-3 flex-wrap">
-            <span className="flex items-center gap-1.5 text-sm font-medium text-green-700">
-              <Check className="w-4 h-4" /> Video listo
-            </span>
-            <div className="ml-auto flex gap-2">
-              <a href={videoUrl} target="_blank"
-                className="flex items-center gap-1.5 px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
-                <ExternalLink className="w-4 h-4" /> Abrir
-              </a>
-              <a href={videoUrl} download="video-ad.mp4"
-                className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors">
-                <Download className="w-4 h-4" /> Descargar
-              </a>
+        <div className="space-y-4">
+          {/* Video player */}
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="bg-gray-900 flex items-center justify-center p-4">
+              <video src={videoUrl} controls poster={thumbnailUrl || undefined}
+                className="max-w-full rounded-xl" style={{ maxHeight: 400 }} />
             </div>
+            <div className="p-4 flex items-center gap-3 flex-wrap">
+              <span className="flex items-center gap-1.5 text-sm font-medium text-green-700">
+                <Check className="w-4 h-4" /> Video listo
+              </span>
+              <div className="ml-auto flex gap-2">
+                <a href={videoUrl} target="_blank"
+                  className="flex items-center gap-1.5 px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
+                  <ExternalLink className="w-4 h-4" /> Abrir
+                </a>
+                <a href={videoUrl} download="video-ad.mp4"
+                  className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors">
+                  <Download className="w-4 h-4" /> Descargar
+                </a>
+              </div>
+            </div>
+          </div>
+
+          {/* Publish to social section */}
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-4">
+            <h3 className="text-base font-semibold text-gray-800 flex items-center gap-2">
+              <Send className="w-4 h-4 text-purple-600" />
+              Publicar en redes sociales
+            </h3>
+
+            {/* Platform selector */}
+            <div>
+              <p className="text-xs font-semibold text-gray-600 mb-2">Plataforma</p>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { id: "INSTAGRAM", label: "Instagram Reels" },
+                  { id: "FACEBOOK",  label: "Facebook Video" },
+                  { id: "YOUTUBE",   label: "YouTube Shorts" },
+                  { id: "TIKTOK",    label: "TikTok" },
+                  { id: "LINKEDIN",  label: "LinkedIn" },
+                ].map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => { setPostPlatform(p.id); setPostCaption(""); setPublishResult("idle") }}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-xs font-medium border transition-all",
+                      postPlatform === p.id
+                        ? "bg-purple-600 text-white border-purple-600"
+                        : "border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50"
+                    )}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Caption generator */}
+            <button
+              onClick={generateCaption}
+              disabled={generatingCaption}
+              className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl text-sm font-semibold hover:from-purple-700 hover:to-indigo-700 transition-all disabled:opacity-60"
+            >
+              {generatingCaption
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> Generando texto SEO y hashtags…</>
+                : <><Sparkles className="w-4 h-4" /> Generar texto con IA para {postPlatform}</>}
+            </button>
+
+            {postCaption && (
+              <>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-xs font-semibold text-gray-600">Texto generado — edítalo si quieres</p>
+                    <span className="text-xs text-gray-400">{postCaption.length} chars</span>
+                  </div>
+                  <textarea
+                    value={postCaption}
+                    onChange={e => setPostCaption(e.target.value)}
+                    rows={8}
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 resize-y"
+                  />
+                </div>
+
+                {publishResult === "success" ? (
+                  <div className="flex items-center gap-2 px-4 py-3 bg-green-50 border border-green-200 rounded-xl text-sm text-green-800 font-medium">
+                    <Check className="w-4 h-4" /> ¡Publicado exitosamente en {postPlatform}!
+                  </div>
+                ) : (
+                  <>
+                    {publishResult === "error" && (
+                      <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700">
+                        {publishError}
+                      </div>
+                    )}
+                    <button
+                      onClick={publishVideo}
+                      disabled={publishing || !postCaption.trim()}
+                      className="w-full flex items-center justify-center gap-2 py-3 bg-purple-600 text-white rounded-xl font-semibold text-sm hover:bg-purple-700 transition-colors disabled:opacity-50"
+                    >
+                      {publishing
+                        ? <><Loader2 className="w-4 h-4 animate-spin" /> Publicando en {postPlatform}…</>
+                        : <><Send className="w-4 h-4" /> Publicar en {postPlatform}</>}
+                    </button>
+                  </>
+                )}
+              </>
+            )}
           </div>
         </div>
       )}
@@ -1330,6 +1858,489 @@ function ResearchTool({ toast }: { toast: any }) {
           <div className="prose prose-gray prose-headings:font-bold prose-p:text-gray-700 prose-li:text-gray-700 prose-strong:text-gray-900 max-w-none whitespace-pre-wrap text-gray-700">{result}</div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Listing Video Studio ──────────────────────────────────────────────────────
+
+const TIMELINE_LABELS = [
+  { name: "Hook",         type: "avatar", seconds: "0–3s",   caption_hint: "JUST LISTED" },
+  { name: "Exterior",     type: "broll",  seconds: "3–10s",  caption_hint: "STUNNING EXTERIOR" },
+  { name: "Living Room",  type: "broll",  seconds: "10–16s", caption_hint: "OPEN CONCEPT LIVING" },
+  { name: "Kitchen",      type: "broll",  seconds: "16–21s", caption_hint: "CHEF'S KITCHEN" },
+  { name: "Transition",   type: "avatar", seconds: "21–27s", caption_hint: "DESIGNED TO IMPRESS" },
+  { name: "Bedroom",      type: "broll",  seconds: "27–31s", caption_hint: "PRIMARY SUITE" },
+  { name: "Bathroom",     type: "broll",  seconds: "31–35s", caption_hint: "SPA BATHROOM" },
+  { name: "Outdoor",      type: "broll",  seconds: "35–39s", caption_hint: "PRIVATE BACKYARD" },
+  { name: "Neighborhood", type: "broll",  seconds: "39–49s", caption_hint: "PRIME LOCATION" },
+  { name: "CTA",          type: "avatar", seconds: "49–62s", caption_hint: "CONTACT US TODAY" },
+]
+
+function ListingVideoStudio({ toast }: { toast: any }) {
+  const [avatars, setAvatars] = useState<any[]>([])
+  const [voices, setVoices] = useState<any[]>([])
+  const [avatarId, setAvatarId] = useState("")
+  const [voiceId, setVoiceId] = useState("")
+  const [property, setProperty] = useState("")
+  const [photoUrlsText, setPhotoUrlsText] = useState("")
+  const [agentName, setAgentName] = useState("Catherine Gomez")
+  const [agentTitle, setAgentTitle] = useState("Real Estate Agent")
+  const [agentPhone, setAgentPhone] = useState("")
+  const [propertyAddress, setPropertyAddress] = useState("")
+  const [price, setPrice] = useState("")
+  const [brandColor, setBrandColor] = useState("#FF4D1C")
+  const [ratio, setRatio] = useState("9:16")
+  const [loadingData, setLoadingData] = useState(true)
+  const [generating, setGenerating] = useState(false)
+  const [status, setStatus] = useState<"idle" | "processing" | "completed" | "failed">("idle")
+  const [videoUrl, setVideoUrl] = useState<string | null>(null)
+  const [plan, setPlan] = useState<any>(null)
+  const pollRef = useRef<any>(null)
+
+  // Remotion state
+  const [rConfig, setRConfig] = useState<any>(null)
+  const [rLoading, setRLoading] = useState(false)
+  const [rCopied, setRCopied] = useState(false)
+
+  useEffect(() => {
+    Promise.all([
+      fetch("/api/heygen/avatars").then(r => r.json()),
+      fetch("/api/heygen/voices").then(r => r.json()),
+    ]).then(([avatarData, voiceData]) => {
+      const avatarList: any[] = avatarData?.data?.avatars || []
+      const allVoices: any[] = voiceData?.data?.voices || []
+      const isSpanish = (v: any) =>
+        v.language === "es" || v.locale?.startsWith("es-") || v.name?.toLowerCase().includes("catherine")
+      const spanishVoices = allVoices.filter(isSpanish)
+
+      const catherineAvatars = avatarList.filter((a: any) => a.group === "Catherine Gomez")
+      const stockAvatars = avatarList.filter((a: any) => a.group !== "Catherine Gomez")
+      setAvatars([...catherineAvatars, ...stockAvatars])
+      setVoices(spanishVoices.length > 0 ? spanishVoices : allVoices)
+
+      if (catherineAvatars[0]) setAvatarId(catherineAvatars[0].avatar_id)
+      else if (avatarList[0]) setAvatarId(avatarList[0].avatar_id)
+
+      const catherineVoice = spanishVoices.find((v: any) =>
+        v.name?.toLowerCase().includes("catalina") || v.name?.toLowerCase().includes("catherine")
+      )
+      if (catherineVoice || spanishVoices[0] || allVoices[0]) {
+        setVoiceId((catherineVoice || spanishVoices[0] || allVoices[0]).voice_id)
+      }
+    }).catch(() => toast({ title: "Error cargando avatares", variant: "destructive" }))
+      .finally(() => setLoadingData(false))
+
+    return () => { if (pollRef.current) clearInterval(pollRef.current) }
+  }, [])
+
+  const pollStatus = (videoId: string) => {
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/heygen/status?videoId=${videoId}`)
+        const data = await res.json()
+        const s = data?.data?.status
+        if (s === "completed") {
+          clearInterval(pollRef.current!)
+          setVideoUrl(data.data.video_url)
+          setStatus("completed")
+          toast({ title: "¡Listing video listo!" })
+        } else if (s === "failed") {
+          clearInterval(pollRef.current!)
+          setStatus("failed")
+          toast({ title: "HeyGen falló", description: data.data?.error || "Error desconocido", variant: "destructive" })
+        }
+      } catch { /* retry on next interval */ }
+    }, 8000)
+  }
+
+  const generate = async () => {
+    if (!property.trim()) { toast({ title: "Describe la propiedad", variant: "destructive" }); return }
+    if (!avatarId) { toast({ title: "Selecciona un avatar", variant: "destructive" }); return }
+    if (!voiceId) { toast({ title: "Selecciona una voz", variant: "destructive" }); return }
+
+    const photoUrls = photoUrlsText
+      .split("\n")
+      .map(u => u.trim())
+      .filter(u => u.startsWith("http"))
+
+    if (pollRef.current) clearInterval(pollRef.current)
+    setGenerating(true)
+    setStatus("idle")
+    setVideoUrl(null)
+    setPlan(null)
+
+    try {
+      const res = await fetch("/api/heygen/listing-video", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ property, photoUrls, avatarId, voiceId, ratio }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setPlan(data.plan)
+      setStatus("processing")
+      pollStatus(data.videoId)
+      toast({ title: `Plan de ${data.plan.scenes?.length} escenas generado — HeyGen procesando…` })
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" })
+      setStatus("idle")
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  // ── Remotion config handler ───────────────────────────────────────────────
+
+  const generateRemotionConfig = async () => {
+    if (!property.trim()) {
+      toast({ title: "Describe la propiedad primero", variant: "destructive" })
+      return
+    }
+
+    const photoUrls = photoUrlsText
+      .split("\n")
+      .map(u => u.trim())
+      .filter(u => u.startsWith("http"))
+
+    setRLoading(true)
+    setRConfig(null)
+
+    try {
+      const res = await fetch("/api/remotion/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          property,
+          photoUrls,
+          agentName,
+          agentTitle,
+          agentPhone,
+          propertyAddress,
+          price,
+          brandColor,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setRConfig(data)
+      toast({ title: `Config de ${data.meta.sceneCount} escenas lista — descarga y renderiza localmente` })
+    } catch (e: any) {
+      toast({ title: "Error generando config", description: e.message, variant: "destructive" })
+    } finally {
+      setRLoading(false)
+    }
+  }
+
+  const downloadRemotionConfig = () => {
+    if (!rConfig) return
+    const blob = new Blob([JSON.stringify(rConfig, null, 2)], { type: "application/json" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `listing-video-${Date.now()}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  if (loadingData) return <div className="text-center py-20 text-gray-400">Cargando avatares…</div>
+
+  return (
+    <div className="space-y-6">
+      {/* Timeline overview */}
+      <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-2xl p-5">
+        <p className="text-xs font-semibold text-purple-800 mb-3 uppercase tracking-wide">Timeline — 10 escenas / ~60 segundos</p>
+        <div className="flex gap-1 flex-wrap">
+          {TIMELINE_LABELS.map((t, i) => (
+            <div key={i} className={`px-2 py-1 rounded-lg text-xs font-medium ${t.type === "avatar" ? "bg-purple-600 text-white" : "bg-blue-100 text-blue-800"}`}>
+              {i + 1}. {t.name} <span className="opacity-70">{t.seconds}</span>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-purple-700 mt-2">
+          Avatar: 3 escenas (Hook + Transición + CTA) · B-Roll: 7 escenas con Pexels o fotos de listing
+        </p>
+      </div>
+
+      {/* Avatar + Voice */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+        <h2 className="text-base font-semibold text-gray-800 mb-4">1. Avatar y voz</h2>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-2 block">Avatar</label>
+            <select value={avatarId} onChange={e => setAvatarId(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white">
+              {avatars.filter((a: any) => a.group === "Catherine Gomez").length > 0 && (
+                <optgroup label="— Catherine Gomez —">
+                  {avatars.filter((a: any) => a.group === "Catherine Gomez").map((a: any) => (
+                    <option key={a.avatar_id} value={a.avatar_id}>{a.avatar_name}</option>
+                  ))}
+                </optgroup>
+              )}
+              {avatars.filter((a: any) => a.group !== "Catherine Gomez").length > 0 && (
+                <optgroup label="— Stock Avatars —">
+                  {avatars.filter((a: any) => a.group !== "Catherine Gomez").map((a: any) => (
+                    <option key={a.avatar_id} value={a.avatar_id}>{a.avatar_name}</option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-2 block">Voz</label>
+            <select value={voiceId} onChange={e => setVoiceId(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white">
+              {voices.map((v: any) => (
+                <option key={v.voice_id} value={v.voice_id}>{v.name}{v.language ? ` — ${v.language}` : ""}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="mt-4">
+          <label className="text-xs font-semibold text-gray-600 mb-2 block">Formato</label>
+          <div className="flex gap-2">
+            {[{ id: "9:16", label: "Reels / TikTok" }, { id: "16:9", label: "YouTube" }, { id: "1:1", label: "Feed" }].map(r => (
+              <button key={r.id} onClick={() => setRatio(r.id)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${ratio === r.id ? "bg-purple-600 text-white border-purple-600" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}>
+                {r.id} — {r.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Property Info */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+        <h2 className="text-base font-semibold text-gray-800 mb-1">2. Información de la propiedad</h2>
+        <p className="text-xs text-gray-500 mb-3">Incluye precio, recámaras, amenidades, barrio y estilo de vida.</p>
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mb-1 block">Dirección</label>
+            <input value={propertyAddress} onChange={e => setPropertyAddress(e.target.value)}
+              placeholder="1234 Ocean Drive, Miami Beach, FL"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mb-1 block">Precio</label>
+            <input value={price} onChange={e => setPrice(e.target.value)}
+              placeholder="$1,250,000"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+          </div>
+        </div>
+        <textarea
+          value={property}
+          onChange={e => setProperty(e.target.value)}
+          placeholder={"Ej: 3 bed / 2 bath en Brickell, Miami. $750,000. Vista al mar, piscina en rooftop, gym, concierge 24h. A 5 min caminando de Whole Foods y Brickell City Centre. Airbnb permitido, renta proyectada $6,500/mes."}
+          rows={5}
+          className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none"
+        />
+      </div>
+
+      {/* Agent Info */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+        <h2 className="text-base font-semibold text-gray-800 mb-3">3. Tu información de contacto</h2>
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mb-1 block">Nombre</label>
+            <input value={agentName} onChange={e => setAgentName(e.target.value)}
+              placeholder="Catherine Gomez"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mb-1 block">Título</label>
+            <input value={agentTitle} onChange={e => setAgentTitle(e.target.value)}
+              placeholder="Real Estate Agent"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mb-1 block">Teléfono</label>
+            <input value={agentPhone} onChange={e => setAgentPhone(e.target.value)}
+              placeholder="(305) 555-0100"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+          </div>
+        </div>
+        <div className="mt-3 flex items-center gap-3">
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mb-1 block">Color de marca</label>
+            <div className="flex items-center gap-2">
+              <input type="color" value={brandColor} onChange={e => setBrandColor(e.target.value)}
+                className="w-10 h-10 rounded-lg border border-gray-200 cursor-pointer p-0.5" />
+              <span className="text-xs text-gray-400 font-mono">{brandColor}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Listing Photos */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+        <h2 className="text-base font-semibold text-gray-800 mb-1">4. Fotos de la propiedad <span className="text-gray-400 font-normal">(opcional)</span></h2>
+        <p className="text-xs text-gray-500 mb-3">
+          Pega URLs de fotos del MLS o Zillow — una por línea.<br />
+          <strong>Orden ideal:</strong> Exterior · Sala · Cocina · Recámara · Baño · Jardín · Piscina · Aéreo
+        </p>
+        <textarea
+          value={photoUrlsText}
+          onChange={e => setPhotoUrlsText(e.target.value)}
+          placeholder={"https://photos.zillowstatic.com/exterior.jpg\nhttps://photos.zillowstatic.com/living-room.jpg\nhttps://photos.zillowstatic.com/kitchen.jpg\n..."}
+          rows={5}
+          className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none"
+        />
+        {photoUrlsText.split("\n").filter(u => u.trim().startsWith("http")).length > 0 && (
+          <p className="text-xs text-green-700 mt-2">
+            ✓ {photoUrlsText.split("\n").filter(u => u.trim().startsWith("http")).length} fotos detectadas
+          </p>
+        )}
+      </div>
+
+      {/* ── Remotion — Render in Terminal ─────────────────────────────────── */}
+      <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-6 shadow-lg border border-gray-700">
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <h2 className="text-base font-semibold text-white">Remotion — Video con efectos profesionales</h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Genera el config con IA y renderiza desde tu terminal. Ken Burns · captions animados · transiciones.
+            </p>
+          </div>
+          <span className="text-[10px] font-bold px-2 py-1 bg-orange-500 text-white rounded-full uppercase tracking-wide">Nuevo</span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          {[
+            ["Ken Burns", "zoom/pan en cada foto"],
+            ["Captions", "animados estilo Reels"],
+            ["Transiciones", "flash profesional"],
+            ["Branding", "tu nombre + teléfono en CTA"],
+          ].map(([title, desc]) => (
+            <div key={title} className="bg-white/5 rounded-xl p-2.5 text-xs">
+              <span className="text-orange-400 font-semibold">{title}</span>
+              <span className="text-gray-400"> — {desc}</span>
+            </div>
+          ))}
+        </div>
+
+        <button
+          onClick={generateRemotionConfig}
+          disabled={rLoading || !property.trim()}
+          className="w-full flex items-center justify-center gap-2 py-3 bg-orange-500 text-white rounded-xl font-semibold text-sm hover:bg-orange-600 transition-all disabled:opacity-50">
+          {rLoading
+            ? <><Loader2 className="w-4 h-4 animate-spin" /> Claude generando guión + Pexels B-roll…</>
+            : <><Video className="w-4 h-4" /> Generar Config de Remotion (10 escenas)</>}
+        </button>
+
+        {rConfig && (
+          <div className="mt-4 space-y-3">
+            {/* Stats */}
+            <div className="flex gap-3 text-xs">
+              <span className="bg-white/10 text-gray-300 px-2 py-1 rounded-lg">{rConfig.meta.sceneCount} escenas</span>
+              <span className="bg-white/10 text-gray-300 px-2 py-1 rounded-lg">{rConfig.meta.totalSeconds}s de video</span>
+              <span className="bg-white/10 text-gray-300 px-2 py-1 rounded-lg">{rConfig.meta.totalFrames} frames @ 30fps</span>
+            </div>
+
+            {/* Scene preview */}
+            <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+              {rConfig.scenes.map((s: any, i: number) => (
+                <div key={i} className={`rounded-lg p-2.5 text-xs flex gap-2 ${s.avatar_present ? "bg-purple-900/40 border border-purple-700/40" : "bg-blue-900/40 border border-blue-700/40"}`}>
+                  <span className={`flex-shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded self-start mt-0.5 ${s.avatar_present ? "bg-purple-600 text-white" : "bg-blue-600 text-white"}`}>
+                    {s.avatar_present ? "CAM" : s.asset_type === "video" ? "VIDEO" : "FOTO"}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-gray-300">{i + 1}. {s.name} <span className="text-gray-500">({s.duration_seconds}s)</span></p>
+                    <p className="text-gray-400 leading-snug truncate">{s.script}</p>
+                    <p className="text-gray-500 mt-0.5">Caption: <strong className="text-gray-400">{s.caption}</strong></p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Download + Terminal command */}
+            <button
+              onClick={downloadRemotionConfig}
+              className="w-full flex items-center justify-center gap-2 py-2.5 bg-white/10 hover:bg-white/15 text-white rounded-xl text-sm font-semibold transition-colors border border-white/20">
+              <Download className="w-4 h-4" /> Descargar listing-config.json
+            </button>
+
+            <div className="bg-black/50 rounded-xl p-4 border border-gray-700">
+              <p className="text-xs text-gray-400 mb-2 font-semibold uppercase tracking-wide">Comando para tu terminal</p>
+              <div className="flex items-start gap-2">
+                <code className="flex-1 text-xs text-green-400 font-mono leading-relaxed break-all">
+                  {`node scripts/render-listing.mjs --config listing-config.json`}
+                </code>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText("node scripts/render-listing.mjs --config listing-config.json")
+                    setRCopied(true)
+                    setTimeout(() => setRCopied(false), 2000)
+                  }}
+                  className="flex-shrink-0 p-1.5 bg-white/10 hover:bg-white/20 rounded-lg transition-colors">
+                  {rCopied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5 text-gray-400" />}
+                </button>
+              </div>
+              <div className="mt-3 space-y-1 text-[11px] text-gray-500">
+                <p>1. Descarga el archivo JSON arriba</p>
+                <p>2. Colócalo en la carpeta raíz del proyecto lofty</p>
+                <p>3. Corre el comando en tu terminal</p>
+                <p>4. El video se guarda en <code className="text-gray-400">output/listing-*.mp4</code></p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* HeyGen generate */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+        <h2 className="text-base font-semibold text-gray-800 mb-1">Generar con HeyGen (avatar)</h2>
+        <p className="text-xs text-gray-500 mb-4">Alternativa: video con el avatar de Catherine. Requiere avatar + voz seleccionados arriba.</p>
+
+        <button
+          onClick={generate}
+          disabled={generating || !property.trim() || !avatarId || !voiceId || status === "processing"}
+          className="w-full flex items-center justify-center gap-2 py-3 bg-purple-600 text-white rounded-xl font-semibold text-sm hover:bg-purple-700 transition-colors disabled:opacity-50">
+          {generating
+            ? <><Loader2 className="w-4 h-4 animate-spin" /> Claude generando guión + buscando Pexels…</>
+            : status === "processing"
+            ? <><Loader2 className="w-4 h-4 animate-spin" /> HeyGen renderizando 10 escenas… (3-6 min)</>
+            : <><Clapperboard className="w-4 h-4" /> Generar Listing Video con HeyGen (10 escenas)</>}
+        </button>
+
+        {/* Processing */}
+        {status === "processing" && (
+          <div className="mt-4 bg-blue-50 border border-blue-200 rounded-xl p-4 text-center">
+            <Loader2 className="w-6 h-6 text-blue-500 animate-spin mx-auto mb-2" />
+            <p className="font-semibold text-blue-800 text-sm">HeyGen está renderizando el listing video…</p>
+            <p className="text-xs text-blue-600 mt-1">10 escenas — 3-6 minutos. No cierres esta pantalla.</p>
+          </div>
+        )}
+
+        {/* Scene Plan */}
+        {plan?.scenes && (
+          <div className="mt-4 space-y-2">
+            <p className="text-sm font-semibold text-gray-700">Guión — {plan.scenes.length} escenas</p>
+            {plan.scenes.map((scene: any, i: number) => (
+              <div key={i} className={`rounded-xl p-3 border text-sm flex gap-3 ${scene.avatar_present ? "bg-purple-50 border-purple-200" : "bg-blue-50 border-blue-200"}`}>
+                <span className={`flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-md self-start mt-0.5 ${scene.avatar_present ? "bg-purple-600 text-white" : "bg-blue-600 text-white"}`}>
+                  {scene.avatar_present ? "CAM" : "B-ROLL"}
+                </span>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-gray-600 mb-0.5">{scene.scene_number}. {scene.name}</p>
+                  <p className="text-gray-800 leading-snug">{scene.script}</p>
+                  <p className="text-xs text-gray-400 mt-1">Caption: <strong className="text-gray-600">{scene.caption}</strong></p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Result */}
+        {status === "completed" && videoUrl && (
+          <div className="mt-4">
+            <video src={videoUrl} controls playsInline className="w-full rounded-xl max-h-[600px] object-contain bg-black" />
+            <a href={videoUrl} target="_blank" rel="noopener noreferrer"
+              className="mt-3 w-full flex items-center justify-center gap-2 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-semibold hover:bg-gray-700 transition-colors">
+              Descargar / abrir video
+            </a>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

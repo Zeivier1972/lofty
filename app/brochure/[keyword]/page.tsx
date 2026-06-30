@@ -5,14 +5,15 @@ import { notFound } from "next/navigation"
 import { prisma } from "@/lib/prisma"
 
 export default async function BrochurePage({ params }: { params: { keyword: string } }) {
-  // Try Facebook campaign first, then Instagram
-  const fbCampaign = await prisma.facebookBotCampaign.findUnique({
-    where: { keyword: params.keyword.toLowerCase() },
+  const kw = params.keyword
+
+  const fbCampaign = await prisma.facebookBotCampaign.findFirst({
+    where: { keyword: { equals: kw, mode: "insensitive" } },
   }).catch(() => null)
 
   const igCampaign = !fbCampaign
-    ? await prisma.instagramBotCampaign.findUnique({
-        where: { keyword: params.keyword.toLowerCase() },
+    ? await prisma.instagramBotCampaign.findFirst({
+        where: { keyword: { equals: kw, mode: "insensitive" } },
       }).catch(() => null)
     : null
 
@@ -20,6 +21,5 @@ export default async function BrochurePage({ params }: { params: { keyword: stri
 
   if (!campaign?.pdfUrl) return notFound()
 
-  // Redirect directly to Cloudinary with no framing — works in all browsers
   redirect(campaign.pdfUrl)
 }

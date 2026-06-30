@@ -6,7 +6,7 @@ import ContactsClient from "./contacts-client"
 export default async function ContactsPage({
   searchParams,
 }: {
-  searchParams: { status?: string; search?: string; source?: string; page?: string; tab?: string }
+  searchParams: { status?: string; search?: string; source?: string; page?: string; tab?: string; tags?: string }
 }) {
   let contacts: any[] = []
   let total = 0
@@ -65,6 +65,10 @@ export default async function ContactsPage({
         { phone: { contains: searchParams.search } },
       ]
     }
+    if (searchParams.tags) {
+      const tagIds = searchParams.tags.split(",").filter(Boolean)
+      if (tagIds.length > 0) tabWhere.tags = { some: { tagId: { in: tagIds } } }
+    }
 
     // Count per stage in parallel
     const stageCountResults = await Promise.all(
@@ -80,11 +84,11 @@ export default async function ContactsPage({
         include: {
           tags: { include: { tag: true } },
           assignedTo: { select: { id: true, name: true } },
-          pipelineLeads: { include: { stage: true }, take: 1 },
+          pipelineLeads: { include: { stage: true }, take: 1, orderBy: { updatedAt: "desc" } },
           enrollments: { include: { plan: true }, take: 1 },
-          _count: { select: { tasks: true, notes: true, activities: true } },
+          _count: { select: { tasks: true, notes: true, activities: true, dialerCalls: true, emails: true } },
         },
-        orderBy: [{ leadScore: "desc" }, { updatedAt: "desc" }],
+        orderBy: [{ createdAt: "desc" }],
         skip,
         take: pageSize,
       }),
@@ -102,7 +106,7 @@ export default async function ContactsPage({
       page={page}
       pageSize={pageSize}
       tags={JSON.parse(JSON.stringify(tags))}
-      filters={{ status: searchParams.status, search: searchParams.search, source: searchParams.source }}
+      filters={{ status: searchParams.status, search: searchParams.search, source: searchParams.source, tags: searchParams.tags }}
       activeTab={searchParams.tab || "all"}
       stageCounts={stageCounts}
       stages={JSON.parse(JSON.stringify(stages))}

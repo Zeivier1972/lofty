@@ -72,8 +72,9 @@ const POST_TYPE_LABELS: Record<string, string> = {
 export default function SocialClient({ accounts: initialAccounts, posts: initialPosts }: Props) {
   const [accounts, setAccounts] = useState<SocialAccount[]>(initialAccounts)
   const [posts, setPosts] = useState<SocialPost[]>(initialPosts)
-  const [activeTab, setActiveTab] = useState<"composer" | "calendar" | "analytics" | "accounts">("composer")
+  const [activeTab, setActiveTab] = useState<"composer" | "calendar" | "analytics" | "accounts" | "blog">("composer")
   const [autoPilotEnabled, setAutoPilotEnabled] = useState(false)
+  const [videoEnabled, setVideoEnabled] = useState(true)
   const [autoPilotLoading, setAutoPilotLoading] = useState(false)
   const [runningNow, setRunningNow] = useState(false)
   const [runResult, setRunResult] = useState<{ ok: boolean; posted: number; failed: number; blogPublished?: boolean; error?: string } | null>(null)
@@ -82,7 +83,10 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
   useEffect(() => {
     fetch("/api/social/autopilot-config")
       .then(r => r.json())
-      .then(d => setAutoPilotEnabled(d.isEnabled ?? false))
+      .then(d => {
+        setAutoPilotEnabled(d.isEnabled ?? false)
+        setVideoEnabled(d.videoEnabled !== false)
+      })
       .catch(() => {})
   }, [])
 
@@ -101,6 +105,41 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
   const [aiDetails, setAiDetails] = useState("")
   const [aiPlatform, setAiPlatform] = useState("FACEBOOK")
   const [generatedContent, setGeneratedContent] = useState("")
+
+  // Blog share state
+  const [blogPosts, setBlogPosts] = useState<any[]>([])
+  const [blogLoading, setBlogLoading] = useState(false)
+  const [sharingBlogId, setSharingBlogId] = useState<string | null>(null)
+  const [shareResults, setShareResults] = useState<Record<string, "ok" | "error">>({})
+
+  const loadBlogPosts = async () => {
+    setBlogLoading(true)
+    try {
+      const res = await fetch("/api/blog?limit=20")
+      const data = await res.json()
+      setBlogPosts(data.posts ?? data ?? [])
+    } catch { /* ignore */ } finally {
+      setBlogLoading(false)
+    }
+  }
+
+  const shareBlog = async (blogId: string) => {
+    setSharingBlogId(blogId)
+    try {
+      const res = await fetch("/api/social/share-blog", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ blogId }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setShareResults(r => ({ ...r, [blogId]: "ok" }))
+    } catch {
+      setShareResults(r => ({ ...r, [blogId]: "error" }))
+    } finally {
+      setSharingBlogId(null)
+    }
+  }
 
   // Account connect state
   const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null)
@@ -148,6 +187,20 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
         cancelled: "Facebook authorization was cancelled.",
       }
       setYoutubeBanner({ type: "error", msg: messages[fbError] ?? `Facebook error: ${fbError}` })
+      window.history.replaceState({}, "", window.location.pathname)
+    } else if (params.get("tt_connected")) {
+      setActiveTab("accounts")
+      setYoutubeBanner({ type: "success", msg: "✅ TikTok connected! Videos will be posted automatically on Tue/Fri." })
+      window.history.replaceState({}, "", window.location.pathname)
+      window.location.reload()
+    } else if (params.get("tt_error")) {
+      setActiveTab("accounts")
+      const ttErr = params.get("tt_error") ?? ""
+      const messages: Record<string, string> = {
+        not_configured: "TIKTOK_CLIENT_KEY or TIKTOK_CLIENT_SECRET is not set in Railway.",
+        cancelled: "TikTok authorization was cancelled.",
+      }
+      setYoutubeBanner({ type: "error", msg: messages[ttErr] ?? `TikTok error: ${ttErr}` })
       window.history.replaceState({}, "", window.location.pathname)
     } else if (tab === "accounts") {
       setActiveTab("accounts")
@@ -287,6 +340,7 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
         <div className="flex gap-1 mt-4">
           {[
             { id: "composer", label: "Composer", icon: Pencil },
+            { id: "blog", label: "Share Blog", icon: FileText },
             { id: "calendar", label: "Scheduled", icon: Calendar },
             { id: "analytics", label: "Analytics", icon: BarChart3 },
             { id: "accounts", label: "Accounts", icon: Settings },
@@ -577,6 +631,43 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
                 className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed ${autoPilotEnabled ? "bg-green-500" : "bg-gray-300"}`}
               >
                 <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${autoPilotEnabled ? "translate-x-5" : "translate-x-0"}`} />
+              </button>
+            </div>
+
+            {/* Video posting toggle (Tue/Fri) */}
+            <div className={`flex items-center justify-between gap-3 px-4 py-3 rounded-xl border ${videoEnabled ? "bg-blue-50 border-blue-200" : "bg-gray-50 border-gray-200"}`}>
+              <div className="flex items-center gap-3">
+                <span className="text-lg">{videoEnabled ? "🎬" : "📝"}</span>
+                <div>
+                  <p className={`text-sm font-semibold ${videoEnabled ? "text-blue-800" : "text-gray-700"}`}>
+                    Videos automáticos (Mar y Vie) — {videoEnabled ? "Activado" : "Desactivado"}
+                  </p>
+                  <p className={`text-xs ${videoEnabled ? "text-blue-700" : "text-gray-500"}`}>
+                    {videoEnabled
+                      ? "Los martes y viernes en la noche se genera un video de HeyGen automáticamente"
+                      : "Solo se publicarán imágenes y texto — sin video esos días"}
+                  </p>
+                </div>
+              </div>
+              <button
+                disabled={autoPilotLoading}
+                onClick={async () => {
+                  setAutoPilotLoading(true)
+                  try {
+                    const res = await fetch("/api/social/autopilot-config", {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ videoEnabled: !videoEnabled }),
+                    })
+                    const d = await res.json()
+                    setVideoEnabled(d.videoEnabled !== false)
+                  } finally {
+                    setAutoPilotLoading(false)
+                  }
+                }}
+                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-40 ${videoEnabled ? "bg-blue-500" : "bg-gray-300"}`}
+              >
+                <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${videoEnabled ? "translate-x-5" : "translate-x-0"}`} />
               </button>
             </div>
 
@@ -950,9 +1041,115 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
                       </a>
                     </div>
                   )}
+
+                  {/* TikTok uses OAuth — dedicated connect button */}
+                  {isConnecting && platform.id === "TIKTOK" && (
+                    <div className="mt-4 pt-4 border-t">
+                      <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-4">
+                        <p className="text-sm font-semibold text-gray-800 mb-1">TikTok requires OAuth authorization</p>
+                        <p className="text-xs text-gray-600 leading-relaxed">
+                          Click below to log in with TikTok. Make sure <strong>TIKTOK_CLIENT_KEY</strong> and <strong>TIKTOK_CLIENT_SECRET</strong> are set in Railway. Videos from HeyGen (Tue/Fri) will be posted automatically.
+                        </p>
+                        <ul className="mt-2 text-xs text-gray-600 list-disc list-inside space-y-0.5">
+                          <li>Permissions: <code>video.upload</code>, <code>video.publish</code></li>
+                          <li>Only HeyGen videos are posted to TikTok (video-only platform)</li>
+                          <li>Token expires in 24h — reconnect weekly or use refresh token</li>
+                        </ul>
+                      </div>
+                      <a
+                        href="/api/social/tiktok-auth"
+                        className="flex items-center justify-center gap-2 w-full px-5 py-3 bg-black text-white rounded-xl text-sm font-semibold hover:bg-gray-900"
+                      >
+                        <span className="font-black text-sm">TT</span>
+                        Authorize with TikTok
+                      </a>
+                    </div>
+                  )}
                 </div>
               )
             })}
+          </div>
+        )}
+
+        {/* ── Blog Share Tab ─────────────────────────────────────────────── */}
+        {activeTab === "blog" && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-gray-800">Share Blog Posts to Social</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Publishes to all connected Facebook & Instagram accounts + posts an engagement comment automatically.</p>
+              </div>
+              <button
+                onClick={loadBlogPosts}
+                disabled={blogLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium text-gray-700 transition-colors">
+                <RefreshCw className={cn("w-3.5 h-3.5", blogLoading && "animate-spin")} />
+                {blogPosts.length === 0 ? "Load Posts" : "Refresh"}
+              </button>
+            </div>
+
+            {blogPosts.length === 0 && !blogLoading && (
+              <div className="text-center py-12 text-gray-400 text-sm">
+                Click "Load Posts" to see your published blog posts.
+              </div>
+            )}
+
+            {blogLoading && (
+              <div className="text-center py-12 text-gray-400 text-sm">Loading blog posts…</div>
+            )}
+
+            <div className="space-y-3">
+              {blogPosts.map((post: any) => (
+                <div key={post.id} className="bg-white border border-gray-200 rounded-2xl p-4 flex gap-4 items-start">
+                  {post.coverImage && (
+                    <img src={post.coverImage} alt={post.title} className="w-16 h-16 rounded-xl object-cover flex-shrink-0" />
+                  )}
+                  {!post.coverImage && (
+                    <div className="w-16 h-16 rounded-xl bg-gray-100 flex items-center justify-center flex-shrink-0">
+                      <FileText className="w-6 h-6 text-gray-300" />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-800 leading-snug line-clamp-2">{post.title}</p>
+                    <p className="text-xs text-gray-400 mt-1 line-clamp-2">{post.excerpt}</p>
+                    <p className="text-xs text-gray-300 mt-1">
+                      {new Date(post.createdAt).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" })}
+                    </p>
+                  </div>
+                  <div className="flex-shrink-0 flex flex-col gap-2">
+                    {shareResults[post.id] === "ok" ? (
+                      <div className="flex items-center gap-1.5 text-xs text-green-700 font-semibold px-3 py-2">
+                        <CheckCircle2 className="w-4 h-4" /> Compartido
+                      </div>
+                    ) : shareResults[post.id] === "error" ? (
+                      <div className="flex items-center gap-1.5 text-xs text-red-600 font-semibold px-3 py-2">
+                        <XCircle className="w-4 h-4" /> Error
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => shareBlog(post.id)}
+                        disabled={sharingBlogId === post.id}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition-colors disabled:opacity-50">
+                        {sharingBlogId === post.id
+                          ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Compartiendo…</>
+                          : <><Share2 className="w-3.5 h-3.5" /> Compartir</>}
+                      </button>
+                    )}
+                    <a
+                      href={`/site/blog/${post.slug}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 px-3 py-1.5 border border-gray-200 rounded-xl text-xs text-gray-500 hover:bg-gray-50 transition-colors">
+                      <ExternalLink className="w-3 h-3" /> Ver post
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-xs text-blue-700">
+              <strong>Auto-comment activado:</strong> Cada vez que compartes, el sistema publica automáticamente un comentario de engagement (pregunta al audience) para mejorar el alcance orgánico en Facebook e Instagram.
+            </div>
           </div>
         )}
       </div>

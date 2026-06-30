@@ -3,12 +3,21 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 
-// The 3 Catherine Gomez personal avatars to use — all are talking_photos.
-const CATHERINE_IDS = new Set([
-  "701d93d2d1834f2589a987aaf701720d", // Catherine Face Swap Avatar
-  "f2bf0415eb4f4185b37673d3c876423c", // Catherine Gomez Avatar
-  "2238f900a2284f5c813fc1460fabb299", // Catherine
-])
+// Catherine Gomez "8 looks" — hardcoded, confirmed by user
+// These are talking_photo type and don't appear in /v2/avatars API response
+const CATHERINE_LOOKS = [
+  { avatar_id: "ab393d45f3044a89b92fc77d17f321b7", avatar_name: "Catherine Gomez — Look 1", is_talking_photo: true, group: "Catherine Gomez" },
+  { avatar_id: "28e35d5f82f64101a2584fb29e841a88", avatar_name: "Catherine Gomez — Look 2", is_talking_photo: true, group: "Catherine Gomez" },
+  { avatar_id: "ad3b10e46ce44ad8b9a9931f65e151cf", avatar_name: "Catherine Gomez — Look 3", is_talking_photo: true, group: "Catherine Gomez" },
+  { avatar_id: "7ec891d9cc9f43ffa0f38f67d945d38f", avatar_name: "Catherine Gomez — Look 4", is_talking_photo: true, group: "Catherine Gomez" },
+  { avatar_id: "0215c5d293fb4c89b42130da184ded5b", avatar_name: "Catherine Gomez — Look 5", is_talking_photo: true, group: "Catherine Gomez" },
+  { avatar_id: "bc75573c848f42218ee27d37e623a4e6", avatar_name: "Catherine Gomez — Look 6", is_talking_photo: true, group: "Catherine Gomez" },
+  { avatar_id: "701d93d2d1834f2589a987aaf701720d", avatar_name: "Catherine Gomez — Look 7", is_talking_photo: true, group: "Catherine Gomez" },
+  { avatar_id: "f2bf0415eb4f4185b37673d3c876423c", avatar_name: "Catherine Gomez — Look 8", is_talking_photo: true, group: "Catherine Gomez" },
+  { avatar_id: "310728040e89413aa1c5b04ebb8bb9d3", avatar_name: "Catherine Gomez — Look 9", is_talking_photo: true, group: "Catherine Gomez" },
+]
+
+const CATHERINE_IDS = new Set(CATHERINE_LOOKS.map(c => c.avatar_id))
 
 export async function GET() {
   const session = await auth()
@@ -24,42 +33,14 @@ export async function GET() {
   const data = await res.json()
 
   const rawAvatars: any[] = data?.data?.avatars || []
-  const rawTalkingPhotos: any[] = data?.data?.talking_photos || []
 
-  // Normalize talking_photo field names
-  const talkingPhotos: any[] = rawTalkingPhotos
-    .map((tp: any) => ({
-      avatar_id: tp.talking_photo_id || tp.id || tp.avatar_id,
-      avatar_name: tp.talking_photo_name || tp.name || tp.avatar_name || "Photo Avatar",
-      preview_image_url: tp.preview_image_url || tp.preview_url || tp.thumbnail_url || null,
-      is_talking_photo: true,
-    }))
-    .filter((tp: any) => tp.avatar_id)
-
-  // Catherine's 3 confirmed avatars — shown first, labeled as her group
-  const catherineAvatars = talkingPhotos
-    .filter((tp: any) => CATHERINE_IDS.has(tp.avatar_id))
-    .map((tp: any) => ({ ...tp, group: "Catherine Gomez" }))
-
-  // Sort in preferred order: Swap Avatar, Gomez Avatar, Catherine
-  const order = [
-    "701d93d2d1834f2589a987aaf701720d",
-    "f2bf0415eb4f4185b37673d3c876423c",
-    "2238f900a2284f5c813fc1460fabb299",
-  ]
-  catherineAvatars.sort(
-    (a: any, b: any) => order.indexOf(a.avatar_id) - order.indexOf(b.avatar_id)
-  )
-
-  // Stock avatars: all v2 avatars (no talking_photos — those aren't stock)
-  const stockAvatars = rawAvatars.map((a: any) => ({ ...a, group: "Stock Avatars" }))
-
-  console.log(
-    `[HeyGen] Catherine avatars found: ${catherineAvatars.length} / 3 expected`
-  )
+  // Stock avatars: everything that is NOT one of Catherine's confirmed IDs and not named "catherine"
+  const stockAvatars = rawAvatars
+    .filter((a: any) => !CATHERINE_IDS.has(a.avatar_id) && !a.avatar_name?.toLowerCase().includes("catherine"))
+    .map((a: any) => ({ ...a, group: "Stock Avatars" }))
 
   return NextResponse.json({
-    data: { avatars: [...catherineAvatars, ...stockAvatars] },
-    catherine_count: catherineAvatars.length,
+    data: { avatars: [...CATHERINE_LOOKS, ...stockAvatars] },
+    catherine_count: CATHERINE_LOOKS.length,
   })
 }

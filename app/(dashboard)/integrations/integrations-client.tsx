@@ -44,7 +44,29 @@ export default function IntegrationsClient() {
   const [manualToken, setManualToken] = useState("")
   const [savingManual, setSavingManual] = useState(false)
   const [manualError, setManualError] = useState("")
+  const [syncingForm, setSyncingForm] = useState<string | null>(null)
   const { toast } = useToast()
+
+  async function syncFormLeads(formId: string, formName: string) {
+    setSyncingForm(formId)
+    try {
+      const res = await fetch("/api/facebook/sync-form-leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ formId, formName }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast({ title: "Error", description: data.error || "No se pudo importar", variant: "destructive" })
+      } else {
+        toast({ title: `✅ ${data.imported} leads importados`, description: `${data.skipped} ya existían en el CRM` })
+      }
+    } catch {
+      toast({ title: "Error de conexión", variant: "destructive" })
+    } finally {
+      setSyncingForm(null)
+    }
+  }
   const searchParams = useSearchParams()
 
   useEffect(() => {
@@ -278,9 +300,20 @@ export default function IntegrationsClient() {
                               <p className="text-sm font-medium text-gray-800 truncate">{form.name}</p>
                               <p className="text-xs text-gray-400">{form.leads_count ? `${form.leads_count} leads recibidos` : "Sin leads aún"}</p>
                             </div>
-                            <Badge className={form.status === "ACTIVE" ? "bg-green-100 text-green-700 border-green-200 text-xs ml-2 flex-shrink-0" : "bg-gray-100 text-gray-500 text-xs ml-2 flex-shrink-0"}>
-                              {form.status === "ACTIVE" ? "Activo" : form.status}
-                            </Badge>
+                            <div className="flex items-center gap-2 ml-2 flex-shrink-0">
+                              <Badge className={form.status === "ACTIVE" ? "bg-green-100 text-green-700 border-green-200 text-xs" : "bg-gray-100 text-gray-500 text-xs"}>
+                                {form.status === "ACTIVE" ? "Activo" : form.status}
+                              </Badge>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-6 text-xs px-2"
+                                disabled={syncingForm === form.id}
+                                onClick={() => syncFormLeads(form.id, form.name)}
+                              >
+                                {syncingForm === form.id ? <RefreshCw className="w-3 h-3 animate-spin" /> : "Importar"}
+                              </Button>
+                            </div>
                           </div>
                         ))}
                       </div>

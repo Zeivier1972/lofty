@@ -8,7 +8,8 @@ import {
   User, Bell, Shield, Tag, GitBranch, Globe, Save, Loader2,
   Plus, Trash2, Edit, Database, CheckCircle, ExternalLink,
   X, Key, MessageSquare, Mail, Calendar, FileSignature, Home,
-  Check, Clock, Copy, Link, Upload,
+  Check, Clock, Copy, Link, Upload, Phone, Voicemail, FileText,
+  Send, FlaskConical,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -293,6 +294,596 @@ function AvailabilitySettings() {
         <Button onClick={save} disabled={saving} className="bg-indigo-600 hover:bg-indigo-700 gap-2">
           {saving ? <><Loader2 className="w-4 h-4 animate-spin" />Guardando...</> : <><Save className="w-4 h-4" />Guardar Disponibilidad</>}
         </Button>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ─── Voicemail Templates ──────────────────────────────────────────────────────
+type VmTemplate = { id: string; name: string; text: string; audioUrl?: string }
+
+function VoicemailTemplatesPanel() {
+  const { toast } = useToast()
+  const [templates, setTemplates] = useState<VmTemplate[]>([])
+  const [loading, setLoading] = useState(true)
+  const [form, setForm] = useState<Partial<VmTemplate> | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [uploadingAudio, setUploadingAudio] = useState(false)
+  const [recording, setRecording] = useState(false)
+  const [recordSecs, setRecordSecs] = useState(0)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const recordChunksRef = useRef<Blob[]>([])
+
+  useEffect(() => {
+    fetch("/api/settings/voicemail-templates")
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setTemplates(data) })
+      .finally(() => setLoading(false))
+  }, [])
+
+  useEffect(() => {
+    if (!recording) return
+    const t = setInterval(() => setRecordSecs(s => s + 1), 1000)
+    return () => clearInterval(t)
+  }, [recording])
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mr = new MediaRecorder(stream)
+      recordChunksRef.current = []
+      mr.ondataavailable = e => { if (e.data.size > 0) recordChunksRef.current.push(e.data) }
+      mr.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop())
+        const blob = new Blob(recordChunksRef.current, { type: "audio/webm" })
+        await uploadAudioFile(new File([blob], "voicemail.webm", { type: "audio/webm" }))
+      }
+      mr.start()
+      mediaRecorderRef.current = mr
+      setRecording(true)
+      setRecordSecs(0)
+    } catch {
+      toast({ title: "No se pudo acceder al micrófono", variant: "destructive" })
+    }
+  }
+
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop()
+    mediaRecorderRef.current = null
+    setRecording(false)
+  }
+
+  const uploadAudioFile = async (file: File) => {
+    setUploadingAudio(true)
+    try {
+      const fd = new FormData()
+      fd.append("file", file)
+      const res = await fetch("/api/upload", { method: "POST", body: fd })
+      const data = await res.json()
+      if (data.url) setForm(prev => prev ? { ...prev, audioUrl: data.url } : prev)
+      else toast({ title: "Error al subir el audio", variant: "destructive" })
+    } catch {
+      toast({ title: "Error al subir el audio", variant: "destructive" })
+    } finally { setUploadingAudio(false) }
+  }
+
+  const saveTemplate = async () => {
+    if (!form?.name?.trim() || !form?.text?.trim()) return
+    setSaving(true)
+    try {
+      const res = await fetch("/api/settings/voicemail-templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      })
+      const saved = await res.json()
+      setTemplates(prev => {
+        const idx = prev.findIndex(t => t.id === saved.id)
+        if (idx >= 0) { const next = [...prev]; next[idx] = saved; return next }
+        return [...prev, saved]
+      })
+      setForm(null)
+      toast({ title: "Mensaje guardado" })
+    } catch {
+      toast({ title: "Error al guardar", variant: "destructive" })
+    } finally { setSaving(false) }
+  }
+
+  const deleteTemplate = async (id: string) => {
+    if (!confirm("¿Eliminar este mensaje?")) return
+    await fetch(`/api/settings/voicemail-templates?id=${id}`, { method: "DELETE" })
+    setTemplates(prev => prev.filter(t => t.id !== id))
+    toast({ title: "Mensaje eliminado" })
+  }
+
+  return (
+    <Card className="border-0 shadow-sm">
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Voicemail className="w-4 h-4 text-indigo-600" />
+          Voicemail Messages
+        </CardTitle>
+        <p className="text-sm text-gray-500 mt-1">
+          Pre-record messages to drop into voicemails during the power dialer — one click and you move on to the next lead.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {loading && (
+          <div className="flex items-center gap-2 text-sm text-gray-400">
+            <Loader2 className="w-4 h-4 animate-spin" /> Loading messages…
+          </div>
+        )}
+
+        {/* Saved templates */}
+        {!loading && templates.length > 0 && (
+          <div className="space-y-3">
+            {templates.map(t => (
+              <div key={t.id} className="border border-gray-200 rounded-xl p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-gray-900 text-sm">{t.name}</p>
+                    <p className="text-xs text-gray-500 mt-1 line-clamp-2">{t.text}</p>
+                    {t.audioUrl && (
+                      <audio src={t.audioUrl} controls className="mt-2 w-full h-9" />
+                    )}
+                    {!t.audioUrl && (
+                      <p className="text-xs text-amber-600 mt-1.5 flex items-center gap-1">
+                        <Voicemail className="w-3 h-3" /> No audio recorded — text only (Sofia reads via TTS)
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex gap-1 flex-shrink-0">
+                    <button
+                      onClick={() => setForm({ id: t.id, name: t.name, text: t.text, audioUrl: t.audioUrl })}
+                      className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                      title="Edit"
+                    >
+                      <Edit className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => deleteTemplate(t.id)}
+                      className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                      title="Delete"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!loading && templates.length === 0 && !form && (
+          <div className="text-center py-8 border-2 border-dashed border-gray-200 rounded-xl">
+            <Voicemail className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+            <p className="text-sm text-gray-500 font-medium">No voicemail messages yet</p>
+            <p className="text-xs text-gray-400 mt-1">Add a message below to get started</p>
+          </div>
+        )}
+
+        {/* Add / Edit form */}
+        {form ? (
+          <div className="border border-indigo-200 rounded-xl p-5 bg-indigo-50 space-y-4">
+            <p className="text-sm font-semibold text-indigo-800">{form.id ? "Edit message" : "New message"}</p>
+
+            <div>
+              <Label className="text-xs font-semibold text-gray-700 mb-1 block">Message name</Label>
+              <Input
+                placeholder="e.g. Standard Colombia voicemail"
+                value={form.name || ""}
+                onChange={e => setForm(p => p ? { ...p, name: e.target.value } : p)}
+                className="bg-white"
+              />
+            </div>
+
+            <div>
+              <Label className="text-xs font-semibold text-gray-700 mb-1 block">Script / text</Label>
+              <Textarea
+                placeholder="Write the message here — Sofia reads this via text-to-speech if no audio is recorded."
+                value={form.text || ""}
+                onChange={e => setForm(p => p ? { ...p, text: e.target.value } : p)}
+                rows={3}
+                className="bg-white resize-none"
+              />
+            </div>
+
+            <div>
+              <Label className="text-xs font-semibold text-gray-700 mb-2 block">Audio recording</Label>
+              {form.audioUrl ? (
+                <div className="flex items-center gap-3">
+                  <audio src={form.audioUrl} controls className="flex-1 h-9" />
+                  <button
+                    onClick={() => setForm(p => p ? { ...p, audioUrl: undefined } : p)}
+                    className="p-1.5 text-red-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : uploadingAudio ? (
+                <div className="flex items-center gap-2 px-4 py-3 rounded-lg border border-gray-200 bg-white text-sm text-gray-500">
+                  <Loader2 className="w-4 h-4 animate-spin text-indigo-600" /> Uploading audio…
+                </div>
+              ) : recording ? (
+                <div className="flex items-center justify-between px-4 py-3 rounded-lg border border-red-300 bg-red-50">
+                  <div className="flex items-center gap-3 text-sm text-red-700 font-semibold">
+                    <div className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
+                    Recording… {Math.floor(recordSecs / 60)}:{String(recordSecs % 60).padStart(2, "0")}
+                  </div>
+                  <Button onClick={stopRecording} size="sm" variant="destructive" className="gap-1.5">
+                    <X className="w-3.5 h-3.5" /> Stop
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex gap-3">
+                  <button
+                    onClick={startRecording}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 border-red-300 bg-white hover:bg-red-50 text-sm text-red-700 font-semibold transition-colors"
+                  >
+                    <div className="w-2.5 h-2.5 bg-red-500 rounded-full" />
+                    Record now
+                  </button>
+                  <label className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 border-dashed border-gray-300 bg-white hover:border-indigo-400 hover:text-indigo-600 text-sm text-gray-500 cursor-pointer transition-colors">
+                    <Upload className="w-4 h-4" /> Upload file
+                    <input
+                      type="file"
+                      accept="audio/*"
+                      className="hidden"
+                      onChange={e => { if (e.target.files?.[0]) uploadAudioFile(e.target.files[0]) }}
+                    />
+                  </label>
+                </div>
+              )}
+              <p className="text-xs text-gray-400 mt-2">Accepts .mp3, .wav, .m4a — or record directly from your microphone above.</p>
+            </div>
+
+            <div className="flex gap-3">
+              <Button
+                onClick={saveTemplate}
+                disabled={saving || !form.name?.trim() || !form.text?.trim()}
+                className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white gap-2"
+              >
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Save message
+              </Button>
+              <Button variant="outline" onClick={() => setForm(null)}>Cancel</Button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setForm({ name: "", text: "" })}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-gray-300 text-sm text-gray-500 hover:border-indigo-400 hover:text-indigo-700 transition-colors"
+          >
+            <Plus className="w-4 h-4" /> Add voicemail message
+          </button>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// ─── Brochures & Documents ───────────────────────────────────────────────────
+type Brochure = { id: string; name: string; url: string; description?: string }
+
+function BrochuresPanel() {
+  const { toast } = useToast()
+  const [brochures, setBrochures] = useState<Brochure[]>([])
+  const [loading, setLoading] = useState(true)
+  const [form, setForm] = useState<Partial<Brochure> | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
+
+  useEffect(() => {
+    fetch("/api/settings/brochures")
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setBrochures(data) })
+      .finally(() => setLoading(false))
+  }, [])
+
+  const saveBrochure = async () => {
+    if (!form?.name?.trim() || !form?.url?.trim()) return
+    setSaving(true)
+    try {
+      const res = await fetch("/api/settings/brochures", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      })
+      const saved = await res.json()
+      setBrochures(prev => {
+        const idx = prev.findIndex(b => b.id === saved.id)
+        if (idx >= 0) { const next = [...prev]; next[idx] = saved; return next }
+        return [...prev, saved]
+      })
+      setForm(null)
+      toast({ title: "Documento guardado" })
+    } catch {
+      toast({ title: "Error al guardar", variant: "destructive" })
+    } finally { setSaving(false) }
+  }
+
+  const deleteBrochure = async (id: string) => {
+    if (!confirm("¿Eliminar este documento?")) return
+    await fetch(`/api/settings/brochures?id=${id}`, { method: "DELETE" })
+    setBrochures(prev => prev.filter(b => b.id !== id))
+    toast({ title: "Documento eliminado" })
+  }
+
+  const uploadFile = async (file: File) => {
+    setUploading(true)
+    try {
+      const fd = new FormData()
+      fd.append("file", file)
+      const res = await fetch("/api/upload", { method: "POST", body: fd })
+      const data = await res.json()
+      if (data.url) setForm(prev => prev ? { ...prev, url: data.url } : prev)
+      else toast({ title: "Error al subir el archivo", variant: "destructive" })
+    } catch {
+      toast({ title: "Error al subir el archivo", variant: "destructive" })
+    } finally { setUploading(false) }
+  }
+
+  return (
+    <Card className="border-0 shadow-sm">
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <FileText className="w-4 h-4 text-blue-600" />
+          Brochures &amp; Documents
+        </CardTitle>
+        <p className="text-sm text-gray-500 mt-1">
+          Upload PDFs and documents that Sofia can email to leads during AI calls when they ask for information.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {loading && (
+          <div className="flex items-center gap-2 text-sm text-gray-400">
+            <Loader2 className="w-4 h-4 animate-spin" /> Loading…
+          </div>
+        )}
+
+        {!loading && brochures.length > 0 && (
+          <div className="space-y-3">
+            {brochures.map(b => (
+              <div key={b.id} className="border border-gray-200 rounded-xl p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-gray-900 text-sm">{b.name}</p>
+                    {b.description && <p className="text-xs text-gray-500 mt-0.5">{b.description}</p>}
+                    <a
+                      href={b.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-blue-600 hover:underline mt-1.5 flex items-center gap-1"
+                    >
+                      <ExternalLink className="w-3 h-3" /> Ver documento
+                    </a>
+                  </div>
+                  <div className="flex gap-1 flex-shrink-0">
+                    <button
+                      onClick={() => setForm({ id: b.id, name: b.name, url: b.url, description: b.description })}
+                      className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                      title="Edit"
+                    >
+                      <Edit className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => deleteBrochure(b.id)}
+                      className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                      title="Delete"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!loading && brochures.length === 0 && !form && (
+          <div className="text-center py-8 border-2 border-dashed border-gray-200 rounded-xl">
+            <FileText className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+            <p className="text-sm text-gray-500 font-medium">No documents yet</p>
+            <p className="text-xs text-gray-400 mt-1">Add PDFs or links that Sofia can send to leads during calls</p>
+          </div>
+        )}
+
+        {form ? (
+          <div className="border border-blue-200 rounded-xl p-5 bg-blue-50 space-y-4">
+            <p className="text-sm font-semibold text-blue-800">{form.id ? "Edit document" : "Add document"}</p>
+
+            <div>
+              <Label className="text-xs font-semibold text-gray-700 mb-1 block">Document name *</Label>
+              <Input
+                placeholder='e.g. "Inversión Miami 2025" or "Pre-construction Brochure"'
+                value={form.name || ""}
+                onChange={e => setForm(p => p ? { ...p, name: e.target.value } : p)}
+                className="bg-white"
+              />
+              <p className="text-xs text-gray-400 mt-1">Sofia uses this name to identify the document ("envíame el brochure de pre-construcción")</p>
+            </div>
+
+            <div>
+              <Label className="text-xs font-semibold text-gray-700 mb-1 block">Description (optional)</Label>
+              <Input
+                placeholder="Brief description shown in the email to the lead"
+                value={form.description || ""}
+                onChange={e => setForm(p => p ? { ...p, description: e.target.value } : p)}
+                className="bg-white"
+              />
+            </div>
+
+            <div>
+              <Label className="text-xs font-semibold text-gray-700 mb-2 block">File or URL *</Label>
+              {form.url ? (
+                <div className="flex items-center gap-2 p-3 bg-white border border-gray-200 rounded-lg">
+                  <FileText className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                  <a href={form.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline flex-1 truncate">
+                    {form.url}
+                  </a>
+                  <button onClick={() => setForm(p => p ? { ...p, url: "" } : p)} className="p-1 text-gray-400 hover:text-red-500 rounded">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ) : uploading ? (
+                <div className="flex items-center gap-2 px-4 py-3 rounded-lg border border-gray-200 bg-white text-sm text-gray-500">
+                  <Loader2 className="w-4 h-4 animate-spin text-blue-600" /> Uploading…
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Input
+                    placeholder="Paste any public PDF or document URL…"
+                    value={form.url || ""}
+                    onChange={e => setForm(p => p ? { ...p, url: e.target.value } : p)}
+                    className="bg-white"
+                  />
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-px bg-gray-200" />
+                    <span className="text-xs text-gray-400">or</span>
+                    <div className="flex-1 h-px bg-gray-200" />
+                  </div>
+                  <label className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 border-dashed border-gray-300 bg-white hover:border-blue-400 hover:text-blue-600 text-sm text-gray-500 cursor-pointer transition-colors">
+                    <Upload className="w-4 h-4" /> Upload PDF
+                    <input
+                      type="file"
+                      accept=".pdf,application/pdf"
+                      className="hidden"
+                      onChange={e => { if (e.target.files?.[0]) uploadFile(e.target.files[0]) }}
+                    />
+                  </label>
+                  <p className="text-xs text-gray-400">PDF files up to 10 MB</p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3">
+              <Button
+                onClick={saveBrochure}
+                disabled={saving || !form.name?.trim() || !form.url?.trim()}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white gap-2"
+              >
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Save document
+              </Button>
+              <Button variant="outline" onClick={() => setForm(null)}>Cancel</Button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setForm({ name: "", url: "", description: "" })}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-gray-300 text-sm text-gray-500 hover:border-blue-400 hover:text-blue-700 transition-colors"
+          >
+            <Plus className="w-4 h-4" /> Add document
+          </button>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// ─── WhatsApp Test Card ───────────────────────────────────────────────────────
+function WhatsAppTestCard() {
+  const { toast } = useToast()
+  const [phone, setPhone] = useState("")
+  const [firstName, setFirstName] = useState("")
+  const [tag, setTag] = useState("inversionista")
+  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState<{ success?: boolean; method?: string; note?: string; error?: string } | null>(null)
+
+  const INVESTOR_TAGS = [
+    { value: "inversionista", label: "inversionista" },
+    { value: "inversionista bogota", label: "inversionista bogota" },
+    { value: "inversionista_airbnb", label: "inversionista_airbnb" },
+    { value: "Investor_colombia", label: "Investor_colombia" },
+    { value: "regular", label: "Regular lead (non-investor)" },
+  ]
+
+  async function handleSend() {
+    if (!phone) return
+    setLoading(true)
+    setResult(null)
+    try {
+      const res = await fetch("/api/test/whatsapp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, firstName, tag }),
+      })
+      const data = await res.json()
+      setResult(data)
+      if (data.success) {
+        toast({ title: "WhatsApp sent!", description: `Delivered to ${phone} via ${data.method}` })
+      } else {
+        toast({ title: "Failed to send", description: data.error, variant: "destructive" })
+      }
+    } catch {
+      toast({ title: "Error", description: "Network error", variant: "destructive" })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Card className="border-0 shadow-sm border-l-4 border-l-green-500">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <FlaskConical className="w-4 h-4 text-green-600" />
+          Test WhatsApp Outreach
+        </CardTitle>
+        <p className="text-xs text-gray-500">Send a test message exactly as a new investor lead would receive it</p>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label className="text-xs text-gray-600 mb-1 block">Phone number</Label>
+            <Input
+              placeholder="+1 786 290 5831"
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              className="text-sm"
+            />
+          </div>
+          <div>
+            <Label className="text-xs text-gray-600 mb-1 block">First name (for template)</Label>
+            <Input
+              placeholder="Catherine"
+              value={firstName}
+              onChange={e => setFirstName(e.target.value)}
+              className="text-sm"
+            />
+          </div>
+        </div>
+        <div>
+          <Label className="text-xs text-gray-600 mb-1 block">Simulate lead tag</Label>
+          <select
+            value={tag}
+            onChange={e => setTag(e.target.value)}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+          >
+            {INVESTOR_TAGS.map(t => (
+              <option key={t.value} value={t.value}>{t.value === "regular" ? "Regular lead (non-investor → SMS)" : t.label}</option>
+            ))}
+          </select>
+        </div>
+        <Button onClick={handleSend} disabled={loading || !phone} className="bg-green-600 hover:bg-green-700 text-white w-full">
+          {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+          Send Test WhatsApp
+        </Button>
+        {result && (
+          <div className={`rounded-lg p-3 text-xs ${result.success ? "bg-green-50 text-green-800 border border-green-200" : "bg-red-50 text-red-800 border border-red-200"}`}>
+            {result.success ? (
+              <>
+                <p className="font-semibold mb-1">✅ Sent successfully</p>
+                <p><span className="font-medium">Method:</span> {result.method}</p>
+                {result.note && <p className="mt-1 text-green-700">{result.note}</p>}
+              </>
+            ) : (
+              <>
+                <p className="font-semibold mb-1">❌ Failed</p>
+                <p>{result.error}</p>
+              </>
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   )
@@ -639,6 +1230,7 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
               { value: "idx", label: "IDX / MLS", icon: Database },
               { value: "integrations", label: "Integrations", icon: Globe },
               { value: "website", label: "Website", icon: Globe },
+              { value: "dialer", label: "Dialer", icon: Phone },
               { value: "security", label: "Security", icon: Shield },
             ].map(({ value, label, icon: Icon }) => (
               <TabsTrigger key={value} value={value}
@@ -972,6 +1564,8 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
 
           {/* Integrations */}
           <TabsContent value="integrations">
+            <div className="space-y-4">
+            <WhatsAppTestCard />
             <Card className="border-0 shadow-sm">
               <CardHeader><CardTitle className="text-base">Integrations</CardTitle></CardHeader>
               <CardContent className="space-y-3">
@@ -1020,6 +1614,7 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
                 </div>
               </CardContent>
             </Card>
+            </div>
           </TabsContent>
 
           {/* Availability */}
@@ -1047,6 +1642,14 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
                 </Button>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* Dialer */}
+          <TabsContent value="dialer">
+            <div className="space-y-6">
+              <VoicemailTemplatesPanel />
+              <BrochuresPanel />
+            </div>
           </TabsContent>
 
           {/* Security */}

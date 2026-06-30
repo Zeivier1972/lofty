@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { detectKeyword, deliverLeadMagnet } from "@/lib/lead-magnet-delivery"
 import {
   getFacebookUserProfile,
   getFacebookLeadData,
@@ -15,6 +16,7 @@ import {
   parseIntent,
 } from "@/lib/facebook"
 import { ingestLead } from "@/lib/lead-ingest"
+import { generateSocialAIReply, getMatchingProperties, getMatchingPreConstruction, notifyCatherineAboutLead } from "@/lib/social-ai-chat"
 
 function greetingQuickReplies(config: any) {
   return (config.greetingButtons || "Sí, me interesa,Quiero más info")
@@ -158,64 +160,106 @@ export async function POST(req: Request) {
 
         if (!commentId || !commenterId || !commentText) continue
         if (!botConfig?.isEnabled) continue
+        // Skip comments posted by the page itself (prevents processing bot's own replies)
+        if (commenterId === pageId) continue
+
+        // Accent-insensitive normalize for matching
+        const normFb = (s: string) => s.toLowerCase()
+          .replace(/[áä]/g, "a").replace(/[éë]/g, "e").replace(/[íï]/g, "i")
+          .replace(/[óö]/g, "o").replace(/[úü]/g, "u").replace(/ñ/g, "n")
 
         // Check campaign keywords first (higher priority), then general keywords
         const campaigns = await prisma.facebookBotCampaign.findMany({ where: { isActive: true } })
+        const t = normFb(commentText)
         const matchedCampaign = campaigns.find(c => {
-          const allKws = c.keywords ? c.keywords.split(",").map((k: string) => k.trim()).filter(Boolean) : [c.keyword]
-          return allKws.some((kw: string) => commentText.toLowerCase().includes(kw.toLowerCase()))
+          const allKws = c.keywords ? c.keywords.split(",").map((k: string) => k.trim()).filter(Boolean) : []
+          allKws.push(c.keyword)
+          return allKws.some((kw: string) => t.includes(normFb(kw)))
         })
 
         const generalKeywords = botConfig.triggerKeywords
-          .split(",")
-          .map((k: string) => k.trim().toLowerCase())
-          .filter(Boolean)
-        const matchesGeneral = generalKeywords.some(k => commentText.toLowerCase().includes(k))
+          .split(",").map((k: string) => k.trim().toLowerCase()).filter(Boolean)
+        const matchesGeneral = generalKeywords.some(k => t.includes(normFb(k)))
 
         if (!matchedCampaign && !matchesGeneral) continue
 
-        const greeting = matchedCampaign?.greeting || botConfig.msgGreeting
+        // Build topic-specific greeting: prefer campaign greeting, then magnet title, then generic
+        const leadKeyword = await detectKeyword(commentText).catch(() => null)
+        let greeting: string
+        if (matchedCampaign?.greeting) {
+          greeting = matchedCampaign.greeting
+        } else if (leadKeyword && leadKeyword !== "LISTO") {
+          const magnet = await prisma.leadMagnet.findUnique({ where: { keyword: leadKeyword } })
+          const topic = magnet?.title ?? leadKeyword
+          greeting = `¡Hola! 🏠 Vi que comentaste en mi video sobre "${topic}". Te envío la guía gratuita ahora mismo — solo necesito un par de datos rápidos. ¿Cuál es tu nombre?`
+        } else {
+          greeting = `¡Hola! 🏠 Vi tu comentario y quiero enviarte más información. Solo necesito un par de datos rápidos. ¿Cuál es tu nombre?`
+        }
+
+        const fbCampaignKeyword = leadKeyword || matchedCampaign?.keyword || null
 
         try {
+          console.log(`[FB bot] Comment from ${commenterId}: "${commentText.slice(0, 50)}" — campaign: ${matchedCampaign?.keyword || "none"}, general: ${matchesGeneral}`)
+
           const existing = await prisma.facebookBotConversation.findUnique({
             where: { psid: commenterId },
           })
 
-          if (existing && (existing.state === "COMPLETE" || existing.state === "OPTED_OUT")) {
-            await prisma.facebookBotConversation.update({
-              where: { psid: commenterId },
-              data: {
-                state: "ASKED_OPTIN",
-                sourceCommentId: commentId,
-                intent: null,
-                firstName: null,
-                email: null,
-                phone: null,
-                contactId: null,
-                campaignKeyword: matchedCampaign?.keyword || null,
-                pageId,
-              },
-            })
-          } else if (!existing) {
-            await prisma.facebookBotConversation.create({
-              data: {
-                psid: commenterId,
-                pageId,
-                state: "ASKED_OPTIN",
-                sourceCommentId: commentId,
-                campaignKeyword: matchedCampaign?.keyword || null,
-              },
-            })
+          // If person already has a conversation, reply contextually but don't restart
+          if (existing) {
+            if (existing.state === "OPTED_OUT") continue
+            const nudge = existing.state === "COMPLETE"
+              ? "¡Hola! Ya tenemos tu información 😊 Si tienes preguntas, escríbeme aquí por DM y con gusto te ayudo."
+              : "¡Hola! Ya te escribí por mensaje privado 📩 Revisa tu bandeja de mensajes para continuar."
+            await privateReplyToComment(commentId, nudge)
+            continue
           }
 
-          const privateSent = await privateReplyToComment(commentId, greeting)
-          if (!privateSent) {
-            await sendFacebookMessageWithQuickReplies(commenterId, greeting, greetingQuickReplies(botConfig))
-          }
+          const keyword = matchedCampaign?.keyword || fbCampaignKeyword || "INFO"
 
-          await postPublicCommentReply(commentId, "¡Hola! Te enviamos info por mensaje privado 📩")
+          // Try private reply first (works on regular posts, fails on Reels)
+          // Private reply sends greeting directly to Messenger — best UX, no click needed
+          await prisma.facebookBotConversation.create({
+            data: { psid: commenterId, pageId, state: "ASKED_NAME", sourceCommentId: commentId, campaignKeyword: fbCampaignKeyword },
+          })
+          const privateOk = await privateReplyToComment(commentId, greeting)
+          console.log(`[FB bot] privateReplyToComment result: ${privateOk}`)
+
+          if (!privateOk) {
+            // Reel or missing permission — fall back to public reply with one-tap m.me link
+            const meLink = `https://m.me/${pageId}?text=${encodeURIComponent(keyword.toUpperCase())}`
+            postPublicCommentReply(commentId,
+              `¡Hola! 👋 Toca aquí para recibir la info gratis en un solo clic 👉 ${meLink}`
+            ).catch(e => console.error("[FB] postPublicCommentReply:", e))
+          }
         } catch (e) {
           console.error("[FB webhook feed comment]", e)
+        }
+        continue
+      }
+    }
+
+    // ── Instagram DMs (keyword-triggered lead magnet delivery) ───────────────
+    for (const event of entry.messaging || []) {
+      if (!event.message || event.message.is_echo) continue
+      if (entry.id?.startsWith("17") || event.sender?.id?.startsWith("IGID")) {
+        // Instagram messaging event — check for lead magnet keyword
+        const igsid: string = event.sender?.id ?? ""
+        const igText: string = event.message?.text ?? ""
+        if (igsid && igText) {
+          const igKeyword = await detectKeyword(igText).catch(() => null)
+          if (igKeyword) {
+            const igContact = await prisma.contact.findFirst({ where: { instagramIgsid: igsid } })
+            deliverLeadMagnet(igKeyword, {
+              id: igContact?.id,
+              firstName: igContact?.firstName || "Hola",
+              phone: igContact?.phone,
+              email: igContact?.email,
+              instagramIgsid: igsid,
+            }, { sms: false, email: !!igContact?.email, fbDm: false, igDm: true }).catch(e =>
+              console.error("[FB webhook] IG lead magnet delivery failed:", e)
+            )
+          }
         }
         continue
       }
@@ -244,16 +288,49 @@ export async function POST(req: Request) {
         if (convo.state === "OPTED_OUT") continue
 
         if (convo.state === "COMPLETE") {
-          const keywords = botConfig.triggerKeywords
-            .split(",").map((k: string) => k.trim().toLowerCase()).filter(Boolean)
-          const matchesKeyword = (t: string) => keywords.some(k => t.toLowerCase().includes(k))
-          if (!matchesKeyword(text)) continue
-          // Re-start conversation
-          await prisma.facebookBotConversation.update({
-            where: { psid },
-            data: { state: "ASKED_OPTIN", intent: null, firstName: null, email: null, phone: null, contactId: null },
-          })
-          await sendFacebookMessageWithQuickReplies(psid, botConfig.msgGreeting, greetingQuickReplies(botConfig))
+          const result = await generateSocialAIReply(text, {
+            firstName: convo.firstName,
+            intent: convo.intent,
+            campaignKeyword: convo.campaignKeyword,
+            platform: "FACEBOOK",
+          }).catch(() => null)
+          if (!result) continue
+
+          await sendFacebookMessage(psid, result.reply)
+
+          if (result.sendPreConstruction) {
+            const aiConfig = await prisma.aIConfig.findFirst()
+            const communities = await getMatchingPreConstruction(text, aiConfig?.calendlyUrl || "")
+            if (communities.length > 0) {
+              await sendFacebookMessage(psid, "🏗️ Tengo algunas opciones de nueva construcción para ti:")
+              for (const msg of communities) await sendFacebookMessage(psid, msg)
+            } else {
+              await sendFacebookMessage(psid, `🏗️ Tengo acceso a desarrollos exclusivos de nueva construcción en Miami. Para conocer los detalles y hacer un tour privado con Catherine sin costo:${aiConfig?.calendlyUrl ? `\n📅 ${aiConfig.calendlyUrl}` : "\n📱 Escríbele directamente a Catherine."}`)
+            }
+          }
+
+          if (result.sendProperties) {
+            const listings = await getMatchingProperties(convo.intent)
+            if (listings.length > 0) {
+              for (const msg of listings) await sendFacebookMessage(psid, msg)
+            } else {
+              await sendFacebookMessage(psid, "🏠 En este momento estamos actualizando nuestro inventario. Catherine te enviará opciones personalizadas muy pronto.")
+            }
+          }
+
+          if (result.notifyCatherine) {
+            const aiConfig = await prisma.aIConfig.findFirst()
+            if (aiConfig?.calendlyUrl) {
+              await sendFacebookMessage(psid, `📅 Puedes agendar una llamada con Catherine directamente aquí: ${aiConfig.calendlyUrl}`)
+            }
+            notifyCatherineAboutLead({
+              firstName: convo.firstName,
+              phone: convo.phone,
+              email: convo.email,
+              message: text,
+              platform: "FACEBOOK",
+            }).catch(() => {})
+          }
           continue
         }
 
@@ -263,33 +340,24 @@ export async function POST(req: Request) {
           continue
         }
 
-        if (convo.state === "ASKED_OPTIN") {
-          await prisma.facebookBotConversation.update({ where: { psid }, data: { state: "ASKED_INTENT" } })
-          await sendFacebookMessageWithQuickReplies(psid, botConfig.msgAskIntent, intentQuickReplies(botConfig))
-
-        } else if (convo.state === "ASKED_INTENT") {
-          const intentFromPayload = quickReplyPayload === "A" ? "comprador_vivienda"
-            : quickReplyPayload === "B" ? "inversionista"
-            : quickReplyPayload === "C" ? "explorando"
-            : null
-          const intent = intentFromPayload || parseIntent(text)
-          if (!intent) {
-            await sendFacebookMessageWithQuickReplies(psid, "Por favor elige una opción 🙂", intentQuickReplies(botConfig))
+        if (convo.state === "ASKED_NAME") {
+          const words = text.trim().split(/\s+/)
+          const isValidName = words.length <= 4 && text.trim().length <= 40 && /^[a-zA-ZÀ-ÖØ-öø-ÿ\s'\-.]+$/.test(text.trim())
+          if (!isValidName) {
+            await sendFacebookMessage(psid, "Solo necesito tu nombre completo, por favor. Ej: María García")
             continue
           }
-          await prisma.facebookBotConversation.update({ where: { psid }, data: { intent, state: "ASKED_NAME" } })
-          await sendFacebookMessage(psid, botConfig.msgAskName)
-
-        } else if (convo.state === "ASKED_NAME") {
-          const name = text.trim().split(/\s+/).slice(0, 3).join(" ")
+          const name = words.slice(0, 3).join(" ")
           const nextMsg = botConfig.msgAskEmail.replace("{name}", name.split(" ")[0])
           await prisma.facebookBotConversation.update({ where: { psid }, data: { firstName: name, state: "ASKED_EMAIL" } })
           await sendFacebookMessage(psid, nextMsg)
 
         } else if (convo.state === "ASKED_EMAIL") {
           const email = extractEmail(text)
-          if (!email) {
-            await sendFacebookMessage(psid, "Hmm, no encontré un email válido. ¿Puedes enviarlo de nuevo? Ej: tu@email.com")
+          const fakeDomains = ["example.com", "test.com", "mail.com", "fake.com", "none.com", "noemail.com", "no.com", "null.com"]
+          const isFakeDomain = email ? fakeDomains.some(d => email.toLowerCase().endsWith("@" + d)) : false
+          if (!email || isFakeDomain) {
+            await sendFacebookMessage(psid, "Hmm, necesito un email real para enviarte la información. ¿Cuál es tu correo? Ej: maria@gmail.com")
             continue
           }
           const nextMsg = botConfig.msgAskPhone.replace("{name}", convo.firstName?.split(" ")[0] || "")
@@ -352,25 +420,37 @@ export async function POST(req: Request) {
             .replace("{website}", botConfig.websiteUrl || "")
           await sendFacebookMessage(psid, thankYou)
 
-          // Send campaign PDF if this conversation was triggered by a campaign keyword
+          // Deliver guide/PDF — single path to avoid duplicates
           if (convo.campaignKeyword) {
-            try {
-              const campaign = await prisma.facebookBotCampaign.findUnique({
-                where: { keyword: convo.campaignKeyword },
-              })
-              if (campaign?.pdfUrl) {
-                const appUrl = process.env.NEXT_PUBLIC_APP_URL || ""
-                const brochureUrl = `${appUrl}/brochure/${convo.campaignKeyword}`
-                const pdfMsg = `📄 ${campaign.pdfName || "Documento exclusivo"}:\n${brochureUrl}`
-                await sendFacebookMessage(psid, pdfMsg)
-                await prisma.facebookBotCampaign.update({
-                  where: { keyword: convo.campaignKeyword },
-                  data: { leads: { increment: 1 } },
-                })
+            const lmKeyword = await detectKeyword(convo.campaignKeyword).catch(() => null)
+            if (lmKeyword) {
+              // LeadMagnet guide: send link via FB DM directly, SMS + email via deliverLeadMagnet
+              const magnet = await prisma.leadMagnet.findUnique({ where: { keyword: lmKeyword } })
+              if (magnet?.guideUrl) {
+                await sendFacebookMessage(psid,
+                  `📚 Aquí está tu guía "${magnet.title}":\n${magnet.guideUrl}\n\n¡Cualquier pregunta, escríbeme aquí! 😊`
+                )
               }
-            } catch (e) {
-              console.error("[FB bot] campaign PDF send error:", e)
+              deliverLeadMagnet(lmKeyword, {
+                id: contactId,
+                firstName: convo.firstName?.split(" ")[0] || "",
+                phone,
+                email: convo.email || undefined,
+              }, { sms: true, email: !!convo.email, fbDm: false, igDm: false }).catch(e =>
+                console.error("[FB bot] SMS/email guide delivery failed:", e)
+              )
+            } else {
+              // External PDF campaign — send brochure link
+              const campaign = await prisma.facebookBotCampaign.findUnique({ where: { keyword: convo.campaignKeyword } })
+              if (campaign?.pdfUrl) {
+                const brochureUrl = `${process.env.NEXT_PUBLIC_APP_URL || ""}/brochure/${convo.campaignKeyword}`
+                await sendFacebookMessage(psid, `📄 ${campaign.pdfName || "Documento exclusivo"}:\n${brochureUrl}`)
+              }
             }
+            await prisma.facebookBotCampaign.update({
+              where: { keyword: convo.campaignKeyword },
+              data: { leads: { increment: 1 } },
+            }).catch(() => {})
           }
 
           // Send matching property listings if enabled
@@ -420,26 +500,32 @@ export async function POST(req: Request) {
 
       } else if (botConfig?.isEnabled && !convo) {
         // ── No active convo: check if DM text matches a campaign or general keyword ──
+        const normDm = (s: string) => s.toLowerCase()
+          .replace(/[áä]/g, "a").replace(/[éë]/g, "e").replace(/[íï]/g, "i")
+          .replace(/[óö]/g, "o").replace(/[úü]/g, "u").replace(/ñ/g, "n")
+        const tDm = normDm(text)
         const campaigns = await prisma.facebookBotCampaign.findMany({ where: { isActive: true } })
         const matchedCampaign = campaigns.find(c => {
-          const allKws = c.keywords ? c.keywords.split(",").map((k: string) => k.trim()).filter(Boolean) : [c.keyword]
-          return allKws.some((kw: string) => text.toLowerCase().includes(kw.toLowerCase()))
+          const allKws = c.keywords ? c.keywords.split(",").map((k: string) => k.trim()).filter(Boolean) : []
+          allKws.push(c.keyword)
+          return allKws.some((kw: string) => tDm.includes(normDm(kw)))
         })
         const generalKeywords = botConfig.triggerKeywords
           .split(",").map((k: string) => k.trim().toLowerCase()).filter(Boolean)
-        const matchesGeneral = generalKeywords.some(k => text.toLowerCase().includes(k))
+        const matchesGeneral = generalKeywords.some(k => tDm.includes(normDm(k)))
 
         if (matchedCampaign || matchesGeneral) {
-          const greeting = matchedCampaign?.greeting || botConfig.msgGreeting
+          const greeting = matchedCampaign?.greeting
+            || `¡Hola! 🏠 Quiero enviarte más información. Solo necesito un par de datos rápidos. ¿Cuál es tu nombre?`
           await prisma.facebookBotConversation.create({
             data: {
               psid,
               pageId,
-              state: "ASKED_OPTIN",
+              state: "ASKED_NAME",
               campaignKeyword: matchedCampaign?.keyword || null,
             },
           })
-          await sendFacebookMessageWithQuickReplies(psid, greeting, greetingQuickReplies(botConfig))
+          await sendFacebookMessage(psid, greeting)
         } else {
         // ── Non-bot Messenger DM handling ───────────────────────────────────
         let contact = await prisma.contact.findFirst({ where: { facebookPsid: psid } })

@@ -4,6 +4,7 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth"
 import twilio from "twilio"
+import { normalizePhone } from "@/lib/utils"
 
 function getTwilioClient() {
   const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN } = process.env
@@ -76,15 +77,16 @@ export async function POST(req: Request) {
     })
 
     let twilioSid: string
+    const normalizedPhone = normalizePhone(phone)
 
     if (!client) {
       // Mock mode
       twilioSid = `mock-parallel-sid-${dialerCall.id}`
-      console.log("[PARALLEL DIAL MOCK] To:", phone, "callId:", dialerCall.id)
+      console.log("[PARALLEL DIAL MOCK] To:", normalizedPhone, "callId:", dialerCall.id)
     } else {
       try {
         const call = await client.calls.create({
-          to: phone,
+          to: normalizedPhone,
           from: process.env.TWILIO_PHONE_NUMBER!,
           url: `${APP_URL}/api/dialer/parallel-twiml?callId=${dialerCall.id}`,
           statusCallback: `${APP_URL}/api/dialer/parallel-status`,

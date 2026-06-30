@@ -4,6 +4,7 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { scoreContact } from "@/lib/scoring"
 import { triggerOutboundCall } from "@/lib/vapi"
+import { sendCapiEvent } from "@/lib/facebook"
 
 // Public endpoint — no auth required
 export async function POST(req: Request) {
@@ -76,6 +77,15 @@ export async function POST(req: Request) {
         contactId: contact.id,
       },
     })
+
+    // Report Lead event to Facebook CAPI with browser signals for better match quality
+    const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+      || req.headers.get("x-real-ip")
+      || null
+    const clientUserAgent = req.headers.get("user-agent") || null
+    const fbp = req.headers.get("cookie")?.match(/_fbp=([^;]+)/)?.[1] || null
+    const fbc = req.headers.get("cookie")?.match(/_fbc=([^;]+)/)?.[1] || null
+    sendCapiEvent("Lead", { email, phone, firstName, lastName, clientIp, clientUserAgent, fbp, fbc }, { eventId: contact.id }).catch(() => {})
 
     // Trigger AI score
     scoreContact(contact.id).catch(() => {})

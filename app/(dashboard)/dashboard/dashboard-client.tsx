@@ -61,7 +61,7 @@ function SofiaBriefing({ hotAlerts, matchAlertsSentToday, newLeadsToday, portalU
       iconColor: "text-purple-600",
       label: `${portalUnread} unread portal message${portalUnread > 1 ? "s" : ""} from client${portalUnread > 1 ? "s" : ""}`,
       sub: "Reply before noon",
-      href: "/messages",
+      href: "/inbox?channel=portal",
       urgent: true,
     },
     tasksDueToday > 0 && {

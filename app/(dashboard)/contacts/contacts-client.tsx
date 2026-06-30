@@ -1,14 +1,14 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
   Users, Plus, Search, Download, Upload,
-  Phone, Mail, ChevronLeft, ChevronRight, MoreVertical,
+  Phone, Mail, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, MoreVertical,
   Trash2, Edit, Eye, MessageSquare, X, Send, CheckSquare,
   FileText, AlertCircle, CheckCircle2, Zap, Settings2, MoveRight, Loader2,
-  PhoneCall, PhoneOff, SkipForward, CheckCircle, Clock,
+  PhoneCall, PhoneOff, SkipForward, CheckCircle, Clock, Tag, Voicemail,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -48,7 +48,7 @@ interface ContactsClientProps {
   page: number
   pageSize: number
   tags: any[]
-  filters: { status?: string; search?: string; source?: string }
+  filters: { status?: string; search?: string; source?: string; tags?: string }
   activeTab: string
   stageCounts: Record<string, number>
   stages: Stage[]
@@ -494,7 +494,7 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
   onClose: () => void
 }) {
   const { toast } = useToast()
-  const [phase, setPhase] = useState<"config" | "running" | "done">("config")
+  const [phase, setPhase] = useState<"config" | "templates" | "running" | "done">("config")
   const [callerType, setCallerType] = useState<"sofia" | "catherine">("sofia")
   const [voicemailMsg, setVoicemailMsg] = useState(DEFAULT_VM)
   const [starting, setStarting] = useState(false)
@@ -514,6 +514,129 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
   const [callSeconds, setCallSeconds] = useState(0)
   const [deviceReady, setDeviceReady] = useState(false)
   const [browserCallFailed, setBrowserCallFailed] = useState(false)
+
+  // Voicemail template state
+  type VmTemplate = { id: string; name: string; text: string; audioUrl?: string }
+  const [templates, setTemplates] = useState<VmTemplate[]>([])
+  const [selectedTplId, setSelectedTplId] = useState<string | null>(null)
+  const [tplForm, setTplForm] = useState<Partial<VmTemplate> | null>(null)
+  const [uploadingAudio, setUploadingAudio] = useState(false)
+  const [savingTpl, setSavingTpl] = useState(false)
+  const [droppingVM, setDroppingVM] = useState(false)
+  const [showScript, setShowScript] = useState(false)
+  // In-browser recording state
+  const [recording, setRecording] = useState(false)
+  const [recordSecs, setRecordSecs] = useState(0)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const recordChunksRef = useRef<Blob[]>([])
+
+  // Fetch templates on mount
+  useEffect(() => {
+    fetch("/api/settings/voicemail-templates")
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setTemplates(data) })
+      .catch(() => {})
+  }, [])
+
+  const selectTemplate = (tpl: VmTemplate) => {
+    setSelectedTplId(tpl.id)
+    setVoicemailMsg(tpl.text)
+  }
+
+  const saveTemplate = async () => {
+    if (!tplForm?.name?.trim() || !tplForm?.text?.trim()) return
+    setSavingTpl(true)
+    try {
+      const res = await fetch("/api/settings/voicemail-templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(tplForm),
+      })
+      const saved = await res.json()
+      setTemplates(prev => {
+        const idx = prev.findIndex(t => t.id === saved.id)
+        if (idx >= 0) { const next = [...prev]; next[idx] = saved; return next }
+        return [...prev, saved]
+      })
+      setTplForm(null)
+      toast({ title: "Mensaje guardado" })
+    } catch {
+      toast({ title: "Error al guardar", variant: "destructive" })
+    } finally { setSavingTpl(false) }
+  }
+
+  const deleteTemplate = async (id: string) => {
+    if (!confirm("¿Eliminar este mensaje?")) return
+    await fetch(`/api/settings/voicemail-templates?id=${id}`, { method: "DELETE" })
+    setTemplates(prev => prev.filter(t => t.id !== id))
+    if (selectedTplId === id) setSelectedTplId(null)
+    toast({ title: "Mensaje eliminado" })
+  }
+
+  const uploadAudio = async (file: File) => {
+    setUploadingAudio(true)
+    try {
+      const form = new FormData()
+      form.append("file", file)
+      const res = await fetch("/api/upload", { method: "POST", body: form })
+      const data = await res.json()
+      if (data.url) setTplForm(prev => prev ? { ...prev, audioUrl: data.url } : prev)
+      else toast({ title: "Error al subir audio", variant: "destructive" })
+    } catch {
+      toast({ title: "Error al subir audio", variant: "destructive" })
+    } finally { setUploadingAudio(false) }
+  }
+
+  const dropVoicemail = async (phone: string, audioUrl: string) => {
+    setDroppingVM(true)
+    try {
+      const res = await fetch("/api/dialer/voicemail-drop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, audioUrl }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      toast({ title: "Mensaje de voz enviado ✓" })
+      await logManualCall("voicemail")
+    } catch (e: any) {
+      toast({ title: e.message || "No se pudo enviar el mensaje", variant: "destructive" })
+    } finally { setDroppingVM(false) }
+  }
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mr = new MediaRecorder(stream)
+      recordChunksRef.current = []
+      mr.ondataavailable = e => { if (e.data.size > 0) recordChunksRef.current.push(e.data) }
+      mr.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop())
+        const blob = new Blob(recordChunksRef.current, { type: "audio/webm" })
+        const file = new File([blob], "voicemail.webm", { type: "audio/webm" })
+        await uploadAudio(file)
+      }
+      mr.start()
+      mediaRecorderRef.current = mr
+      setRecording(true)
+      setRecordSecs(0)
+    } catch {
+      toast({ title: "No se pudo acceder al micrófono", variant: "destructive" })
+    }
+  }
+
+  // Timer while recording
+  useEffect(() => {
+    if (!recording) return
+    const t = setInterval(() => setRecordSecs(s => s + 1), 1000)
+    return () => clearInterval(t)
+  }, [recording])
+
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop()
+    mediaRecorderRef.current = null
+    setRecording(false)
+  }
 
   // Initialize Twilio Device when Catherine mode starts
   useEffect(() => {
@@ -656,15 +779,22 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b bg-gray-900 rounded-t-2xl flex-shrink-0">
           <div className="flex items-center gap-3">
+            {phase === "templates" && (
+              <button onClick={() => setPhase("config")} className="p-1.5 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white mr-1">
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+            )}
             <div className="w-9 h-9 bg-green-500 rounded-xl flex items-center justify-center">
-              <PhoneCall className="w-5 h-5 text-white" />
+              {phase === "templates" ? <Voicemail className="w-5 h-5 text-white" /> : <PhoneCall className="w-5 h-5 text-white" />}
             </div>
             <div>
               <h2 className="font-bold text-white text-sm">
-                {callerType === "sofia" ? "Auto Dialer — Sofía" : "Manual Dialer — Catherine"}
+                {phase === "templates" ? "Mensajes pre-grabados" :
+                 callerType === "sofia" ? "Auto Dialer — Sofía" : "Manual Dialer — Catherine"}
               </h2>
               <p className="text-gray-400 text-xs">
-                {phase === "config" ? `${contactCount} contactos seleccionados` :
+                {phase === "templates" ? `${templates.length} mensaje${templates.length !== 1 ? "s" : ""} guardado${templates.length !== 1 ? "s" : ""}` :
+                 phase === "config" ? `${contactCount} contactos seleccionados` :
                  phase === "running" && callerType === "sofia" ? `Llamada ${(sessionData?.currentIndex ?? 0) + 1} de ${sessionData?.totalCount ?? "…"}` :
                  phase === "running" ? `${manualIndex + 1} de ${manualContacts.length}` :
                  `Sesión completada`}
@@ -672,7 +802,7 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
             </div>
           </div>
           {phase !== "running" && (
-            <button onClick={onClose} className="p-1.5 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white">
+            <button onClick={phase === "templates" ? () => setPhase("config") : onClose} className="p-1.5 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white">
               <X className="w-4 h-4" />
             </button>
           )}
@@ -741,10 +871,36 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
                     <p>• Pipeline se actualiza automáticamente tras cada llamada</p>
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-gray-600 mb-1.5 block">Mensaje para buzón de voz</label>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-xs font-semibold text-gray-600">Mensaje para buzón de voz</label>
+                      <button
+                        onClick={() => setPhase("templates")}
+                        className="text-xs text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+                      >
+                        <Voicemail className="w-3 h-3" /> Administrar mensajes
+                      </button>
+                    </div>
+                    {templates.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {templates.map(t => (
+                          <button
+                            key={t.id}
+                            onClick={() => selectTemplate(t)}
+                            className={cn(
+                              "text-xs px-2.5 py-1 rounded-full border transition-colors",
+                              selectedTplId === t.id
+                                ? "bg-indigo-600 border-indigo-600 text-white"
+                                : "border-gray-300 text-gray-600 hover:border-indigo-400 hover:text-indigo-700"
+                            )}
+                          >
+                            {t.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     <textarea
                       value={voicemailMsg}
-                      onChange={e => setVoicemailMsg(e.target.value)}
+                      onChange={e => { setVoicemailMsg(e.target.value); setSelectedTplId(null) }}
                       rows={3}
                       className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
                     />
@@ -779,6 +935,131 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
                   )}
                 </>
               )}
+            </div>
+          )}
+
+          {/* Template manager phase */}
+          {phase === "templates" && (
+            <div className="p-5 space-y-4 overflow-y-auto flex-1">
+              {/* Saved templates list */}
+              {templates.length > 0 && (
+                <div className="space-y-2">
+                  {templates.map(t => (
+                    <div key={t.id} className="border border-gray-200 rounded-xl p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-gray-900 text-sm">{t.name}</p>
+                          <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{t.text}</p>
+                          {t.audioUrl && (
+                            <audio src={t.audioUrl} controls className="mt-2 w-full h-8" />
+                          )}
+                        </div>
+                        <div className="flex gap-1 flex-shrink-0">
+                          <button
+                            onClick={() => setTplForm({ id: t.id, name: t.name, text: t.text, audioUrl: t.audioUrl })}
+                            className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => deleteTemplate(t.id)}
+                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {templates.length === 0 && !tplForm && (
+                <p className="text-sm text-gray-400 text-center py-4">No hay mensajes guardados aún.</p>
+              )}
+
+              {/* Add / Edit form */}
+              {tplForm ? (
+                <div className="border border-indigo-200 rounded-xl p-4 bg-indigo-50 space-y-3">
+                  <p className="text-xs font-semibold text-indigo-700">{tplForm.id ? "Editar mensaje" : "Nuevo mensaje"}</p>
+                  <input
+                    type="text"
+                    placeholder="Nombre del mensaje (ej: Buzón estándar)"
+                    value={tplForm.name || ""}
+                    onChange={e => setTplForm(p => p ? { ...p, name: e.target.value } : p)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                  />
+                  <textarea
+                    placeholder="Escribe el mensaje aquí..."
+                    value={tplForm.text || ""}
+                    onChange={e => setTplForm(p => p ? { ...p, text: e.target.value } : p)}
+                    rows={3}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none bg-white"
+                  />
+                  <div>
+                    <p className="text-xs font-semibold text-gray-600 mb-1.5">Grabación de audio (opcional)</p>
+                    {tplForm.audioUrl ? (
+                      <div className="flex items-center gap-2">
+                        <audio src={tplForm.audioUrl} controls className="flex-1 h-8" />
+                        <button onClick={() => setTplForm(p => p ? { ...p, audioUrl: undefined } : p)}
+                          className="p-1.5 text-red-400 hover:text-red-600 rounded-lg hover:bg-red-50">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : uploadingAudio ? (
+                      <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 bg-white text-xs text-gray-500">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600" /> Subiendo audio…
+                      </div>
+                    ) : recording ? (
+                      <div className="flex items-center justify-between px-3 py-2.5 rounded-lg border border-red-300 bg-red-50">
+                        <div className="flex items-center gap-2 text-xs text-red-700 font-semibold">
+                          <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                          Grabando… {Math.floor(recordSecs / 60)}:{String(recordSecs % 60).padStart(2, "0")}
+                        </div>
+                        <button
+                          onClick={stopRecording}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg transition-colors"
+                        >
+                          <PhoneOff className="w-3 h-3" /> Detener
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={startRecording}
+                          className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-red-300 bg-red-50 hover:bg-red-100 text-xs text-red-700 font-semibold transition-colors"
+                        >
+                          <div className="w-2 h-2 bg-red-500 rounded-full" /> Grabar ahora
+                        </button>
+                        <label className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-dashed border-gray-300 hover:border-indigo-400 hover:text-indigo-600 text-xs text-gray-500 cursor-pointer bg-white transition-colors">
+                          <Voicemail className="w-3.5 h-3.5" /> Subir archivo
+                          <input type="file" accept="audio/*" className="hidden"
+                            onChange={e => { if (e.target.files?.[0]) uploadAudio(e.target.files[0]) }} />
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button onClick={saveTemplate} disabled={savingTpl || !tplForm.name?.trim() || !tplForm.text?.trim()}
+                      className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white h-9 text-sm">
+                      {savingTpl ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar mensaje"}
+                    </Button>
+                    <Button variant="outline" onClick={() => setTplForm(null)} className="h-9 text-sm">
+                      Cancelar
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setTplForm({ name: "", text: DEFAULT_VM })}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-gray-300 text-sm text-gray-500 hover:border-indigo-400 hover:text-indigo-600 transition-colors"
+                >
+                  <Plus className="w-4 h-4" /> Agregar nuevo mensaje
+                </button>
+              )}
+
+              <Button onClick={() => setPhase("config")} variant="outline" className="w-full h-9 text-sm">
+                ← Volver al dialer
+              </Button>
             </div>
           )}
 
@@ -875,6 +1156,64 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
                     <SkipForward className="w-5 h-5" /><span className="text-xs font-semibold">Omitir</span>
                   </button>
                 </div>
+
+                {/* Voicemail drop section */}
+                {templates.length > 0 && (
+                  <div className="border border-gray-200 rounded-xl overflow-hidden">
+                    <button
+                      onClick={() => setShowScript(s => !s)}
+                      className="w-full flex items-center justify-between px-3 py-2.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+                    >
+                      <span className="flex items-center gap-2">
+                        <Voicemail className="w-3.5 h-3.5 text-blue-600" />
+                        Mensajes pre-grabados
+                      </span>
+                      {showScript ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                    </button>
+                    {showScript && (
+                      <div className="border-t border-gray-100 p-3 space-y-2">
+                        {templates.map(t => {
+                          const isSel = selectedTplId === t.id
+                          return (
+                            <div
+                              key={t.id}
+                              onClick={() => setSelectedTplId(isSel ? null : t.id)}
+                              className={cn(
+                                "p-2.5 rounded-lg border cursor-pointer transition-colors",
+                                isSel ? "border-blue-400 bg-blue-50" : "border-gray-200 hover:bg-gray-50"
+                              )}
+                            >
+                              <p className="text-xs font-semibold text-gray-800">{t.name}</p>
+                              <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{t.text}</p>
+                              {isSel && t.audioUrl && (
+                                <audio src={t.audioUrl} controls className="mt-2 w-full h-8" />
+                              )}
+                              {isSel && t.audioUrl && (
+                                <button
+                                  onClick={e => { e.stopPropagation(); dropVoicemail(contact.phone, t.audioUrl!) }}
+                                  disabled={droppingVM || loggingCall}
+                                  className="mt-2 w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold disabled:opacity-50 transition-colors"
+                                >
+                                  {droppingVM ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Voicemail className="w-3.5 h-3.5" />}
+                                  Dejar mensaje grabado
+                                </button>
+                              )}
+                              {isSel && !t.audioUrl && (
+                                <p className="mt-1.5 text-xs text-gray-400 italic">Lee este mensaje en el buzón de voz</p>
+                              )}
+                            </div>
+                          )
+                        })}
+                        <button
+                          onClick={() => setPhase("templates")}
+                          className="w-full text-xs text-indigo-600 hover:text-indigo-800 py-1.5"
+                        >
+                          + Administrar mensajes
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Queue dots */}
                 <div className="flex gap-1.5 justify-center">
@@ -988,6 +1327,7 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
   const [deletingContact, setDeletingContact] = useState<string | null>(null)
   const [bulkDeleting, setBulkDeleting] = useState(false)
   const [bulkMoving, setBulkMoving] = useState(false)
+  const [bulkTagging, setBulkTagging] = useState(false)
   const [showPowerDialer, setShowPowerDialer] = useState(false)
 
   const totalPages = Math.ceil(total / pageSize)
@@ -998,6 +1338,7 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
     const params = new URLSearchParams()
     if (tabId !== "all") params.set("tab", tabId)
     if (filters.search) params.set("search", filters.search)
+    if (filters.tags) params.set("tags", filters.tags)
     router.push(`/contacts?${params.toString()}`)
   }
 
@@ -1084,23 +1425,64 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
     } finally { setBulkMoving(false) }
   }
 
-  const updateFilter = (key: string, value: string) => {
+  const bulkApplyTag = async (tagId: string, tagName: string) => {
+    if (!selected.size) return
+    setBulkTagging(true)
+    try {
+      const res = await fetch("/api/contacts/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: Array.from(selected), tagId }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      toast({ title: `Tag "${tagName}" applied to ${data.tagged} contact${data.tagged !== 1 ? "s" : ""}` })
+      router.refresh()
+    } catch {
+      toast({ title: "Failed to apply tag", variant: "destructive" })
+    } finally { setBulkTagging(false) }
+  }
+
+  const activeTagIds = filters.tags ? filters.tags.split(",").filter(Boolean) : []
+
+  const buildParams = (overrides: Record<string, string | undefined> = {}) => {
+    const base: Record<string, string | undefined> = {
+      search: filters.search,
+      status: filters.status,
+      source: filters.source,
+      tags: filters.tags,
+      tab: activeTab !== "all" ? activeTab : undefined,
+    }
+    const merged = { ...base, ...overrides }
     const params = new URLSearchParams()
-    if (filters.search) params.set("search", filters.search)
-    if (filters.status) params.set("status", filters.status)
-    if (filters.source) params.set("source", filters.source)
-    if (value && value !== "ALL") params.set(key, value)
-    else params.delete(key)
+    for (const [k, v] of Object.entries(merged)) {
+      if (v && v !== "ALL") params.set(k, v)
+    }
     params.delete("page")
+    return params
+  }
+
+  const updateFilter = (key: string, value: string) => {
+    const params = buildParams({ [key]: value !== "ALL" ? value : undefined })
+    router.push(`/contacts?${params.toString()}`)
+  }
+
+  const toggleTagFilter = (tagId: string) => {
+    const next = activeTagIds.includes(tagId)
+      ? activeTagIds.filter(id => id !== tagId)
+      : [...activeTagIds, tagId]
+    const params = buildParams({ tags: next.length > 0 ? next.join(",") : undefined })
+    router.push(`/contacts?${params.toString()}`)
+  }
+
+  const clearTagFilter = () => {
+    const params = buildParams({ tags: undefined })
     router.push(`/contacts?${params.toString()}`)
   }
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
-    const params = new URLSearchParams()
-    if (search) params.set("search", search)
-    if (filters.status) params.set("status", filters.status)
-    if (filters.source) params.set("source", filters.source)
+    const params = buildParams({ search: search || undefined })
     router.push(`/contacts?${params.toString()}`)
   }
 
@@ -1228,6 +1610,26 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
               </DropdownMenuContent>
             </DropdownMenu>
 
+            {/* Tag contacts */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" className="bg-white/10 hover:bg-white/20 text-white border-white/20 gap-1.5" disabled={bulkTagging}>
+                  {bulkTagging ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Tag className="w-3.5 h-3.5" />}
+                  Tag
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-48 max-h-64 overflow-y-auto">
+                {tags.length > 0 ? tags.map((t: any) => (
+                  <DropdownMenuItem key={t.id} onClick={() => bulkApplyTag(t.id, t.name)} className="gap-2">
+                    <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: t.color || "#6366F1" }} />
+                    {t.name}
+                  </DropdownMenuItem>
+                )) : (
+                  <DropdownMenuItem disabled className="text-gray-400 text-xs">No tags created yet</DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             <Button
               size="sm"
               onClick={() => setShowPowerDialer(true)}
@@ -1305,7 +1707,78 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
             ))}
           </SelectContent>
         </Select>
+
+        {/* Tag filter */}
+        {tags.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className={cn(
+                  "h-9 gap-1.5 font-normal",
+                  activeTagIds.length > 0 && "border-lofty-500 text-lofty-700 bg-lofty-50"
+                )}
+              >
+                <Tag className="w-3.5 h-3.5" />
+                {activeTagIds.length > 0 ? `Tags (${activeTagIds.length})` : "Filter by Tag"}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-52 max-h-72 overflow-y-auto">
+              {tags.map((t: any) => {
+                const active = activeTagIds.includes(t.id)
+                return (
+                  <DropdownMenuItem
+                    key={t.id}
+                    onClick={(e) => { e.preventDefault(); toggleTagFilter(t.id) }}
+                    className="gap-2 cursor-pointer"
+                  >
+                    <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: t.color || "#6366F1" }} />
+                    <span className="flex-1 text-sm">{t.name}</span>
+                    {active && <CheckCircle2 className="w-3.5 h-3.5 text-lofty-600 flex-shrink-0" />}
+                  </DropdownMenuItem>
+                )
+              })}
+              {activeTagIds.length > 0 && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={clearTagFilter} className="text-gray-500 text-xs gap-2">
+                    <X className="w-3.5 h-3.5" /> Clear tag filters
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
+
+      {/* Active tag filter pills */}
+      {activeTagIds.length > 0 && (
+        <div className="flex flex-wrap gap-2 -mt-1">
+          {activeTagIds.map(tagId => {
+            const tag = tags.find((t: any) => t.id === tagId)
+            if (!tag) return null
+            return (
+              <span
+                key={tagId}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium"
+                style={{ backgroundColor: (tag.color || "#6366F1") + "20", color: tag.color || "#6366F1" }}
+              >
+                {tag.name}
+                <button
+                  onClick={() => toggleTagFilter(tagId)}
+                  className="ml-0.5 hover:opacity-70 transition-opacity"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )
+          })}
+          <button onClick={clearTagFilter} className="text-xs text-gray-400 hover:text-gray-600 px-1">
+            Clear all
+          </button>
+        </div>
+      )}
 
       {/* Contact list */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
@@ -1501,10 +1974,16 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
                       <div className="flex items-center gap-2">
                         <div className="flex items-center gap-1 text-xs text-gray-500">
                           <Phone className="w-3.5 h-3.5 text-gray-400" />
-                          <span>{contact._count?.activities ?? 0}</span>
+                          <span>{contact._count?.dialerCalls ?? 0}</span>
                         </div>
-                        {contact.email && <div className="flex items-center gap-1 text-xs text-gray-500"><Mail className="w-3.5 h-3.5 text-gray-400" /></div>}
-                        {contact.phone && <div className="flex items-center gap-1 text-xs text-gray-500"><MessageSquare className="w-3.5 h-3.5 text-gray-400" /></div>}
+                        <div className="flex items-center gap-1 text-xs text-gray-500">
+                          <Mail className="w-3.5 h-3.5 text-gray-400" />
+                          <span>{contact._count?.emails ?? 0}</span>
+                        </div>
+                        <div className="flex items-center gap-1 text-xs text-gray-500">
+                          <MessageSquare className="w-3.5 h-3.5 text-gray-400" />
+                          <span>{contact._count?.notes ?? 0}</span>
+                        </div>
                       </div>
 
                       {/* Smart Plan */}

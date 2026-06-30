@@ -131,12 +131,37 @@ export async function GET(req: Request) {
           const toPhone = contact.phone.startsWith("+")
             ? contact.phone
             : `+1${contact.phone.replace(/\D/g, "").slice(-10)}`
-          await sendWhatsApp(toPhone, fill(step.content))
+          const filledContent = fill(step.content)
+
+          // Only use free-form WhatsApp if contact sent an inbound message in the last 24h
+          // (open session window). Otherwise go straight to SMS to avoid error 63016.
+          const windowStart = new Date(Date.now() - 24 * 60 * 60 * 1000)
+          const recentInbound = await prisma.whatsAppMessage.findFirst({
+            where: {
+              contactId: contact.id,
+              direction: "INBOUND",
+              createdAt: { gte: windowStart },
+            },
+          })
+
+          let channel: "WHATSAPP" | "SMS" = "SMS"
+          if (recentInbound) {
+            try {
+              await sendWhatsApp(toPhone, filledContent)
+              channel = "WHATSAPP"
+            } catch (waErr: any) {
+              console.warn("[smart-plans] WhatsApp failed despite open session, falling back to SMS:", waErr?.message)
+              await sendSMS(toPhone, filledContent).catch(e => console.error("[smart-plans] SMS also failed:", e))
+            }
+          } else {
+            await sendSMS(toPhone, filledContent).catch(e => console.error("[smart-plans] SMS failed:", e))
+          }
+
           await prisma.activity.create({
             data: {
-              type: "SMS",
-              title: "Smart Plan WhatsApp",
-              description: fill(step.content).slice(0, 120),
+              type: channel,
+              title: channel === "WHATSAPP" ? "Smart Plan WhatsApp" : "Smart Plan SMS (no open WA session)",
+              description: filledContent.slice(0, 120),
               contactId: contact.id,
             },
           })

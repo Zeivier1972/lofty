@@ -4,13 +4,14 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { triggerOutboundCall } from "@/lib/vapi"
+import { normalizePhone } from "@/lib/utils"
 
 export async function POST(req: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   try {
-    const { contactId, phone, name } = await req.json()
+    const { contactId, phone, name, callNotes } = await req.json()
     if (!contactId || !phone) {
       return NextResponse.json({ error: "contactId and phone required" }, { status: 400 })
     }
@@ -18,7 +19,7 @@ export async function POST(req: Request) {
     const contact = await prisma.contact.findUnique({ where: { id: contactId } })
     if (!contact) return NextResponse.json({ error: "Contact not found" }, { status: 404 })
 
-    const toPhone = phone.startsWith("+") ? phone : `+1${phone.replace(/\D/g, "").slice(-10)}`
+    const toPhone = normalizePhone(phone)
 
     const callId = await triggerOutboundCall({
       toPhone,
@@ -31,6 +32,7 @@ export async function POST(req: Request) {
       propertyType: contact.buyerPropertyType ?? null,
       skipBusinessHoursCheck: true,
       isManual: true,
+      callNotes: callNotes || undefined,
     })
 
     if (!callId) {

@@ -13,14 +13,11 @@ import { sendSMS } from "@/lib/sms"
 import { sendEmail } from "@/lib/email"
 
 const CONTACTED_STAGES = ["Contacted 1", "Contacted 2", "Contacted 3", "Contacted 4"]
-const NO_ANSWER_REASONS = [
-  "customer-did-not-answer",
-  "voicemail",
-  "customer-busy",
-  "no-answer",
-  "silence-timed-out",
-  "pipeline-error",
-]
+
+// A call is "engaged" only if the customer actually talked to Sofia for > 30s.
+// Everything else (voicemail, no-answer, error codes, short pick-ups, unknown) is
+// treated as a no-answer contact attempt and advances the Contacted stage.
+const CONNECTED_REASONS = new Set(["customer-ended-call", "assistant-ended-call"])
 
 const RETRY_DELAY_HOURS = 24
 
@@ -129,16 +126,23 @@ async function sendOutreachMessages(contact: any, stageName: string, config: any
   `
 
   if (phone) {
-    sendSMS(
-      phone.startsWith("+") ? phone : `+1${phone.replace(/\D/g, "").slice(-10)}`,
-      smsBody
-    ).catch(() => {})
+    const toPhone = phone.startsWith("+") ? phone : `+1${phone.replace(/\D/g, "").slice(-10)}`
+    sendSMS(toPhone, smsBody)
+      .then(() => {
+        prisma.activity.create({
+          data: { type: "SMS", title: "Sofía sent outreach SMS", description: smsBody.slice(0, 200), contactId: contact.id },
+        }).catch(() => {})
+        prisma.sMSMessage.create({
+          data: { toNumber: toPhone, fromNumber: process.env.TWILIO_PHONE_NUMBER || "", body: smsBody, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
+        }).catch(() => {})
+      })
+      .catch(() => {})
   }
 
   if (contact.email) {
     const subject = `Intentamos contactarte sobre ${campaign}`
     sendEmail({ to: contact.email, subject, html: emailHtml, text: smsBody })
-      .then(() =>
+      .then(() => {
         prisma.email.create({
           data: {
             subject,
@@ -150,21 +154,11 @@ async function sendOutreachMessages(contact: any, stageName: string, config: any
             contactId: contact.id,
           },
         }).catch(() => {})
-      )
+        prisma.activity.create({
+          data: { type: "EMAIL_SENT", title: "Sofía sent outreach email", description: subject, contactId: contact.id },
+        }).catch(() => {})
+      })
       .catch(() => {})
-  }
-
-  if (phone) {
-    prisma.sMSMessage.create({
-      data: {
-        toNumber: phone.startsWith("+") ? phone : `+1${phone.replace(/\D/g, "").slice(-10)}`,
-        fromNumber: process.env.TWILIO_PHONE_NUMBER || "",
-        body: smsBody,
-        direction: "OUTBOUND",
-        status: "SENT",
-        contactId: contact.id,
-      },
-    }).catch(() => {})
   }
 }
 
@@ -184,8 +178,8 @@ export async function handleCallOutcome(
   const config = await prisma.aIConfig.findFirst()
   const stageByName = (name: string) => pipeline.stages.find(s => s.name === name)
 
-  const engaged = !NO_ANSWER_REASONS.includes(endedReason) &&
-    (calledByAgent ? true : durationSeconds > 30)
+  const callConnected = CONNECTED_REASONS.has(endedReason)
+  const engaged = callConnected && (calledByAgent ? true : durationSeconds > 30)
 
   if (engaged) {
     const warmStage = stageByName("Warm")
@@ -214,7 +208,9 @@ export async function handleCallOutcome(
     return
   }
 
-  if (!NO_ANSWER_REASONS.includes(endedReason)) return
+  // All non-engaged calls (voicemail, no-answer, error codes, short pick-ups) advance
+  // the lead through the Contacted stages. Do NOT filter on a fixed list of reason codes —
+  // VAPI/Twilio can return unexpected values that would silently break advancement.
 
   // No answer — advance through Contacted stages
   const currentStage = await getCurrentStage(contactId)

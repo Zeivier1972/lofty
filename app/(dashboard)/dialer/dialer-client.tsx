@@ -1,12 +1,12 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useRef, useEffect } from "react"
 import {
   Phone, PhoneOff, PhoneMissed, PhoneCall, PhoneIncoming,
   Play, Pause, SkipForward, Plus, Trash2, Clock,
   CheckCircle2, XCircle, MessageSquare, Voicemail,
   BarChart3, Users, Target, TrendingUp,
-  ChevronDown, ChevronUp, Search, User,
+  ChevronDown, ChevronUp, Search, User, Zap,
 } from "lucide-react"
 import { cn, formatPhone } from "@/lib/utils"
 import HelpPanel from "@/components/help-panel"
@@ -19,6 +19,14 @@ interface Contact {
   phone2: string | null
   status: string
   leadScore: number
+  buyerPropertyType?: string | null
+  buyerLocation?: string | null
+  buyerBedroomsMin?: number | null
+  buyerBathroomsMin?: number | null
+  buyerBudgetMin?: number | null
+  buyerBudgetMax?: number | null
+  buyerTimelineMonths?: number | null
+  buyerPurpose?: string | null
 }
 
 interface DialerCall {
@@ -56,6 +64,26 @@ interface Props {
   pipelineStages: PipelineStage[]
 }
 
+function mapPropertyType(type?: string | null): string {
+  switch (type) {
+    case "SINGLE_FAMILY": return "Casa"
+    case "CONDO": return "Condo"
+    case "TOWNHOUSE": return "Townhouse"
+    case "MULTI_FAMILY": return "Casa"
+    case "LAND": return "Terreno"
+    default: return ""
+  }
+}
+
+function mapTimeline(months?: number | null): string {
+  if (!months) return ""
+  if (months <= 1) return "Lo antes posible"
+  if (months <= 3) return "1-3 meses"
+  if (months <= 6) return "3-6 meses"
+  if (months <= 12) return "6-12 meses"
+  return "1+ año"
+}
+
 const DISPOSITIONS = [
   { value: "REACHED", label: "Reached", icon: CheckCircle2, color: "text-green-600" },
   { value: "VOICEMAIL", label: "Voicemail", icon: Voicemail, color: "text-amber-600" },
@@ -78,11 +106,112 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
   const [callDuration, setCallDuration] = useState(0)
   const [callTimer, setCallTimer] = useState<NodeJS.Timeout | null>(null)
   const [disposition, setDisposition] = useState("")
-  const [callNotes, setCallNotes] = useState("")
+  const [noteFields, setNoteFields] = useState({
+    propertyType: "",
+    area: "",
+    beds: "",
+    baths: "",
+    budgetMin: "",
+    budgetMax: "",
+    timeline: "",
+    purpose: "",
+    actions: [] as string[],
+    extraNotes: "",
+  })
   const [sessionRunning, setSessionRunning] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
+  const [callError, setCallError] = useState<string | null>(null)
   const [addingToQueue, setAddingToQueue] = useState(false)
   const [selectedStage, setSelectedStage] = useState<string>("all")
+  // Auto-dial countdown
+  const [countdown, setCountdown] = useState<number | null>(null)
+  const [autoDialContact, setAutoDialContact] = useState<Contact | null>(null)
+  const countdownRef = useRef<NodeJS.Timeout | null>(null)
+  const AUTO_DIAL_DELAY = 20
+
+  // Trigger dial when autoDialContact is set (runs with fresh state)
+  useEffect(() => {
+    if (!autoDialContact) return
+    const contact = autoDialContact
+    setAutoDialContact(null)
+    dialContact(contact)
+  }, [autoDialContact])
+
+  // Pre-fill notes from stored buyer preferences when the active contact changes
+  useEffect(() => {
+    const contact = queue[currentCallIndex]
+    if (!contact) return
+    setNoteFields({
+      propertyType: mapPropertyType(contact.buyerPropertyType),
+      area: contact.buyerLocation || "",
+      beds: contact.buyerBedroomsMin ? `${contact.buyerBedroomsMin}+` : "",
+      baths: contact.buyerBathroomsMin ? `${contact.buyerBathroomsMin}+` : "",
+      budgetMin: contact.buyerBudgetMin != null ? String(contact.buyerBudgetMin) : "",
+      budgetMax: contact.buyerBudgetMax != null ? String(contact.buyerBudgetMax) : "",
+      timeline: mapTimeline(contact.buyerTimelineMonths),
+      purpose: contact.buyerPurpose || "",
+      actions: [],
+      extraNotes: "",
+    })
+  }, [currentCallIndex, queue])
+
+  function clearCountdown() {
+    if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null }
+    setCountdown(null)
+  }
+
+  function buildNotesString(fields: typeof noteFields): string {
+    const lines: string[] = []
+    if (fields.propertyType) lines.push(`Tipo: ${fields.propertyType}`)
+    if (fields.area) lines.push(`Área: ${fields.area}`)
+    const roomParts = []
+    if (fields.beds) roomParts.push(`${fields.beds} cuartos`)
+    if (fields.baths) roomParts.push(`${fields.baths} baños`)
+    if (roomParts.length) lines.push(roomParts.join(", "))
+    if (fields.budgetMin || fields.budgetMax) {
+      const min = fields.budgetMin ? `$${Number(fields.budgetMin).toLocaleString()}` : ""
+      const max = fields.budgetMax ? `$${Number(fields.budgetMax).toLocaleString()}` : ""
+      lines.push(`Presupuesto: ${[min, max].filter(Boolean).join(" – ")}`)
+    }
+    if (fields.timeline) lines.push(`Plazo: ${fields.timeline}`)
+    if (fields.purpose) lines.push(`Propósito: ${fields.purpose}`)
+    if (fields.actions.length > 0) {
+      lines.push("")
+      lines.push("INSTRUCCIONES PARA SOFÍA:")
+      if (fields.actions.includes("send_email")) lines.push("- Envía un email con propiedades que coincidan con los criterios al inicio de la llamada")
+      if (fields.actions.includes("create_task")) lines.push("- Crea una tarea de seguimiento para Catherine después de la llamada")
+      if (fields.actions.includes("send_document")) lines.push("- Envía un brochure o documento informativo al lead")
+    }
+    if (fields.extraNotes) {
+      lines.push("")
+      lines.push(fields.extraNotes)
+    }
+    return lines.join("\n").trim()
+  }
+
+  function startAutoDialCountdown(nextIdx: number, contact: Contact) {
+    clearCountdown()
+    let remaining = AUTO_DIAL_DELAY
+    setCountdown(remaining)
+    countdownRef.current = setInterval(() => {
+      remaining--
+      if (remaining <= 0) {
+        clearInterval(countdownRef.current!)
+        countdownRef.current = null
+        setCountdown(null)
+        setCurrentCallIndex(nextIdx)
+        setCallStatus("idle")
+        setAutoDialContact(contact)
+      } else {
+        setCountdown(remaining)
+      }
+    }, 1000)
+  }
+
+  function skipCountdown() {
+    clearCountdown()
+    nextCall()
+  }
 
   const filteredContacts = contacts.filter(c => {
     const name = `${c.firstName} ${c.lastName}`.toLowerCase()
@@ -137,8 +266,9 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
   async function dialContact(contact: Contact) {
     if (!contact.phone) return
     setCallStatus("calling")
+    setCallError(null)
     setDisposition("")
-    setCallNotes("")
+    setNoteFields({ propertyType: "", area: "", beds: "", baths: "", budgetMin: "", budgetMax: "", timeline: "", purpose: "", actions: [], extraNotes: "" })
 
     let session = activeSession
     if (!session) { session = await createSession() }
@@ -155,11 +285,17 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
         }),
       })
       const data = await res.json()
+      if (data.status === "FAILED" || data.error) {
+        setCallError(data.error || "Call failed to connect")
+        setCallStatus("idle")
+        return
+      }
       setActiveCallId(data.callId)
       setActiveTwilioSid(data.twilioSid)
       setCallStatus("connected")
       startTimer()
-    } catch {
+    } catch (e: any) {
+      setCallError(e.message || "Network error — call could not be placed")
       setCallStatus("idle")
     }
   }
@@ -168,6 +304,15 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
     stopTimer()
     if (!activeCallId) { setCallStatus("idle"); return }
 
+    // Terminate the Twilio call on Twilio's side first so the line is freed
+    if (activeTwilioSid) {
+      fetch("/api/dialer/hangup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ twilioSid: activeTwilioSid }),
+      }).catch(() => {})
+    }
+
     await fetch("/api/dialer/call", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -175,7 +320,7 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
         callId: activeCallId,
         status,
         disposition: disposition || undefined,
-        notes: callNotes || undefined,
+        notes: buildNotesString(noteFields) || undefined,
         duration: callDuration,
       }),
     })
@@ -190,6 +335,13 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
     setCallStatus("ended")
     setActiveCallId(null)
     setActiveTwilioSid(null)
+
+    const nextIdx = currentCallIndex + 1
+    if (sessionRunning && nextIdx < queue.length) {
+      startAutoDialCountdown(nextIdx, queue[nextIdx])
+    } else if (sessionRunning) {
+      setSessionRunning(false)
+    }
   }
 
   async function nextCall() {
@@ -214,6 +366,7 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
   }
 
   function pauseDialing() {
+    clearCountdown()
     setSessionRunning(false)
     if (callStatus === "connected") endCall("COMPLETED")
     else setCallStatus("idle")
@@ -243,6 +396,13 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
         </div>
         <div className="flex items-center gap-3">
           <HelpPanel section="dialer" />
+          {callError && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+              <XCircle className="w-4 h-4 flex-shrink-0" />
+              <span>{callError}</span>
+              <button onClick={() => setCallError(null)} className="ml-1 hover:text-red-900">✕</button>
+            </div>
+          )}
           <div className={cn("px-3 py-1.5 rounded-full text-sm font-medium", statusColor)}>
             {callStatusLabel}
             {callStatus === "connected" && (
@@ -537,7 +697,7 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
           )}
 
           {/* Disposition + Notes (shown when call is active or ended) */}
-          {(callStatus === "connected" || callStatus === "ended") && (
+          {queue[currentCallIndex] && (
             <div className="bg-white border-b px-6 py-4">
               <div className="mb-3">
                 <label className="text-sm font-semibold text-gray-700 mb-2 block">Call Disposition</label>
@@ -560,27 +720,166 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
                 </div>
               </div>
               <div>
-                <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Call Notes</label>
-                <textarea
-                  value={callNotes}
-                  onChange={e => setCallNotes(e.target.value)}
-                  placeholder="Add notes about this call..."
-                  rows={2}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-lofty-500 resize-none"
-                />
+                <label className="text-sm font-semibold text-gray-700 mb-2 block">Lead Notes</label>
+                <div className="space-y-2">
+                  {/* Property type + area */}
+                  <div className="flex gap-2">
+                    <select
+                      value={noteFields.propertyType}
+                      onChange={e => setNoteFields(f => ({ ...f, propertyType: e.target.value }))}
+                      className="flex-1 text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-lofty-500 bg-white"
+                    >
+                      <option value="">Tipo de propiedad...</option>
+                      <option>Casa</option>
+                      <option>Apartamento</option>
+                      <option>Townhouse</option>
+                      <option>Condo</option>
+                      <option>Terreno</option>
+                    </select>
+                    <input
+                      type="text"
+                      placeholder="Área / Zona..."
+                      value={noteFields.area}
+                      onChange={e => setNoteFields(f => ({ ...f, area: e.target.value }))}
+                      className="flex-1 text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-lofty-500"
+                    />
+                  </div>
+                  {/* Beds + baths + timeline */}
+                  <div className="flex gap-2">
+                    <select
+                      value={noteFields.beds}
+                      onChange={e => setNoteFields(f => ({ ...f, beds: e.target.value }))}
+                      className="flex-1 text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-lofty-500 bg-white"
+                    >
+                      <option value="">Cuartos</option>
+                      {["1+","2+","3+","4+","5+"].map(v => <option key={v}>{v}</option>)}
+                    </select>
+                    <select
+                      value={noteFields.baths}
+                      onChange={e => setNoteFields(f => ({ ...f, baths: e.target.value }))}
+                      className="flex-1 text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-lofty-500 bg-white"
+                    >
+                      <option value="">Baños</option>
+                      {["1+","2+","3+","4+"].map(v => <option key={v}>{v}</option>)}
+                    </select>
+                    <select
+                      value={noteFields.timeline}
+                      onChange={e => setNoteFields(f => ({ ...f, timeline: e.target.value }))}
+                      className="flex-1 text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-lofty-500 bg-white"
+                    >
+                      <option value="">Plazo...</option>
+                      <option>Lo antes posible</option>
+                      <option>1-3 meses</option>
+                      <option>3-6 meses</option>
+                      <option>6-12 meses</option>
+                      <option>1+ año</option>
+                    </select>
+                  </div>
+                  {/* Budget */}
+                  <div className="flex gap-2 items-center">
+                    <span className="text-xs text-gray-400 flex-shrink-0">$</span>
+                    <input
+                      type="number"
+                      placeholder="Presupuesto mín"
+                      value={noteFields.budgetMin}
+                      onChange={e => setNoteFields(f => ({ ...f, budgetMin: e.target.value }))}
+                      className="flex-1 text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-lofty-500"
+                    />
+                    <span className="text-xs text-gray-400">–</span>
+                    <input
+                      type="number"
+                      placeholder="Presupuesto máx"
+                      value={noteFields.budgetMax}
+                      onChange={e => setNoteFields(f => ({ ...f, budgetMax: e.target.value }))}
+                      className="flex-1 text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-lofty-500"
+                    />
+                  </div>
+                  {/* Purpose */}
+                  <select
+                    value={noteFields.purpose}
+                    onChange={e => setNoteFields(f => ({ ...f, purpose: e.target.value }))}
+                    className="w-full text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-lofty-500 bg-white"
+                  >
+                    <option value="">Propósito de compra...</option>
+                    <option>Vivienda personal</option>
+                    <option>Inversión Airbnb</option>
+                    <option>Alquiler largo plazo</option>
+                    <option>Inversión para revender</option>
+                    <option>Para la familia</option>
+                  </select>
+                  {/* Sofia actions */}
+                  <div className="border border-indigo-100 bg-indigo-50 rounded-lg p-2">
+                    <p className="text-xs font-semibold text-indigo-700 mb-1.5">Acciones para Sofía:</p>
+                    <div className="space-y-1">
+                      {[
+                        { key: "send_email", label: "Enviar propiedades por email" },
+                        { key: "create_task", label: "Crear tarea de seguimiento" },
+                        { key: "send_document", label: "Enviar brochure/documento" },
+                      ].map(action => (
+                        <label key={action.key} className="flex items-center gap-2 text-xs cursor-pointer text-indigo-800">
+                          <input
+                            type="checkbox"
+                            checked={noteFields.actions.includes(action.key)}
+                            onChange={e => setNoteFields(f => ({
+                              ...f,
+                              actions: e.target.checked
+                                ? [...f.actions, action.key]
+                                : f.actions.filter(a => a !== action.key),
+                            }))}
+                            className="w-3 h-3"
+                          />
+                          {action.label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Extra notes */}
+                  <textarea
+                    value={noteFields.extraNotes}
+                    onChange={e => setNoteFields(f => ({ ...f, extraNotes: e.target.value }))}
+                    placeholder="Notas adicionales..."
+                    rows={2}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-lofty-500 resize-none"
+                  />
+                </div>
               </div>
               {callStatus === "ended" && (
-                <div className="flex items-center justify-between mt-3">
-                  <button
-                    onClick={nextCall}
-                    className="flex items-center gap-2 px-4 py-2 bg-lofty-600 text-white rounded-lg hover:bg-lofty-700 text-sm font-medium"
-                  >
-                    <SkipForward className="w-4 h-4" />
-                    {currentCallIndex < queue.length - 1 ? "Next Contact" : "Finish Session"}
-                  </button>
-                  <span className="text-sm text-gray-500">
-                    Duration: <strong>{formatDuration(callDuration)}</strong>
-                  </span>
+                <div className="mt-3 space-y-3">
+                  {countdown !== null ? (
+                    <div className="bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3 flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">Auto-dialing next in…</p>
+                        <div className="text-3xl font-bold text-indigo-800 tabular-nums">{countdown}s</div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={skipCountdown}
+                          className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700"
+                        >
+                          <Zap className="w-3.5 h-3.5" /> Dial Now
+                        </button>
+                        <button
+                          onClick={() => { clearCountdown(); setSessionRunning(false) }}
+                          className="px-3 py-2 border border-gray-300 text-sm rounded-lg hover:bg-gray-50 text-gray-600"
+                        >
+                          Pause
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between">
+                      <button
+                        onClick={nextCall}
+                        className="flex items-center gap-2 px-4 py-2 bg-lofty-600 text-white rounded-lg hover:bg-lofty-700 text-sm font-medium"
+                      >
+                        <SkipForward className="w-4 h-4" />
+                        {currentCallIndex < queue.length - 1 ? "Next Contact" : "Finish Session"}
+                      </button>
+                      <span className="text-sm text-gray-500">
+                        Duration: <strong>{formatDuration(callDuration)}</strong>
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

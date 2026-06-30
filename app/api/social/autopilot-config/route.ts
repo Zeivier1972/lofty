@@ -21,11 +21,14 @@ export async function GET() {
 export async function PATCH(req: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  const { isEnabled } = await req.json()
+  const body = await req.json()
   const config = await getConfig()
+  const data: Record<string, boolean> = {}
+  if (typeof body.isEnabled === "boolean") data.isEnabled = body.isEnabled
+  if (typeof body.videoEnabled === "boolean") data.videoEnabled = body.videoEnabled
   const updated = await prisma.socialAutoPilotConfig.update({
     where: { id: config.id },
-    data: { isEnabled: Boolean(isEnabled) },
+    data,
   })
   return NextResponse.json(updated)
 }

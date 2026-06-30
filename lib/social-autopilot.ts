@@ -15,12 +15,19 @@ import { v2 as cloudinary } from "cloudinary"
 import { prisma } from "@/lib/prisma"
 import { researchViralContent, buildAIOSystemPrompt, ResearchBrief } from "./content-research"
 import { uploadVideoToYouTube } from "./youtube-upload"
+import { fetchSceneVideoUrl, getFallbackBackground } from "./pexels-video"
+import { generateGuideFromScript } from "./generate-guide"
 
 // ─── SDK init ────────────────────────────────────────────────────────────────
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+// Lazy so Docker build (no env vars) doesn't throw during module load
+let _openai: OpenAI | null = null
+function getOpenAI(): OpenAI {
+  if (!_openai) _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  return _openai
+}
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -136,7 +143,8 @@ const PLATFORM_GUIDES: Record<string, string> = {
 async function generateContent(
   platform: string,
   dayOfWeek: number,
-  research?: ResearchBrief
+  research?: ResearchBrief,
+  blogUrl?: string | null
 ): Promise<string> {
   // For YouTube, use pre-built SEO description from research brief
   if (platform === "YOUTUBE" && research?.youtubeDescription) {
@@ -157,6 +165,10 @@ async function generateContent(
     ? `\n\nGancho de apertura (usa esta primera línea exactamente o adáptala mínimamente): "${research.viralHook}"\nÁngulo de engagement: ${research.engagementAngle}`
     : ""
 
+  const blogInstruction = blogUrl
+    ? `\n\nAl final del post, invita a leer el artículo completo con esta línea (OBLIGATORIO — incluye el link exacto):\n👉 Lee el artículo completo aquí: ${blogUrl}`
+    : ""
+
   const userPrompt = `Escribe un post de redes sociales sobre el tema del día: ${theme}.${hookInstruction}
 
 Palabras clave SEO que DEBES incluir de forma natural (2-3 de ellas): ${keywords.join(", ")}.
@@ -164,6 +176,7 @@ Palabras clave SEO que DEBES incluir de forma natural (2-3 de ellas): ${keywords
 Audiencia objetivo: ${research?.targetAudience ?? "compradores e inversores hispanohablantes en South Florida"}.
 
 ${platformGuide}
+${blogInstruction}
 
 Escribe SOLO el contenido del post, listo para publicar. Sin explicaciones, sin preámbulos, sin etiquetas como "Post:" o "Caption:". Solo el texto del post.`
 
@@ -178,19 +191,92 @@ Escribe SOLO el contenido del post, listo para publicar. Sin explicaciones, sin 
   return content.trim()
 }
 
+// ─── Image deduplication helpers ─────────────────────────────────────────────
+
+// 20-image fallback pool covering diverse Miami property types
+const FALLBACK_IMAGES = [
+  // Luxury homes with pools
+  "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1080&q=80",
+  "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1080&q=80",
+  "https://images.unsplash.com/photo-1613977257365-aaae5a9817ff?w=1080&q=80",
+  "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=1080&q=80",
+  // Modern home exteriors
+  "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1080&q=80",
+  "https://images.unsplash.com/photo-1570129477492-45c003edd2be?w=1080&q=80",
+  "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=1080&q=80",
+  "https://images.unsplash.com/photo-1583608205776-bfd35f0d9f83?w=1080&q=80",
+  "https://images.unsplash.com/photo-1600047508788-786f3865b911?w=1080&q=80",
+  "https://images.unsplash.com/photo-1598928506311-c55ded91a20c?w=1080&q=80",
+  // Miami skyline / condo towers
+  "https://images.unsplash.com/photo-1533106497176-45ae19e68ba2?w=1080&q=80",
+  "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=1080&q=80",
+  // Luxury interiors
+  "https://images.unsplash.com/photo-1484154218962-a197022b5858?w=1080&q=80",
+  "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=1080&q=80",
+  "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=1080&q=80",
+  "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=1080&q=80",
+  // Additional luxury homes — varied angles
+  "https://images.unsplash.com/photo-1449844908441-8829872d2607?w=1080&q=80",
+  "https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=1080&q=80",
+  "https://images.unsplash.com/photo-1493809842364-78817add7ffb?w=1080&q=80",
+  "https://images.unsplash.com/photo-1541123437800-1bb1317badc2?w=1080&q=80",
+]
+
+async function getRecentlyUsedMediaUrls(): Promise<Set<string>> {
+  const since = new Date(Date.now() - 30 * 86400000)
+  const posts = await prisma.socialPost.findMany({
+    where: { mediaUrl: { not: null }, publishedAt: { gte: since } },
+    select: { mediaUrl: true },
+  })
+  return new Set(posts.map(p => p.mediaUrl!).filter(Boolean))
+}
+
+function pickUnusedFallback(usedUrls: Set<string>): string {
+  const unused = FALLBACK_IMAGES.filter(url => !usedUrls.has(url))
+  const pool = unused.length > 0 ? unused : FALLBACK_IMAGES
+  return pool[Math.floor(Math.random() * pool.length)]
+}
+
+// Photo variety arrays to make each DALL-E prompt unique
+const PHOTO_ANGLES = [
+  "aerial drone perspective", "street-level view", "golden hour twilight shot",
+  "poolside view looking up", "rooftop terrace vantage point",
+  "wide-angle interior living area", "balcony view of city skyline",
+  "driveway approach shot", "garden patio perspective",
+]
+
+const PHOTO_SUBJECTS = [
+  "Brickell high-rise luxury condo", "Coral Gables Mediterranean estate",
+  "Doral family home with pool", "Coconut Grove waterfront villa",
+  "Aventura oceanfront high-rise", "Homestead modern suburban home",
+  "Edgewater bay-view apartment building", "South Beach Art Deco property",
+  "Key Biscayne luxury waterfront home", "Wynwood modern loft building",
+  "Sunny Isles Beach tower", "Kendall single-family home with palm trees",
+]
+
 // ─── Image generation with DALL-E → Cloudinary ───────────────────────────────
 
-async function generateAndUploadImage(dayOfWeek: number, research?: ResearchBrief): Promise<string | null> {
+async function generateAndUploadImage(
+  dayOfWeek: number,
+  research?: ResearchBrief,
+  usedUrls = new Set<string>()
+): Promise<string | null> {
   const theme = research?.trendingTopic ?? DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
 
   try {
-    const imagePrompt = `Professional Miami real estate photography, theme: ${theme}. Luxury properties, blue sky, palm trees, modern architecture. Photorealistic, bright daylight, no text or watermarks.`
+    const now = new Date()
+    const dateStr = now.toISOString().slice(0, 10)
+    const angle = PHOTO_ANGLES[Math.floor(Math.random() * PHOTO_ANGLES.length)]
+    const subject = PHOTO_SUBJECTS[Math.floor(Math.random() * PHOTO_SUBJECTS.length)]
 
-    const response = await openai.images.generate({
-      model: "gpt-image-1",
+    const imagePrompt = `Professional South Florida real estate photography. Subject: ${subject}. Perspective: ${angle}. Thematic context: ${theme}. Clear blue sky, lush tropical landscaping, modern architecture, bright natural daylight. Ultra-realistic, no text, no watermarks, no people. Date reference: ${dateStr}.`
+
+    const response = await getOpenAI().images.generate({
+      model: "dall-e-3",
       prompt: imagePrompt,
       n: 1,
       size: "1024x1024",
+      response_format: "b64_json",
     } as any)
 
     const b64 = (response.data as any[])?.[0]?.b64_json
@@ -210,25 +296,47 @@ async function generateAndUploadImage(dayOfWeek: number, research?: ResearchBrie
 
 // ─── HeyGen video generation ──────────────────────────────────────────────────
 
-async function generateVideoScript(dayOfWeek: number, research?: ResearchBrief): Promise<string> {
+export async function generateVideoScript(dayOfWeek: number, research?: ResearchBrief): Promise<string> {
   const theme = research?.trendingTopic ?? DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
-  const keywords = research?.additionalKeywords?.slice(0, 2) ?? pickKeywords(dayOfWeek).slice(0, 2)
+  const keywords = research?.additionalKeywords?.slice(0, 3) ?? pickKeywords(dayOfWeek)
   const hook = research?.viralHook
 
-  const hookLine = hook ? `\n\nCOMIENZA con esta línea exacta o muy parecida: "${hook}"` : ""
+  const hookLine = hook
+    ? `\nUSA ESTA PRIMERA LÍNEA EXACTA o muy similar (es el hook viral): "${hook}"`
+    : ""
 
   const message = await anthropic.messages.create({
     model: "claude-haiku-4-5-20251001",
-    max_tokens: 512,
-    system: `Eres Catherine Gomez, Realtor en Miami. Escribes scripts de video cortos en español, naturales para hablar en cámara. Tu objetivo es viralidad y retención máxima.`,
+    max_tokens: 600,
+    system: `Eres la estratega de contenido viral de Catherine Gomez, Realtor en Miami con 15 años en South Florida.
+Escribes scripts de video SHORT-FORM (TikTok/Reels/YouTube Shorts) que:
+1. PARAN el scroll en los primeros 3 segundos — hook impactante, pregunta o dato que nadie espera
+2. Crean tensión narrativa que retiene al espectador hasta el CTA final
+3. Incluyen keywords habladas para SEO de audio (YouTube transcribe cada palabra)
+4. Responden preguntas específicas que ChatGPT y Perplexity listarían como respuesta experta (AIO)
+5. Terminan con un CTA de comentario muy específico que genera engagement medible
+
+Catherine habla en español natural, primera persona, tono cercano y de autoridad real. Nunca genérica.`,
     messages: [
       {
         role: "user",
-        content: `Escribe un script de video de 50 segundos (aproximadamente 120-130 palabras) sobre: ${theme}.${hookLine}
+        content: `Escribe un script de video de EXACTAMENTE 4 escenas sobre: "${theme}".${hookLine}
 
-Incluye de forma natural: ${keywords.join(", ")}.
-El tono es cercano, profesional y directo. Termina con una CTA hablada (ej: "escríbeme al…" o "visita mi perfil").
-Escribe SOLO el texto que dirá la persona en el video. Sin acotaciones de escena, sin instrucciones, sin corchetes.`,
+ESTRUCTURA OBLIGATORIA — separa cada escena con una línea en blanco:
+
+ESCENA 1 - HOOK (20-25 palabras):
+Pregunta impactante O dato sorprendente O afirmación contraintuitiva. Ejemplo: "¿Sabías que el 70% de los colombianos que compraron en Miami hace 5 años ya duplicaron su inversión?" — la primera oración decide si el espectador se queda o hace scroll.
+
+ESCENA 2 - PROBLEMA/TENSIÓN (25-30 palabras):
+El dolor real: por qué este problema le está costando dinero al espectador AHORA MISMO. Crea urgencia.
+
+ESCENA 3 - SOLUCIÓN + CREDENCIAL (45-55 palabras):
+Empieza con "Soy Catherine Gomez, Realtor en Miami." + dato específico del mercado de South Florida que demuestra expertise + exactamente cómo ella resuelve este problema para familias hispanas. Incluye naturalmente: ${keywords.join(", ")}.
+
+ESCENA 4 - CTA ESPECÍFICO (20-25 palabras):
+"Comenta '[KEYWORD]' abajo" donde [KEYWORD] es UNA PALABRA en español todo en mayúsculas que resuma el tema del video (ejemplos: INVERSIÓN, CREDITO, HIPOTECA, CALIFICA, VENDEDOR, RENTAR, MIAMI — inventa la que sea más relevante para este guión específico). Explica exactamente qué van a recibir (guía gratis, los números reales, paso a paso).
+
+Devuelve SOLO las 4 escenas en texto corrido. Sin etiquetas "ESCENA X", sin corchetes, sin acotaciones. Solo el texto que Catherine dice, separado por una línea en blanco entre cada escena.`,
       },
     ],
   })
@@ -243,34 +351,50 @@ interface HeyGenAvatar {
   preview_image_url?: string
 }
 
-// The 3 confirmed talking_photo avatars — rotate by day of week.
+// Catherine Gomez "8 looks" talking_photo avatar IDs — hardcoded, rotate by day of week.
 const CATHERINE_TALKING_PHOTO_IDS: string[] = [
-  "701d93d2d1834f2589a987aaf701720d", // Catherine Face Swap Avatar
-  "f2bf0415eb4f4185b37673d3c876423c", // Catherine Gomez Avatar
-  "2238f900a2284f5c813fc1460fabb299", // Catherine
+  "ab393d45f3044a89b92fc77d17f321b7",
+  "28e35d5f82f64101a2584fb29e841a88",
+  "ad3b10e46ce44ad8b9a9931f65e151cf",
+  "7ec891d9cc9f43ffa0f38f67d945d38f",
+  "0215c5d293fb4c89b42130da184ded5b",
+  "bc75573c848f42218ee27d37e623a4e6",
+  "701d93d2d1834f2589a987aaf701720d",
+  "f2bf0415eb4f4185b37673d3c876423c",
+  "310728040e89413aa1c5b04ebb8bb9d3",
 ]
 
-// Pick one of Catherine's confirmed talking_photo avatars, rotating by day.
+// Pick one of Catherine's talking_photo avatars. Prefers "8 looks" (user-preferred),
+// then falls back to hardcoded IDs, then any avatar with "catherine" in the name.
 function pickCatherineAvatar(
   talkingPhotos: HeyGenAvatar[],
   dayOfWeek: number
 ): string | null {
-  const idSet = new Set(CATHERINE_TALKING_PHOTO_IDS)
+  // 1st priority: "Catherine Gomez 8 looks" (preferred by user)
+  const eightLooks = talkingPhotos.filter(tp =>
+    tp.avatar_name?.toLowerCase().includes("8 looks") ||
+    tp.avatar_name?.toLowerCase().includes("8looks")
+  )
+  if (eightLooks.length > 0) {
+    const pick = eightLooks[dayOfWeek % eightLooks.length]
+    console.log(`[social-autopilot] Using "8 looks" avatar: "${pick.avatar_name}" (${pick.avatar_id})`)
+    return pick.avatar_id
+  }
 
-  // Build ordered list in the order defined above (most preferred first)
+  // 2nd priority: hardcoded confirmed IDs
+  const idSet = new Set(CATHERINE_TALKING_PHOTO_IDS)
   const personal: HeyGenAvatar[] = []
   for (const id of CATHERINE_TALKING_PHOTO_IDS) {
     const found = talkingPhotos.find(tp => tp.avatar_id === id)
     if (found) personal.push(found)
   }
-
   if (personal.length > 0) {
     const pick = personal[dayOfWeek % personal.length]
     console.log(`[social-autopilot] Using talking_photo avatar: "${pick.avatar_name}" (${pick.avatar_id})`)
     return pick.avatar_id
   }
 
-  // Fallback: any talking_photo whose name contains "catherine" (catches newly added looks)
+  // 3rd priority: any avatar whose name contains "catherine"
   const byName = talkingPhotos.filter(tp =>
     tp.avatar_name?.toLowerCase().includes("catherine") ||
     tp.avatar_name?.toLowerCase().includes("confident realtor")
@@ -281,7 +405,14 @@ function pickCatherineAvatar(
     return pick.avatar_id
   }
 
-  console.warn("[social-autopilot] No Catherine talking_photo found — no video will be generated")
+  // Last resort: any available talking_photo
+  if (talkingPhotos.length > 0) {
+    const pick = talkingPhotos[dayOfWeek % talkingPhotos.length]
+    console.warn(`[social-autopilot] No Catherine avatar matched — using first available: "${pick.avatar_name}" (${pick.avatar_id}). Add its ID to CATHERINE_TALKING_PHOTO_IDS to confirm it.`)
+    return pick.avatar_id
+  }
+
+  console.warn("[social-autopilot] No talking_photos found in HeyGen account — no video will be generated")
   return null
 }
 
@@ -290,57 +421,71 @@ async function getHeyGenAvatar(dayOfWeek: number): Promise<{ avatarId: string; v
   if (!apiKey) return null
 
   try {
-    const [avatarsRes, voicesRes] = await Promise.all([
-      fetch("https://api.heygen.com/v2/avatars", {
-        headers: { "X-Api-Key": apiKey },
-      }),
-      fetch("https://api.heygen.com/v2/voices", {
-        headers: { "X-Api-Key": apiKey },
-      }),
-    ])
+    // Pick Catherine's avatar directly — hardcoded IDs rotate by day of week
+    // (HeyGen API doesn't return these photo avatars in /v2/avatars, so skip the API lookup)
+    const avatarId = CATHERINE_TALKING_PHOTO_IDS[dayOfWeek % CATHERINE_TALKING_PHOTO_IDS.length]
+    console.log(`[social-autopilot] Catherine avatar: look ${(dayOfWeek % CATHERINE_TALKING_PHOTO_IDS.length) + 1} → ${avatarId}`)
 
-    const avatarsData = await avatarsRes.json()
+    // Fetch voices to find Catalina (Catherine's preferred voice in HeyGen)
+    const voicesRes = await fetch("https://api.heygen.com/v2/voices", {
+      headers: { "X-Api-Key": apiKey },
+    })
     const voicesData = await voicesRes.json()
-
-    // Normalize talking_photos field names to match HeyGenAvatar interface
-    const rawTalkingPhotos: any[] = avatarsData?.data?.talking_photos ?? []
-    const talkingPhotos: HeyGenAvatar[] = rawTalkingPhotos.map((tp: any) => ({
-      avatar_id: tp.talking_photo_id || tp.id || tp.avatar_id,
-      avatar_name: tp.talking_photo_name || tp.name || tp.avatar_name,
-      preview_image_url: tp.preview_image_url,
-    })).filter((tp: HeyGenAvatar) => tp.avatar_id)
-
-    console.log(
-      `[social-autopilot] HeyGen avatars: ${avatarsData?.data?.avatars?.length ?? 0} stock, ${talkingPhotos.length} talking_photos`
-    )
-
-    const avatarId = pickCatherineAvatar(talkingPhotos, dayOfWeek)
-    if (!avatarId) return null
-
-    // Prefer a Spanish female voice; fall back to any Spanish; then first available
     const voices: Array<{ voice_id: string; language?: string; locale?: string; gender?: string; name?: string }> =
       voicesData?.data?.voices ?? []
 
-    const spanishFemale = voices.find(
-      v =>
-        (v.language?.toLowerCase().includes("es") || v.locale?.toLowerCase().includes("es")) &&
-        v.gender?.toLowerCase() === "female"
+    if (voices.length === 0) {
+      console.error("[social-autopilot] HeyGen voices empty:", JSON.stringify(voicesData))
+      return null
+    }
+
+    const isSpanish = (v: { language?: string; locale?: string }) =>
+      v.language === "es" || v.locale?.startsWith("es-") || v.locale === "es"
+
+    const catalina = voices.find(v =>
+      v.name?.toLowerCase().includes("catalina") ||
+      v.name?.toLowerCase().includes("catherine")
     )
-    const spanishAny = voices.find(
-      v => v.language?.toLowerCase().includes("es") || v.locale?.toLowerCase().includes("es")
-    )
-    const voiceId = (spanishFemale ?? spanishAny ?? voices[0])?.voice_id
+    const spanishFemale = voices.find(v => isSpanish(v) && v.gender?.toLowerCase() === "female")
+    const spanishAny = voices.find(v => isSpanish(v))
+    const selectedVoice = catalina ?? spanishFemale ?? spanishAny ?? voices[0]
+    const voiceId = selectedVoice?.voice_id
     if (!voiceId) return null
 
-    console.log(
-      `[social-autopilot] Using voice: "${(spanishFemale ?? spanishAny ?? voices[0])?.name}" (${voiceId})`
-    )
-
+    console.log(`[social-autopilot] Voice: "${selectedVoice?.name}" (${voiceId})`)
     return { avatarId, voiceId }
   } catch (err) {
     console.error("[social-autopilot] HeyGen avatar/voice fetch failed:", err)
     return null
   }
+}
+
+
+// Scene 0 = avatar intro (short hook), scenes 1+ = b-roll segments.
+function splitScriptForBRoll(script: string): string[] {
+  const byBlankLine = script
+    .split(/\n\n+/)
+    .map(s => s.replace(/\n/g, " ").trim())
+    .filter(s => s.length > 10)
+  if (byBlankLine.length >= 2 && byBlankLine.length <= 5) return byBlankLine.slice(0, 4)
+
+  const sentences = script.split(/(?<=[.!?¡])\s+/).filter(s => s.trim().length > 0)
+  if (sentences.length <= 2) return [script]
+
+  // Scene 0: first 1-2 sentences as the avatar hook
+  const hookEnd = Math.min(2, Math.ceil(sentences.length * 0.3))
+  const hook = sentences.slice(0, hookEnd).join(" ").trim()
+  const rest = sentences.slice(hookEnd)
+
+  // Remaining: 2-3 b-roll segments
+  const brollCount = Math.min(3, Math.max(1, Math.ceil(rest.length / 2)))
+  const perScene = Math.ceil(rest.length / brollCount)
+  const brolls: string[] = []
+  for (let i = 0; i < brollCount; i++) {
+    const chunk = rest.slice(i * perScene, (i + 1) * perScene).join(" ").trim()
+    if (chunk) brolls.push(chunk)
+  }
+  return [hook, ...brolls]
 }
 
 async function triggerHeyGenVideo(script: string, dayOfWeek: number): Promise<string | null> {
@@ -358,19 +503,43 @@ async function triggerHeyGenVideo(script: string, dayOfWeek: number): Promise<st
       ? { type: "talking_photo", talking_photo_id: avatarInfo.avatarId }
       : { type: "avatar", avatar_id: avatarInfo.avatarId, avatar_style: "normal" }
 
-    const videoInput: Record<string, unknown> = {
-      character,
-      voice: { type: "text", input_text: script, voice_id: avatarInfo.voiceId },
-    }
-    if (!isTalkingPhoto) {
-      videoInput.background = { type: "color", value: "#1E3A5F" }
-    }
+    // Structure: avatar intro → b-roll scenes → avatar outro
+    const scenes = splitScriptForBRoll(script)
+    const videoUrls = await Promise.all(
+      scenes.map((sceneText, i) =>
+        i === 0 || i === scenes.length - 1
+          ? Promise.resolve(null)
+          : fetchSceneVideoUrl(sceneText, "portrait")
+      )
+    )
+
+    const videoInputs = scenes.map((sceneText, i) => {
+      const isFirst = i === 0
+      const isLast = i === scenes.length - 1
+      if (isFirst || isLast) {
+        return {
+          character,
+          voice: { type: "text", input_text: sceneText, voice_id: avatarInfo.voiceId },
+          background: getFallbackBackground(sceneText, i),
+        }
+      }
+      const videoUrl = videoUrls[i]
+      return {
+        voice: { type: "text", input_text: sceneText, voice_id: avatarInfo.voiceId },
+        background: videoUrl
+          ? { type: "video", url: videoUrl, play_style: "fit_to_scene" }
+          : getFallbackBackground(sceneText, i),
+      }
+    })
 
     const payload = {
-      video_inputs: [videoInput],
-      dimension: { width: 1080, height: 1920 },
-      aspect_ratio: "9:16",
+      video_inputs: videoInputs,
+      dimension: { width: 720, height: 1280 },
+      caption: true,
     }
+
+    const brollCount = Math.max(0, scenes.length - 2)
+    console.log(`[social-autopilot] HeyGen — avatar intro + ${brollCount} B-roll + avatar outro, Pexels: ${videoUrls.filter(Boolean).length}/${brollCount}, avatar: ${avatarInfo.avatarId.slice(0, 8)}`)
 
     const res = await fetch("https://api.heygen.com/v2/video/generate", {
       method: "POST",
@@ -382,6 +551,13 @@ async function triggerHeyGenVideo(script: string, dayOfWeek: number): Promise<st
     })
 
     const data = await res.json()
+
+    if (!data?.data?.video_id) {
+      console.error(`[social-autopilot] HeyGen generate failed (HTTP ${res.status}):`, JSON.stringify(data))
+    } else {
+      console.log(`[social-autopilot] HeyGen generate success — video_id: ${data.data.video_id}, scenes: ${scenes.length}`)
+    }
+
     return (data?.data?.video_id as string) ?? null
   } catch (err) {
     console.error("[social-autopilot] HeyGen video generation failed:", err)
@@ -479,7 +655,7 @@ Devuelve SOLO JSON válido con este formato exacto:
   try {
     const message = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 3000,
+      max_tokens: 4096,
       system: systemPrompt,
       messages: [{ role: "user", content: userPrompt }],
     })
@@ -494,16 +670,29 @@ Devuelve SOLO JSON válido con este formato exacto:
 }
 
 async function generateSectionImage(prompt: string, folder = "lofty-blog"): Promise<string | null> {
+  const BLOG_FALLBACKS = [
+    "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1080&q=80",
+    "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1080&q=80",
+    "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1080&q=80",
+    "https://images.unsplash.com/photo-1613977257365-aaae5a9817ff?w=1080&q=80",
+    "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=1080&q=80",
+    "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=1080&q=80",
+    "https://images.unsplash.com/photo-1449844908441-8829872d2607?w=1080&q=80",
+  ]
   try {
-    const response = await openai.images.generate({
-      model: "gpt-image-1",
+    const response = await getOpenAI().images.generate({
+      model: "dall-e-3",
       prompt: `Professional Miami real estate photography. ${prompt}. Luxury properties, blue sky, palm trees, modern architecture. Photorealistic, bright daylight, no text or watermarks.`,
       n: 1,
       size: "1024x1024",
+      response_format: "b64_json",
     } as any)
 
     const b64 = (response.data as any[])?.[0]?.b64_json
-    if (!b64) return null
+    if (!b64) {
+      console.warn("[social-autopilot] DALL-E returned no b64_json, using fallback")
+      return BLOG_FALLBACKS[Math.floor(Math.random() * BLOG_FALLBACKS.length)]
+    }
 
     const uploadResult = await cloudinary.uploader.upload(
       `data:image/png;base64,${b64}`,
@@ -513,14 +702,14 @@ async function generateSectionImage(prompt: string, folder = "lofty-blog"): Prom
     return uploadResult.secure_url
   } catch (err) {
     console.error("[social-autopilot] Section image generation failed:", err)
-    return null
+    return BLOG_FALLBACKS[Math.floor(Math.random() * BLOG_FALLBACKS.length)]
   }
 }
 
-async function publishBlogPost(dayOfWeek: number, research?: ResearchBrief): Promise<boolean> {
+async function publishBlogPost(dayOfWeek: number, research?: ResearchBrief): Promise<{ slug: string; title: string; coverImage: string | null } | null> {
   try {
     const data = await generateBlogPostContent(dayOfWeek, research)
-    if (!data) return false
+    if (!data) return null
 
     const theme = research?.trendingTopic ?? DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
 
@@ -580,20 +769,53 @@ async function publishBlogPost(dayOfWeek: number, research?: ResearchBrief): Pro
     })
 
     console.log(`[social-autopilot] Blog post published: "${data.title}"`)
-
-    // Share the blog post on connected social accounts (Facebook / Instagram)
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
-    const blogUrl = `${appUrl}/site/blog/${slug}`
-    await shareBlogOnSocial(data.title, data.excerpt, blogUrl, coverImage, dayOfWeek, research)
-
-    return true
+    return { slug, title: data.title, coverImage: coverImage ?? null }
   } catch (err) {
     console.error("[social-autopilot] Blog post publish failed:", err)
-    return false
+    return null
   }
 }
 
-async function shareBlogOnSocial(
+export async function publishBlogPostOnly(): Promise<{ ok: boolean; title?: string; error?: string }> {
+  const now = new Date()
+  const dayOfWeek = now.getDay()
+  let research: ResearchBrief | undefined
+  try { research = await researchViralContent(dayOfWeek) } catch {}
+  try {
+    const data = await generateBlogPostContent(dayOfWeek, research)
+    if (!data) return { ok: false, error: "Content generation returned null" }
+
+    const theme = research?.trendingTopic ?? DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
+    const coverPrompt = `${theme}, luxurious Miami waterfront property, golden hour`
+    const [coverImage, sectionImg1, sectionImg2] = await Promise.all([
+      generateSectionImage(coverPrompt, "lofty-blog"),
+      data.sectionImagePrompts?.[0] ? generateSectionImage(data.sectionImagePrompts[0], "lofty-blog") : Promise.resolve(null),
+      data.sectionImagePrompts?.[1] ? generateSectionImage(data.sectionImagePrompts[1], "lofty-blog") : Promise.resolve(null),
+    ])
+
+    let html = data.content
+    html = sectionImg1
+      ? html.replace("[IMG_SECTION_1]", `<figure class="my-8 rounded-2xl overflow-hidden shadow-md"><img src="${sectionImg1}" alt="${data.title}" class="w-full object-cover max-h-80" loading="lazy" /></figure>`)
+      : html.replace("[IMG_SECTION_1]", "")
+    html = sectionImg2
+      ? html.replace("[IMG_SECTION_2]", `<figure class="my-8 rounded-2xl overflow-hidden shadow-md"><img src="${sectionImg2}" alt="${data.title}" class="w-full object-cover max-h-80" loading="lazy" /></figure>`)
+      : html.replace("[IMG_SECTION_2]", "")
+
+    const baseSlug = data.title.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
+    const slug = `${baseSlug}-${Date.now()}`
+
+    await prisma.blogPost.create({
+      data: { title: data.title, slug, excerpt: data.excerpt, content: html, coverImage, author: "Catherine Gomez", tags: JSON.stringify(data.tags), featured: false, published: true, publishedAt: new Date() },
+    })
+    console.log(`[social-autopilot] Blog-only post published: "${data.title}"`)
+    return { ok: true, title: data.title }
+  } catch (err: any) {
+    console.error("[social-autopilot] Blog-only publish failed:", err)
+    return { ok: false, error: err?.message ?? String(err) }
+  }
+}
+
+export async function shareBlogOnSocial(
   title: string,
   excerpt: string,
   blogUrl: string,
@@ -623,10 +845,17 @@ async function shareBlogOnSocial(
           ],
         })
 
-        const postContent =
+        let postContent =
           message.content[0].type === "text"
             ? message.content[0].text.trim()
             : `📖 Nuevo artículo: ${title}\n\n${excerpt}\n\n👉 Leer más: ${blogUrl}`
+
+        // Always guarantee the full URL appears at the end — Claude sometimes truncates long slugs
+        if (!postContent.includes(blogUrl)) {
+          // Remove any partial/truncated version of the URL Claude may have written
+          postContent = postContent.replace(/https?:\/\/\S+/g, "").trimEnd()
+          postContent = `${postContent}\n\n👉 ${blogUrl}`
+        }
 
         const fakePost: PostLike = {
           id: `blog-share-${Date.now()}`,
@@ -636,10 +865,18 @@ async function shareBlogOnSocial(
           prompt: null,
         }
 
+        let blogPostExternalId: string | null = null
         if (account.platform === "FACEBOOK") {
-          await publishToFacebook(account, fakePost)
+          blogPostExternalId = await publishToFacebook(account, fakePost)
         } else if (account.platform === "INSTAGRAM" && coverImage) {
-          await publishToInstagram(account, fakePost)
+          blogPostExternalId = await publishToInstagram(account, fakePost)
+        }
+
+        // Auto-comment for engagement
+        if (blogPostExternalId && account.accessToken) {
+          const comment = await generateEngagementComment(account.platform, postContent)
+          if (account.platform === "FACEBOOK") postFacebookComment(blogPostExternalId, account.accessToken, comment)
+          else postInstagramComment(blogPostExternalId, account.accessToken, comment)
         }
 
         await prisma.socialPost.create({
@@ -663,52 +900,135 @@ async function shareBlogOnSocial(
   }
 }
 
-// ─── checkHeygenVideos — polls pending video posts ───────────────────────────
+// ─── checkHeygenVideos — polls HeyGen → Creatomate captions → publish ────────
 
 export async function checkHeygenVideos(): Promise<{ checked: number; completed: number }> {
   const apiKey = process.env.HEYGEN_API_KEY
   if (!apiKey) return { checked: 0, completed: 0 }
 
-  const pendingPosts = await prisma.socialPost.findMany({
+  const creatomateKey = process.env.CREATOMATE_API_KEY
+  let checked = 0
+  let completed = 0
+
+  // ── Step A: HeyGen → Creatomate (or direct publish if no Creatomate key) ──
+  const heygenPending = await prisma.socialPost.findMany({
     where: { status: "GENERATING_VIDEO", externalId: { not: null } },
     include: { account: true },
   })
+  checked += heygenPending.length
 
-  let completed = 0
-
-  for (const post of pendingPosts) {
+  for (const post of heygenPending) {
     try {
       const res = await fetch(
         `https://api.heygen.com/v1/video_status.get?video_id=${post.externalId}`,
         { headers: { "X-Api-Key": apiKey } }
       )
       const data = await res.json()
-      const status: string | undefined = data?.data?.status
+      const heygenStatus: string | undefined = data?.data?.status
       const videoUrl: string | undefined = data?.data?.video_url
 
-      if (status === "completed" && videoUrl) {
-        await prisma.socialPost.update({
-          where: { id: post.id },
-          data: { status: "SCHEDULED", mediaUrl: videoUrl },
-        })
-
-        if (post.account) {
-          await publishPost(post, post.account)
+      if (heygenStatus === "completed" && videoUrl) {
+        if (creatomateKey) {
+          // Pipe through Creatomate for kinetic captions before publishing
+          const ctRes = await fetch("https://api.creatomate.com/v1/renders", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${creatomateKey}` },
+            body: JSON.stringify({
+              source: {
+                output_format: "mp4",
+                frame_rate: 30,
+                width: 720,
+                height: 1280,
+                elements: [
+                  { id: "main-video", type: "video", source: videoUrl, fit: "cover", time: 0, duration: "auto" },
+                  {
+                    type: "text",
+                    transcript: true,
+                    transcript_source: "main-video",
+                    transcript_effect: "highlight",
+                    transcript_placement: "word",
+                    transcript_highlight_color: "#FFD700",
+                    font_family: "Montserrat",
+                    font_weight: "800",
+                    font_size: "7.5vh",
+                    fill_color: "#FFFFFF",
+                    stroke_color: "#000000",
+                    stroke_width: "0.04em",
+                    text_transform: "uppercase",
+                    x: "50%",
+                    y: "82%",
+                    width: "88%",
+                    height: "auto",
+                  },
+                ],
+              },
+            }),
+          })
+          const ctData = await ctRes.json()
+          const ctRender = Array.isArray(ctData) ? ctData[0] : ctData
+          if (ctRender?.id) {
+            await prisma.socialPost.update({
+              where: { id: post.id },
+              data: { status: "CAPTIONS_PENDING", externalId: `cm_${ctRender.id}`, mediaUrl: videoUrl },
+            })
+            console.log(`[social-autopilot] HeyGen done → Creatomate captions started (${ctRender.id}) for post ${post.id}`)
+          } else {
+            // Creatomate submission failed — publish raw HeyGen video as fallback
+            console.warn("[social-autopilot] Creatomate submission failed, publishing HeyGen video directly")
+            await prisma.socialPost.update({ where: { id: post.id }, data: { status: "SCHEDULED", mediaUrl: videoUrl } })
+            if (post.account) await publishPost({ ...post, mediaUrl: videoUrl }, post.account)
+            completed++
+          }
+        } else {
+          // No Creatomate key — publish HeyGen video directly
+          await prisma.socialPost.update({ where: { id: post.id }, data: { status: "SCHEDULED", mediaUrl: videoUrl } })
+          if (post.account) await publishPost({ ...post, mediaUrl: videoUrl }, post.account)
+          completed++
         }
-
-        completed++
-      } else if (status === "failed") {
-        await prisma.socialPost.update({
-          where: { id: post.id },
-          data: { status: "FAILED" },
-        })
+      } else if (heygenStatus === "failed") {
+        await prisma.socialPost.update({ where: { id: post.id }, data: { status: "FAILED" } })
       }
     } catch (err) {
-      console.error(`[social-autopilot] HeyGen status check failed for post ${post.id}:`, err)
+      console.error(`[social-autopilot] HeyGen check failed for post ${post.id}:`, err)
     }
   }
 
-  return { checked: pendingPosts.length, completed }
+  // ── Step B: Poll Creatomate renders and publish when done ─────────────────
+  if (creatomateKey) {
+    const captionsPending = await prisma.socialPost.findMany({
+      where: { status: "CAPTIONS_PENDING", externalId: { startsWith: "cm_" } },
+      include: { account: true },
+    })
+    checked += captionsPending.length
+
+    for (const post of captionsPending) {
+      try {
+        const renderId = post.externalId!.replace(/^cm_/, "")
+        const ctRes = await fetch(`https://api.creatomate.com/v1/renders/${renderId}`, {
+          headers: { Authorization: `Bearer ${creatomateKey}` },
+        })
+        const ctData = await ctRes.json()
+        const ctRender = Array.isArray(ctData) ? ctData[0] : ctData
+
+        if (ctRender?.status === "succeeded" && ctRender.url) {
+          await prisma.socialPost.update({ where: { id: post.id }, data: { status: "SCHEDULED", mediaUrl: ctRender.url } })
+          if (post.account) await publishPost({ ...post, mediaUrl: ctRender.url }, post.account)
+          console.log(`[social-autopilot] Kinetic captions done → published post ${post.id}`)
+          completed++
+        } else if (ctRender?.status === "failed") {
+          // Creatomate failed — fall back to publishing the raw HeyGen video already stored in mediaUrl
+          console.warn(`[social-autopilot] Creatomate render failed for post ${post.id} — publishing HeyGen video as fallback`)
+          if (post.account && post.mediaUrl) await publishPost(post, post.account)
+          else await prisma.socialPost.update({ where: { id: post.id }, data: { status: "FAILED" } })
+          completed++
+        }
+      } catch (err) {
+        console.error(`[social-autopilot] Creatomate caption check failed for post ${post.id}:`, err)
+      }
+    }
+  }
+
+  return { checked, completed }
 }
 
 // ─── publishPost — platform-specific publishing ───────────────────────────────
@@ -765,7 +1085,13 @@ async function publishToFacebook(account: AccountLike, post: PostLike): Promise<
 async function publishToInstagram(account: AccountLike, post: PostLike): Promise<string> {
   if (!account.accessToken || !account.pageId) throw new Error("Instagram: missing credentials")
 
-  const isVideo = !!(post.mediaUrl?.includes(".mp4") || post.mediaUrl?.includes("video"))
+  // Detect video by extension OR common video CDN patterns (HeyGen, Creatomate, etc.)
+  const isVideo = !!(
+    post.mediaUrl?.match(/\.(mp4|mov|avi|m4v)(\?|$)/i) ||
+    post.mediaUrl?.includes("heygen") ||
+    post.mediaUrl?.includes("creatomate") ||
+    post.mediaUrl?.includes("video")
+  )
 
   const containerParams: Record<string, string> = {
     caption: post.content,
@@ -773,8 +1099,10 @@ async function publishToInstagram(account: AccountLike, post: PostLike): Promise
   }
 
   if (isVideo && post.mediaUrl) {
-    containerParams.media_type = "VIDEO"
+    // Instagram requires REELS media_type for video content (VIDEO type is deprecated)
+    containerParams.media_type = "REELS"
     containerParams.video_url = post.mediaUrl
+    containerParams.share_to_feed = "true"
   } else if (post.mediaUrl) {
     containerParams.image_url = post.mediaUrl
   } else {
@@ -789,24 +1117,27 @@ async function publishToInstagram(account: AccountLike, post: PostLike): Promise
     }
   )
   const container = await containerRes.json()
-  if (container.error) throw new Error(container.error.message)
+  if (container.error) {
+    throw new Error(`Instagram API: ${container.error.message} (code ${container.error.code}, subcode ${container.error.error_subcode ?? "n/a"})`)
+  }
   if (!container.id) throw new Error("Instagram: container creation returned no ID")
 
-  // Poll until container is FINISHED (Instagram needs time to process the image)
+  // Poll until container is FINISHED — videos can take 30-60s to process
   let attempts = 0
-  while (attempts < 10) {
-    await new Promise(r => setTimeout(r, 3000))
+  while (attempts < 20) {
+    await new Promise(r => setTimeout(r, 5000))
     const statusRes = await fetch(
-      `https://graph.facebook.com/v19.0/${container.id}?fields=status_code&access_token=${account.accessToken}`
+      `https://graph.facebook.com/v19.0/${container.id}?fields=status_code,status&access_token=${account.accessToken}`
     )
     const statusData = await statusRes.json()
+    console.log(`[instagram] Container ${container.id} status: ${statusData.status_code}`)
     if (statusData.status_code === "FINISHED") break
     if (statusData.status_code === "ERROR" || statusData.status_code === "EXPIRED") {
-      throw new Error(`Instagram container processing failed: ${statusData.status_code}`)
+      throw new Error(`Instagram container failed: ${statusData.status_code} — ${statusData.status ?? "check video URL is publicly accessible"}`)
     }
     attempts++
   }
-  if (attempts >= 10) throw new Error("Instagram: container did not finish processing in time")
+  if (attempts >= 20) throw new Error("Instagram: video took too long to process — ensure the video URL is a direct public MP4 link")
 
   const publishRes = await fetch(
     `https://graph.facebook.com/v19.0/${account.pageId}/media_publish`,
@@ -819,8 +1150,54 @@ async function publishToInstagram(account: AccountLike, post: PostLike): Promise
     }
   )
   const published = await publishRes.json()
-  if (published.error) throw new Error(published.error.message)
+  if (published.error) throw new Error(`Instagram publish: ${published.error.message} (code ${published.error.code})`)
   return published.id as string
+}
+
+// ─── Post a comment after publishing (engagement boost) ──────────────────────
+
+export async function postFacebookComment(postId: string, accessToken: string, message: string): Promise<void> {
+  try {
+    const res = await fetch(`https://graph.facebook.com/v19.0/${postId}/comments`, {
+      method: "POST",
+      body: new URLSearchParams({ message, access_token: accessToken }),
+    })
+    const data = await res.json()
+    if (data.error) console.error("[social-autopilot] Facebook comment failed:", data.error.message)
+    else console.log(`[social-autopilot] Facebook comment posted on ${postId}`)
+  } catch (e) {
+    console.error("[social-autopilot] Facebook comment error:", e)
+  }
+}
+
+export async function postInstagramComment(mediaId: string, accessToken: string, text: string): Promise<void> {
+  try {
+    const res = await fetch(`https://graph.facebook.com/v19.0/${mediaId}/comments`, {
+      method: "POST",
+      body: new URLSearchParams({ message: text, access_token: accessToken }),
+    })
+    const data = await res.json()
+    if (data.error) console.error("[social-autopilot] Instagram comment failed:", data.error.message)
+    else console.log(`[social-autopilot] Instagram comment posted on ${mediaId}`)
+  } catch (e) {
+    console.error("[social-autopilot] Instagram comment error:", e)
+  }
+}
+
+async function generateEngagementComment(platform: string, postContent: string): Promise<string> {
+  try {
+    const res = await anthropic.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 120,
+      messages: [{
+        role: "user",
+        content: `Escribe UN comentario corto en español (máx 2 oraciones) para publicar justo después de este post en ${platform}. El objetivo es generar engagement: debe hacer UNA pregunta directa al lector o pedirles que comenten algo específico (ej: "¿SÍ o NO?", "Comenta MIAMI", "¿Cuál es tu duda?"). Solo el texto del comentario, sin comillas.\n\nPost: ${postContent.slice(0, 300)}`,
+      }],
+    })
+    return res.content[0].type === "text" ? res.content[0].text.trim() : "¿Tienes preguntas sobre el mercado de Miami? ¡Comenta abajo! 👇"
+  } catch {
+    return "¿Tienes preguntas sobre el mercado de Miami? ¡Comenta abajo! 👇"
+  }
 }
 
 async function publishToTikTok(account: AccountLike, post: PostLike): Promise<string> {
@@ -939,12 +1316,18 @@ export async function publishPost(post: PostLike, account: AccountLike): Promise
 
     await prisma.socialPost.update({
       where: { id: post.id },
-      data: {
-        status: "PUBLISHED",
-        publishedAt: new Date(),
-        externalId,
-      },
+      data: { status: "PUBLISHED", publishedAt: new Date(), externalId },
     })
+
+    // Auto-comment for engagement (fire-and-forget, non-fatal)
+    if (externalId && account.accessToken && (post.platform === "FACEBOOK" || post.platform === "INSTAGRAM")) {
+      const comment = await generateEngagementComment(post.platform, post.content)
+      if (post.platform === "FACEBOOK") {
+        postFacebookComment(externalId, account.accessToken, comment)
+      } else {
+        postInstagramComment(externalId, account.accessToken, comment)
+      }
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error(`[social-autopilot] Publish failed for ${post.platform} (post ${post.id}): ${msg}`)
@@ -962,6 +1345,53 @@ export interface AutopilotResult {
   failed: number
   videoQueued: number
   skipped: number
+  heygenError?: string
+}
+
+export async function triggerVideoOnly(): Promise<{ videoId: string | null; error?: string }> {
+  const apiKey = process.env.HEYGEN_API_KEY
+  if (!apiKey) return { videoId: null, error: "HEYGEN_API_KEY not set" }
+
+  try {
+    const now = new Date()
+    const dayOfWeek = now.getDay()
+    let research: ResearchBrief | undefined
+    try { research = await researchViralContent(dayOfWeek) } catch { /* use defaults */ }
+
+    const videoScript = await generateVideoScript(dayOfWeek, research)
+    generateGuideFromScript(videoScript).catch(e => console.error("[social-autopilot] Guide generation failed:", e))
+    const videoId = await triggerHeyGenVideo(videoScript, dayOfWeek)
+
+    if (!videoId) return { videoId: null, error: "HeyGen returned no video_id — check Railway logs" }
+
+    // Store a pending SocialPost record for each connected account so checkHeygenVideos can publish it later
+    const accounts = await prisma.socialAccount.findMany({ where: { isConnected: true } })
+    const promptMeta = research ? JSON.stringify({ theme: research.trendingTopic, youtubeTitle: research.youtubeTitle, youtubeDescription: research.youtubeDescription, youtubeTags: research.youtubeTags }) : "manual video trigger"
+
+    for (const account of accounts) {
+      const content = await generateContent(account.platform, dayOfWeek, research)
+      await prisma.socialPost.create({
+        data: {
+          platform: account.platform,
+          content,
+          postType: "POST",
+          status: "GENERATING_VIDEO",
+          scheduledAt: now,
+          aiGenerated: true,
+          accountId: account.id,
+          externalId: videoId,
+          prompt: promptMeta,
+        },
+      })
+    }
+
+    console.log(`[social-autopilot] Manual video trigger — videoId: ${videoId}, pending posts: ${accounts.length}`)
+    return { videoId }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error("[social-autopilot] triggerVideoOnly failed:", err)
+    return { videoId: null, error: msg }
+  }
 }
 
 export async function runAutopilot(slot: "morning" | "evening"): Promise<AutopilotResult> {
@@ -996,22 +1426,27 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
     console.warn("[social-autopilot] Content research failed, using default themes:", err)
   }
 
-  // 3. Morning slot: auto-publish one blog post per day
+  // 3. Morning slot: publish one blog post and capture its URL for social posts
+  let morningBlogUrl: string | null = null
   if (slot === "morning") {
     try {
-      const blogPublished = await publishBlogPost(dayOfWeek, research)
-      if (blogPublished) {
-        console.log("[social-autopilot] Blog post published successfully")
+      const blogResult = await publishBlogPost(dayOfWeek, research)
+      if (blogResult) {
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
+        morningBlogUrl = `${appUrl}/site/blog/${blogResult.slug}`
+        console.log(`[social-autopilot] Blog post published: "${blogResult.title}" → ${morningBlogUrl}`)
       } else {
-        console.warn("[social-autopilot] Blog post publish returned false — check logs")
+        console.warn("[social-autopilot] Blog post publish returned null — check logs")
       }
     } catch (err) {
       console.error("[social-autopilot] Blog post publish threw:", err)
     }
   }
 
-  // 4 (was 3). Is this a video slot? Evening + (Tuesday=2 or Friday=5)
-  const isVideoSlot = slot === "evening" && (dayOfWeek === 2 || dayOfWeek === 5)
+  // 4. Is this a video slot? Evening + (Tuesday=2 or Friday=5) + videoEnabled toggle
+  const isVideoSlot = slot === "evening"
+    && (dayOfWeek === 2 || dayOfWeek === 5)
+    && ((config as any).videoEnabled !== false)
   const heygenConfigured = !!process.env.HEYGEN_API_KEY
 
   // 5. Pre-generate shared assets (one script + one HeyGen video for all accounts)
@@ -1020,13 +1455,20 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
   if (isVideoSlot && heygenConfigured) {
     try {
       const videoScript = await generateVideoScript(dayOfWeek, research)
+      generateGuideFromScript(videoScript).catch(e => console.error("[social-autopilot] Guide generation failed:", e))
       sharedVideoId = await triggerHeyGenVideo(videoScript, dayOfWeek)
       if (sharedVideoId) {
         console.log(`[social-autopilot] HeyGen video queued — videoId: ${sharedVideoId}`)
+      } else {
+        result.heygenError = "triggerHeyGenVideo returned null — check Railway logs for [social-autopilot] HeyGen errors"
       }
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
       console.error("[social-autopilot] Video script/HeyGen trigger failed:", err)
+      result.heygenError = msg
     }
+  } else if (isVideoSlot && !heygenConfigured) {
+    result.heygenError = "HEYGEN_API_KEY not set"
   }
 
   // 6. Build prompt metadata to store with each post (YouTube uses this for title/tags)
@@ -1039,17 +1481,25 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
       })
     : DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
 
+  // 7. Fetch recently used images once — shared across all accounts this run
+  const usedMediaUrls = await getRecentlyUsedMediaUrls()
+
   // 7. Process each connected account independently
   for (const account of accounts) {
     try {
       // YouTube only gets real HeyGen MP4 videos — skip it on non-video slots
-      if (account.platform === "YOUTUBE" && !isVideoSlot) {
-        console.log("[social-autopilot] Skipping YouTube — no video today (use Tue/Fri evening slot)")
+      // Also skip if it IS a video slot but HeyGen failed to generate a video
+      if (account.platform === "YOUTUBE" && (!isVideoSlot || (isVideoSlot && !sharedVideoId))) {
+        if (!isVideoSlot) {
+          console.log("[social-autopilot] Skipping YouTube — no video today (use Tue/Fri evening slot)")
+        } else {
+          console.log("[social-autopilot] Skipping YouTube — HeyGen video generation failed (check avatar setup)")
+        }
         result.skipped++
         continue
       }
       // 7a. Generate platform-specific content (research-enriched + AIO optimized)
-      const content = await generateContent(account.platform, dayOfWeek, research)
+      const content = await generateContent(account.platform, dayOfWeek, research, morningBlogUrl)
 
       // 7b. Determine media handling
       let mediaUrl: string | null = null
@@ -1064,20 +1514,14 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
       }
 
       if (!useVideoFlow) {
-        // Generate image with gpt-image-1 → Cloudinary
-        // Fall back to a curated Unsplash Miami real estate photo if AI generation fails
-        mediaUrl = await generateAndUploadImage(dayOfWeek, research)
+        // Generate unique AI image → Cloudinary, fall back to unused Unsplash photo
+        mediaUrl = await generateAndUploadImage(dayOfWeek, research, usedMediaUrls)
         if (!mediaUrl) {
-          const FALLBACK_IMAGES = [
-            "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1080&q=80",
-            "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1080&q=80",
-            "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1080&q=80",
-            "https://images.unsplash.com/photo-1613977257365-aaae5a9817ff?w=1080&q=80",
-            "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=1080&q=80",
-          ]
-          mediaUrl = FALLBACK_IMAGES[dayOfWeek % FALLBACK_IMAGES.length]
-          console.log("[social-autopilot] Using fallback Unsplash image (AI image generation failed)")
+          mediaUrl = pickUnusedFallback(usedMediaUrls)
+          console.log("[social-autopilot] Using fallback Unsplash image (AI image generation failed):", mediaUrl)
         }
+        // Track this URL so subsequent accounts in the same run don't repeat it
+        if (mediaUrl) usedMediaUrls.add(mediaUrl)
       }
 
       // 7c. Create SocialPost record

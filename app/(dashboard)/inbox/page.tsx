@@ -1,7 +1,12 @@
 export const dynamic = "force-dynamic"
 
+import { Suspense } from "react"
 import InboxClient from "./inbox-client"
 
 export default function InboxPage() {
-  return <InboxClient />
+  return (
+    <Suspense fallback={null}>
+      <InboxClient />
+    </Suspense>
+  )
 }
