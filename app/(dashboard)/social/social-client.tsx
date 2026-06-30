@@ -786,12 +786,20 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
                         </p>
                       )}
                     </div>
-                    {post.status === "DRAFT" && (
+                    {(post.status === "DRAFT" || post.status === "FAILED") && (
                       <button
                         onClick={() => publishPost(post.id)}
-                        className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-lofty-600 text-white rounded-lg text-xs font-medium hover:bg-lofty-700"
+                        className={cn(
+                          "flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white",
+                          post.status === "FAILED"
+                            ? "bg-red-500 hover:bg-red-600"
+                            : "bg-lofty-600 hover:bg-lofty-700"
+                        )}
                       >
-                        <Send className="w-3 h-3" /> Publish
+                        {post.status === "FAILED"
+                          ? <><RefreshCw className="w-3 h-3" /> Retry</>
+                          : <><Send className="w-3 h-3" /> Publish</>
+                        }
                       </button>
                     )}
                   </div>

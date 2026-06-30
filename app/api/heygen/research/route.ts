@@ -9,21 +9,27 @@ export async function GET() {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
+  const { prisma } = await import("@/lib/prisma")
   const dayOfWeek = new Date().getDay()
+
+  // Fetch all keywords that already have guides so Claude picks a fresh one
+  const existingGuides = await prisma.leadMagnet.findMany({ select: { keyword: true } })
+  const usedKeywords = existingGuides.map((g: { keyword: string }) => g.keyword)
 
   try {
     const research = await researchViralContent(dayOfWeek)
-    const script = await generateVideoScript(dayOfWeek, research)
+    const script = await generateVideoScript(dayOfWeek, research, usedKeywords)
     return NextResponse.json({
       script,
       topic: research.trendingTopic,
       hook: research.viralHook,
       engagementAngle: research.engagementAngle,
+      usedKeywords,
     })
   } catch {
     try {
-      const script = await generateVideoScript(dayOfWeek)
-      return NextResponse.json({ script })
+      const script = await generateVideoScript(dayOfWeek, undefined, usedKeywords)
+      return NextResponse.json({ script, usedKeywords })
     } catch (e) {
       return NextResponse.json({ error: String(e) }, { status: 500 })
     }

@@ -15,7 +15,7 @@ import { v2 as cloudinary } from "cloudinary"
 import { prisma } from "@/lib/prisma"
 import { researchViralContent, buildAIOSystemPrompt, ResearchBrief } from "./content-research"
 import { uploadVideoToYouTube } from "./youtube-upload"
-import { fetchSceneVideoUrl, getFallbackBackground } from "./pexels-video"
+import { fetchSceneVideoUrl, getFallbackBackground, fetchPexelsPhoto } from "./pexels-video"
 import { generateGuideFromScript } from "./generate-guide"
 
 // ─── SDK init ────────────────────────────────────────────────────────────────
@@ -263,6 +263,18 @@ async function generateAndUploadImage(
 ): Promise<string | null> {
   const theme = research?.trendingTopic ?? DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
 
+  // 1st priority: Pexels professional real estate photos — free, public CDN, Facebook-compatible
+  try {
+    const pexelsUrl = await fetchPexelsPhoto(theme, "landscape")
+    if (pexelsUrl && !usedUrls.has(pexelsUrl)) {
+      console.log(`[social-autopilot] Using Pexels photo: ${pexelsUrl.slice(0, 80)}`)
+      return pexelsUrl
+    }
+  } catch (err) {
+    console.warn("[social-autopilot] Pexels photo fetch failed, falling back to DALL-E:", err)
+  }
+
+  // 2nd priority: DALL-E + Cloudinary
   try {
     const now = new Date()
     const dateStr = now.toISOString().slice(0, 10)
@@ -289,20 +301,24 @@ async function generateAndUploadImage(
 
     return uploadResult.secure_url
   } catch (err) {
-    console.error("[social-autopilot] Image generation/upload failed:", err)
+    console.error("[social-autopilot] DALL-E/Cloudinary image generation failed:", err)
     return null
   }
 }
 
 // ─── HeyGen video generation ──────────────────────────────────────────────────
 
-export async function generateVideoScript(dayOfWeek: number, research?: ResearchBrief): Promise<string> {
+export async function generateVideoScript(dayOfWeek: number, research?: ResearchBrief, usedKeywords: string[] = []): Promise<string> {
   const theme = research?.trendingTopic ?? DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
   const keywords = research?.additionalKeywords?.slice(0, 3) ?? pickKeywords(dayOfWeek)
   const hook = research?.viralHook
 
   const hookLine = hook
     ? `\nUSA ESTA PRIMERA LÍNEA EXACTA o muy similar (es el hook viral): "${hook}"`
+    : ""
+
+  const usedKeywordsLine = usedKeywords.length > 0
+    ? `\n\n⚠️ PALABRAS CLAVE YA USADAS EN GUÍAS ANTERIORES — NO REPITAS NINGUNA: ${usedKeywords.join(", ")}. Elige una palabra DIFERENTE y NUEVA para el CTA de este guión.`
     : ""
 
   const message = await anthropic.messages.create({
@@ -320,7 +336,7 @@ Catherine habla en español natural, primera persona, tono cercano y de autorida
     messages: [
       {
         role: "user",
-        content: `Escribe un script de video de EXACTAMENTE 4 escenas sobre: "${theme}".${hookLine}
+        content: `Escribe un script de video de EXACTAMENTE 4 escenas sobre: "${theme}".${hookLine}${usedKeywordsLine}
 
 ESTRUCTURA OBLIGATORIA — separa cada escena con una línea en blanco:
 
@@ -334,7 +350,7 @@ ESCENA 3 - SOLUCIÓN + CREDENCIAL (45-55 palabras):
 Empieza con "Soy Catherine Gomez, Realtor en Miami." + dato específico del mercado de South Florida que demuestra expertise + exactamente cómo ella resuelve este problema para familias hispanas. Incluye naturalmente: ${keywords.join(", ")}.
 
 ESCENA 4 - CTA ESPECÍFICO (20-25 palabras):
-"Comenta '[KEYWORD]' abajo" donde [KEYWORD] es UNA PALABRA en español todo en mayúsculas que resuma el tema del video (ejemplos: INVERSIÓN, CREDITO, HIPOTECA, CALIFICA, VENDEDOR, RENTAR, MIAMI — inventa la que sea más relevante para este guión específico). Explica exactamente qué van a recibir (guía gratis, los números reales, paso a paso).
+"Comenta '[KEYWORD]' abajo" donde [KEYWORD] es UNA PALABRA NUEVA en español todo en mayúsculas que resuma el tema del video (ejemplos: INVERSIÓN, CREDITO, HIPOTECA, CALIFICA, VENDEDOR, RENTAR, MIAMI — inventa la que sea más relevante para este guión específico). Explica exactamente qué van a recibir (guía gratis, los números reales, paso a paso).
 
 Devuelve SOLO las 4 escenas en texto corrido. Sin etiquetas "ESCENA X", sin corchetes, sin acotaciones. Solo el texto que Catherine dice, separado por una línea en blanco entre cada escena.`,
       },
@@ -1052,31 +1068,59 @@ type PostLike = {
 async function publishToFacebook(account: AccountLike, post: PostLike): Promise<string> {
   if (!account.accessToken || !account.pageId) throw new Error("Facebook: missing credentials")
 
-  const isVideo = !!(post.mediaUrl?.includes(".mp4") || post.mediaUrl?.includes("video"))
+  const isVideo = !!(post.mediaUrl?.match(/\.(mp4|mov|avi|m4v)(\?|$)/i) || post.mediaUrl?.includes("heygen") || post.mediaUrl?.includes("creatomate"))
   const isImage = !!(post.mediaUrl && !isVideo)
 
-  let endpoint: string
-  const body: Record<string, string> = { access_token: account.accessToken }
+  let res: Response
 
   if (isVideo) {
-    endpoint = `https://graph.facebook.com/v19.0/${account.pageId}/videos`
-    body.description = post.content
-    body.file_url = post.mediaUrl!
+    const body = new URLSearchParams({
+      access_token: account.accessToken,
+      description: post.content,
+      file_url: post.mediaUrl!,
+    })
+    res = await fetch(`https://graph.facebook.com/v19.0/${account.pageId}/videos`, { method: "POST", body })
   } else if (isImage) {
-    // Photo post — use /photos endpoint with caption + url
-    endpoint = `https://graph.facebook.com/v19.0/${account.pageId}/photos`
-    body.caption = post.content
-    body.url = post.mediaUrl!
+    const isPexels = post.mediaUrl!.includes("pexels.com") || post.mediaUrl!.includes("images.pexels")
+    const isUnsplash = post.mediaUrl!.includes("unsplash.com")
+
+    if (isPexels || isUnsplash) {
+      // Public CDN — Facebook fetches these fine with url parameter
+      const body = new URLSearchParams({
+        access_token: account.accessToken,
+        caption: post.content,
+        url: post.mediaUrl!,
+      })
+      res = await fetch(`https://graph.facebook.com/v19.0/${account.pageId}/photos`, { method: "POST", body })
+    } else {
+      // Cloudinary or other: download and re-upload as binary to avoid code 324
+      try {
+        const imgRes = await fetch(post.mediaUrl!)
+        if (!imgRes.ok) throw new Error(`Image fetch ${imgRes.status}`)
+        const imgBuffer = await imgRes.arrayBuffer()
+        const contentType = imgRes.headers.get("content-type") || "image/jpeg"
+        const formData = new FormData()
+        formData.append("access_token", account.accessToken)
+        formData.append("caption", post.content)
+        formData.append("source", new Blob([imgBuffer], { type: contentType }), "photo.jpg")
+        res = await fetch(`https://graph.facebook.com/v19.0/${account.pageId}/photos`, { method: "POST", body: formData })
+      } catch (imgErr) {
+        // Fallback: use a guaranteed-public Unsplash URL so post always has an image
+        console.warn("[facebook] Binary upload failed, using Unsplash fallback:", imgErr)
+        const fallbackUrl = "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1080&q=80"
+        res = await fetch(`https://graph.facebook.com/v19.0/${account.pageId}/photos`, {
+          method: "POST",
+          body: new URLSearchParams({ access_token: account.accessToken, caption: post.content, url: fallbackUrl }),
+        })
+      }
+    }
   } else {
-    // Text-only post
-    endpoint = `https://graph.facebook.com/v19.0/${account.pageId}/feed`
-    body.message = post.content
+    res = await fetch(`https://graph.facebook.com/v19.0/${account.pageId}/feed`, {
+      method: "POST",
+      body: new URLSearchParams({ access_token: account.accessToken, message: post.content }),
+    })
   }
 
-  const res = await fetch(endpoint, {
-    method: "POST",
-    body: new URLSearchParams(body),
-  })
   const data = await res.json()
   if (data.error) throw new Error(`Facebook API: ${data.error.message} (code ${data.error.code})`)
   return (data.post_id ?? data.id) as string
