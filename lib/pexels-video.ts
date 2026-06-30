@@ -65,6 +65,59 @@ export function getFallbackBackground(sceneText: string, index: number): Record<
   return { type: "image", url }
 }
 
+const PHOTO_QUERIES: Record<string, string> = {
+  pool:      "luxury villa swimming pool Miami exterior",
+  family:    "suburban family home neighborhood Florida",
+  beach:     "Miami Beach oceanfront property aerial",
+  night:     "Miami city skyline Brickell night luxury",
+  penthouse: "luxury penthouse apartment interior modern",
+  modern:    "modern architecture house exterior design",
+  invest:    "luxury real estate aerial Miami property",
+  seller:    "upscale house real estate exterior curb appeal",
+  airbnb:    "vacation rental property pool luxury",
+  signing:   "real estate agent keys handshake home purchase",
+  default:   "luxury real estate Miami Florida home",
+}
+
+export async function fetchPexelsPhoto(
+  themeOrQuery: string,
+  orientation: "landscape" | "portrait" | "square" = "landscape"
+): Promise<string | null> {
+  const apiKey = process.env.PEXELS_API_KEY
+  if (!apiKey) return null
+
+  const t = themeOrQuery.toLowerCase()
+  let key = "default"
+  if (/piscina|pool/.test(t))                         key = "pool"
+  else if (/familia|family|doral|hogar|kendall/.test(t)) key = "family"
+  else if (/playa|beach|mar\b|ocean/.test(t))         key = "beach"
+  else if (/noche|night|brickell|downtown/.test(t))   key = "night"
+  else if (/penthouse|interior|sala|cocina/.test(t))  key = "penthouse"
+  else if (/moderno|modern|minimalista/.test(t))      key = "modern"
+  else if (/inversi|invest|dólares|capital/.test(t))  key = "invest"
+  else if (/vendedor|seller|precio|staging/.test(t))  key = "seller"
+  else if (/airbnb|vacacional|turista/.test(t))       key = "airbnb"
+  else if (/firma|signing|llaves|keys|contrato/.test(t)) key = "signing"
+
+  const query = PHOTO_QUERIES[key] ?? PHOTO_QUERIES.default
+
+  try {
+    const res = await fetch(
+      `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=10&orientation=${orientation}`,
+      { headers: { Authorization: apiKey }, signal: AbortSignal.timeout(6000) }
+    )
+    if (!res.ok) return null
+    const data = await res.json()
+    const photos: any[] = data?.photos ?? []
+    if (!photos.length) return null
+    const photo = photos[Math.floor(Math.random() * Math.min(photos.length, 8))]
+    // Return large2x (1080px wide) — good for both Facebook and Instagram
+    return photo.src?.large2x ?? photo.src?.large ?? photo.src?.original ?? null
+  } catch {
+    return null
+  }
+}
+
 export async function fetchVideoByQuery(
   query: string,
   orientation: "portrait" | "landscape" = "portrait"

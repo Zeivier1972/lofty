@@ -15,7 +15,7 @@ import { v2 as cloudinary } from "cloudinary"
 import { prisma } from "@/lib/prisma"
 import { researchViralContent, buildAIOSystemPrompt, ResearchBrief } from "./content-research"
 import { uploadVideoToYouTube } from "./youtube-upload"
-import { fetchSceneVideoUrl, getFallbackBackground } from "./pexels-video"
+import { fetchSceneVideoUrl, getFallbackBackground, fetchPexelsPhoto } from "./pexels-video"
 import { generateGuideFromScript } from "./generate-guide"
 
 // ─── SDK init ────────────────────────────────────────────────────────────────
@@ -263,6 +263,18 @@ async function generateAndUploadImage(
 ): Promise<string | null> {
   const theme = research?.trendingTopic ?? DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
 
+  // 1st priority: Pexels professional real estate photos — free, public CDN, Facebook-compatible
+  try {
+    const pexelsUrl = await fetchPexelsPhoto(theme, "landscape")
+    if (pexelsUrl && !usedUrls.has(pexelsUrl)) {
+      console.log(`[social-autopilot] Using Pexels photo: ${pexelsUrl.slice(0, 80)}`)
+      return pexelsUrl
+    }
+  } catch (err) {
+    console.warn("[social-autopilot] Pexels photo fetch failed, falling back to DALL-E:", err)
+  }
+
+  // 2nd priority: DALL-E + Cloudinary
   try {
     const now = new Date()
     const dateStr = now.toISOString().slice(0, 10)
@@ -289,7 +301,7 @@ async function generateAndUploadImage(
 
     return uploadResult.secure_url
   } catch (err) {
-    console.error("[social-autopilot] Image generation/upload failed:", err)
+    console.error("[social-autopilot] DALL-E/Cloudinary image generation failed:", err)
     return null
   }
 }
@@ -1069,26 +1081,38 @@ async function publishToFacebook(account: AccountLike, post: PostLike): Promise<
     })
     res = await fetch(`https://graph.facebook.com/v19.0/${account.pageId}/videos`, { method: "POST", body })
   } else if (isImage) {
-    // Download image to memory and upload as binary — avoids code 324 (FB can't fetch remote URLs)
-    try {
-      const imgRes = await fetch(post.mediaUrl!)
-      if (!imgRes.ok) throw new Error(`Image fetch ${imgRes.status}`)
-      const imgBuffer = await imgRes.arrayBuffer()
-      const contentType = imgRes.headers.get("content-type") || "image/jpeg"
+    const isPexels = post.mediaUrl!.includes("pexels.com") || post.mediaUrl!.includes("images.pexels")
+    const isUnsplash = post.mediaUrl!.includes("unsplash.com")
 
-      const formData = new FormData()
-      formData.append("access_token", account.accessToken)
-      formData.append("caption", post.content)
-      formData.append("source", new Blob([imgBuffer], { type: contentType }), "photo.jpg")
-
-      res = await fetch(`https://graph.facebook.com/v19.0/${account.pageId}/photos`, { method: "POST", body: formData })
-    } catch (imgErr) {
-      // Fallback: post text-only rather than fail entirely
-      console.warn("[facebook] Image download failed, posting text-only:", imgErr)
-      res = await fetch(`https://graph.facebook.com/v19.0/${account.pageId}/feed`, {
-        method: "POST",
-        body: new URLSearchParams({ access_token: account.accessToken, message: post.content }),
+    if (isPexels || isUnsplash) {
+      // Public CDN — Facebook fetches these fine with url parameter
+      const body = new URLSearchParams({
+        access_token: account.accessToken,
+        caption: post.content,
+        url: post.mediaUrl!,
       })
+      res = await fetch(`https://graph.facebook.com/v19.0/${account.pageId}/photos`, { method: "POST", body })
+    } else {
+      // Cloudinary or other: download and re-upload as binary to avoid code 324
+      try {
+        const imgRes = await fetch(post.mediaUrl!)
+        if (!imgRes.ok) throw new Error(`Image fetch ${imgRes.status}`)
+        const imgBuffer = await imgRes.arrayBuffer()
+        const contentType = imgRes.headers.get("content-type") || "image/jpeg"
+        const formData = new FormData()
+        formData.append("access_token", account.accessToken)
+        formData.append("caption", post.content)
+        formData.append("source", new Blob([imgBuffer], { type: contentType }), "photo.jpg")
+        res = await fetch(`https://graph.facebook.com/v19.0/${account.pageId}/photos`, { method: "POST", body: formData })
+      } catch (imgErr) {
+        // Fallback: use a guaranteed-public Unsplash URL so post always has an image
+        console.warn("[facebook] Binary upload failed, using Unsplash fallback:", imgErr)
+        const fallbackUrl = "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1080&q=80"
+        res = await fetch(`https://graph.facebook.com/v19.0/${account.pageId}/photos`, {
+          method: "POST",
+          body: new URLSearchParams({ access_token: account.accessToken, caption: post.content, url: fallbackUrl }),
+        })
+      }
     }
   } else {
     res = await fetch(`https://graph.facebook.com/v19.0/${account.pageId}/feed`, {
