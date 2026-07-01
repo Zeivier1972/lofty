@@ -383,12 +383,13 @@ ${script}
 """
 
 Escribe UN SOLO prompt (para pegar directo en HeyGen) que:
-1. Pida un video VERTICAL 9:16 estilo Reel/TikTok de ~30-45 segundos.
-2. Use la avatar de Catherine Gomez hablando a cámara.
-3. Añada B-ROLL dinámico de bienes raíces en Miami relevante al tema (skyline de Brickell, casas de lujo, piscinas, familias, interiores modernos) intercalado mientras habla.
-4. Añada CAPTIONS/subtítulos kinéticos en español, grandes y llamativos.
-5. Use música de fondo moderna y energética, transiciones rápidas y ritmo que retenga la atención.
-6. Muestre el nombre "Catherine Gomez Realtor" y el CTA en pantalla al final.
+1. Pida un video VERTICAL 9:16 estilo Reel/TikTok de 45 a 60 segundos de duración.
+2. Especifique que es un video de BIENES RAÍCES, en ESPAÑOL.
+3. Use la avatar de Catherine Gomez hablando a cámara.
+4. Añada B-ROLL dinámico de bienes raíces relevante al tema, intercalado mientras habla, de estas áreas: Brickell y Miami (skyline, condos de lujo), Orlando (casas y comunidades nuevas) y Homestead (casas familiares con patio), además de piscinas, familias e interiores modernos.
+5. Añada CAPTIONS/subtítulos kinéticos EN ESPAÑOL, grandes y llamativos, sincronizados con la voz.
+6. Use música de fondo estilo PUBLICITARIO/INFORMATIVO (profesional, con energía, no dramática), transiciones rápidas y ritmo que retenga la atención.
+7. Muestre el nombre "Catherine Gomez Realtor" y el CTA en pantalla al final.
 
 Después de las instrucciones de estilo, incluye una línea que diga "La avatar dice exactamente:" seguida del guión hablado COMPLETO tal cual (sin cambiarlo).
 
