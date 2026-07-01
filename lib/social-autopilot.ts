@@ -1371,6 +1371,8 @@ async function publishToYouTube(account: AccountLike, post: PostLike): Promise<s
     // prompt not JSON — use defaults
   }
 
+  // uploadVideoToYouTube throws with a specific reason on failure (expired token,
+  // missing env vars, download failure, etc.) — let it propagate to errorMessage.
   const youtubeUrl = await uploadVideoToYouTube({
     videoUrl: post.mediaUrl,
     title: youtubeTitle,
@@ -1379,7 +1381,6 @@ async function publishToYouTube(account: AccountLike, post: PostLike): Promise<s
     refreshToken: account.refreshToken,
   })
 
-  if (!youtubeUrl) throw new Error("YouTube: upload returned null — check credentials and video URL")
   return youtubeUrl
 }
 

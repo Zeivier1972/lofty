@@ -13,10 +13,12 @@ export interface YouTubeUploadOptions {
   refreshToken: string
 }
 
-async function refreshAccessToken(refreshToken: string): Promise<string | null> {
+async function refreshAccessToken(refreshToken: string): Promise<string> {
   const clientId = process.env.YOUTUBE_CLIENT_ID
   const clientSecret = process.env.YOUTUBE_CLIENT_SECRET
-  if (!clientId || !clientSecret) return null
+  if (!clientId || !clientSecret) {
+    throw new Error("Faltan las variables YOUTUBE_CLIENT_ID / YOUTUBE_CLIENT_SECRET en Railway")
+  }
 
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -29,25 +31,29 @@ async function refreshAccessToken(refreshToken: string): Promise<string | null> 
     }),
   })
 
-  if (!res.ok) return null
-  const data = await res.json()
-  return (data.access_token as string) ?? null
+  const data = await res.json().catch(() => ({} as any))
+  if (!res.ok || !data.access_token) {
+    // Google returns { error: "invalid_grant" } when the refresh token was
+    // revoked/expired → the user must reconnect YouTube in the Accounts tab.
+    const detail = data.error === "invalid_grant"
+      ? "el token de YouTube expiró o fue revocado — reconecta YouTube en Ajustes → Redes Sociales"
+      : (data.error_description || data.error || `HTTP ${res.status}`)
+    throw new Error(`No se pudo renovar el acceso a YouTube: ${detail}`)
+  }
+  return data.access_token as string
 }
 
-export async function uploadVideoToYouTube(opts: YouTubeUploadOptions): Promise<string | null> {
+export async function uploadVideoToYouTube(opts: YouTubeUploadOptions): Promise<string> {
   const { videoUrl, title, description, tags, refreshToken } = opts
 
-  try {
-    const accessToken = await refreshAccessToken(refreshToken)
-    if (!accessToken) {
-      console.error("[youtube-upload] Could not obtain access token")
-      return null
-    }
+  const accessToken = await refreshAccessToken(refreshToken)
 
-    // Download the HeyGen video into memory
-    const videoRes = await fetch(videoUrl)
-    if (!videoRes.ok) throw new Error(`Failed to fetch video: ${videoRes.status}`)
-    const videoBuffer = await videoRes.arrayBuffer()
+  // Download the HeyGen video into memory
+  const videoRes = await fetch(videoUrl)
+  if (!videoRes.ok) throw new Error(`No se pudo descargar el video (${videoRes.status}) desde ${videoUrl.slice(0, 60)}…`)
+  const videoBuffer = await videoRes.arrayBuffer()
+
+  try {
 
     // Step 1: Initiate resumable upload session
     const metadata = {
@@ -109,7 +115,9 @@ export async function uploadVideoToYouTube(opts: YouTubeUploadOptions): Promise<
     console.log(`[youtube-upload] Uploaded successfully — videoId: ${videoId}`)
     return `https://www.youtube.com/shorts/${videoId}`
   } catch (err) {
-    console.error("[youtube-upload] Upload failed:", err)
-    return null
+    // Re-throw with context so the real reason reaches the UI/logs (not a silent null)
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error("[youtube-upload] Upload failed:", msg)
+    throw new Error(msg)
   }
 }
