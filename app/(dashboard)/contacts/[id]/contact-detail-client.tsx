@@ -298,6 +298,13 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
   const [currentPipeline, setCurrentPipeline] = useState(contact.pipelineLeads?.[0])
   const [sofiaLoading, setSofiaLoading] = useState(false)
   const [activityFilter, setActivityFilter] = useState("All")
+  // Arriving from the inbox portal link (?tab=portal) opens the Portal tab so
+  // PortalChatPanel mounts and marks the client's messages as read.
+  useEffect(() => {
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("tab") === "portal") {
+      setActivityFilter("Portal")
+    }
+  }, [])
   const [expandedEmail, setExpandedEmail] = useState<string | null>(null)
   const [expandedCall, setExpandedCall] = useState<string | null>(null)
   const [tasks, setTasks] = useState<any[]>(contact.tasks || [])
