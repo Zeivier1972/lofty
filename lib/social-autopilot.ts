@@ -360,18 +360,19 @@ Devuelve SOLO las 4 escenas en texto corrido. Sin etiquetas "ESCENA X", sin corc
   return message.content[0].type === "text" ? message.content[0].text.trim() : ""
 }
 
-// ─── Filming / shot-list guide ────────────────────────────────────────────────
-// Turns the spoken script into a practical recording guide (shot types, b-roll,
-// locations, on-screen text). IMPORTANT: this is returned SEPARATELY and is never
-// merged into the `script` string, so it has ZERO effect on the lead-magnet PDF
-// (which is generated from the script alone).
-export async function generateShotList(script: string, theme?: string): Promise<string> {
+// ─── HeyGen Auto-pilot prompt ─────────────────────────────────────────────────
+// Builds a single paste-ready prompt for HeyGen's "What do you want to create?"
+// box: it describes the video STYLE (vertical Reel, b-roll, captions, pacing,
+// avatar) AND embeds the exact lines the avatar should say. IMPORTANT: this is
+// returned SEPARATELY and is never merged into the `script` string, so it has ZERO
+// effect on the lead-magnet PDF (which is generated from the script alone).
+export async function generateHeygenPrompt(script: string, theme?: string): Promise<string> {
   if (!script.trim()) return ""
   try {
     const message = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 900,
-      system: `Eres directora de fotografía y productora de contenido short-form (Reels/TikTok/YouTube Shorts) para bienes raíces en Miami. Conviertes un guión hablado en una guía de rodaje clara y accionable para grabar el video.`,
+      system: `Eres productora de video para HeyGen. Escribes un ÚNICO prompt en español, listo para pegar en el cuadro "What do you want to create?" de HeyGen (modo Auto-pilot). El prompt describe el ESTILO del video y luego incluye el guión exacto que la avatar debe decir. El resultado NO debe ser solo la avatar hablando: debe pedir b-roll, captions y ritmo dinámico.`,
       messages: [
         {
           role: "user",
@@ -381,20 +382,23 @@ export async function generateShotList(script: string, theme?: string): Promise<
 ${script}
 """
 
-Crea una GUÍA DE RODAJE práctica para grabar este video. Para CADA escena del guión indica:
-- 🎬 Tipo de toma (ej: primer plano hablando a cámara, plano medio, toma cenital/drone)
-- 🎥 B-roll sugerido (imágenes de apoyo para grabar o insertar)
-- 📍 Locación/área ideal en Miami (ej: skyline de Brickell, casa modelo, oficina, exterior con palmeras)
-- 📝 Texto en pantalla / caption sugerido
-- 💡 Consejo de encuadre o movimiento de cámara
+Escribe UN SOLO prompt (para pegar directo en HeyGen) que:
+1. Pida un video VERTICAL 9:16 estilo Reel/TikTok de ~30-45 segundos.
+2. Use la avatar de Catherine Gomez hablando a cámara.
+3. Añada B-ROLL dinámico de bienes raíces en Miami relevante al tema (skyline de Brickell, casas de lujo, piscinas, familias, interiores modernos) intercalado mientras habla.
+4. Añada CAPTIONS/subtítulos kinéticos en español, grandes y llamativos.
+5. Use música de fondo moderna y energética, transiciones rápidas y ritmo que retenga la atención.
+6. Muestre el nombre "Catherine Gomez Realtor" y el CTA en pantalla al final.
 
-Usa un encabezado por escena (Escena 1, Escena 2, …). En español, conciso y directo — es una guía para GRABAR, no para publicar. NO reescribas ni repitas el guión hablado; solo indica cómo filmarlo.`,
+Después de las instrucciones de estilo, incluye una línea que diga "La avatar dice exactamente:" seguida del guión hablado COMPLETO tal cual (sin cambiarlo).
+
+Devuelve SOLO el prompt final listo para pegar, sin explicaciones ni comillas alrededor.`,
         },
       ],
     })
     return message.content[0].type === "text" ? message.content[0].text.trim() : ""
   } catch (err) {
-    console.error("[social-autopilot] Shot list generation failed:", err)
+    console.error("[social-autopilot] HeyGen prompt generation failed:", err)
     return ""
   }
 }
