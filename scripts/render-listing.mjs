@@ -12,7 +12,7 @@
 import { bundle } from "@remotion/bundler"
 import { renderMedia, selectComposition } from "@remotion/renderer"
 import { createRequire } from "module"
-import { readFileSync, existsSync } from "fs"
+import { readFileSync, existsSync, readdirSync, statSync } from "fs"
 import { resolve, dirname } from "path"
 import { fileURLToPath } from "url"
 import { parseArgs } from "util"
@@ -32,10 +32,29 @@ const { values } = parseArgs({
   allowPositionals: true,
 })
 
-// Default to the file Content Studio downloads if no --config is given
-const configArg = values.config ?? "video-ad-config.json"
+// Resolve the config file. With --config, use it. Without, auto-pick the NEWEST
+// video-ad-*.json / *-config.json in the current folder (Content Studio names its
+// downloads with a timestamp, e.g. video-ad-1782875009468.json).
+let configPath
+if (values.config) {
+  configPath = resolve(process.cwd(), values.config)
+} else {
+  const cwd = process.cwd()
+  const candidates = readdirSync(cwd)
+    .filter(f => /^video-ad-.*\.json$/i.test(f) || f === "video-ad-config.json" || f === "listing-config.json")
+    .map(f => ({ f, mtime: statSync(resolve(cwd, f)).mtimeMs }))
+    .sort((a, b) => b.mtime - a.mtime)
+  if (candidates.length === 0) {
+    console.error("❌  No config file found in this folder.")
+    console.error("")
+    console.error("   Put a video-ad-*.json (downloaded from Content Studio) in this folder,")
+    console.error("   or pass one explicitly:  node scripts/render-listing.mjs --config <file.json>")
+    process.exit(1)
+  }
+  configPath = resolve(cwd, candidates[0].f)
+  console.log(`📂  Using newest config: ${candidates[0].f}`)
+}
 
-const configPath = resolve(process.cwd(), configArg)
 if (!existsSync(configPath)) {
   console.error(`❌  Config file not found: ${configPath}`)
   process.exit(1)
