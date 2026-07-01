@@ -360,6 +360,45 @@ Devuelve SOLO las 4 escenas en texto corrido. Sin etiquetas "ESCENA X", sin corc
   return message.content[0].type === "text" ? message.content[0].text.trim() : ""
 }
 
+// ─── Filming / shot-list guide ────────────────────────────────────────────────
+// Turns the spoken script into a practical recording guide (shot types, b-roll,
+// locations, on-screen text). IMPORTANT: this is returned SEPARATELY and is never
+// merged into the `script` string, so it has ZERO effect on the lead-magnet PDF
+// (which is generated from the script alone).
+export async function generateShotList(script: string, theme?: string): Promise<string> {
+  if (!script.trim()) return ""
+  try {
+    const message = await anthropic.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 900,
+      system: `Eres directora de fotografía y productora de contenido short-form (Reels/TikTok/YouTube Shorts) para bienes raíces en Miami. Conviertes un guión hablado en una guía de rodaje clara y accionable para grabar el video.`,
+      messages: [
+        {
+          role: "user",
+          content: `Este es el guión HABLADO del video${theme ? ` sobre "${theme}"` : ""}:
+
+"""
+${script}
+"""
+
+Crea una GUÍA DE RODAJE práctica para grabar este video. Para CADA escena del guión indica:
+- 🎬 Tipo de toma (ej: primer plano hablando a cámara, plano medio, toma cenital/drone)
+- 🎥 B-roll sugerido (imágenes de apoyo para grabar o insertar)
+- 📍 Locación/área ideal en Miami (ej: skyline de Brickell, casa modelo, oficina, exterior con palmeras)
+- 📝 Texto en pantalla / caption sugerido
+- 💡 Consejo de encuadre o movimiento de cámara
+
+Usa un encabezado por escena (Escena 1, Escena 2, …). En español, conciso y directo — es una guía para GRABAR, no para publicar. NO reescribas ni repitas el guión hablado; solo indica cómo filmarlo.`,
+        },
+      ],
+    })
+    return message.content[0].type === "text" ? message.content[0].text.trim() : ""
+  } catch (err) {
+    console.error("[social-autopilot] Shot list generation failed:", err)
+    return ""
+  }
+}
+
 interface HeyGenAvatar {
   avatar_id: string
   avatar_name?: string

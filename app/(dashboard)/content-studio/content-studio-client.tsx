@@ -932,6 +932,7 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
   const [generating, setGenerating] = useState(false)
   const [researchingScript, setResearchingScript] = useState(false)
   const [researchBrief, setResearchBrief] = useState<{ topic?: string; hook?: string } | null>(null)
+  const [shotList, setShotList] = useState("")
   const [status, setStatus] = useState<"idle" | "processing" | "captions" | "completed" | "failed">("idle")
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null)
@@ -1109,12 +1110,14 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
   const generateAIScript = async () => {
     setResearchingScript(true)
     setResearchBrief(null)
+    setShotList("")
     try {
       const res = await fetch("/api/heygen/research")
       const data = await res.json()
       if (data.error) throw new Error(data.error)
       const generatedScript = data.script || ""
       setScript(generatedScript)
+      if (data.shotList) setShotList(data.shotList)
       if (data.topic || data.hook) setResearchBrief({ topic: data.topic, hook: data.hook })
       toast({ title: "Guión generado con investigación viral ✨" })
       // Fire-and-forget: generate the lead magnet guide in the background
@@ -1462,6 +1465,24 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
           <div className="mt-2 bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-sm text-green-800 flex items-center gap-2">
             <span>✅ Guía lista:</span>
             <a href={guideUrl} target="_blank" rel="noreferrer" className="underline font-medium truncate">{guideUrl}</a>
+          </div>
+        )}
+
+        {/* Filming guide — separate from the script, does NOT affect the PDF */}
+        {shotList && (
+          <div className="mt-4 bg-slate-50 border border-slate-200 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                <Clapperboard className="w-4 h-4" /> Guía de rodaje — cómo grabar el video
+              </h3>
+              <button
+                onClick={() => { navigator.clipboard.writeText(shotList); toast({ title: "Guía de rodaje copiada 📋" }) }}
+                className="text-xs px-3 py-1.5 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors font-medium">
+                Copiar
+              </button>
+            </div>
+            <p className="text-xs text-slate-400 mb-2">Tomas, b-roll, locaciones y texto en pantalla. Solo para grabar — no se incluye en la guía PDF.</p>
+            <pre className="whitespace-pre-wrap text-xs text-slate-700 font-sans leading-relaxed max-h-80 overflow-y-auto">{shotList}</pre>
           </div>
         )}
 
