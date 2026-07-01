@@ -13,7 +13,8 @@
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset --force",
     "remotion:studio": "remotion studio remotion/Root.tsx",
-    "render:listing": "node --experimental-vm-modules scripts/render-listing.mjs"
+    "render:listing": "node --experimental-vm-modules scripts/render-listing.mjs",
+    "render-video": "node scripts/render-listing.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",

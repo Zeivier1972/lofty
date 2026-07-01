@@ -221,7 +221,7 @@ export default function InboxClient() {
               thread.channel === "portal" ? (
                 <a
                   key={thread.contactId}
-                  href={`/contacts/${thread.contactId}`}
+                  href={`/contacts/${thread.contactId}?tab=portal`}
                   className="block w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-purple-50 transition-colors"
                 >
                   <div className="flex items-start gap-3">

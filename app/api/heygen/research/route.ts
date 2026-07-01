@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { researchViralContent } from "@/lib/content-research"
-import { generateVideoScript } from "@/lib/social-autopilot"
+import { generateVideoScript, generateHeygenPrompt } from "@/lib/social-autopilot"
 
 export async function GET() {
   const session = await auth()
@@ -19,8 +19,11 @@ export async function GET() {
   try {
     const research = await researchViralContent(dayOfWeek)
     const script = await generateVideoScript(dayOfWeek, research, usedKeywords)
+    // Separate HeyGen paste-ready prompt — does NOT feed the PDF (guide uses `script` only)
+    const heygenPrompt = await generateHeygenPrompt(script, research.trendingTopic)
     return NextResponse.json({
       script,
+      heygenPrompt,
       topic: research.trendingTopic,
       hook: research.viralHook,
       engagementAngle: research.engagementAngle,
@@ -29,7 +32,8 @@ export async function GET() {
   } catch {
     try {
       const script = await generateVideoScript(dayOfWeek, undefined, usedKeywords)
-      return NextResponse.json({ script, usedKeywords })
+      const heygenPrompt = await generateHeygenPrompt(script)
+      return NextResponse.json({ script, heygenPrompt, usedKeywords })
     } catch (e) {
       return NextResponse.json({ error: String(e) }, { status: 500 })
     }

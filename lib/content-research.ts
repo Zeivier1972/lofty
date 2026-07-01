@@ -168,13 +168,14 @@ export async function researchViralContent(dayOfWeek: number): Promise<ResearchB
     "real estate tips Miami español",
   ]
 
-  // Rotate by day-of-year so the query changes every day, not every 5 days
-  const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000)
-  const query = SEARCH_QUERIES[dayOfYear % SEARCH_QUERIES.length]
+  // Pick query + format RANDOMLY so every generation is fresh — not locked to the
+  // calendar day. (Day-locked selection meant every click on the same day produced
+  // the identical topic, e.g. always "closing costs".)
+  const query = SEARCH_QUERIES[Math.floor(Math.random() * SEARCH_QUERIES.length)]
   const trendingVideos = await searchYouTubeTrending(query)
 
-  // Pick a deterministic format from our expanded library — rotates daily, not weekly
-  const format = VIRAL_FORMATS[dayOfYear % VIRAL_FORMATS.length]
+  // Random format from our expanded library so topics vary on every generation
+  const format = VIRAL_FORMATS[Math.floor(Math.random() * VIRAL_FORMATS.length)]
 
   const now = new Date()
   const monthYear = now.toLocaleDateString("es-ES", { month: "long", year: "numeric" })
@@ -280,8 +281,7 @@ Genera un brief de contenido viral adaptado para Catherine. Devuelve SOLO JSON v
         engagementAngle: "fear",
       },
     ]
-    const dayOfYear2 = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000)
-    const fallback = FALLBACK_BRIEFS[dayOfYear2 % FALLBACK_BRIEFS.length]
+    const fallback = FALLBACK_BRIEFS[Math.floor(Math.random() * FALLBACK_BRIEFS.length)]
     return {
       trendingTopic: fallback.trendingTopic,
       viralHook: fallback.viralHook,

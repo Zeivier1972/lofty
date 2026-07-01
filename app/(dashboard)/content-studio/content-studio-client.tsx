@@ -932,6 +932,7 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
   const [generating, setGenerating] = useState(false)
   const [researchingScript, setResearchingScript] = useState(false)
   const [researchBrief, setResearchBrief] = useState<{ topic?: string; hook?: string } | null>(null)
+  const [heygenPrompt, setHeygenPrompt] = useState("")
   const [status, setStatus] = useState<"idle" | "processing" | "captions" | "completed" | "failed">("idle")
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null)
@@ -1109,12 +1110,14 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
   const generateAIScript = async () => {
     setResearchingScript(true)
     setResearchBrief(null)
+    setHeygenPrompt("")
     try {
       const res = await fetch("/api/heygen/research")
       const data = await res.json()
       if (data.error) throw new Error(data.error)
       const generatedScript = data.script || ""
       setScript(generatedScript)
+      if (data.heygenPrompt) setHeygenPrompt(data.heygenPrompt)
       if (data.topic || data.hook) setResearchBrief({ topic: data.topic, hook: data.hook })
       toast({ title: "Guión generado con investigación viral ✨" })
       // Fire-and-forget: generate the lead magnet guide in the background
@@ -1462,6 +1465,24 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
           <div className="mt-2 bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-sm text-green-800 flex items-center gap-2">
             <span>✅ Guía lista:</span>
             <a href={guideUrl} target="_blank" rel="noreferrer" className="underline font-medium truncate">{guideUrl}</a>
+          </div>
+        )}
+
+        {/* HeyGen paste-ready prompt — separate from the script, does NOT affect the PDF */}
+        {heygenPrompt && (
+          <div className="mt-4 bg-slate-50 border border-slate-200 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                <Clapperboard className="w-4 h-4" /> Prompt para HeyGen — copia y pega
+              </h3>
+              <button
+                onClick={() => { navigator.clipboard.writeText(heygenPrompt); toast({ title: "Prompt de HeyGen copiado 📋" }) }}
+                className="text-xs px-3 py-1.5 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors font-medium">
+                Copiar prompt
+              </button>
+            </div>
+            <p className="text-xs text-slate-400 mb-2">Pega esto en el cuadro “What do you want to create?” de HeyGen (Auto-pilot). Incluye el estilo del video + lo que dice la avatar. No afecta la guía PDF.</p>
+            <pre className="whitespace-pre-wrap text-xs text-slate-700 font-sans leading-relaxed max-h-80 overflow-y-auto">{heygenPrompt}</pre>
           </div>
         )}
 

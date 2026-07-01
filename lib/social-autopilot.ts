@@ -151,7 +151,7 @@ async function generateContent(
     return research.youtubeDescription
   }
 
-  const theme = research?.trendingTopic ?? DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
+  const theme = research?.trendingTopic ?? DAILY_THEMES[Math.floor(Math.random() * DAILY_THEMES.length)]
   const keywords = research?.additionalKeywords?.length
     ? research.additionalKeywords
     : pickKeywords(dayOfWeek)
@@ -261,7 +261,7 @@ async function generateAndUploadImage(
   research?: ResearchBrief,
   usedUrls = new Set<string>()
 ): Promise<string | null> {
-  const theme = research?.trendingTopic ?? DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
+  const theme = research?.trendingTopic ?? DAILY_THEMES[Math.floor(Math.random() * DAILY_THEMES.length)]
 
   // 1st priority: Pexels professional real estate photos — free, public CDN, Facebook-compatible
   try {
@@ -309,7 +309,7 @@ async function generateAndUploadImage(
 // ─── HeyGen video generation ──────────────────────────────────────────────────
 
 export async function generateVideoScript(dayOfWeek: number, research?: ResearchBrief, usedKeywords: string[] = []): Promise<string> {
-  const theme = research?.trendingTopic ?? DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
+  const theme = research?.trendingTopic ?? DAILY_THEMES[Math.floor(Math.random() * DAILY_THEMES.length)]
   const keywords = research?.additionalKeywords?.slice(0, 3) ?? pickKeywords(dayOfWeek)
   const hook = research?.viralHook
 
@@ -358,6 +358,50 @@ Devuelve SOLO las 4 escenas en texto corrido. Sin etiquetas "ESCENA X", sin corc
   })
 
   return message.content[0].type === "text" ? message.content[0].text.trim() : ""
+}
+
+// ─── HeyGen Auto-pilot prompt ─────────────────────────────────────────────────
+// Builds a single paste-ready prompt for HeyGen's "What do you want to create?"
+// box: it describes the video STYLE (vertical Reel, b-roll, captions, pacing,
+// avatar) AND embeds the exact lines the avatar should say. IMPORTANT: this is
+// returned SEPARATELY and is never merged into the `script` string, so it has ZERO
+// effect on the lead-magnet PDF (which is generated from the script alone).
+export async function generateHeygenPrompt(script: string, theme?: string): Promise<string> {
+  if (!script.trim()) return ""
+  try {
+    const message = await anthropic.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 900,
+      system: `Eres productora de video para HeyGen. Escribes un ÚNICO prompt en español, listo para pegar en el cuadro "What do you want to create?" de HeyGen (modo Auto-pilot). El prompt describe el ESTILO del video y luego incluye el guión exacto que la avatar debe decir. El resultado NO debe ser solo la avatar hablando: debe pedir b-roll, captions y ritmo dinámico.`,
+      messages: [
+        {
+          role: "user",
+          content: `Este es el guión HABLADO del video${theme ? ` sobre "${theme}"` : ""}:
+
+"""
+${script}
+"""
+
+Escribe UN SOLO prompt (para pegar directo en HeyGen) que:
+1. Pida un video VERTICAL 9:16 estilo Reel/TikTok de 45 a 60 segundos de duración.
+2. Especifique que es un video de BIENES RAÍCES, en ESPAÑOL.
+3. Use la avatar de Catherine Gomez hablando a cámara.
+4. Añada B-ROLL dinámico de bienes raíces relevante al tema, intercalado mientras habla, de estas áreas: Brickell y Miami (skyline, condos de lujo), Orlando (casas y comunidades nuevas) y Homestead (casas familiares con patio), además de piscinas, familias e interiores modernos.
+5. Añada CAPTIONS/subtítulos kinéticos EN ESPAÑOL, grandes y llamativos, sincronizados con la voz.
+6. Use música de fondo estilo PUBLICITARIO/INFORMATIVO (profesional, con energía, no dramática), transiciones rápidas y ritmo que retenga la atención.
+7. Muestre el nombre "Catherine Gomez Realtor" y el CTA en pantalla al final.
+
+Después de las instrucciones de estilo, incluye una línea que diga "La avatar dice exactamente:" seguida del guión hablado COMPLETO tal cual (sin cambiarlo).
+
+Devuelve SOLO el prompt final listo para pegar, sin explicaciones ni comillas alrededor.`,
+        },
+      ],
+    })
+    return message.content[0].type === "text" ? message.content[0].text.trim() : ""
+  } catch (err) {
+    console.error("[social-autopilot] HeyGen prompt generation failed:", err)
+    return ""
+  }
 }
 
 interface HeyGenAvatar {
@@ -595,7 +639,7 @@ async function generateBlogPostContent(
   dayOfWeek: number,
   research?: ResearchBrief
 ): Promise<BlogPostData | null> {
-  const theme = research?.trendingTopic ?? DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
+  const theme = research?.trendingTopic ?? DAILY_THEMES[Math.floor(Math.random() * DAILY_THEMES.length)]
   const keywords = research?.additionalKeywords ?? pickKeywords(dayOfWeek)
   const hook = research?.viralHook ?? ""
   const now = new Date()
@@ -727,7 +771,7 @@ async function publishBlogPost(dayOfWeek: number, research?: ResearchBrief): Pro
     const data = await generateBlogPostContent(dayOfWeek, research)
     if (!data) return null
 
-    const theme = research?.trendingTopic ?? DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
+    const theme = research?.trendingTopic ?? DAILY_THEMES[Math.floor(Math.random() * DAILY_THEMES.length)]
 
     // Generate cover + up to 2 section images in parallel (non-fatal if any fail)
     const coverPrompt = `${theme}, luxurious Miami waterfront property, golden hour`
@@ -801,7 +845,7 @@ export async function publishBlogPostOnly(): Promise<{ ok: boolean; title?: stri
     const data = await generateBlogPostContent(dayOfWeek, research)
     if (!data) return { ok: false, error: "Content generation returned null" }
 
-    const theme = research?.trendingTopic ?? DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
+    const theme = research?.trendingTopic ?? DAILY_THEMES[Math.floor(Math.random() * DAILY_THEMES.length)]
     const coverPrompt = `${theme}, luxurious Miami waterfront property, golden hour`
     const [coverImage, sectionImg1, sectionImg2] = await Promise.all([
       generateSectionImage(coverPrompt, "lofty-blog"),
@@ -1327,6 +1371,8 @@ async function publishToYouTube(account: AccountLike, post: PostLike): Promise<s
     // prompt not JSON — use defaults
   }
 
+  // uploadVideoToYouTube throws with a specific reason on failure (expired token,
+  // missing env vars, download failure, etc.) — let it propagate to errorMessage.
   const youtubeUrl = await uploadVideoToYouTube({
     videoUrl: post.mediaUrl,
     title: youtubeTitle,
@@ -1335,7 +1381,6 @@ async function publishToYouTube(account: AccountLike, post: PostLike): Promise<s
     refreshToken: account.refreshToken,
   })
 
-  if (!youtubeUrl) throw new Error("YouTube: upload returned null — check credentials and video URL")
   return youtubeUrl
 }
 
@@ -1523,7 +1568,7 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
         youtubeDescription: research.youtubeDescription,
         youtubeTags: research.youtubeTags,
       })
-    : DAILY_THEMES[getDayIndex() % DAILY_THEMES.length]
+    : DAILY_THEMES[Math.floor(Math.random() * DAILY_THEMES.length)]
 
   // 7. Fetch recently used images once — shared across all accounts this run
   const usedMediaUrls = await getRecentlyUsedMediaUrls()
