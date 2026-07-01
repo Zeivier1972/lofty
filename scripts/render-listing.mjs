@@ -32,16 +32,10 @@ const { values } = parseArgs({
   allowPositionals: true,
 })
 
-if (!values.config) {
-  console.error("❌  --config <path-to-json> is required")
-  console.error("")
-  console.error("  Example: node scripts/render-listing.mjs --config ./listing-config.json")
-  console.error("")
-  console.error("  Download config from: CRM → Content Studio → Listing Video → Download Config")
-  process.exit(1)
-}
+// Default to the file Content Studio downloads if no --config is given
+const configArg = values.config ?? "video-ad-config.json"
 
-const configPath = resolve(process.cwd(), values.config)
+const configPath = resolve(process.cwd(), configArg)
 if (!existsSync(configPath)) {
   console.error(`❌  Config file not found: ${configPath}`)
   process.exit(1)
