@@ -120,6 +120,92 @@ export async function fetchListingMedia(listingKey: string): Promise<string[]> {
     .filter((u): u is string => typeof u === "string" && u.length > 0)
 }
 
+// Build a display address, falling back to street components when UnparsedAddress
+// is missing (some MLS records withhold it).
+export function buildDisplayAddress(l: any): string {
+  if (l?.UnparsedAddress && String(l.UnparsedAddress).trim()) return String(l.UnparsedAddress).trim()
+  const street = [l?.StreetNumber, l?.StreetDirPrefix, l?.StreetName, l?.StreetSuffix, l?.StreetDirSuffix]
+    .filter(Boolean).join(" ").trim()
+  const unit = l?.UnitNumber ? ` # ${l.UnitNumber}` : ""
+  const cityState = [l?.City, l?.StateOrProvince].filter(Boolean).join(", ")
+  const parts = [street ? street + unit : "", cityState, l?.PostalCode].filter(s => s && String(s).trim())
+  return parts.join(", ") || "Dirección disponible al contactar"
+}
+
+// IDX search — Active, for-sale Residential only (excludes rentals, commercial, land).
+export async function searchIdxListings(params: {
+  city?: string; minPrice?: number; maxPrice?: number; minBeds?: number
+  propertySubType?: string; limit?: number; offset?: number
+}): Promise<any[]> {
+  const token = process.env.BRIDGE_SERVER_TOKEN
+  if (!token) throw new Error("BRIDGE_SERVER_TOKEN not set")
+  const esc = (s: string) => s.replace(/'/g, "''")
+
+  const filters = [`StandardStatus eq 'Active'`, `PropertyType eq 'Residential'`]
+  if (params.minPrice) filters.push(`ListPrice ge ${params.minPrice}`)
+  if (params.maxPrice) filters.push(`ListPrice le ${params.maxPrice}`)
+  if (params.minBeds) filters.push(`BedroomsTotal ge ${params.minBeds}`)
+  if (params.city) filters.push(`City eq '${esc(params.city)}'`)
+  if (params.propertySubType) filters.push(`PropertySubType eq '${esc(params.propertySubType)}'`)
+
+  const query = new URLSearchParams()
+  query.set("access_token", token)
+  query.set("$top", String(params.limit || 24))
+  query.set("$skip", String(params.offset || 0))
+  query.set("$filter", filters.join(" and "))
+  query.set("$orderby", "ModificationTimestamp desc")
+
+  const res = await fetch(`${BRIDGE_ODATA_BASE}/Property?${query.toString()}`, { next: { revalidate: 300 } })
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`Bridge search error ${res.status}: ${err}`)
+  }
+  const data = await res.json()
+  return data.value || []
+}
+
+// Single listing by ListingKey (detail page).
+export async function fetchListingByKey(listingKey: string): Promise<any | null> {
+  const token = process.env.BRIDGE_SERVER_TOKEN
+  if (!token || !listingKey) return null
+  const query = new URLSearchParams()
+  query.set("access_token", token)
+  query.set("$filter", `ListingKey eq '${listingKey.replace(/'/g, "''")}'`)
+  query.set("$top", "1")
+  try {
+    const res = await fetch(`${BRIDGE_ODATA_BASE}/Property?${query.toString()}`, { next: { revalidate: 300 } })
+    if (!res.ok) return null
+    const data = await res.json()
+    return (data.value && data.value[0]) || null
+  } catch {
+    return null
+  }
+}
+
+// Primary (Order 0) photo for many listings in ONE query — for search thumbnails.
+export async function fetchPrimaryPhotos(listingKeys: string[]): Promise<Record<string, string>> {
+  const token = process.env.BRIDGE_SERVER_TOKEN
+  if (!token || listingKeys.length === 0) return {}
+  const keyList = listingKeys.map(k => `'${k.replace(/'/g, "''")}'`).join(",")
+  const query = new URLSearchParams()
+  query.set("access_token", token)
+  query.set("$filter", `ResourceRecordKey in (${keyList}) and Order eq 0`)
+  query.set("$top", String(listingKeys.length))
+  try {
+    const res = await fetch(`${BRIDGE_ODATA_BASE}/Media?${query.toString()}`, { next: { revalidate: 300 } })
+    if (!res.ok) return {}
+    const data = await res.json()
+    const map: Record<string, string> = {}
+    for (const m of (data.value || [])) {
+      const url = m.MediaURL || m.ResizeMediaURL
+      if (m.ResourceRecordKey && url && !map[m.ResourceRecordKey]) map[m.ResourceRecordKey] = url
+    }
+    return map
+  } catch {
+    return {}
+  }
+}
+
 export function bridgeToProperty(l: BridgeListing) {
   return {
     mlsId: l.ListingKey || l.ListingId,
