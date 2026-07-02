@@ -145,7 +145,12 @@ export async function searchIdxListings(params: {
   if (params.minPrice) filters.push(`ListPrice ge ${params.minPrice}`)
   if (params.maxPrice) filters.push(`ListPrice le ${params.maxPrice}`)
   if (params.minBeds) filters.push(`BedroomsTotal ge ${params.minBeds}`)
-  if (params.city) filters.push(`City eq '${esc(params.city)}'`)
+  if (params.city) {
+    // MLS stores city Title-cased (e.g. "Miami", "Fort Lauderdale") and OData
+    // eq is case-sensitive — normalize the user's input so "miami" matches.
+    const titleCity = params.city.trim().toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
+    filters.push(`City eq '${esc(titleCity)}'`)
+  }
   if (params.propertySubType) filters.push(`PropertySubType eq '${esc(params.propertySubType)}'`)
 
   const query = new URLSearchParams()
