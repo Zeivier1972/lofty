@@ -135,7 +135,8 @@ export function buildDisplayAddress(l: any): string {
 // IDX search — Active, for-sale Residential only (excludes rentals, commercial, land).
 export async function searchIdxListings(params: {
   city?: string; minPrice?: number; maxPrice?: number; minBeds?: number
-  propertySubType?: string; limit?: number; offset?: number
+  minBaths?: number; minGarage?: number; propertySubType?: string
+  limit?: number; offset?: number
 }): Promise<any[]> {
   const token = process.env.BRIDGE_SERVER_TOKEN
   if (!token) throw new Error("BRIDGE_SERVER_TOKEN not set")
@@ -145,7 +146,14 @@ export async function searchIdxListings(params: {
   if (params.minPrice) filters.push(`ListPrice ge ${params.minPrice}`)
   if (params.maxPrice) filters.push(`ListPrice le ${params.maxPrice}`)
   if (params.minBeds) filters.push(`BedroomsTotal ge ${params.minBeds}`)
-  if (params.city) filters.push(`City eq '${esc(params.city)}'`)
+  if (params.minBaths) filters.push(`BathroomsTotalDecimal ge ${params.minBaths}`)
+  if (params.minGarage) filters.push(`GarageSpaces ge ${params.minGarage}`)
+  if (params.city) {
+    // MLS stores city Title-cased (e.g. "Miami", "Fort Lauderdale") and OData
+    // eq is case-sensitive — normalize the user's input so "miami" matches.
+    const titleCity = params.city.trim().toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
+    filters.push(`City eq '${esc(titleCity)}'`)
+  }
   if (params.propertySubType) filters.push(`PropertySubType eq '${esc(params.propertySubType)}'`)
 
   const query = new URLSearchParams()
@@ -182,15 +190,18 @@ export async function fetchListingByKey(listingKey: string): Promise<any | null>
   }
 }
 
-// Primary (Order 0) photo for many listings in ONE query — for search thumbnails.
+// First available photo for many listings in ONE query — for search thumbnails.
+// Ordered by Order asc, we take the first row per listing that actually has a URL
+// (Order isn't always 0-based and some rows have null URLs).
 export async function fetchPrimaryPhotos(listingKeys: string[]): Promise<Record<string, string>> {
   const token = process.env.BRIDGE_SERVER_TOKEN
   if (!token || listingKeys.length === 0) return {}
   const keyList = listingKeys.map(k => `'${k.replace(/'/g, "''")}'`).join(",")
   const query = new URLSearchParams()
   query.set("access_token", token)
-  query.set("$filter", `ResourceRecordKey in (${keyList}) and Order eq 0`)
-  query.set("$top", String(listingKeys.length))
+  query.set("$filter", `ResourceRecordKey in (${keyList}) and MediaType eq 'Image'`)
+  query.set("$orderby", "Order")
+  query.set("$top", "1000")
   try {
     const res = await fetch(`${BRIDGE_ODATA_BASE}/Media?${query.toString()}`, { next: { revalidate: 300 } })
     if (!res.ok) return {}

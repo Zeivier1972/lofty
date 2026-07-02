@@ -30,6 +30,15 @@ const PRICE_OPTIONS = [
   { label: "$2M", value: "2000000" },
 ]
 
+// RESO PropertySubType values (verified via /api/mls/bridge-test → subTypesSeen)
+const PROPERTY_TYPES = [
+  { label: "Cualquier tipo", value: "" },
+  { label: "Casa", value: "Single Family Residence" },
+  { label: "Condominio", value: "Condominium" },
+  { label: "Townhouse", value: "Townhouse" },
+  { label: "Villa", value: "Villa" },
+]
+
 function fmtPrice(n: number | null): string {
   if (!n) return "Consultar precio"
   return n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })
@@ -40,6 +49,9 @@ export default function HomesClient() {
   const [minPrice, setMinPrice] = useState("")
   const [maxPrice, setMaxPrice] = useState("")
   const [minBeds, setMinBeds] = useState("")
+  const [minBaths, setMinBaths] = useState("")
+  const [minGarage, setMinGarage] = useState("")
+  const [propType, setPropType] = useState("")
   const [results, setResults] = useState<Result[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -53,6 +65,9 @@ export default function HomesClient() {
       if (minPrice) params.set("minPrice", minPrice)
       if (maxPrice) params.set("maxPrice", maxPrice)
       if (minBeds) params.set("minBeds", minBeds)
+      if (minBaths) params.set("minBaths", minBaths)
+      if (minGarage) params.set("minGarage", minGarage)
+      if (propType) params.set("type", propType)
       const res = await fetch(`/api/idx/search?${params.toString()}`)
       const data = await res.json()
       if (!data.ok) throw new Error(data.error || "Error en la búsqueda")
@@ -63,7 +78,7 @@ export default function HomesClient() {
     } finally {
       setLoading(false)
     }
-  }, [city, minPrice, maxPrice, minBeds])
+  }, [city, minPrice, maxPrice, minBeds, minBaths, minGarage, propType])
 
   useEffect(() => { search() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -89,7 +104,7 @@ export default function HomesClient() {
 
       {/* Search bar */}
       <div className="bg-white border-b">
-        <div className="max-w-screen-xl mx-auto px-4 py-4 grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="max-w-screen-xl mx-auto px-4 py-4 grid grid-cols-2 md:grid-cols-4 gap-3">
           <input
             value={city}
             onChange={e => setCity(e.target.value)}
@@ -97,6 +112,9 @@ export default function HomesClient() {
             placeholder="Ciudad (ej: Miami, Doral)"
             className="col-span-2 md:col-span-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-lofty-400"
           />
+          <select value={propType} onChange={e => setPropType(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-lofty-400">
+            {PROPERTY_TYPES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
           <select value={minPrice} onChange={e => setMinPrice(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-lofty-400">
             {PRICE_OPTIONS.map(o => <option key={`min${o.value}`} value={o.value}>{o.value ? `Desde ${o.label}` : "Precio mín."}</option>)}
           </select>
@@ -106,6 +124,15 @@ export default function HomesClient() {
           <select value={minBeds} onChange={e => setMinBeds(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-lofty-400">
             <option value="">Cuartos</option>
             {[1, 2, 3, 4, 5].map(b => <option key={b} value={b}>{b}+ cuartos</option>)}
+          </select>
+          <select value={minBaths} onChange={e => setMinBaths(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-lofty-400">
+            <option value="">Baños</option>
+            {[1, 2, 3, 4].map(b => <option key={b} value={b}>{b}+ baños</option>)}
+          </select>
+          <select value={minGarage} onChange={e => setMinGarage(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-lofty-400">
+            <option value="">Garaje</option>
+            <option value="1">1+ garaje</option>
+            <option value="2">2+ garaje</option>
           </select>
           <button onClick={search} className="flex items-center justify-center gap-2 bg-lofty-600 text-white rounded-lg px-4 py-2 text-sm font-semibold hover:bg-lofty-700">
             <Search className="w-4 h-4" /> Buscar
