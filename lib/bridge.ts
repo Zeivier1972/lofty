@@ -90,6 +90,32 @@ export async function fetchListings(params: {
   return data.value || []
 }
 
+// Photos: $expand=Media on Property returns media metadata but WITHHOLDS the
+// URLs (MediaURL comes back null). The real URLs live on the Media resource,
+// queried directly by the listing's ListingKey (= Media.ResourceRecordKey).
+export async function fetchListingMedia(listingKey: string): Promise<string[]> {
+  const token = process.env.BRIDGE_SERVER_TOKEN
+  if (!token || !listingKey) return []
+
+  const query = new URLSearchParams()
+  query.set("access_token", token)
+  query.set("$filter", `ResourceRecordKey eq '${listingKey.replace(/'/g, "''")}'`)
+  query.set("$orderby", "Order")
+  query.set("$top", "50")
+
+  try {
+    const res = await fetch(`${BRIDGE_ODATA_BASE}/Media?${query.toString()}`, { next: { revalidate: 300 } })
+    if (!res.ok) return []
+    const data = await res.json()
+    const media: any[] = data.value || []
+    return media
+      .map(m => m.MediaURL || m.ResizeMediaURL)
+      .filter((u): u is string => typeof u === "string" && u.length > 0)
+  } catch {
+    return []
+  }
+}
+
 export function bridgeToProperty(l: BridgeListing) {
   return {
     mlsId: l.ListingKey || l.ListingId,

@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { fetchListings } from "@/lib/bridge"
+import { fetchListings, fetchListingMedia } from "@/lib/bridge"
 
 // Connectivity check for the Bridge RESO Web API feed.
 // Confirms the token + dataset work and returns a few real listings so we can
@@ -20,15 +20,18 @@ export async function GET() {
 
   try {
     const listings = await fetchListings({ limit: 3 })
-    // Diagnostic: expose the raw shape of a listing + its first Media object so we
-    // can see the exact field names (photo URL field, address components, etc.)
-    const withMedia: any = listings.find(l => ((l.Media as any[])?.length ?? 0) > 0)
+    // Confirm photos: pull real URLs from the Media resource for the listing that has photos.
+    const withPhotos: any = listings.find(l => ((l as any).PhotosCount ?? (l.Media as any[])?.length ?? 0) > 0)
+    const directMediaUrls = withPhotos
+      ? await fetchListingMedia(withPhotos.ListingKey || withPhotos.ListingId)
+      : []
     return NextResponse.json({
       ok: true,
       dataset: process.env.BRIDGE_DATASET_ID || "miamire",
       returned: listings.length,
-      rawListingKeys: Object.keys((listings[0] as any) || {}),
-      rawFirstMedia: withMedia?.Media?.[0] ?? null,
+      photoTestListing: withPhotos ? (withPhotos.ListingKey || withPhotos.ListingId) : null,
+      directMediaCount: directMediaUrls.length,
+      directMediaFirst3: directMediaUrls.slice(0, 3),
       sample: listings.map(l => ({
         mlsId: l.ListingKey || l.ListingId,
         address: l.UnparsedAddress,
