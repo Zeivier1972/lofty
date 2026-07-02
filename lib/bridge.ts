@@ -135,7 +135,8 @@ export function buildDisplayAddress(l: any): string {
 // IDX search — Active, for-sale Residential only (excludes rentals, commercial, land).
 export async function searchIdxListings(params: {
   city?: string; minPrice?: number; maxPrice?: number; minBeds?: number
-  propertySubType?: string; limit?: number; offset?: number
+  minBaths?: number; minGarage?: number; propertySubType?: string
+  limit?: number; offset?: number
 }): Promise<any[]> {
   const token = process.env.BRIDGE_SERVER_TOKEN
   if (!token) throw new Error("BRIDGE_SERVER_TOKEN not set")
@@ -145,6 +146,8 @@ export async function searchIdxListings(params: {
   if (params.minPrice) filters.push(`ListPrice ge ${params.minPrice}`)
   if (params.maxPrice) filters.push(`ListPrice le ${params.maxPrice}`)
   if (params.minBeds) filters.push(`BedroomsTotal ge ${params.minBeds}`)
+  if (params.minBaths) filters.push(`BathroomsTotalDecimal ge ${params.minBaths}`)
+  if (params.minGarage) filters.push(`GarageSpaces ge ${params.minGarage}`)
   if (params.city) {
     // MLS stores city Title-cased (e.g. "Miami", "Fort Lauderdale") and OData
     // eq is case-sensitive — normalize the user's input so "miami" matches.

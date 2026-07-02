@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { fetchListings, fetchListingMediaRaw } from "@/lib/bridge"
+import { fetchListings, fetchListingMediaRaw, searchIdxListings } from "@/lib/bridge"
 
 // Connectivity check for the Bridge RESO Web API feed.
 // Confirms the token + dataset work and returns a few real listings so we can
@@ -29,10 +29,17 @@ export async function GET() {
     const urls = rawMedia
       .map((m: any) => m.MediaURL || m.ResizeMediaURL)
       .filter((u: any) => typeof u === "string" && u.length > 0)
+    // Discover the real PropertySubType values so the search dropdown uses exact strings.
+    const sampleForTypes = await searchIdxListings({ limit: 50 })
+    const subTypesSeen = Array.from(
+      new Set(sampleForTypes.map((l: any) => l.PropertySubType).filter(Boolean))
+    ).sort()
+
     return NextResponse.json({
       ok: true,
       dataset: process.env.BRIDGE_DATASET_ID || "miamire",
       returned: listings.length,
+      subTypesSeen,
       photoTestListing: key,
       photoTestExpandLen: (withPhotos?.Media as any[])?.length ?? 0,
       directMediaRawCount: rawMedia.length,

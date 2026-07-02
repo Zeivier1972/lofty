@@ -17,6 +17,8 @@ export async function GET(req: Request) {
       minPrice: num("minPrice"),
       maxPrice: num("maxPrice"),
       minBeds: num("minBeds"),
+      minBaths: num("minBaths"),
+      minGarage: num("minGarage"),
       propertySubType: searchParams.get("type") || undefined,
       limit: Math.min(num("limit") || 24, 50),
       offset: num("offset") || 0,
