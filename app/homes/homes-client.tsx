@@ -36,7 +36,7 @@ const PROPERTY_TYPES = [
   { label: "Casa", value: "Single Family Residence" },
   { label: "Condominio", value: "Condominium" },
   { label: "Townhouse", value: "Townhouse" },
-  { label: "Villa", value: "Villa" },
+  { label: "Cooperativa", value: "Stock Cooperative" },
 ]
 
 function fmtPrice(n: number | null): string {

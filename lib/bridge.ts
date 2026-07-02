@@ -142,7 +142,14 @@ export async function searchIdxListings(params: {
   if (!token) throw new Error("BRIDGE_SERVER_TOKEN not set")
   const esc = (s: string) => s.replace(/'/g, "''")
 
-  const filters = [`StandardStatus eq 'Active'`, `PropertyType eq 'Residential'`]
+  // InternetEntireListingDisplayYN gates IDX display: listings whose agent/seller
+  // opted out must NOT be shown (compliance) — and those are exactly the ones whose
+  // photo URLs come back null. Filtering to true fixes both.
+  const filters = [
+    `StandardStatus eq 'Active'`,
+    `PropertyType eq 'Residential'`,
+    `InternetEntireListingDisplayYN eq true`,
+  ]
   if (params.minPrice) filters.push(`ListPrice ge ${params.minPrice}`)
   if (params.maxPrice) filters.push(`ListPrice le ${params.maxPrice}`)
   if (params.minBeds) filters.push(`BedroomsTotal ge ${params.minBeds}`)
