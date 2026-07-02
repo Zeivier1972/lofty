@@ -1,7 +1,9 @@
 // Dataset is configurable via env so it matches whatever the MLS approved
 // (defaults to the MIAMI dataset). Token is always a Railway env var.
+// We use the RESO Web API (OData) endpoint, which uses standard $filter/$orderby
+// syntax and returns { value: [...] }.
 const BRIDGE_DATASET = process.env.BRIDGE_DATASET_ID || "miamire"
-const BRIDGE_BASE = `https://api.bridgedataoutput.com/api/v2/${BRIDGE_DATASET}`
+const BRIDGE_ODATA_BASE = `https://api.bridgedataoutput.com/api/v2/OData/${BRIDGE_DATASET}`
 
 interface BridgeListing {
   ListingKey: string
@@ -59,33 +61,24 @@ export async function fetchListings(params: {
   const token = process.env.BRIDGE_SERVER_TOKEN
   if (!token) throw new Error("BRIDGE_SERVER_TOKEN not set")
 
-  const query = new URLSearchParams()
-  query.set("access_token", token)
-  query.set("limit", String(params.limit || 20))
-  query.set("offset", String(params.offset || 0))
-  query.set("fields", [
-    "ListingKey", "ListingId", "UnparsedAddress", "City", "StateOrProvince",
-    "PostalCode", "ListPrice", "OriginalListPrice", "BedroomsTotal",
-    "BathroomsTotalDecimal", "LivingArea", "LotSizeAcres", "YearBuilt",
-    "PropertyType", "PropertySubType", "StandardStatus", "PublicRemarks",
-    "Media", "GarageSpaces", "PoolPrivateYN", "AssociationFee",
-    "TaxAnnualAmount", "OnMarketDate", "DaysOnMarket",
-    "ListAgentFullName", "ListAgentDirectPhone", "ListAgentEmail",
-    "ListOfficeName", "Latitude", "Longitude"
-  ].join(","))
-
-  // Build filter
+  // OData $filter (single quotes in string literals are escaped by doubling)
+  const esc = (s: string) => s.replace(/'/g, "''")
   const filters: string[] = [`StandardStatus eq 'Active'`]
   if (params.minPrice) filters.push(`ListPrice ge ${params.minPrice}`)
   if (params.maxPrice) filters.push(`ListPrice le ${params.maxPrice}`)
   if (params.minBeds) filters.push(`BedroomsTotal ge ${params.minBeds}`)
-  if (params.city) filters.push(`City eq '${params.city}'`)
-  if (params.zipCode) filters.push(`PostalCode eq '${params.zipCode}'`)
+  if (params.city) filters.push(`City eq '${esc(params.city)}'`)
+  if (params.zipCode) filters.push(`PostalCode eq '${esc(params.zipCode)}'`)
 
+  const query = new URLSearchParams()
+  query.set("access_token", token)
+  query.set("$top", String(params.limit || 20))
+  query.set("$skip", String(params.offset || 0))
   query.set("$filter", filters.join(" and "))
-  query.set("$orderby", "OnMarketDate desc")
+  query.set("$orderby", "ModificationTimestamp desc")
+  query.set("$expand", "Media") // pull listing photos inline (RESO nav property)
 
-  const url = `${BRIDGE_BASE}/listings?${query.toString()}`
+  const url = `${BRIDGE_ODATA_BASE}/Property?${query.toString()}`
   const res = await fetch(url, { next: { revalidate: 300 } }) // cache 5 min
 
   if (!res.ok) {
@@ -94,7 +87,7 @@ export async function fetchListings(params: {
   }
 
   const data = await res.json()
-  return data.bundle || []
+  return data.value || []
 }
 
 export function bridgeToProperty(l: BridgeListing) {
