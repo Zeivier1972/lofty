@@ -20,10 +20,15 @@ export async function GET() {
 
   try {
     const listings = await fetchListings({ limit: 3 })
+    // Diagnostic: expose the raw shape of a listing + its first Media object so we
+    // can see the exact field names (photo URL field, address components, etc.)
+    const withMedia: any = listings.find(l => ((l.Media as any[])?.length ?? 0) > 0)
     return NextResponse.json({
       ok: true,
       dataset: process.env.BRIDGE_DATASET_ID || "miamire",
       returned: listings.length,
+      rawListingKeys: Object.keys((listings[0] as any) || {}),
+      rawFirstMedia: withMedia?.Media?.[0] ?? null,
       sample: listings.map(l => ({
         mlsId: l.ListingKey || l.ListingId,
         address: l.UnparsedAddress,
