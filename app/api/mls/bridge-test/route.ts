@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { fetchListings, fetchListingMedia } from "@/lib/bridge"
+import { fetchListings, fetchListingMediaRaw } from "@/lib/bridge"
 
 // Connectivity check for the Bridge RESO Web API feed.
 // Confirms the token + dataset work and returns a few real listings so we can
@@ -20,18 +20,24 @@ export async function GET() {
 
   try {
     const listings = await fetchListings({ limit: 3 })
-    // Confirm photos: pull real URLs from the Media resource for the listing that has photos.
-    const withPhotos: any = listings.find(l => ((l as any).PhotosCount ?? (l.Media as any[])?.length ?? 0) > 0)
-    const directMediaUrls = withPhotos
-      ? await fetchListingMedia(withPhotos.ListingKey || withPhotos.ListingId)
-      : []
+    // Pick the listing with the MOST expanded media items (that's the one that has photos).
+    const withPhotos: any = [...listings].sort(
+      (a, b) => ((b.Media as any[])?.length ?? 0) - ((a.Media as any[])?.length ?? 0)
+    )[0]
+    const key = withPhotos ? (withPhotos.ListingKey || withPhotos.ListingId) : null
+    const rawMedia = key ? await fetchListingMediaRaw(key) : []
+    const urls = rawMedia
+      .map((m: any) => m.MediaURL || m.ResizeMediaURL)
+      .filter((u: any) => typeof u === "string" && u.length > 0)
     return NextResponse.json({
       ok: true,
       dataset: process.env.BRIDGE_DATASET_ID || "miamire",
       returned: listings.length,
-      photoTestListing: withPhotos ? (withPhotos.ListingKey || withPhotos.ListingId) : null,
-      directMediaCount: directMediaUrls.length,
-      directMediaFirst3: directMediaUrls.slice(0, 3),
+      photoTestListing: key,
+      photoTestExpandLen: (withPhotos?.Media as any[])?.length ?? 0,
+      directMediaRawCount: rawMedia.length,
+      directMediaRawFirst: rawMedia[0] ?? null,
+      directMediaUrls: urls.slice(0, 3),
       sample: listings.map(l => ({
         mlsId: l.ListingKey || l.ListingId,
         address: l.UnparsedAddress,
