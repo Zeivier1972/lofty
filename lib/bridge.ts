@@ -1,4 +1,7 @@
-const BRIDGE_BASE = "https://api.bridgedataoutput.com/api/v2/miamire"
+// Dataset is configurable via env so it matches whatever the MLS approved
+// (defaults to the MIAMI dataset). Token is always a Railway env var.
+const BRIDGE_DATASET = process.env.BRIDGE_DATASET_ID || "miamire"
+const BRIDGE_BASE = `https://api.bridgedataoutput.com/api/v2/${BRIDGE_DATASET}`
 
 interface BridgeListing {
   ListingKey: string
