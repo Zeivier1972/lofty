@@ -182,15 +182,18 @@ export async function fetchListingByKey(listingKey: string): Promise<any | null>
   }
 }
 
-// Primary (Order 0) photo for many listings in ONE query — for search thumbnails.
+// First available photo for many listings in ONE query — for search thumbnails.
+// Ordered by Order asc, we take the first row per listing that actually has a URL
+// (Order isn't always 0-based and some rows have null URLs).
 export async function fetchPrimaryPhotos(listingKeys: string[]): Promise<Record<string, string>> {
   const token = process.env.BRIDGE_SERVER_TOKEN
   if (!token || listingKeys.length === 0) return {}
   const keyList = listingKeys.map(k => `'${k.replace(/'/g, "''")}'`).join(",")
   const query = new URLSearchParams()
   query.set("access_token", token)
-  query.set("$filter", `ResourceRecordKey in (${keyList}) and Order eq 0`)
-  query.set("$top", String(listingKeys.length))
+  query.set("$filter", `ResourceRecordKey in (${keyList}) and MediaType eq 'Image'`)
+  query.set("$orderby", "Order")
+  query.set("$top", "1000")
   try {
     const res = await fetch(`${BRIDGE_ODATA_BASE}/Media?${query.toString()}`, { next: { revalidate: 300 } })
     if (!res.ok) return {}
