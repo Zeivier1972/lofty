@@ -123,6 +123,30 @@ export async function POST(req: Request) {
       if (cfg?.realtorPhone) {
         sendSMS(cfg.realtorPhone, `💜 Sofia: ${who} guardó ${label}. Contacto: ${contactInfo || "s/d"}. Ver: ${appUrl}/contacts/${contact.id}`).catch(() => {})
       }
+
+      // Sofia engages the LEAD (the client who saved) — on their FIRST save only,
+      // so she doesn't spam if they save several. SMS if we have a phone, else email.
+      const activeSaves = await prisma.propertySave.count({ where: { contactId: contact.id, isActive: true } }).catch(() => 2)
+      if (activeSaves <= 1) {
+        const bookUrl = `${appUrl}/book`
+        const sofiaMsg = `¡Hola ${contact.firstName}! 🏠 Soy Sofía, asistente de Catherine Gomez Realtor. Vi que guardaste ${address}. ¿Te gustaría agendar una visita o que te muestre opciones similares? Agenda aquí: ${bookUrl} — o respóndeme por aquí. 😊`
+        if (contact.phone && !contact.doNotText) {
+          sendSMS(contact.phone, sofiaMsg).catch(() => {})
+        } else if (contact.email && !contact.doNotEmail) {
+          sendEmail({
+            to: contact.email,
+            subject: `Sobre la propiedad que guardaste 🏠`,
+            html: `<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto">
+              <p>¡Hola ${contact.firstName}! 👋</p>
+              <p>Soy <strong>Sofía</strong>, asistente de Catherine Gomez Realtor. Vi que guardaste:</p>
+              <p style="font-size:16px;color:#0e1f3d"><strong>${label}</strong></p>
+              <p>¿Te gustaría agendar una visita o que te envíe propiedades similares?</p>
+              <p><a href="${bookUrl}" style="background:#0e1f3d;color:#fff;padding:11px 20px;border-radius:8px;text-decoration:none">Agendar una visita →</a></p>
+              <p style="color:#888;font-size:12px">O responde a este correo y con gusto te ayudo. — Sofía, por Catherine Gomez Realtor</p>
+            </div>`,
+          }).catch(() => {})
+        }
+      }
     }
 
     return NextResponse.json({ ok: true, contactId: contact.id, firstName: contact.firstName })
