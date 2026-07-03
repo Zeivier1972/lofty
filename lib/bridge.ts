@@ -216,6 +216,7 @@ export async function searchIdxListings(params: {
   query.set("$skip", String(params.offset || 0))
   query.set("$filter", filters.join(" and "))
   query.set("$orderby", "ModificationTimestamp desc")
+  query.set("$count", "true")
 
   const res = await fetch(`${BRIDGE_ODATA_BASE}/Property?${query.toString()}`, { next: { revalidate: 300 } })
   if (!res.ok) {
@@ -223,7 +224,14 @@ export async function searchIdxListings(params: {
     throw new Error(`Bridge search error ${res.status}: ${err}`)
   }
   const data = await res.json()
-  return data.value || []
+  const listings = data.value || []
+  ;(listings as any).__total = data["@odata.count"] ?? listings.length
+  return listings
+}
+
+// Total count of matching listings (for numbered pagination).
+export function idxTotalFromResult(listings: any[]): number {
+  return (listings as any).__total ?? listings.length
 }
 
 // Area market stats from the whole MLS (not just our listings) — for the homepage
