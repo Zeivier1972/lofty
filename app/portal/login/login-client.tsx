@@ -190,7 +190,13 @@ export default function PortalLoginClient({ prefillToken, error }: Props) {
                 </div>
               )}
 
-              <p className="text-center text-xs text-gray-400 mt-6">
+              <p className="text-center text-sm text-gray-500 mt-5">
+                New here?{" "}
+                <a href="/portal/register" className="text-lofty-600 font-semibold hover:underline">
+                  Create an account →
+                </a>
+              </p>
+              <p className="text-center text-xs text-gray-400 mt-2">
                 Your portal is provided by your real estate agent. Contact them if you need help.
               </p>
             </>
