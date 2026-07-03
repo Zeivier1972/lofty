@@ -3,6 +3,8 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { fetchListingByKey, bridgeToProperty, buildDisplayAddress } from "@/lib/bridge"
+import { sendEmail } from "@/lib/email"
+import { sendSMS } from "@/lib/sms"
 
 // Public: a site visitor saves (favorites) an IDX listing. Creates/finds the
 // Contact (lead capture), upserts the listing into Property, records a
@@ -98,6 +100,29 @@ export async function POST(req: Request) {
           contactId: contact.id,
         },
       }).catch(() => {})
+
+      // Sofia reaches out to the agent — email + SMS so it lands on your phone
+      const cfg = await prisma.aIConfig.findFirst({ select: { realtorEmail: true, realtorPhone: true } }).catch(() => null)
+      const who = `${contact.firstName} ${contact.lastName || ""}`.trim()
+      const contactInfo = [contact.phone, contact.email].filter(Boolean).join(" · ")
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
+      if (cfg?.realtorEmail) {
+        sendEmail({
+          to: cfg.realtorEmail,
+          subject: `💜 ${who} guardó una propiedad`,
+          html: `<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto">
+            <h2 style="color:#0e1f3d">Sofia: nuevo interés de un lead</h2>
+            <p><strong>${who}</strong> acaba de guardar una propiedad en tu sitio:</p>
+            <p style="font-size:16px;color:#0e1f3d"><strong>${label}</strong></p>
+            <p>Contacto: ${contactInfo || "—"}</p>
+            <p><a href="${appUrl}/contacts/${contact.id}" style="background:#0e1f3d;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">Ver el lead en el CRM →</a></p>
+            <p style="color:#888;font-size:12px">Buen momento para llamar mientras está mirando.</p>
+          </div>`,
+        }).catch(() => {})
+      }
+      if (cfg?.realtorPhone) {
+        sendSMS(cfg.realtorPhone, `💜 Sofia: ${who} guardó ${label}. Contacto: ${contactInfo || "s/d"}. Ver: ${appUrl}/contacts/${contact.id}`).catch(() => {})
+      }
     }
 
     return NextResponse.json({ ok: true, contactId: contact.id, firstName: contact.firstName })

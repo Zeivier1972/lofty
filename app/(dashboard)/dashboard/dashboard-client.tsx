@@ -11,6 +11,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, 
 import Link from "next/link"
 import { format } from "date-fns"
 import HelpPanel from "@/components/help-panel"
+import HotActivity from "./hot-activity"
 
 interface DashboardClientProps {
   stats: {
@@ -266,6 +267,9 @@ export default function DashboardClient({
         tasksDueToday={stats.tasksDueToday}
         upcomingAppointments={stats.upcomingAppointments}
       />
+
+      {/* Hot buyers + popular properties (IDX activity) */}
+      <HotActivity />
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

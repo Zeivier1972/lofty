@@ -68,8 +68,24 @@ function fmtPrice(n: number | null): string {
   return n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })
 }
 
+// Windowed page numbers with ellipses, e.g. 1 … 4 5 6 … 20
+function pageNumbers(current: number, total: number): (number | "…")[] {
+  const pages = new Set<number>([1, total])
+  for (let i = current - 1; i <= current + 1; i++) if (i >= 1 && i <= total) pages.add(i)
+  const sorted = Array.from(pages).sort((a, b) => a - b)
+  const out: (number | "…")[] = []
+  let prev = 0
+  for (const p of sorted) {
+    if (p - prev > 1) out.push("…")
+    out.push(p)
+    prev = p
+  }
+  return out
+}
+
 export default function HomesClient({ initialCity }: { initialCity?: string } = {}) {
   const [mode, setMode] = useState<"sale" | "rent">("sale")
+  const [sort, setSort] = useState("")
   const [city, setCity] = useState(initialCity || "")
   const [minPrice, setMinPrice] = useState("")
   const [maxPrice, setMaxPrice] = useState("")
@@ -94,6 +110,8 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
   const [error, setError] = useState<string | null>(null)
   const [hasMore, setHasMore] = useState(false)
   const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [total, setTotal] = useState(0)
   const [snap, setSnap] = useState<any>(null)
   // Favorites + lead capture
   const [favs, setFavsState] = useState<string[]>([])
@@ -175,7 +193,7 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
       setStr("minPrice", p.minPrice); setStr("maxPrice", p.maxPrice)
       setStr("minBeds", p.minBeds); setStr("maxBeds", p.maxBeds)
       setStr("minBaths", p.minBaths); setStr("maxBaths", p.maxBaths)
-      setStr("minGarage", p.minGarage); setStr("type", p.propType)
+      setStr("minGarage", p.minGarage); setStr("type", p.propType); setStr("sort", p.sort)
       setStr("minSqft", p.minSqft); setStr("maxSqft", p.maxSqft)
       setStr("minYear", p.minYear); setStr("maxYear", p.maxYear)
       setStr("maxHoa", p.maxHoa); setStr("maxDom", p.maxDom)
@@ -188,6 +206,8 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
       if (!data.ok) throw new Error(data.error || "Error en la búsqueda")
       setResults(data.results || [])
       setHasMore(!!data.hasMore)
+      setTotalPages(data.totalPages || 1)
+      setTotal(data.total || (data.results?.length ?? 0))
     } catch (e: any) {
       setError(e.message)
       setResults([])
@@ -204,10 +224,16 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
   }, [])
 
   const currentFilters = () => ({
-    city, minPrice, maxPrice, minBeds, maxBeds, minBaths, maxBaths, minGarage, propType, mode,
+    city, minPrice, maxPrice, minBeds, maxBeds, minBaths, maxBaths, minGarage, propType, mode, sort,
     minSqft, maxSqft, minYear, maxYear, maxHoa, maxDom, pool, waterfront,
   })
-  const search = useCallback(() => { setPage(1); runQuery({ ...currentFilters(), offset: "0" }) }, [runQuery, city, minPrice, maxPrice, minBeds, maxBeds, minBaths, maxBaths, minGarage, propType, mode, minSqft, maxSqft, minYear, maxYear, maxHoa, maxDom, pool, waterfront]) // eslint-disable-line react-hooks/exhaustive-deps
+  const search = useCallback(() => { setPage(1); runQuery({ ...currentFilters(), offset: "0" }) }, [runQuery, city, minPrice, maxPrice, minBeds, maxBeds, minBaths, maxBaths, minGarage, propType, mode, sort, minSqft, maxSqft, minYear, maxYear, maxHoa, maxDom, pool, waterfront]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function changeSort(v: string) {
+    setSort(v)
+    setPage(1)
+    runQuery({ ...currentFilters(), sort: v, offset: "0" })
+  }
 
   function switchMode(m: "sale" | "rent") {
     if (m === mode) return
@@ -403,8 +429,15 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
           <div className="text-center py-24 text-gray-400 text-sm">No se encontraron propiedades. Ajusta los filtros.</div>
         ) : (
           <>
-            <div className="flex items-center justify-between mb-4 gap-3">
-              <p className="text-sm text-gray-500">{results.length} propiedades{page > 1 ? ` · página ${page}` : ""}</p>
+            <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+              <p className="text-sm text-gray-500">{total.toLocaleString()} propiedades{totalPages > 1 ? ` · página ${page} de ${totalPages}` : ""}</p>
+              <div className="flex items-center gap-3">
+                <select value={sort} onChange={e => changeSort(e.target.value)}
+                  className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-lofty-400">
+                  <option value="">Más recientes</option>
+                  <option value="price_asc">Precio: menor a mayor</option>
+                  <option value="price_desc">Precio: mayor a menor</option>
+                </select>
               {searchSaved ? (
                 <span className="text-sm text-green-600 font-medium flex items-center gap-1">✓ Búsqueda guardada — te avisaremos</span>
               ) : (
@@ -413,6 +446,7 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
                   🔔 Guardar esta búsqueda
                 </button>
               )}
+              </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
               {results.map(r => (
@@ -449,17 +483,22 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
             </div>
 
             {/* Pagination */}
-            {(page > 1 || hasMore) && (
-              <div className="flex items-center justify-center gap-3 mt-8">
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-1.5 mt-8 flex-wrap">
                 <button onClick={() => goToPage(page - 1)} disabled={page <= 1}
-                  className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-50">
-                  ← Anterior
-                </button>
-                <span className="text-sm text-gray-500">Página {page}</span>
-                <button onClick={() => goToPage(page + 1)} disabled={!hasMore}
-                  className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-50">
-                  Siguiente →
-                </button>
+                  className="px-3 py-2 text-sm font-medium rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-50">←</button>
+                {pageNumbers(page, totalPages).map((n, i) =>
+                  n === "…" ? (
+                    <span key={`e${i}`} className="px-2 text-gray-400">…</span>
+                  ) : (
+                    <button key={n} onClick={() => goToPage(n as number)}
+                      className={`min-w-[38px] px-3 py-2 text-sm font-medium rounded-lg border ${n === page ? "bg-lofty-600 text-white border-lofty-600" : "border-gray-200 hover:bg-gray-50"}`}>
+                      {n}
+                    </button>
+                  )
+                )}
+                <button onClick={() => goToPage(page + 1)} disabled={page >= totalPages}
+                  className="px-3 py-2 text-sm font-medium rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-50">→</button>
               </div>
             )}
           </>

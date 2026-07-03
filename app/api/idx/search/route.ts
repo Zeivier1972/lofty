@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
-import { searchIdxListings, fetchPrimaryPhotos, buildDisplayAddress } from "@/lib/bridge"
+import { searchIdxListings, fetchPrimaryPhotos, buildDisplayAddress, idxTotalFromResult } from "@/lib/bridge"
 
 // Public IDX search — Active, for-sale Residential listings from the MLS feed.
 export async function GET(req: Request) {
@@ -21,8 +21,7 @@ export async function GET(req: Request) {
     const pageSize = Math.min(num("limit") || 24, 48)
     const offset = num("offset") || 0
 
-    // Fetch one extra to know whether there's a next page.
-    const raw = await searchIdxListings({
+    const listings = await searchIdxListings({
       city: isZip ? undefined : (loc || undefined),
       zip: isZip ? loc : (searchParams.get("zip") || undefined),
       minPrice: num("minPrice"),
@@ -42,11 +41,14 @@ export async function GET(req: Request) {
       maxDom: num("maxDom"),
       pool: bool("pool"),
       waterfront: bool("waterfront"),
-      limit: pageSize + 1,
+      sort: searchParams.get("sort") || undefined,
+      limit: pageSize,
       offset,
     })
-    const hasMore = raw.length > pageSize
-    const listings = raw.slice(0, pageSize)
+    const total = idxTotalFromResult(listings)
+    const totalPages = Math.max(1, Math.ceil(total / pageSize))
+    const page = Math.floor(offset / pageSize) + 1
+    const hasMore = page < totalPages
 
     const keys = listings.map((l: any) => l.ListingKey).filter(Boolean)
     const photos = await fetchPrimaryPhotos(keys)
@@ -66,7 +68,7 @@ export async function GET(req: Request) {
       office: l.ListOfficeName || null,
     }))
 
-    return NextResponse.json({ ok: true, count: results.length, hasMore, results })
+    return NextResponse.json({ ok: true, count: results.length, total, totalPages, page, hasMore, results })
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e.message || "Search failed" }, { status: 500 })
   }
