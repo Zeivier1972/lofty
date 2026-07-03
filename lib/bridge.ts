@@ -4,6 +4,24 @@
 // syntax and returns { value: [...] }.
 const BRIDGE_DATASET = process.env.BRIDGE_DATASET_ID || "miamire"
 const BRIDGE_ODATA_BASE = `https://api.bridgedataoutput.com/api/v2/OData/${BRIDGE_DATASET}`
+// The RESO OData Media resource withholds photo URLs for MIAMI (MediaURL null),
+// but the Bridge Web API /listings endpoint returns real CDN photo URLs inline.
+const BRIDGE_WEBAPI_BASE = `https://api.bridgedataoutput.com/api/v2/${BRIDGE_DATASET}`
+
+// Extract ordered, de-duplicated photo URLs from a Web API listing object.
+function photosFromListing(l: any): string[] {
+  if (!l) return []
+  const media = l.Media || l.Photos || l.photos
+  if (Array.isArray(media)) {
+    const urls = media
+      .map((m: any) => (typeof m === "string" ? m : m?.MediaURL || m?.MediaUrl || m?.Url || m?.url))
+      .filter((u: any) => typeof u === "string" && /^https?:\/\//.test(u))
+    if (urls.length) return Array.from(new Set(urls))
+  }
+  // Fallback: pull image URLs straight out of the JSON (order preserved)
+  const matches = JSON.stringify(l).match(/https?:\/\/[^"'\\ ]+\.(?:jpe?g|png|webp)(?:\?[^"'\\ ]*)?/gi) || []
+  return Array.from(new Set(matches))
+}
 
 interface BridgeListing {
   ListingKey: string
@@ -113,11 +131,23 @@ export async function fetchListingMediaRaw(listingKey: string): Promise<any[]> {
   }
 }
 
+// All photo URLs for a single listing (detail page) — via the Bridge Web API,
+// which returns real CDN URLs (the OData Media resource returns null MediaURL).
 export async function fetchListingMedia(listingKey: string): Promise<string[]> {
-  const media = await fetchListingMediaRaw(listingKey)
-  return media
-    .map(m => m.MediaURL || m.ResizeMediaURL)
-    .filter((u): u is string => typeof u === "string" && u.length > 0)
+  const token = process.env.BRIDGE_SERVER_TOKEN
+  if (!token || !listingKey) return []
+  try {
+    const res = await fetch(
+      `${BRIDGE_WEBAPI_BASE}/listings/${encodeURIComponent(listingKey)}?access_token=${token}`,
+      { next: { revalidate: 300 } }
+    )
+    if (!res.ok) return []
+    const data = await res.json()
+    const listing = Array.isArray(data.bundle) ? data.bundle[0] : data.bundle
+    return photosFromListing(listing)
+  } catch {
+    return []
+  }
 }
 
 // Build a display address, falling back to street components when UnparsedAddress
@@ -197,27 +227,24 @@ export async function fetchListingByKey(listingKey: string): Promise<any | null>
   }
 }
 
-// First photo per listing for search thumbnails. ONE batched Media query for all
-// listing keys (firing a query per listing gets rate-limited by Bridge, so nearly
-// all come back empty). Ordered by Order asc, we take the first URL-bearing image
-// row per listing.
+// First photo per listing for search thumbnails. ONE batched Web API /listings
+// query for all keys (photos are returned inline with real CDN URLs).
 export async function fetchPrimaryPhotos(listingKeys: string[]): Promise<Record<string, string>> {
   const token = process.env.BRIDGE_SERVER_TOKEN
   if (!token || listingKeys.length === 0) return {}
-  const keyList = listingKeys.map(k => `'${k.replace(/'/g, "''")}'`).join(",")
   const query = new URLSearchParams()
   query.set("access_token", token)
-  query.set("$filter", `ResourceRecordKey in (${keyList}) and MediaType eq 'Image'`)
-  query.set("$orderby", "Order")
-  query.set("$top", "2000")
+  query.set("ListingKey.in", listingKeys.join(","))
+  query.set("limit", String(listingKeys.length))
   try {
-    const res = await fetch(`${BRIDGE_ODATA_BASE}/Media?${query.toString()}`, { next: { revalidate: 300 } })
+    const res = await fetch(`${BRIDGE_WEBAPI_BASE}/listings?${query.toString()}`, { next: { revalidate: 300 } })
     if (!res.ok) return {}
     const data = await res.json()
+    const bundle: any[] = Array.isArray(data.bundle) ? data.bundle : []
     const map: Record<string, string> = {}
-    for (const m of (data.value || [])) {
-      const url = m.MediaURL || m.ResizeMediaURL
-      if (m.ResourceRecordKey && url && !map[m.ResourceRecordKey]) map[m.ResourceRecordKey] = url
+    for (const l of bundle) {
+      const photos = photosFromListing(l)
+      if (l.ListingKey && photos[0]) map[l.ListingKey] = photos[0]
     }
     return map
   } catch {
