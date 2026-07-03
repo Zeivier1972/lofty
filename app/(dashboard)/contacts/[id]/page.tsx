@@ -26,6 +26,23 @@ export default async function ContactDetailPage({ params }: { params: { id: stri
 
   if (!contact) notFound()
 
+  // Properties Sofia sent via match-alert emails
+  const rawAlerts = await prisma.propertyAlertSent.findMany({
+    where: { contactId: params.id },
+    orderBy: { sentAt: "desc" },
+    take: 30,
+  })
+  const alertPropertyIds = rawAlerts.map(a => a.propertyId)
+  const alertProperties = alertPropertyIds.length > 0
+    ? await prisma.property.findMany({
+        where: { id: { in: alertPropertyIds } },
+        select: { id: true, address: true, city: true, state: true, price: true, bedrooms: true, bathrooms: true, images: true, mlsId: true },
+      })
+    : []
+  const alertsSent = rawAlerts
+    .map(a => ({ ...a, property: alertProperties.find(p => p.id === a.propertyId) || null }))
+    .filter(a => a.property !== null)
+
   const smsMessages = await prisma.sMSMessage.findMany({
     where: { contactId: params.id },
     orderBy: { createdAt: "desc" },
@@ -42,5 +59,6 @@ export default async function ContactDetailPage({ params }: { params: { id: stri
     smsMessages={JSON.parse(JSON.stringify(smsMessages))}
     stages={JSON.parse(JSON.stringify(pipeline?.stages || []))}
     pipelineId={pipeline?.id || ""}
+    alertsSent={JSON.parse(JSON.stringify(alertsSent))}
   />
 }

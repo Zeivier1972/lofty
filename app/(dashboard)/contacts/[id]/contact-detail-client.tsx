@@ -285,7 +285,7 @@ function BuyerPrefsPanel({ contact }: { contact: any }) {
   )
 }
 
-export default function ContactDetailClient({ contact, smsMessages = [], stages = [], pipelineId = "" }: { contact: any; smsMessages?: any[]; stages?: any[]; pipelineId?: string }) {
+export default function ContactDetailClient({ contact, smsMessages = [], stages = [], pipelineId = "", alertsSent = [] }: { contact: any; smsMessages?: any[]; stages?: any[]; pipelineId?: string; alertsSent?: any[] }) {
   const { toast } = useToast()
   const router = useRouter()
   const [newNote, setNewNote] = useState("")
@@ -579,7 +579,7 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
 
   const TABS: { id: TabId; label: string; count?: number }[] = [
     { id: "overview", label: "Overview" },
-    { id: "properties", label: "Properties", count: (contact.propertyInterests?.length || 0) + (contact.propertySaves?.length || 0) },
+    { id: "properties", label: "Properties", count: (contact.propertyInterests?.length || 0) + (contact.propertySaves?.length || 0) + alertsSent.length },
     { id: "searches", label: "Searches" },
     { id: "transactions", label: "Transactions", count: contact.transactions?.length },
     { id: "documents", label: "Documents" },
@@ -1267,7 +1267,50 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
                   </>
                 )}
 
-                {(!contact.propertySaves?.length && !contact.propertyInterests?.length) && (
+                {/* Properties Sofia sent via match-alert emails */}
+                {alertsSent.length > 0 && (
+                  <>
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-1 mt-4">Enviadas por Sofía</p>
+                    {alertsSent.map((alert: any) => {
+                      const p = alert.property
+                      const imgs = p.images ? (() => { try { return JSON.parse(p.images) } catch { return [] } })() : []
+                      const thumb = imgs.find((u: any) => u) || null
+                      const href = p.mlsId
+                        ? `/homes/${p.mlsId}`
+                        : `/site/listing/${p.id}`
+                      return (
+                        <div key={alert.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center gap-4">
+                          <div className="w-14 h-14 bg-gray-100 rounded-xl flex-shrink-0 overflow-hidden flex items-center justify-center">
+                            {thumb ? (
+                              <img src={thumb} alt={p.address} className="w-full h-full object-cover" />
+                            ) : (
+                              <Home className="w-6 h-6 text-gray-400" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-gray-900 truncate">{p.address}</p>
+                            <p className="text-sm text-gray-500">
+                              {p.city}, {p.state}
+                              {p.price ? ` · ${formatCurrency(p.price)}` : ""}
+                              {p.bedrooms ? ` · ${p.bedrooms}bd` : ""}
+                              {p.bathrooms ? `/${p.bathrooms}ba` : ""}
+                            </p>
+                            <p className="text-xs text-gray-400 mt-0.5">Enviada {formatRelativeTime(alert.sentAt)}</p>
+                          </div>
+                          <Link
+                            href={href}
+                            target="_blank"
+                            className="flex-shrink-0 text-xs font-semibold text-lofty-600 hover:text-lofty-800 underline underline-offset-2"
+                          >
+                            Ver →
+                          </Link>
+                        </div>
+                      )
+                    })}
+                  </>
+                )}
+
+                {(!contact.propertySaves?.length && !contact.propertyInterests?.length && !alertsSent.length) && (
                   <div className="text-center py-12">
                     <Home className="w-10 h-10 text-gray-200 mx-auto mb-3" />
                     <p className="text-gray-400 text-sm">No properties associated with this contact</p>
