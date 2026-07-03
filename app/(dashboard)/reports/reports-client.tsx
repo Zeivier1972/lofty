@@ -5,10 +5,23 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area,
 } from "recharts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { BarChart3, TrendingUp, Users, DollarSign, CheckSquare, Target, AlertTriangle, Clock } from "lucide-react"
+import { BarChart3, TrendingUp, Users, DollarSign, CheckSquare, Target, AlertTriangle, Clock, MessageSquare, Mail } from "lucide-react"
 import { formatCurrency } from "@/lib/utils"
 import { useState, useEffect } from "react"
 import HelpPanel from "@/components/help-panel"
+
+interface MessagingVolume {
+  smsMonthly: { month: string; count: number }[]
+  emailMonthly: { month: string; count: number }[]
+  totals: {
+    smsLast30: number
+    emailLast30: number
+    smsLast7: number
+    emailLast7: number
+    smsCost: number
+    emailCost: number
+  }
+}
 
 interface ReportsClientProps {
   contactsByMonth: { month: string; count: number }[]
@@ -17,6 +30,7 @@ interface ReportsClientProps {
   topLeadSources: any[]
   revenueByMonth: { month: string; revenue: number }[]
   pipelineByStage: any[]
+  messagingVolume?: MessagingVolume | null
 }
 
 const CHART_COLORS = ["#0e8fe9", "#10B981", "#8B5CF6", "#F59E0B", "#EF4444", "#6B7280"]
@@ -29,7 +43,7 @@ const TASK_STATUS_COLORS: Record<string, string> = {
 }
 
 export default function ReportsClient({
-  contactsByMonth, tasksByStatus, transactionsByStatus, topLeadSources, revenueByMonth, pipelineByStage,
+  contactsByMonth, tasksByStatus, transactionsByStatus, topLeadSources, revenueByMonth, pipelineByStage, messagingVolume,
 }: ReportsClientProps) {
   const [velocity, setVelocity] = useState<any>(null)
 
@@ -61,6 +75,14 @@ export default function ReportsClient({
     leads: stage.leads.length,
     value: stage.leads.reduce((s: number, l: any) => s + (l.value || 0), 0),
   }))
+
+  const messagingChartData = messagingVolume
+    ? messagingVolume.smsMonthly.map((item, i) => ({
+        month: item.month,
+        SMS: item.count,
+        Email: messagingVolume.emailMonthly[i]?.count ?? 0,
+      }))
+    : []
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
@@ -254,6 +276,88 @@ export default function ReportsClient({
           </CardContent>
         </Card>
       </div>
+
+      {/* Mensajes Enviados */}
+      {messagingVolume && (
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Mensajes Enviados</h2>
+            <p className="text-gray-500 text-sm mt-0.5">Volumen de SMS y emails de los últimos 6 meses</p>
+          </div>
+
+          {/* KPI cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {[
+              {
+                label: "SMS (30 días)",
+                value: messagingVolume.totals.smsLast30,
+                sub: `${messagingVolume.totals.smsLast7} esta semana`,
+                icon: MessageSquare,
+                color: "text-blue-600 bg-blue-50",
+              },
+              {
+                label: "Emails (30 días)",
+                value: messagingVolume.totals.emailLast30,
+                sub: `${messagingVolume.totals.emailLast7} esta semana`,
+                icon: Mail,
+                color: "text-purple-600 bg-purple-50",
+              },
+              {
+                label: "Costo SMS (30 días)",
+                value: `$${messagingVolume.totals.smsCost.toFixed(2)}`,
+                sub: "$0.0075 por mensaje",
+                icon: MessageSquare,
+                color: "text-orange-600 bg-orange-50",
+              },
+              {
+                label: "Costo Email (30 días)",
+                value: `$${messagingVolume.totals.emailCost.toFixed(2)}`,
+                sub: "Primeros 3,000 gratis",
+                icon: Mail,
+                color: "text-green-600 bg-green-50",
+              },
+            ].map((card) => (
+              <Card key={card.label} className="border-0 shadow-sm">
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-sm text-gray-500">{card.label}</p>
+                      <p className="text-2xl font-bold text-gray-900 mt-1">{card.value}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{card.sub}</p>
+                    </div>
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${card.color.split(" ")[1]}`}>
+                      <card.icon className={`w-5 h-5 ${card.color.split(" ")[0]}`} />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {/* Grouped bar chart */}
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base font-semibold">SMS vs Emails por Mes</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={messagingChartData} barGap={4} barCategoryGap="30%">
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="SMS" fill="#0e8fe9" radius={[4, 4, 0, 0]} name="SMS" />
+                  <Bar dataKey="Email" fill="#8B5CF6" radius={[4, 4, 0, 0]} name="Email" />
+                </BarChart>
+              </ResponsiveContainer>
+              <p className="text-xs text-gray-400 mt-3">
+                SMS: $0.0075 por mensaje (Twilio). Email: primeros 3,000 gratis, luego $0.001 (Resend).
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   )
 }
