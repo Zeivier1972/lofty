@@ -4,9 +4,11 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import {
   Building2, Bed, Bath, Maximize2, MapPin, Loader2, Phone, Calendar,
-  ArrowLeft, Home, Car, Waves, CalendarDays, DollarSign,
+  ArrowLeft, Home, Car, Waves, CalendarDays, DollarSign, Heart,
 } from "lucide-react"
 import { IdxDisclaimer } from "@/components/idx-disclaimer"
+import { LeadCaptureModal } from "@/components/idx/lead-capture-modal"
+import { getFavs, setFavs, getLead, saveHome, type LeadFields } from "@/lib/idx-favorites"
 
 interface Listing {
   listingKey: string
@@ -45,9 +47,12 @@ export default function ListingClient({ listingKey }: { listingKey: string }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activePhoto, setActivePhoto] = useState(0)
+  const [fav, setFav] = useState(false)
+  const [showLead, setShowLead] = useState(false)
 
   useEffect(() => {
-    (async () => {
+    setFav(getFavs().includes(listingKey))
+    ;(async () => {
       try {
         const res = await fetch(`/api/idx/listing/${listingKey}`)
         const data = await res.json()
@@ -60,6 +65,21 @@ export default function ListingClient({ listingKey }: { listingKey: string }) {
       }
     })()
   }, [listingKey])
+
+  async function toggleFav() {
+    if (!fav && !getLead()) { setShowLead(true); return }
+    try {
+      await saveHome({ listingKey, remove: fav })
+      const favs = getFavs()
+      const next = fav ? favs.filter(k => k !== listingKey) : [...favs, listingKey]
+      setFavs(next); setFav(!fav)
+    } catch { /* ignore */ }
+  }
+
+  async function onLeadSubmit(lead: LeadFields) {
+    await saveHome({ listingKey, lead })
+    setFavs([...getFavs(), listingKey]); setFav(true); setShowLead(false)
+  }
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center text-gray-400"><Loader2 className="w-6 h-6 animate-spin mr-2" /> Cargando propiedad…</div>
@@ -161,6 +181,10 @@ export default function ListingClient({ listingKey }: { listingKey: string }) {
               <a href="tel:+13052830872" className="mt-2 w-full flex items-center justify-center gap-2 border-2 border-lofty-600 text-lofty-700 rounded-xl py-3 text-sm font-semibold hover:bg-lofty-50">
                 <Phone className="w-4 h-4" /> (305) 283-0872
               </a>
+              <button onClick={toggleFav}
+                className={`mt-2 w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-colors ${fav ? "bg-red-50 text-red-600 border-2 border-red-200" : "border-2 border-gray-200 text-gray-600 hover:bg-gray-50"}`}>
+                <Heart className={`w-4 h-4 ${fav ? "fill-red-500 text-red-500" : ""}`} /> {fav ? "Guardada" : "Guardar propiedad"}
+              </button>
               {l.office && <p className="text-[11px] text-gray-400 mt-4 leading-relaxed">Cortesía de {l.office}{l.agent ? ` — ${l.agent}` : ""}</p>}
             </div>
           </aside>
@@ -168,6 +192,8 @@ export default function ListingClient({ listingKey }: { listingKey: string }) {
 
         <IdxDisclaimer />
       </main>
+
+      <LeadCaptureModal open={showLead} onClose={() => setShowLead(false)} onSubmit={onLeadSubmit} />
     </div>
   )
 }
