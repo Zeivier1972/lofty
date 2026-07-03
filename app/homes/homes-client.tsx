@@ -115,28 +115,24 @@ export default function HomesClient() {
     setShowLead(false); setPendingKey(null)
   }
 
-  const search = useCallback(async () => {
+  // Fetch with an explicit set of values (used for both the button and the
+  // initial URL-driven search from the homepage bar).
+  const runQuery = useCallback(async (p: Record<string, string | boolean>) => {
     setLoading(true)
     setError(null)
     try {
       const params = new URLSearchParams()
-      if (city.trim()) params.set("city", city.trim())
-      if (minPrice) params.set("minPrice", minPrice)
-      if (maxPrice) params.set("maxPrice", maxPrice)
-      if (minBeds) params.set("minBeds", minBeds)
-      if (maxBeds) params.set("maxBeds", maxBeds)
-      if (minBaths) params.set("minBaths", minBaths)
-      if (maxBaths) params.set("maxBaths", maxBaths)
-      if (minGarage) params.set("minGarage", minGarage)
-      if (propType) params.set("type", propType)
-      if (minSqft) params.set("minSqft", minSqft)
-      if (maxSqft) params.set("maxSqft", maxSqft)
-      if (minYear) params.set("minYear", minYear)
-      if (maxYear) params.set("maxYear", maxYear)
-      if (maxHoa) params.set("maxHoa", maxHoa)
-      if (maxDom) params.set("maxDom", maxDom)
-      if (pool) params.set("pool", "1")
-      if (waterfront) params.set("waterfront", "1")
+      const setStr = (k: string, v: any) => { if (typeof v === "string" && v.trim()) params.set(k, v.trim()) }
+      setStr("city", p.city)
+      setStr("minPrice", p.minPrice); setStr("maxPrice", p.maxPrice)
+      setStr("minBeds", p.minBeds); setStr("maxBeds", p.maxBeds)
+      setStr("minBaths", p.minBaths); setStr("maxBaths", p.maxBaths)
+      setStr("minGarage", p.minGarage); setStr("type", p.propType)
+      setStr("minSqft", p.minSqft); setStr("maxSqft", p.maxSqft)
+      setStr("minYear", p.minYear); setStr("maxYear", p.maxYear)
+      setStr("maxHoa", p.maxHoa); setStr("maxDom", p.maxDom)
+      if (p.pool) params.set("pool", "1")
+      if (p.waterfront) params.set("waterfront", "1")
       const res = await fetch(`/api/idx/search?${params.toString()}`)
       const data = await res.json()
       if (!data.ok) throw new Error(data.error || "Error en la búsqueda")
@@ -147,9 +143,30 @@ export default function HomesClient() {
     } finally {
       setLoading(false)
     }
-  }, [city, minPrice, maxPrice, minBeds, maxBeds, minBaths, maxBaths, minGarage, propType, minSqft, maxSqft, minYear, maxYear, maxHoa, maxDom, pool, waterfront])
+  }, [])
 
-  useEffect(() => { search() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const search = useCallback(() => runQuery({
+    city, minPrice, maxPrice, minBeds, maxBeds, minBaths, maxBaths, minGarage, propType,
+    minSqft, maxSqft, minYear, maxYear, maxHoa, maxDom, pool, waterfront,
+  }), [runQuery, city, minPrice, maxPrice, minBeds, maxBeds, minBaths, maxBaths, minGarage, propType, minSqft, maxSqft, minYear, maxYear, maxHoa, maxDom, pool, waterfront])
+
+  // On load, pre-fill filters from the URL (from the homepage search bar) and search.
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search)
+    const init = {
+      city: sp.get("city") || "",
+      minPrice: sp.get("minPrice") || "",
+      maxPrice: sp.get("maxPrice") || "",
+      minBeds: sp.get("minBeds") || "",
+      propType: sp.get("type") || "",
+    }
+    if (init.city) setCity(init.city)
+    if (init.minPrice) setMinPrice(init.minPrice)
+    if (init.maxPrice) setMaxPrice(init.maxPrice)
+    if (init.minBeds) setMinBeds(init.minBeds)
+    if (init.propType) setPropType(init.propType)
+    runQuery(init)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="min-h-screen bg-gray-50">

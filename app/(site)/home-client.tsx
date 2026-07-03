@@ -33,7 +33,7 @@ const FEATURED_AREAS = [
 
 const NAV_LINKS = [
   { label: "HOME",             href: "/site" },
-  { label: "BUY",              href: "/search" },
+  { label: "BUY",              href: "/homes" },
   { label: "SELL",             href: "/site#contact" },
   { label: "PRE-CONSTRUCTION", href: "/search" },
   { label: "ABOUT",            href: "/site#about" },
@@ -137,6 +137,9 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
   const router = useRouter()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
+  const [heroMaxPrice, setHeroMaxPrice] = useState("")
+  const [heroMinBeds, setHeroMinBeds] = useState("")
+  const [heroType, setHeroType] = useState("")
   const [heroForm, setHeroForm] = useState({ name: "", phone: "" })
   const [heroSubmitting, setHeroSubmitting] = useState(false)
   const [heroSubmitted, setHeroSubmitted] = useState(false)
@@ -214,8 +217,13 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault()
-    const params = searchQuery ? `?city=${encodeURIComponent(searchQuery)}` : ""
-    router.push(`/search${params}`)
+    const params = new URLSearchParams()
+    if (searchQuery.trim()) params.set("city", searchQuery.trim())
+    if (heroMaxPrice) params.set("maxPrice", heroMaxPrice)
+    if (heroMinBeds) params.set("minBeds", heroMinBeds)
+    if (heroType) params.set("type", heroType)
+    const qs = params.toString()
+    router.push(`/homes${qs ? `?${qs}` : ""}`)
   }
 
   async function handleHeroSubmit(e: React.FormEvent) {
@@ -474,12 +482,33 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
                 value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
                 className="flex-1 py-4 text-sm text-gray-700 outline-none placeholder-gray-400" />
             </div>
-            {["Price", "Beds", "Type"].map(f => (
-              <button key={f} type="button" onClick={() => router.push("/search")}
-                className="hidden md:flex items-center gap-1 px-4 py-4 text-sm text-gray-500 hover:text-[#c9a84c] border-l border-gray-200 whitespace-nowrap transition-colors">
-                {f} <ChevronDown className="w-3 h-3" />
-              </button>
-            ))}
+            <select value={heroMaxPrice} onChange={e => setHeroMaxPrice(e.target.value)}
+              className="hidden md:block px-4 py-4 text-sm text-gray-600 bg-transparent border-l border-gray-200 outline-none cursor-pointer hover:text-[#c9a84c]">
+              <option value="">Precio</option>
+              <option value="300000">Hasta $300k</option>
+              <option value="500000">Hasta $500k</option>
+              <option value="750000">Hasta $750k</option>
+              <option value="1000000">Hasta $1M</option>
+              <option value="2000000">Hasta $2M</option>
+              <option value="5000000">Hasta $5M</option>
+            </select>
+            <select value={heroMinBeds} onChange={e => setHeroMinBeds(e.target.value)}
+              className="hidden md:block px-4 py-4 text-sm text-gray-600 bg-transparent border-l border-gray-200 outline-none cursor-pointer hover:text-[#c9a84c]">
+              <option value="">Cuartos</option>
+              <option value="1">1+</option>
+              <option value="2">2+</option>
+              <option value="3">3+</option>
+              <option value="4">4+</option>
+              <option value="5">5+</option>
+            </select>
+            <select value={heroType} onChange={e => setHeroType(e.target.value)}
+              className="hidden md:block px-4 py-4 text-sm text-gray-600 bg-transparent border-l border-gray-200 outline-none cursor-pointer hover:text-[#c9a84c]">
+              <option value="">Tipo</option>
+              <option value="Single Family Residence">Casa</option>
+              <option value="Condominium">Condominio</option>
+              <option value="Townhouse">Townhouse</option>
+              <option value="Stock Cooperative">Cooperativa</option>
+            </select>
             <button type="submit"
               className="px-6 py-4 bg-[#c9a84c] hover:bg-[#b8963e] text-white font-bold text-sm transition-colors flex items-center gap-2 flex-shrink-0">
               <Search className="w-4 h-4" />
@@ -516,7 +545,7 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
               <motion.div key={area.name} variants={fadeUp}
                 className={idx === 0 ? "md:col-span-2 md:row-span-2" : ""}
                 style={{ height: idx === 0 ? "420px" : "200px" }}>
-                <Link href={`/search?city=${encodeURIComponent(area.name)}`}
+                <Link href={`/homes?city=${encodeURIComponent(area.name)}`}
                   className="relative overflow-hidden rounded-2xl group border-2 border-transparent hover:border-[#c9a84c] transition-all duration-300 block w-full h-full">
                   <img src={area.img} alt={area.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
