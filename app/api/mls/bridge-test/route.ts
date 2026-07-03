@@ -2,10 +2,10 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { searchIdxListings, fetchPrimaryPhotos, buildDisplayAddress } from "@/lib/bridge"
+import { searchIdxListings, fetchListingMediaRaw } from "@/lib/bridge"
 
-// Per-city photo diagnostic: for each listing returned by the real IDX search,
-// report whether it permits display and whether its photos actually resolve.
+// Dump the full raw Media rows for the first listing of a city, so we can find
+// where the photo URL lives (or why it's null) for listings that show no photos.
 // Usage: /api/mls/bridge-test?city=Doral
 export async function GET(req: Request) {
   const session = await auth()
@@ -18,23 +18,23 @@ export async function GET(req: Request) {
   const city = searchParams.get("city") || undefined
 
   try {
-    const listings = await searchIdxListings({ city, limit: 10 })
-    // Batched single query (same path /homes uses) — should return photos for
-    // most listings without rate-limiting.
-    const keys = listings.map((l: any) => l.ListingKey).filter(Boolean)
-    const photos = await fetchPrimaryPhotos(keys)
-    const report = listings.map((l: any) => ({
-      address: buildDisplayAddress(l),
-      city: l.City,
-      photosCountField: l.PhotosCount ?? null,
-      thumbnail: photos[l.ListingKey] || null,
-    }))
+    const listings = await searchIdxListings({ city, limit: 5 })
+    const first: any = listings[0]
+    const key = first?.ListingKey
+    const rawMedia = key ? await fetchListingMediaRaw(key) : []
     return NextResponse.json({
       ok: true,
       city: city || "(sin filtro)",
       returned: listings.length,
-      batchedPhotosResolved: Object.keys(photos).length,
-      report,
+      inspectedListing: {
+        key,
+        address: first?.UnparsedAddress ?? null,
+        photosCount: first?.PhotosCount ?? null,
+        display: first?.InternetEntireListingDisplayYN ?? null,
+        okToAdvertise: first?.MIAMIRE_OkToAdvertiseList ?? null,
+      },
+      rawMediaCount: rawMedia.length,
+      rawMediaRows: rawMedia.slice(0, 3),
     })
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e.message || "diagnostic failed" }, { status: 500 })
