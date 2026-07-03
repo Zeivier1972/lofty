@@ -162,6 +162,7 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
   const [csv, setCsv] = useState("")
   const [importing, setImporting] = useState(false)
   const [result, setResult] = useState<{ imported: number; emailsSent?: number; skipped: number; errors: string[]; total: number } | null>(null)
+  const [progress, setProgress] = useState<{ done: number; total: number; imported: number } | null>(null)
   const [preview, setPreview] = useState<{ headers: string[]; rows: string[][] } | null>(null)
   const { toast } = useToast()
 
@@ -204,17 +205,41 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
   async function handleImport() {
     if (!csv.trim()) return
     setImporting(true)
+    setProgress(null)
+
+    // Split into chunks of 300 rows so each request finishes in ~10s
+    // (works on mobile where long-running connections get dropped)
+    const lines = csv.trim().split(/\r?\n/).filter((l: string) => l.trim())
+    const header = lines[0]
+    const dataRows = lines.slice(1)
+    const CHUNK = 300
+    const chunks: string[] = []
+    for (let i = 0; i < dataRows.length; i += CHUNK) {
+      chunks.push([header, ...dataRows.slice(i, i + CHUNK)].join("\n"))
+    }
+
+    const totals = { imported: 0, skipped: 0, emailsSent: 0, errors: [] as string[], total: dataRows.length }
+
     try {
-      const res = await fetch("/api/contacts/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ csv }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
-      setResult(data)
-      if (data.imported > 0) onImported()
+      for (let i = 0; i < chunks.length; i++) {
+        setProgress({ done: i, total: chunks.length, imported: totals.imported })
+        const res = await fetch("/api/contacts/import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ csv: chunks[i] }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error)
+        totals.imported   += data.imported   || 0
+        totals.skipped    += data.skipped    || 0
+        totals.emailsSent += data.emailsSent || 0
+        totals.errors.push(...(data.errors || []))
+      }
+      setProgress(null)
+      setResult(totals)
+      if (totals.imported > 0) onImported()
     } catch (e: any) {
+      setProgress(null)
       toast({ title: e.message || "Import failed", variant: "destructive" })
     } finally {
       setImporting(false)
@@ -258,6 +283,22 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
               </div>
             )}
             <Button onClick={onClose} className="w-full bg-lofty-600 hover:bg-lofty-700">Listo</Button>
+          </div>
+        ) : progress ? (
+          <div className="p-8 text-center space-y-5">
+            <Loader2 className="w-10 h-10 text-lofty-600 animate-spin mx-auto" />
+            <div>
+              <p className="font-semibold text-gray-900 mb-1">Importando contactos...</p>
+              <p className="text-sm text-gray-500">Lote {progress.done + 1} de {progress.total} · {progress.imported} importados hasta ahora</p>
+              <p className="text-xs text-gray-400 mt-1">No cierres esta pantalla</p>
+            </div>
+            <div className="w-full bg-gray-100 rounded-full h-2.5">
+              <div
+                className="bg-lofty-600 h-2.5 rounded-full transition-all duration-500"
+                style={{ width: `${Math.round((progress.done / progress.total) * 100)}%` }}
+              />
+            </div>
+            <p className="text-xs text-gray-400">{Math.round((progress.done / progress.total) * 100)}%</p>
           </div>
         ) : (
           <div className="p-5 space-y-4">
