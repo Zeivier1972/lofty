@@ -197,21 +197,32 @@ export async function fetchListingByKey(listingKey: string): Promise<any | null>
   }
 }
 
-// First photo per listing for search thumbnails. Uses the same proven per-listing
-// Media query as the detail page (fetchListingMedia), run in parallel — the batched
-// `in (...)` query proved unreliable for returning URLs.
+// First photo per listing for search thumbnails. ONE batched Media query for all
+// listing keys (firing a query per listing gets rate-limited by Bridge, so nearly
+// all come back empty). Ordered by Order asc, we take the first URL-bearing image
+// row per listing.
 export async function fetchPrimaryPhotos(listingKeys: string[]): Promise<Record<string, string>> {
   const token = process.env.BRIDGE_SERVER_TOKEN
   if (!token || listingKeys.length === 0) return {}
-  const entries = await Promise.all(
-    listingKeys.map(async key => {
-      const urls = await fetchListingMedia(key)
-      return [key, urls[0] || ""] as const
-    })
-  )
-  const map: Record<string, string> = {}
-  for (const [k, u] of entries) if (u) map[k] = u
-  return map
+  const keyList = listingKeys.map(k => `'${k.replace(/'/g, "''")}'`).join(",")
+  const query = new URLSearchParams()
+  query.set("access_token", token)
+  query.set("$filter", `ResourceRecordKey in (${keyList}) and MediaType eq 'Image'`)
+  query.set("$orderby", "Order")
+  query.set("$top", "2000")
+  try {
+    const res = await fetch(`${BRIDGE_ODATA_BASE}/Media?${query.toString()}`, { next: { revalidate: 300 } })
+    if (!res.ok) return {}
+    const data = await res.json()
+    const map: Record<string, string> = {}
+    for (const m of (data.value || [])) {
+      const url = m.MediaURL || m.ResizeMediaURL
+      if (m.ResourceRecordKey && url && !map[m.ResourceRecordKey]) map[m.ResourceRecordKey] = url
+    }
+    return map
+  } catch {
+    return {}
+  }
 }
 
 export function bridgeToProperty(l: BridgeListing) {
