@@ -579,7 +579,7 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
 
   const TABS: { id: TabId; label: string; count?: number }[] = [
     { id: "overview", label: "Overview" },
-    { id: "properties", label: "Properties", count: contact.propertyInterests?.length },
+    { id: "properties", label: "Properties", count: (contact.propertyInterests?.length || 0) + (contact.propertySaves?.length || 0) },
     { id: "searches", label: "Searches" },
     { id: "transactions", label: "Transactions", count: contact.transactions?.length },
     { id: "documents", label: "Documents" },
@@ -1221,24 +1221,57 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
             {/* Properties Tab */}
             {activeTab === "properties" && (
               <div className="space-y-3">
-                {contact.propertyInterests?.length === 0 ? (
+                {/* IDX Saved properties (from /homes favorites) */}
+                {contact.propertySaves?.length > 0 && (
+                  <>
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-1">Guardadas desde el sitio web</p>
+                    {contact.propertySaves.map((save: any) => {
+                      const imgs = save.property.images ? (() => { try { return JSON.parse(save.property.images) } catch { return [] } })() : []
+                      const thumb = imgs.find((u: any) => u) || null
+                      return (
+                        <div key={save.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center gap-4">
+                          <div className="w-14 h-14 bg-gray-100 rounded-xl flex-shrink-0 overflow-hidden flex items-center justify-center">
+                            {thumb ? (
+                              <img src={thumb} alt={save.property.address} className="w-full h-full object-cover" />
+                            ) : (
+                              <Home className="w-6 h-6 text-gray-400" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-gray-900 truncate">{save.property.address}</p>
+                            <p className="text-sm text-gray-500">{save.property.city}, {save.property.state}{save.property.price ? ` · ${formatCurrency(save.property.price)}` : ""}</p>
+                          </div>
+                          <Badge className="bg-red-50 text-red-600 border-0 flex-shrink-0">♥ Guardada</Badge>
+                        </div>
+                      )
+                    })}
+                  </>
+                )}
+
+                {/* CRM property interests */}
+                {contact.propertyInterests?.length > 0 && (
+                  <>
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-1 mt-4">Propiedades del CRM</p>
+                    {contact.propertyInterests.map((interest: any) => (
+                      <div key={interest.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center gap-4">
+                        <div className="w-14 h-14 bg-gray-100 rounded-xl flex-shrink-0 flex items-center justify-center">
+                          <Home className="w-6 h-6 text-gray-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-gray-900 truncate">{interest.property.address}</p>
+                          <p className="text-sm text-gray-500">{interest.property.city}, {interest.property.state}{interest.property.price ? ` · ${formatCurrency(interest.property.price)}` : ""}</p>
+                        </div>
+                        <Badge className="bg-blue-100 text-blue-700 border-0">{interest.type}</Badge>
+                      </div>
+                    ))}
+                  </>
+                )}
+
+                {(!contact.propertySaves?.length && !contact.propertyInterests?.length) && (
                   <div className="text-center py-12">
                     <Home className="w-10 h-10 text-gray-200 mx-auto mb-3" />
                     <p className="text-gray-400 text-sm">No properties associated with this contact</p>
                   </div>
-                ) : (
-                  contact.propertyInterests?.map((interest: any) => (
-                    <div key={interest.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center gap-4">
-                      <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center">
-                        <Home className="w-6 h-6 text-gray-400" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-medium text-gray-900">{interest.property.address}</p>
-                        <p className="text-sm text-gray-500">{interest.property.city}, {interest.property.state} · {formatCurrency(interest.property.price)}</p>
-                      </div>
-                      <Badge className="bg-blue-100 text-blue-700 border-0">{interest.type}</Badge>
-                    </div>
-                  ))
                 )}
               </div>
             )}

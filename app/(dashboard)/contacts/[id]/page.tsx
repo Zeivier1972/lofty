@@ -19,6 +19,7 @@ export default async function ContactDetailPage({ params }: { params: { id: stri
       pipelineLeads: { include: { stage: { include: { pipeline: true } } }, orderBy: { updatedAt: "desc" } },
       enrollments: { include: { plan: true } },
       propertyInterests: { include: { property: true } },
+      propertySaves: { include: { property: true }, where: { isActive: true }, orderBy: { createdAt: "desc" } },
       assignedTo: { select: { id: true, name: true, email: true } },
     },
   })

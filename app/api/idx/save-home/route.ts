@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { fetchListingByKey, bridgeToProperty, buildDisplayAddress } from "@/lib/bridge"
+import { fetchListingByKey, fetchListingMedia, bridgeToProperty, buildDisplayAddress } from "@/lib/bridge"
 import { sendEmail } from "@/lib/email"
 import { sendSMS } from "@/lib/sms"
 
@@ -59,6 +59,15 @@ export async function POST(req: Request) {
             propertyId = created.id
           }
         }
+      }
+      // Fetch real photos via Web API (non-fatal, fire-and-forget)
+      if (propertyId) {
+        const pid = propertyId
+        fetchListingMedia(listingKey).then(photos => {
+          if (photos.length > 0) {
+            prisma.property.update({ where: { id: pid }, data: { images: JSON.stringify(photos) } }).catch(() => {})
+          }
+        }).catch(() => {})
       }
     } catch (e) {
       console.error("[idx/save-home] Property upsert failed:", e)
