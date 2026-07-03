@@ -259,9 +259,15 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
               <span className="text-xs text-gray-500 leading-tight block">Miami Real Estate</span>
             </div>
           </Link>
-          <a href="tel:+13052830872" className="flex items-center gap-1.5 px-4 py-2 bg-lofty-600 text-white rounded-lg hover:bg-lofty-700 text-sm font-medium">
-            <Phone className="w-3.5 h-3.5" /> (305) 283-0872
-          </a>
+          <div className="flex items-center gap-5">
+            <nav className="hidden md:flex items-center gap-5 text-sm text-gray-600">
+              <Link href="/" className="hover:text-lofty-700">Inicio</Link>
+              <Link href="/valuacion" className="hover:text-lofty-700">Vender</Link>
+            </nav>
+            <a href="tel:+13052830872" className="flex items-center gap-1.5 px-4 py-2 bg-lofty-600 text-white rounded-lg hover:bg-lofty-700 text-sm font-medium">
+              <Phone className="w-3.5 h-3.5" /> (305) 283-0872
+            </a>
+          </div>
         </div>
       </header>
 
