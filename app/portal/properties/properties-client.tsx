@@ -40,7 +40,7 @@ export default function PortalPropertiesClient({ savedProperties, preferences }:
           <p className="text-gray-500 text-sm mt-0.5">Propiedades Guardadas — {savedProperties.length} saved</p>
         </div>
         <Link
-          href="/search"
+          href="/homes"
           className="flex items-center gap-2 px-4 py-2 bg-lofty-600 text-white rounded-xl text-sm font-medium hover:bg-lofty-700"
         >
           <Search className="w-4 h-4" /> Browse More
@@ -80,7 +80,7 @@ export default function PortalPropertiesClient({ savedProperties, preferences }:
           <p className="text-gray-500 text-sm mb-2">Browse properties and tap the heart to save your favorites.</p>
           <p className="text-gray-400 text-xs mb-6">Navega propiedades y toca el corazón para guardar tus favoritas.</p>
           <Link
-            href="/search"
+            href="/homes"
             className="flex items-center gap-2 px-6 py-3 bg-lofty-600 text-white rounded-xl font-semibold hover:bg-lofty-700"
           >
             <Search className="w-4 h-4" /> Browse Properties

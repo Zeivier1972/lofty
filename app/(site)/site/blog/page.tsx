@@ -69,7 +69,7 @@ export default async function BlogPage() {
           </Link>
           <nav className="flex items-center gap-5 text-xs font-bold text-gray-600">
             <Link href="/site" className="hover:text-[#c9a84c]">HOME</Link>
-            <Link href="/search" className="hover:text-[#c9a84c]">BUY</Link>
+            <Link href="/homes" className="hover:text-[#c9a84c]">BUY</Link>
             <Link href="/site/blog" className="text-[#c9a84c]">BLOG</Link>
             <Link href="/site#contact" className="hover:text-[#c9a84c]">CONTACT</Link>
           </nav>

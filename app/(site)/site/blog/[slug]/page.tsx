@@ -48,7 +48,7 @@ export default async function BlogPostPage({ params }: { params: { slug: string 
           </Link>
           <nav className="flex items-center gap-5 text-xs font-bold text-gray-600">
             <Link href="/site" className="hover:text-[#c9a84c]">HOME</Link>
-            <Link href="/search" className="hover:text-[#c9a84c]">BUY</Link>
+            <Link href="/homes" className="hover:text-[#c9a84c]">BUY</Link>
             <Link href="/site/blog" className="text-[#c9a84c]">BLOG</Link>
             <Link href="/site#contact" className="hover:text-[#c9a84c]">CONTACT</Link>
           </nav>
@@ -157,7 +157,7 @@ export default async function BlogPostPage({ params }: { params: { slug: string 
               ))}
             </div>
             <div className="text-center mt-6">
-              <Link href="/search" className="inline-flex items-center gap-2 px-6 py-2.5 border border-[#1a3a5c] text-[#1a3a5c] rounded-xl text-sm font-semibold hover:bg-[#1a3a5c] hover:text-white transition-colors">
+              <Link href="/homes" className="inline-flex items-center gap-2 px-6 py-2.5 border border-[#1a3a5c] text-[#1a3a5c] rounded-xl text-sm font-semibold hover:bg-[#1a3a5c] hover:text-white transition-colors">
                 View All Listings
               </Link>
             </div>
