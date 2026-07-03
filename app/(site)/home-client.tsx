@@ -172,6 +172,7 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
   const [heroMaxPrice, setHeroMaxPrice] = useState("")
   const [heroMinBeds, setHeroMinBeds] = useState("")
   const [heroType, setHeroType] = useState("")
+  const [heroMode, setHeroMode] = useState<"sale" | "rent">("sale")
   const [heroForm, setHeroForm] = useState({ name: "", phone: "" })
   const [heroSubmitting, setHeroSubmitting] = useState(false)
   const [heroSubmitted, setHeroSubmitted] = useState(false)
@@ -257,6 +258,7 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
     if (heroMaxPrice) params.set("maxPrice", heroMaxPrice)
     if (heroMinBeds) params.set("minBeds", heroMinBeds)
     if (heroType) params.set("type", heroType)
+    if (heroMode === "rent") params.set("mode", "rent")
     const qs = params.toString()
     router.push(`/homes${qs ? `?${qs}` : ""}`)
   }
@@ -509,8 +511,19 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
       {/* ── SEARCH BAR ── */}
       <div className="bg-[#1a3a5c] py-5 shadow-xl">
         <div className="max-w-screen-xl mx-auto px-4">
+          {/* Comprar / Rentar tabs */}
+          <div className="inline-flex rounded-t-xl overflow-hidden mb-0 text-sm font-bold">
+            <button type="button" onClick={() => setHeroMode("sale")}
+              className={heroMode === "sale" ? "px-6 py-2.5 bg-white text-[#1a3a5c]" : "px-6 py-2.5 bg-[#0f2744] text-white/70 hover:text-white"}>
+              Comprar
+            </button>
+            <button type="button" onClick={() => setHeroMode("rent")}
+              className={heroMode === "rent" ? "px-6 py-2.5 bg-white text-[#1a3a5c]" : "px-6 py-2.5 bg-[#0f2744] text-white/70 hover:text-white"}>
+              Rentar
+            </button>
+          </div>
           <form onSubmit={handleSearch}
-            className="flex items-center gap-0 bg-white rounded-2xl overflow-hidden shadow-lg border-2 border-[#c9a84c]/20">
+            className="flex items-center gap-0 bg-white rounded-2xl rounded-tl-none overflow-hidden shadow-lg border-2 border-[#c9a84c]/20">
             <div className="flex items-center gap-2 px-4 flex-1">
               <Search className="w-4 h-4 text-gray-400 flex-shrink-0" />
               <input type="text" placeholder="Ciudad, vecindario, código postal..."
