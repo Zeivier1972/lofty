@@ -5,7 +5,7 @@ import Link from "next/link"
 import { Building2, Search, Bed, Bath, Maximize2, MapPin, Loader2, Phone, SlidersHorizontal, ChevronUp, ChevronDown, Heart } from "lucide-react"
 import { IdxDisclaimer } from "@/components/idx-disclaimer"
 import { LeadCaptureModal } from "@/components/idx/lead-capture-modal"
-import { getFavs, setFavs, getLead, saveHome, type LeadFields } from "@/lib/idx-favorites"
+import { getFavs, setFavs, getLead, setLead, saveHome, type LeadFields } from "@/lib/idx-favorites"
 
 interface Result {
   listingKey: string
@@ -68,8 +68,9 @@ function fmtPrice(n: number | null): string {
   return n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })
 }
 
-export default function HomesClient() {
-  const [city, setCity] = useState("")
+export default function HomesClient({ initialCity }: { initialCity?: string } = {}) {
+  const [mode, setMode] = useState<"sale" | "rent">("sale")
+  const [city, setCity] = useState(initialCity || "")
   const [minPrice, setMinPrice] = useState("")
   const [maxPrice, setMaxPrice] = useState("")
   const [minBeds, setMinBeds] = useState("")
@@ -91,6 +92,9 @@ export default function HomesClient() {
   const [results, setResults] = useState<Result[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [hasMore, setHasMore] = useState(false)
+  const [page, setPage] = useState(1)
+  const [snap, setSnap] = useState<any>(null)
   // Favorites + lead capture
   const [favs, setFavsState] = useState<string[]>([])
   const [showLead, setShowLead] = useState(false)
@@ -115,11 +119,55 @@ export default function HomesClient() {
     setShowLead(false); setPendingKey(null)
   }
 
+  // Saved searches
+  const [searchCaptureOpen, setSearchCaptureOpen] = useState(false)
+  const [searchSaved, setSearchSaved] = useState(false)
+
+  function buildSearchLabel(): string {
+    const parts: string[] = []
+    if (city.trim()) parts.push(city.trim())
+    if (propType) parts.push(PROPERTY_TYPES.find(t => t.value === propType)?.label || "")
+    if (minBeds) parts.push(`${minBeds}+ cuartos`)
+    if (maxPrice) parts.push(`hasta $${Number(maxPrice).toLocaleString()}`)
+    return parts.filter(Boolean).join(" · ") || "Todas las propiedades"
+  }
+
+  async function saveCurrentSearch(lead?: LeadFields): Promise<boolean> {
+    const isZip = /^\d{5}$/.test(city.trim())
+    const res = await fetch("/api/idx/save-search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        label: buildSearchLabel(),
+        city: isZip ? undefined : (city.trim() || undefined),
+        zip: isZip ? city.trim() : undefined,
+        minPrice: minPrice || undefined, maxPrice: maxPrice || undefined,
+        minBeds: minBeds || undefined, minBaths: minBaths || undefined,
+        type: propType || undefined,
+        contactId: getLead()?.contactId,
+        ...lead,
+      }),
+    })
+    const data = await res.json()
+    if (res.ok && data.contactId) setLead({ contactId: data.contactId, firstName: data.firstName })
+    return res.ok
+  }
+
+  async function onSaveSearchClick() {
+    if (!getLead()) { setSearchCaptureOpen(true); return }
+    if (await saveCurrentSearch()) setSearchSaved(true)
+  }
+
+  async function onSearchLeadSubmit(lead: LeadFields) {
+    if (await saveCurrentSearch(lead)) { setSearchSaved(true); setSearchCaptureOpen(false) }
+  }
+
   // Fetch with an explicit set of values (used for both the button and the
   // initial URL-driven search from the homepage bar).
   const runQuery = useCallback(async (p: Record<string, string | boolean>) => {
     setLoading(true)
     setError(null)
+    setSearchSaved(false)
     try {
       const params = new URLSearchParams()
       const setStr = (k: string, v: any) => { if (typeof v === "string" && v.trim()) params.set(k, v.trim()) }
@@ -133,33 +181,62 @@ export default function HomesClient() {
       setStr("maxHoa", p.maxHoa); setStr("maxDom", p.maxDom)
       if (p.pool) params.set("pool", "1")
       if (p.waterfront) params.set("waterfront", "1")
+      if (p.mode === "rent") params.set("mode", "rent")
+      if (p.offset) params.set("offset", String(p.offset))
       const res = await fetch(`/api/idx/search?${params.toString()}`)
       const data = await res.json()
       if (!data.ok) throw new Error(data.error || "Error en la búsqueda")
       setResults(data.results || [])
+      setHasMore(!!data.hasMore)
     } catch (e: any) {
       setError(e.message)
       setResults([])
     } finally {
       setLoading(false)
     }
+    // Market snapshot for the searched city (sale-side, area-wide)
+    const cityStr = typeof p.city === "string" ? p.city.trim() : ""
+    if (cityStr && !/^\d{5}$/.test(cityStr)) {
+      fetch(`/api/site/market-snapshot?city=${encodeURIComponent(cityStr)}`).then(r => r.json()).then(setSnap).catch(() => setSnap(null))
+    } else {
+      setSnap(null)
+    }
   }, [])
 
-  const search = useCallback(() => runQuery({
-    city, minPrice, maxPrice, minBeds, maxBeds, minBaths, maxBaths, minGarage, propType,
+  const currentFilters = () => ({
+    city, minPrice, maxPrice, minBeds, maxBeds, minBaths, maxBaths, minGarage, propType, mode,
     minSqft, maxSqft, minYear, maxYear, maxHoa, maxDom, pool, waterfront,
-  }), [runQuery, city, minPrice, maxPrice, minBeds, maxBeds, minBaths, maxBaths, minGarage, propType, minSqft, maxSqft, minYear, maxYear, maxHoa, maxDom, pool, waterfront])
+  })
+  const search = useCallback(() => { setPage(1); runQuery({ ...currentFilters(), offset: "0" }) }, [runQuery, city, minPrice, maxPrice, minBeds, maxBeds, minBaths, maxBaths, minGarage, propType, mode, minSqft, maxSqft, minYear, maxYear, maxHoa, maxDom, pool, waterfront]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function switchMode(m: "sale" | "rent") {
+    if (m === mode) return
+    setMode(m)
+    setPage(1)
+    runQuery({ ...currentFilters(), mode: m, offset: "0" })
+  }
+
+  const PAGE_SIZE = 24
+  function goToPage(n: number) {
+    if (n < 1) return
+    setPage(n)
+    runQuery({ ...currentFilters(), offset: String((n - 1) * PAGE_SIZE) })
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" })
+  }
 
   // On load, pre-fill filters from the URL (from the homepage search bar) and search.
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search)
+    const m: "sale" | "rent" = sp.get("mode") === "rent" ? "rent" : "sale"
     const init = {
-      city: sp.get("city") || "",
+      city: initialCity || sp.get("city") || "",
       minPrice: sp.get("minPrice") || "",
       maxPrice: sp.get("maxPrice") || "",
       minBeds: sp.get("minBeds") || "",
       propType: sp.get("type") || "",
+      mode: m,
     }
+    setMode(m)
     if (init.city) setCity(init.city)
     if (init.minPrice) setMinPrice(init.minPrice)
     if (init.maxPrice) setMaxPrice(init.maxPrice)
@@ -190,6 +267,18 @@ export default function HomesClient() {
 
       {/* Search bar */}
       <div className="bg-white border-b">
+        <div className="max-w-screen-xl mx-auto px-4 pt-4">
+          <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden text-sm font-semibold">
+            <button onClick={() => switchMode("sale")}
+              className={mode === "sale" ? "px-5 py-2 bg-lofty-600 text-white" : "px-5 py-2 text-gray-600 hover:bg-gray-50"}>
+              Comprar
+            </button>
+            <button onClick={() => switchMode("rent")}
+              className={mode === "rent" ? "px-5 py-2 bg-lofty-600 text-white" : "px-5 py-2 text-gray-600 hover:bg-gray-50"}>
+              Rentar
+            </button>
+          </div>
+        </div>
         <div className="max-w-screen-xl mx-auto px-4 py-4 grid grid-cols-2 md:grid-cols-4 gap-3">
           <input
             value={city}
@@ -276,6 +365,28 @@ export default function HomesClient() {
 
       {/* Results */}
       <main className="max-w-screen-xl mx-auto px-4 py-6">
+        {/* Market snapshot for the searched city */}
+        {snap && snap.activeListings != null && (
+          <div className="mb-6 bg-white border border-gray-200 rounded-2xl p-5">
+            <p className="text-xs font-black uppercase tracking-[0.15em] text-lofty-600 mb-3">
+              Mercado en {city} {snap.dateRange ? <span className="text-gray-400 font-medium normal-case tracking-normal">· {snap.dateRange}</span> : null}
+            </p>
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div>
+                <p className="text-2xl font-extrabold text-gray-900">{Number(snap.activeListings).toLocaleString()}</p>
+                <p className="text-xs text-gray-500 mt-1">Propiedades activas</p>
+              </div>
+              <div>
+                <p className="text-2xl font-extrabold text-gray-900">{snap.avgPrice ? `$${snap.avgPrice >= 1e6 ? (snap.avgPrice / 1e6).toFixed(1) + "M" : Math.round(snap.avgPrice / 1000) + "K"}` : "—"}</p>
+                <p className="text-xs text-gray-500 mt-1">Precio promedio</p>
+              </div>
+              <div>
+                <p className="text-2xl font-extrabold text-gray-900">{snap.avgDaysOnMarket ?? "—"}</p>
+                <p className="text-xs text-gray-500 mt-1">Días en el mercado</p>
+              </div>
+            </div>
+          </div>
+        )}
         {loading ? (
           <div className="flex items-center justify-center py-24 text-gray-400">
             <Loader2 className="w-6 h-6 animate-spin mr-2" /> Buscando propiedades…
@@ -286,7 +397,17 @@ export default function HomesClient() {
           <div className="text-center py-24 text-gray-400 text-sm">No se encontraron propiedades. Ajusta los filtros.</div>
         ) : (
           <>
-            <p className="text-sm text-gray-500 mb-4">{results.length} propiedades activas</p>
+            <div className="flex items-center justify-between mb-4 gap-3">
+              <p className="text-sm text-gray-500">{results.length} propiedades{page > 1 ? ` · página ${page}` : ""}</p>
+              {searchSaved ? (
+                <span className="text-sm text-green-600 font-medium flex items-center gap-1">✓ Búsqueda guardada — te avisaremos</span>
+              ) : (
+                <button onClick={onSaveSearchClick}
+                  className="flex items-center gap-1.5 text-sm text-lofty-700 font-semibold hover:text-lofty-800 border border-lofty-200 rounded-lg px-3 py-1.5 hover:bg-lofty-50">
+                  🔔 Guardar esta búsqueda
+                </button>
+              )}
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
               {results.map(r => (
                 <Link key={r.listingKey} href={`/homes/${r.listingKey}`} className="group bg-white rounded-2xl border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow">
@@ -306,7 +427,7 @@ export default function HomesClient() {
                     </button>
                   </div>
                   <div className="p-4">
-                    <p className="text-xl font-extrabold text-lofty-700">{fmtPrice(r.price)}</p>
+                    <p className="text-xl font-extrabold text-lofty-700">{fmtPrice(r.price)}{mode === "rent" && r.price ? <span className="text-sm font-semibold text-gray-500">/mes</span> : ""}</p>
                     <p className="text-sm font-medium text-gray-800 mt-1 flex items-start gap-1">
                       <MapPin className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-gray-400" /> {r.address}
                     </p>
@@ -320,6 +441,21 @@ export default function HomesClient() {
                 </Link>
               ))}
             </div>
+
+            {/* Pagination */}
+            {(page > 1 || hasMore) && (
+              <div className="flex items-center justify-center gap-3 mt-8">
+                <button onClick={() => goToPage(page - 1)} disabled={page <= 1}
+                  className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-50">
+                  ← Anterior
+                </button>
+                <span className="text-sm text-gray-500">Página {page}</span>
+                <button onClick={() => goToPage(page + 1)} disabled={!hasMore}
+                  className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-50">
+                  Siguiente →
+                </button>
+              </div>
+            )}
           </>
         )}
         <IdxDisclaimer />
@@ -329,6 +465,11 @@ export default function HomesClient() {
         open={showLead}
         onClose={() => { setShowLead(false); setPendingKey(null) }}
         onSubmit={onLeadSubmit}
+      />
+      <LeadCaptureModal
+        open={searchCaptureOpen}
+        onClose={() => setSearchCaptureOpen(false)}
+        onSubmit={onSearchLeadSubmit}
       />
     </div>
   )

@@ -22,19 +22,23 @@ const DEFAULT_HERO_SLIDES = [
 ]
 
 // ─── Featured Areas ───────────────────────────────────────────────────────────
+// `search` overrides the city sent to /homes when the display name isn't an MLS City value.
 const FEATURED_AREAS = [
   { name: "Miami",              img: "https://images.unsplash.com/photo-1533106497176-45ae19e68ba2?auto=format&fit=crop&w=1200&q=90" },
-  { name: "Brickell",          img: "https://images.unsplash.com/photo-1486325212027-8081e485255e?auto=format&fit=crop&w=1200&q=90" },
+  { name: "Brickell",          img: "https://images.unsplash.com/photo-1486325212027-8081e485255e?auto=format&fit=crop&w=1200&q=90", search: "Miami" },
   { name: "Coral Gables",      img: "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=1200&q=90" },
   { name: "Doral",             img: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&w=1200&q=90" },
   { name: "Sunny Isles Beach", img: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=90" },
   { name: "Kendall",           img: "https://images.unsplash.com/photo-1449844908441-8829872d2607?auto=format&fit=crop&w=1200&q=90" },
+  { name: "Homestead",         img: "https://images.unsplash.com/photo-1570129477492-45c003edd2be?auto=format&fit=crop&w=1200&q=90" },
+  { name: "Palmetto Bay",      img: "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?auto=format&fit=crop&w=1200&q=90" },
+  { name: "Cutler Bay",        img: "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=1200&q=90" },
 ]
 
 const NAV_LINKS = [
   { label: "HOME",             href: "/site" },
   { label: "BUY",              href: "/homes" },
-  { label: "SELL",             href: "/site#contact" },
+  { label: "SELL",             href: "/valuacion" },
   { label: "PRE-CONSTRUCTION", href: "/search" },
   { label: "ABOUT",            href: "/site#about" },
   { label: "MARKET SNAPSHOT",  href: "/site#market" },
@@ -89,6 +93,34 @@ function AnimatedStat({ value, label, sub }: { value: string; label: string; sub
 }
 
 // ─── Property card ────────────────────────────────────────────────────────────
+// Card for a live IDX (MLS) listing — all brokers.
+function IdxCard({ p }: { p: any }) {
+  return (
+    <motion.div variants={fadeUp}>
+      <Link href={`/homes/${p.listingKey}`}
+        className="block bg-white rounded-2xl shadow-md hover:shadow-2xl transition-all duration-500 overflow-hidden group border border-gray-100 hover:border-[#c9a84c]/40">
+        <div className="aspect-[4/3] overflow-hidden relative bg-gray-200">
+          {p.photo
+            ? <img src={p.photo} alt={p.address} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" loading="lazy" />
+            : <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#1a3a5c] to-[#0a1f35]"><MapPin className="w-10 h-10 text-[#c9a84c]/60" /></div>
+          }
+          <span className="absolute top-3 left-3 bg-[#c9a84c] text-white text-xs font-bold px-3 py-1 rounded-full tracking-wide">For Sale</span>
+        </div>
+        <div className="p-5">
+          <p className="text-2xl font-bold text-[#c9a84c] mb-1">{p.price ? `$${Number(p.price).toLocaleString()}` : "Consultar"}</p>
+          <p className="text-gray-600 text-sm mb-3 truncate">{p.address}</p>
+          <div className="flex gap-4 text-xs text-gray-500 border-t border-gray-100 pt-3">
+            {p.beds != null && <span className="flex items-center gap-1.5"><Bed className="w-3.5 h-3.5 text-[#c9a84c]"/>{p.beds} bd</span>}
+            {p.baths != null && <span className="flex items-center gap-1.5"><Bath className="w-3.5 h-3.5 text-[#c9a84c]"/>{p.baths} ba</span>}
+            {p.sqft != null && <span className="flex items-center gap-1.5"><Maximize2 className="w-3.5 h-3.5 text-[#c9a84c]"/>{Number(p.sqft).toLocaleString()} sqft</span>}
+          </div>
+          {p.office && <p className="text-[10px] text-gray-400 mt-2 truncate">Cortesía de {p.office}</p>}
+        </div>
+      </Link>
+    </motion.div>
+  )
+}
+
 function PropertyCard({ property }: { property: Property }) {
   const images = parseImages(property.images)
   return (
@@ -140,6 +172,7 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
   const [heroMaxPrice, setHeroMaxPrice] = useState("")
   const [heroMinBeds, setHeroMinBeds] = useState("")
   const [heroType, setHeroType] = useState("")
+  const [heroMode, setHeroMode] = useState<"sale" | "rent">("sale")
   const [heroForm, setHeroForm] = useState({ name: "", phone: "" })
   const [heroSubmitting, setHeroSubmitting] = useState(false)
   const [heroSubmitted, setHeroSubmitted] = useState(false)
@@ -148,6 +181,7 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
   const [submitted, setSubmitted] = useState(false)
   const [snapshot, setSnapshot] = useState<any>(null)
   const [blogPosts, setBlogPosts] = useState<any[]>([])
+  const [idxFeatured, setIdxFeatured] = useState<any[]>([])
   const [heroSlide, setHeroSlide] = useState(0)
   const [testimonialIdx, setTestimonialIdx] = useState(0)
   const [testimonialDir, setTestimonialDir] = useState(1)
@@ -155,6 +189,8 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
   useEffect(() => {
     fetch("/api/site/market-snapshot").then(r => r.json()).then(setSnapshot).catch(() => {})
     fetch("/api/blog?public=1").then(r => r.json()).then(d => { if (Array.isArray(d)) setBlogPosts(d) }).catch(() => {})
+    // Featured = live MLS active listings (all brokers), not just our own
+    fetch("/api/idx/search?limit=6").then(r => r.json()).then(d => setIdxFeatured(d.results || [])).catch(() => {})
   }, [])
 
   // ── derived config ──
@@ -222,6 +258,7 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
     if (heroMaxPrice) params.set("maxPrice", heroMaxPrice)
     if (heroMinBeds) params.set("minBeds", heroMinBeds)
     if (heroType) params.set("type", heroType)
+    if (heroMode === "rent") params.set("mode", "rent")
     const qs = params.toString()
     router.push(`/homes${qs ? `?${qs}` : ""}`)
   }
@@ -406,7 +443,7 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
                 className="inline-flex items-center gap-2 px-8 py-4 bg-[#c9a84c] hover:bg-[#e8c97a] text-[#1a3a5c] font-black rounded-full text-sm transition-all duration-300 shadow-lg shadow-[#c9a84c]/30 hover:shadow-[#c9a84c]/50 hover:scale-105">
                 Consulta Gratuita <ChevronRight className="w-4 h-4" />
               </Link>
-              <Link href="/search"
+              <Link href="/homes"
                 className="inline-flex items-center gap-2 px-8 py-4 bg-white/10 hover:bg-white/20 text-white font-bold rounded-full text-sm border border-white/30 transition-all duration-300 backdrop-blur-sm">
                 Ver Propiedades <Search className="w-4 h-4" />
               </Link>
@@ -474,8 +511,19 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
       {/* ── SEARCH BAR ── */}
       <div className="bg-[#1a3a5c] py-5 shadow-xl">
         <div className="max-w-screen-xl mx-auto px-4">
+          {/* Comprar / Rentar tabs */}
+          <div className="inline-flex rounded-t-xl overflow-hidden mb-0 text-sm font-bold">
+            <button type="button" onClick={() => setHeroMode("sale")}
+              className={heroMode === "sale" ? "px-6 py-2.5 bg-white text-[#1a3a5c]" : "px-6 py-2.5 bg-[#0f2744] text-white/70 hover:text-white"}>
+              Comprar
+            </button>
+            <button type="button" onClick={() => setHeroMode("rent")}
+              className={heroMode === "rent" ? "px-6 py-2.5 bg-white text-[#1a3a5c]" : "px-6 py-2.5 bg-[#0f2744] text-white/70 hover:text-white"}>
+              Rentar
+            </button>
+          </div>
           <form onSubmit={handleSearch}
-            className="flex items-center gap-0 bg-white rounded-2xl overflow-hidden shadow-lg border-2 border-[#c9a84c]/20">
+            className="flex items-center gap-0 bg-white rounded-2xl rounded-tl-none overflow-hidden shadow-lg border-2 border-[#c9a84c]/20">
             <div className="flex items-center gap-2 px-4 flex-1">
               <Search className="w-4 h-4 text-gray-400 flex-shrink-0" />
               <input type="text" placeholder="Ciudad, vecindario, código postal..."
@@ -545,7 +593,7 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
               <motion.div key={area.name} variants={fadeUp}
                 className={idx === 0 ? "md:col-span-2 md:row-span-2" : ""}
                 style={{ height: idx === 0 ? "420px" : "200px" }}>
-                <Link href={`/homes?city=${encodeURIComponent(area.name)}`}
+                <Link href={`/homes?city=${encodeURIComponent((area as any).search ?? area.name)}`}
                   className="relative overflow-hidden rounded-2xl group border-2 border-transparent hover:border-[#c9a84c] transition-all duration-300 block w-full h-full">
                   <img src={area.img} alt={area.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
@@ -564,7 +612,7 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
 
           <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
             className="text-center mt-10">
-            <Link href="/search"
+            <Link href="/homes"
               className="inline-flex items-center gap-2 px-8 py-4 border-2 border-[#1a3a5c] text-[#1a3a5c] rounded-full font-bold text-sm hover:bg-[#1a3a5c] hover:text-white transition-all duration-300">
               Ver Todas las Propiedades <ChevronRight className="w-4 h-4" />
             </Link>
@@ -573,7 +621,7 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
       </section>
 
       {/* ── FEATURED PROPERTIES ── */}
-      {featuredProperties.length > 0 && (
+      {idxFeatured.length > 0 && (
         <section className="py-20 bg-gray-50">
           <div className="max-w-screen-xl mx-auto px-4">
             <motion.div variants={stagger} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.1 }}
@@ -584,11 +632,11 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
             </motion.div>
             <motion.div variants={stagger} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.15 }}
               className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {featuredProperties.map(p => <PropertyCard key={p.id} property={p} />)}
+              {idxFeatured.map((p: any) => <IdxCard key={p.listingKey} p={p} />)}
             </motion.div>
             <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
               className="text-center mt-10">
-              <Link href="/search"
+              <Link href="/homes"
                 className="inline-flex items-center gap-2 px-8 py-4 bg-[#c9a84c] text-[#1a3a5c] rounded-full font-black text-sm hover:bg-[#e8c97a] transition-all duration-300 shadow-lg shadow-[#c9a84c]/20">
                 Ver Todas las Propiedades <ChevronRight className="w-4 h-4" />
               </Link>
@@ -786,7 +834,7 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
               <h2 className="font-serif text-4xl font-black text-[#1a3a5c]">Market Snapshot</h2>
               {snapshot?.dateRange && <p className="text-sm text-gray-400 mt-1">{snapshot.dateRange}</p>}
             </div>
-            <Link href="/search" className="hidden sm:flex items-center gap-1 text-sm text-[#c9a84c] font-bold hover:underline">
+            <Link href="/homes" className="hidden sm:flex items-center gap-1 text-sm text-[#c9a84c] font-bold hover:underline">
               Ver todos <ArrowRight className="w-4 h-4" />
             </Link>
           </motion.div>

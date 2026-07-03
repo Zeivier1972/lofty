@@ -121,6 +121,7 @@ model Contact {
   propertySaves PropertySave[]
   propertyViews PropertyView[]
   searchBehaviors SearchBehavior[]
+  savedSearches SavedSearch[]
   aiConversations AIConversation[]
   aiNotifications AINotification[]
   dialerCalls   DialerCall[]
@@ -612,6 +613,24 @@ model PropertyView {
   sessionId   String?
   durationSec Int?
   createdAt   DateTime  @default(now())
+}
+
+// A visitor's saved IDX search — powers new-listing email alerts.
+model SavedSearch {
+  id              String    @id @default(cuid())
+  contactId       String
+  contact         Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  label           String
+  city            String?
+  zip             String?
+  minPrice        Float?
+  maxPrice        Float?
+  minBeds         Int?
+  minBaths        Float?
+  propertySubType String?
+  isActive        Boolean   @default(true)
+  lastNotifiedAt  DateTime  @default(now())
+  createdAt       DateTime  @default(now())
 }
 
 model SearchBehavior {

@@ -18,7 +18,11 @@ export async function GET(req: Request) {
 
     const bool = (k: string) => searchParams.get(k) === "1" || searchParams.get(k) === "true"
 
-    const listings = await searchIdxListings({
+    const pageSize = Math.min(num("limit") || 24, 48)
+    const offset = num("offset") || 0
+
+    // Fetch one extra to know whether there's a next page.
+    const raw = await searchIdxListings({
       city: isZip ? undefined : (loc || undefined),
       zip: isZip ? loc : (searchParams.get("zip") || undefined),
       minPrice: num("minPrice"),
@@ -29,6 +33,7 @@ export async function GET(req: Request) {
       maxBaths: num("maxBaths"),
       minGarage: num("minGarage"),
       propertySubType: searchParams.get("type") || undefined,
+      mode: searchParams.get("mode") === "rent" ? "rent" : "sale",
       minSqft: num("minSqft"),
       maxSqft: num("maxSqft"),
       minYear: num("minYear"),
@@ -37,9 +42,11 @@ export async function GET(req: Request) {
       maxDom: num("maxDom"),
       pool: bool("pool"),
       waterfront: bool("waterfront"),
-      limit: Math.min(num("limit") || 24, 50),
-      offset: num("offset") || 0,
+      limit: pageSize + 1,
+      offset,
     })
+    const hasMore = raw.length > pageSize
+    const listings = raw.slice(0, pageSize)
 
     const keys = listings.map((l: any) => l.ListingKey).filter(Boolean)
     const photos = await fetchPrimaryPhotos(keys)
@@ -59,7 +66,7 @@ export async function GET(req: Request) {
       office: l.ListOfficeName || null,
     }))
 
-    return NextResponse.json({ ok: true, count: results.length, results })
+    return NextResponse.json({ ok: true, count: results.length, hasMore, results })
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e.message || "Search failed" }, { status: 500 })
   }

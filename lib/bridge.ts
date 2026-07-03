@@ -166,7 +166,7 @@ export function buildDisplayAddress(l: any): string {
 export async function searchIdxListings(params: {
   city?: string; zip?: string; minPrice?: number; maxPrice?: number
   minBeds?: number; maxBeds?: number; minBaths?: number; maxBaths?: number
-  minGarage?: number; propertySubType?: string
+  minGarage?: number; propertySubType?: string; mode?: "sale" | "rent"
   minSqft?: number; maxSqft?: number; minYear?: number; maxYear?: number
   maxHoa?: number; maxDom?: number; pool?: boolean; waterfront?: boolean
   limit?: number; offset?: number
@@ -175,12 +175,15 @@ export async function searchIdxListings(params: {
   if (!token) throw new Error("BRIDGE_SERVER_TOKEN not set")
   const esc = (s: string) => s.replace(/'/g, "''")
 
+  // "rent" → Residential Lease; "sale" (default) → Residential (for-sale).
+  const resoType = params.mode === "rent" ? "Residential Lease" : "Residential"
+
   // InternetEntireListingDisplayYN gates IDX display: listings whose agent/seller
   // opted out must NOT be shown (compliance) — and those are exactly the ones whose
   // photo URLs come back null. Filtering to true fixes both.
   const filters = [
     `StandardStatus eq 'Active'`,
-    `PropertyType eq 'Residential'`,
+    `PropertyType eq '${resoType}'`,
     `InternetEntireListingDisplayYN eq true`,
   ]
   if (params.minPrice) filters.push(`ListPrice ge ${params.minPrice}`)
@@ -221,6 +224,38 @@ export async function searchIdxListings(params: {
   }
   const data = await res.json()
   return data.value || []
+}
+
+// Area market stats from the whole MLS (not just our listings) — for the homepage
+// Market Snapshot. $count gives the true active total; averages from a sample.
+export async function fetchAreaStats(city = "Miami"): Promise<{ activeListings: number; avgPrice: number | null; avgDaysOnMarket: number | null }> {
+  const token = process.env.BRIDGE_SERVER_TOKEN
+  if (!token) return { activeListings: 0, avgPrice: null, avgDaysOnMarket: null }
+  const titleCity = city.trim().toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
+  const q = new URLSearchParams()
+  q.set("access_token", token)
+  q.set("$filter", [
+    `StandardStatus eq 'Active'`,
+    `PropertyType eq 'Residential'`,
+    `InternetEntireListingDisplayYN eq true`,
+    `City eq '${titleCity.replace(/'/g, "''")}'`,
+  ].join(" and "))
+  q.set("$select", "ListPrice,DaysOnMarket")
+  q.set("$top", "200")
+  q.set("$count", "true")
+  try {
+    const res = await fetch(`${BRIDGE_ODATA_BASE}/Property?${q.toString()}`, { next: { revalidate: 3600 } })
+    if (!res.ok) return { activeListings: 0, avgPrice: null, avgDaysOnMarket: null }
+    const data = await res.json()
+    const rows: any[] = data.value || []
+    const count = data["@odata.count"] ?? rows.length
+    const avg = (arr: number[]) => (arr.length ? Math.round(arr.reduce((s, x) => s + x, 0) / arr.length) : null)
+    const prices = rows.map(r => r.ListPrice).filter((x: any) => typeof x === "number" && x > 0)
+    const doms = rows.map(r => r.DaysOnMarket).filter((x: any) => typeof x === "number" && x >= 0)
+    return { activeListings: count, avgPrice: avg(prices), avgDaysOnMarket: avg(doms) }
+  } catch {
+    return { activeListings: 0, avgPrice: null, avgDaysOnMarket: null }
+  }
 }
 
 // Single listing by ListingKey (detail page).
