@@ -16,15 +16,27 @@ export async function GET(req: Request) {
     const loc = (searchParams.get("city") || "").trim()
     const isZip = /^\d{5}$/.test(loc)
 
+    const bool = (k: string) => searchParams.get(k) === "1" || searchParams.get(k) === "true"
+
     const listings = await searchIdxListings({
       city: isZip ? undefined : (loc || undefined),
       zip: isZip ? loc : (searchParams.get("zip") || undefined),
       minPrice: num("minPrice"),
       maxPrice: num("maxPrice"),
       minBeds: num("minBeds"),
+      maxBeds: num("maxBeds"),
       minBaths: num("minBaths"),
+      maxBaths: num("maxBaths"),
       minGarage: num("minGarage"),
       propertySubType: searchParams.get("type") || undefined,
+      minSqft: num("minSqft"),
+      maxSqft: num("maxSqft"),
+      minYear: num("minYear"),
+      maxYear: num("maxYear"),
+      maxHoa: num("maxHoa"),
+      maxDom: num("maxDom"),
+      pool: bool("pool"),
+      waterfront: bool("waterfront"),
       limit: Math.min(num("limit") || 24, 50),
       offset: num("offset") || 0,
     })

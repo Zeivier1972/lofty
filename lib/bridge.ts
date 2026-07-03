@@ -164,8 +164,11 @@ export function buildDisplayAddress(l: any): string {
 
 // IDX search — Active, for-sale Residential only (excludes rentals, commercial, land).
 export async function searchIdxListings(params: {
-  city?: string; zip?: string; minPrice?: number; maxPrice?: number; minBeds?: number
-  minBaths?: number; minGarage?: number; propertySubType?: string
+  city?: string; zip?: string; minPrice?: number; maxPrice?: number
+  minBeds?: number; maxBeds?: number; minBaths?: number; maxBaths?: number
+  minGarage?: number; propertySubType?: string
+  minSqft?: number; maxSqft?: number; minYear?: number; maxYear?: number
+  maxHoa?: number; maxDom?: number; pool?: boolean; waterfront?: boolean
   limit?: number; offset?: number
 }): Promise<any[]> {
   const token = process.env.BRIDGE_SERVER_TOKEN
@@ -183,8 +186,18 @@ export async function searchIdxListings(params: {
   if (params.minPrice) filters.push(`ListPrice ge ${params.minPrice}`)
   if (params.maxPrice) filters.push(`ListPrice le ${params.maxPrice}`)
   if (params.minBeds) filters.push(`BedroomsTotal ge ${params.minBeds}`)
+  if (params.maxBeds) filters.push(`BedroomsTotal le ${params.maxBeds}`)
   if (params.minBaths) filters.push(`BathroomsTotalDecimal ge ${params.minBaths}`)
+  if (params.maxBaths) filters.push(`BathroomsTotalDecimal le ${params.maxBaths}`)
   if (params.minGarage) filters.push(`GarageSpaces ge ${params.minGarage}`)
+  if (params.minSqft) filters.push(`LivingArea ge ${params.minSqft}`)
+  if (params.maxSqft) filters.push(`LivingArea le ${params.maxSqft}`)
+  if (params.minYear) filters.push(`YearBuilt ge ${params.minYear}`)
+  if (params.maxYear) filters.push(`YearBuilt le ${params.maxYear}`)
+  if (params.maxHoa) filters.push(`AssociationFee le ${params.maxHoa}`)
+  if (params.maxDom) filters.push(`DaysOnMarket le ${params.maxDom}`)
+  if (params.pool) filters.push(`PoolPrivateYN eq true`)
+  if (params.waterfront) filters.push(`WaterfrontYN eq true`)
   if (params.zip) filters.push(`PostalCode eq '${esc(params.zip.trim())}'`)
   if (params.city) {
     // MLS stores city Title-cased (e.g. "Miami", "Fort Lauderdale") and OData
