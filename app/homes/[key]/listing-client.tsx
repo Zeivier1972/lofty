@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import {
   Building2, Bed, Bath, Maximize2, MapPin, Loader2, Phone, Calendar,
   ArrowLeft, Home, Car, Waves, CalendarDays, DollarSign, Heart,
@@ -43,6 +44,11 @@ function fmtPrice(n: number | null): string {
 }
 
 export default function ListingClient({ listingKey }: { listingKey: string }) {
+  const router = useRouter()
+  function goBack() {
+    if (typeof window !== "undefined" && window.history.length > 1) router.back()
+    else router.push("/homes")
+  }
   const [listing, setListing] = useState<Listing | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -101,9 +107,14 @@ export default function ListingClient({ listingKey }: { listingKey: string }) {
       {/* Header */}
       <header className="bg-white border-b shadow-sm sticky top-0 z-10">
         <div className="max-w-screen-xl mx-auto px-4 flex items-center justify-between h-16">
-          <Link href="/homes" className="flex items-center gap-2 text-sm text-gray-600 hover:text-lofty-700">
-            <ArrowLeft className="w-4 h-4" /> Búsqueda
-          </Link>
+          <button onClick={goBack} className="flex items-center gap-2 text-sm text-gray-600 hover:text-lofty-700 font-medium">
+            <ArrowLeft className="w-4 h-4" /> Volver a resultados
+          </button>
+          <nav className="hidden md:flex items-center gap-5 text-sm text-gray-600">
+            <Link href="/" className="hover:text-lofty-700">Inicio</Link>
+            <Link href="/homes" className="hover:text-lofty-700">Comprar</Link>
+            <Link href="/valuacion" className="hover:text-lofty-700">Vender</Link>
+          </nav>
           <a href="tel:+13052830872" className="flex items-center gap-1.5 px-4 py-2 bg-lofty-600 text-white rounded-lg hover:bg-lofty-700 text-sm font-medium">
             <Phone className="w-3.5 h-3.5" /> (305) 283-0872
           </a>
