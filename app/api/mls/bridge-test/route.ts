@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { searchIdxListings, fetchListingMedia, buildDisplayAddress } from "@/lib/bridge"
+import { searchIdxListings, fetchPrimaryPhotos, buildDisplayAddress } from "@/lib/bridge"
 
 // Per-city photo diagnostic: for each listing returned by the real IDX search,
 // report whether it permits display and whether its photos actually resolve.
@@ -19,24 +19,21 @@ export async function GET(req: Request) {
 
   try {
     const listings = await searchIdxListings({ city, limit: 10 })
-    const report = await Promise.all(
-      listings.map(async (l: any) => {
-        const photos = await fetchListingMedia(l.ListingKey)
-        return {
-          address: buildDisplayAddress(l),
-          city: l.City,
-          display: l.InternetEntireListingDisplayYN,
-          photosCountField: l.PhotosCount ?? null,
-          photoUrlsResolved: photos.length,
-          firstPhoto: photos[0] || null,
-        }
-      })
-    )
+    // Batched single query (same path /homes uses) — should return photos for
+    // most listings without rate-limiting.
+    const keys = listings.map((l: any) => l.ListingKey).filter(Boolean)
+    const photos = await fetchPrimaryPhotos(keys)
+    const report = listings.map((l: any) => ({
+      address: buildDisplayAddress(l),
+      city: l.City,
+      photosCountField: l.PhotosCount ?? null,
+      thumbnail: photos[l.ListingKey] || null,
+    }))
     return NextResponse.json({
       ok: true,
       city: city || "(sin filtro)",
       returned: listings.length,
-      withPhotos: report.filter(r => r.photoUrlsResolved > 0).length,
+      batchedPhotosResolved: Object.keys(photos).length,
       report,
     })
   } catch (e: any) {
