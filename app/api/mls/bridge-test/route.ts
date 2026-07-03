@@ -4,8 +4,8 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { searchIdxListings } from "@/lib/bridge"
 
-// Probe several ways to fetch photos for one listing, to find which one returns
-// media when ResourceRecordKey eq ListingKey returns 0.
+// The RESO OData Media resource returns null MediaURL for many MIAMI listings.
+// Probe the Bridge WEB API (non-OData) endpoints, which may serve real photo URLs.
 // Usage: /api/mls/bridge-test?city=Doral
 export async function GET(req: Request) {
   const session = await auth()
@@ -14,19 +14,16 @@ export async function GET(req: Request) {
   if (!token) return NextResponse.json({ ok: false, error: "BRIDGE_SERVER_TOKEN no configurado" }, { status: 400 })
 
   const dataset = process.env.BRIDGE_DATASET_ID || "miamire"
-  const base = `https://api.bridgedataoutput.com/api/v2/OData/${dataset}`
   const { searchParams } = new URL(req.url)
   const city = searchParams.get("city") || undefined
 
-  async function mediaBy(field: string, val: string) {
-    const q = new URLSearchParams({ access_token: token! })
-    q.set("$filter", `${field} eq '${val}'`)
-    q.set("$top", "2")
+  async function probe(path: string) {
+    const url = `https://api.bridgedataoutput.com/api/v2/${dataset}/${path}${path.includes("?") ? "&" : "?"}access_token=${token}`
     try {
-      const r = await fetch(`${base}/Media?${q.toString()}`)
-      const j: any = await r.json().catch(() => ({}))
-      const rows = j.value || []
-      return { count: j["@odata.count"] ?? rows.length, firstUrl: rows[0]?.MediaURL || rows[0]?.ResizeMediaURL || null }
+      const r = await fetch(url)
+      const t = await r.text()
+      const jpg = t.match(/https?:\/\/[^"'\\ ]+\.(?:jpg|jpeg|png|webp)[^"'\\ ]*/i)
+      return { status: r.status, len: t.length, firstJpg: jpg ? jpg[0] : null, preview: jpg ? null : t.slice(0, 300) }
     } catch (e: any) {
       return { error: e.message }
     }
@@ -37,34 +34,16 @@ export async function GET(req: Request) {
     const first: any = listings[0]
     const key = first?.ListingKey
     const listingId = first?.ListingId
-    const keyNumeric = first?.ListingKeyNumeric
-
-    // Probe 3: Property $expand=Media
-    let expand: any = null
-    try {
-      const eq = new URLSearchParams({ access_token: token })
-      eq.set("$filter", `ListingKey eq '${key}'`)
-      eq.set("$expand", "Media")
-      eq.set("$top", "1")
-      const er = await fetch(`${base}/Property?${eq.toString()}`)
-      const ej: any = await er.json().catch(() => ({}))
-      const em = ej.value?.[0]?.Media || []
-      expand = { count: em.length, firstUrl: em[0]?.MediaURL || null }
-    } catch (e: any) {
-      expand = { error: e.message }
-    }
 
     return NextResponse.json({
       ok: true,
       city: city || "(sin filtro)",
       listingKey: key,
       listingId,
-      keyNumeric,
       photosCount: first?.PhotosCount ?? null,
-      byResourceRecordKey_ListingKey: await mediaBy("ResourceRecordKey", key),
-      byResourceRecordKey_ListingId: await mediaBy("ResourceRecordKey", listingId),
-      byListingId: await mediaBy("ListingId", listingId),
-      expandMedia: expand,
+      webApi_listingsById: await probe(`listings/${key}`),
+      webApi_listingsQuery: await probe(`listings?ListingId=${listingId}`),
+      webApi_propertyById: await probe(`Property/${key}`),
     })
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e.message || "diagnostic failed" }, { status: 500 })
