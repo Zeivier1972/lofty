@@ -2,8 +2,10 @@
 
 import { useState, useCallback, useEffect } from "react"
 import Link from "next/link"
-import { Building2, Search, Bed, Bath, Maximize2, MapPin, Loader2, Phone, SlidersHorizontal, ChevronUp, ChevronDown } from "lucide-react"
+import { Building2, Search, Bed, Bath, Maximize2, MapPin, Loader2, Phone, SlidersHorizontal, ChevronUp, ChevronDown, Heart } from "lucide-react"
 import { IdxDisclaimer } from "@/components/idx-disclaimer"
+import { LeadCaptureModal } from "@/components/idx/lead-capture-modal"
+import { getFavs, setFavs, getLead, saveHome, type LeadFields } from "@/lib/idx-favorites"
 
 interface Result {
   listingKey: string
@@ -89,6 +91,29 @@ export default function HomesClient() {
   const [results, setResults] = useState<Result[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // Favorites + lead capture
+  const [favs, setFavsState] = useState<string[]>([])
+  const [showLead, setShowLead] = useState(false)
+  const [pendingKey, setPendingKey] = useState<string | null>(null)
+  useEffect(() => { setFavsState(getFavs()) }, [])
+
+  async function toggleFav(key: string) {
+    const isFav = favs.includes(key)
+    if (!isFav && !getLead()) { setPendingKey(key); setShowLead(true); return }
+    try {
+      await saveHome({ listingKey: key, remove: isFav })
+      const next = isFav ? favs.filter(k => k !== key) : [...favs, key]
+      setFavsState(next); setFavs(next)
+    } catch { /* ignore */ }
+  }
+
+  async function onLeadSubmit(lead: LeadFields) {
+    if (!pendingKey) return
+    await saveHome({ listingKey: pendingKey, lead })
+    const next = [...favs, pendingKey]
+    setFavsState(next); setFavs(next)
+    setShowLead(false); setPendingKey(null)
+  }
 
   const search = useCallback(async () => {
     setLoading(true)
@@ -248,13 +273,20 @@ export default function HomesClient() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
               {results.map(r => (
                 <Link key={r.listingKey} href={`/homes/${r.listingKey}`} className="group bg-white rounded-2xl border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow">
-                  <div className="aspect-[4/3] bg-gray-100 overflow-hidden">
+                  <div className="relative aspect-[4/3] bg-gray-100 overflow-hidden">
                     {r.photo ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={r.photo} alt={r.address} className="w-full h-full object-cover group-hover:scale-105 transition-transform" loading="lazy" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-gray-300"><Building2 className="w-10 h-10" /></div>
                     )}
+                    <button
+                      onClick={e => { e.preventDefault(); e.stopPropagation(); toggleFav(r.listingKey) }}
+                      aria-label="Guardar"
+                      className="absolute top-2 right-2 w-9 h-9 rounded-full bg-white/90 shadow flex items-center justify-center hover:bg-white"
+                    >
+                      <Heart className={`w-5 h-5 ${favs.includes(r.listingKey) ? "fill-red-500 text-red-500" : "text-gray-500"}`} />
+                    </button>
                   </div>
                   <div className="p-4">
                     <p className="text-xl font-extrabold text-lofty-700">{fmtPrice(r.price)}</p>
@@ -275,6 +307,12 @@ export default function HomesClient() {
         )}
         <IdxDisclaimer />
       </main>
+
+      <LeadCaptureModal
+        open={showLead}
+        onClose={() => { setShowLead(false); setPendingKey(null) }}
+        onSubmit={onLeadSubmit}
+      />
     </div>
   )
 }
