@@ -41,6 +41,7 @@ export async function GET(req: Request) {
       maxDom: num("maxDom"),
       pool: bool("pool"),
       waterfront: bool("waterfront"),
+      sort: searchParams.get("sort") || undefined,
       limit: pageSize,
       offset,
     })

@@ -169,7 +169,7 @@ export async function searchIdxListings(params: {
   minGarage?: number; propertySubType?: string; mode?: "sale" | "rent"
   minSqft?: number; maxSqft?: number; minYear?: number; maxYear?: number
   maxHoa?: number; maxDom?: number; pool?: boolean; waterfront?: boolean
-  limit?: number; offset?: number
+  sort?: string; limit?: number; offset?: number
 }): Promise<any[]> {
   const token = process.env.BRIDGE_SERVER_TOKEN
   if (!token) throw new Error("BRIDGE_SERVER_TOKEN not set")
@@ -215,7 +215,10 @@ export async function searchIdxListings(params: {
   query.set("$top", String(params.limit || 24))
   query.set("$skip", String(params.offset || 0))
   query.set("$filter", filters.join(" and "))
-  query.set("$orderby", "ModificationTimestamp desc")
+  const orderBy = params.sort === "price_asc" ? "ListPrice asc"
+    : params.sort === "price_desc" ? "ListPrice desc"
+    : "ModificationTimestamp desc"
+  query.set("$orderby", orderBy)
   query.set("$count", "true")
 
   const res = await fetch(`${BRIDGE_ODATA_BASE}/Property?${query.toString()}`, { next: { revalidate: 300 } })

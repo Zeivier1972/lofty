@@ -85,6 +85,7 @@ function pageNumbers(current: number, total: number): (number | "…")[] {
 
 export default function HomesClient({ initialCity }: { initialCity?: string } = {}) {
   const [mode, setMode] = useState<"sale" | "rent">("sale")
+  const [sort, setSort] = useState("")
   const [city, setCity] = useState(initialCity || "")
   const [minPrice, setMinPrice] = useState("")
   const [maxPrice, setMaxPrice] = useState("")
@@ -192,7 +193,7 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
       setStr("minPrice", p.minPrice); setStr("maxPrice", p.maxPrice)
       setStr("minBeds", p.minBeds); setStr("maxBeds", p.maxBeds)
       setStr("minBaths", p.minBaths); setStr("maxBaths", p.maxBaths)
-      setStr("minGarage", p.minGarage); setStr("type", p.propType)
+      setStr("minGarage", p.minGarage); setStr("type", p.propType); setStr("sort", p.sort)
       setStr("minSqft", p.minSqft); setStr("maxSqft", p.maxSqft)
       setStr("minYear", p.minYear); setStr("maxYear", p.maxYear)
       setStr("maxHoa", p.maxHoa); setStr("maxDom", p.maxDom)
@@ -223,10 +224,16 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
   }, [])
 
   const currentFilters = () => ({
-    city, minPrice, maxPrice, minBeds, maxBeds, minBaths, maxBaths, minGarage, propType, mode,
+    city, minPrice, maxPrice, minBeds, maxBeds, minBaths, maxBaths, minGarage, propType, mode, sort,
     minSqft, maxSqft, minYear, maxYear, maxHoa, maxDom, pool, waterfront,
   })
-  const search = useCallback(() => { setPage(1); runQuery({ ...currentFilters(), offset: "0" }) }, [runQuery, city, minPrice, maxPrice, minBeds, maxBeds, minBaths, maxBaths, minGarage, propType, mode, minSqft, maxSqft, minYear, maxYear, maxHoa, maxDom, pool, waterfront]) // eslint-disable-line react-hooks/exhaustive-deps
+  const search = useCallback(() => { setPage(1); runQuery({ ...currentFilters(), offset: "0" }) }, [runQuery, city, minPrice, maxPrice, minBeds, maxBeds, minBaths, maxBaths, minGarage, propType, mode, sort, minSqft, maxSqft, minYear, maxYear, maxHoa, maxDom, pool, waterfront]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function changeSort(v: string) {
+    setSort(v)
+    setPage(1)
+    runQuery({ ...currentFilters(), sort: v, offset: "0" })
+  }
 
   function switchMode(m: "sale" | "rent") {
     if (m === mode) return
@@ -422,8 +429,15 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
           <div className="text-center py-24 text-gray-400 text-sm">No se encontraron propiedades. Ajusta los filtros.</div>
         ) : (
           <>
-            <div className="flex items-center justify-between mb-4 gap-3">
+            <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
               <p className="text-sm text-gray-500">{total.toLocaleString()} propiedades{totalPages > 1 ? ` · página ${page} de ${totalPages}` : ""}</p>
+              <div className="flex items-center gap-3">
+                <select value={sort} onChange={e => changeSort(e.target.value)}
+                  className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-lofty-400">
+                  <option value="">Más recientes</option>
+                  <option value="price_asc">Precio: menor a mayor</option>
+                  <option value="price_desc">Precio: mayor a menor</option>
+                </select>
               {searchSaved ? (
                 <span className="text-sm text-green-600 font-medium flex items-center gap-1">✓ Búsqueda guardada — te avisaremos</span>
               ) : (
@@ -432,6 +446,7 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
                   🔔 Guardar esta búsqueda
                 </button>
               )}
+              </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
               {results.map(r => (

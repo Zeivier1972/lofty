@@ -58,6 +58,15 @@ export default function ListingClient({ listingKey }: { listingKey: string }) {
 
   useEffect(() => {
     setFav(getFavs().includes(listingKey))
+    // Log the view for known leads → powers "clicked N times" in the dashboard
+    const lead = getLead()
+    if (lead?.contactId) {
+      fetch("/api/idx/track-view", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingKey, contactId: lead.contactId }),
+      }).catch(() => {})
+    }
     ;(async () => {
       try {
         const res = await fetch(`/api/idx/listing/${listingKey}`)
