@@ -131,7 +131,7 @@ export default function HomesClient() {
             value={city}
             onChange={e => setCity(e.target.value)}
             onKeyDown={e => e.key === "Enter" && search()}
-            placeholder="Ciudad (Miami, Fort Lauderdale, West Palm Beach…)"
+            placeholder="Ciudad o ZIP (Miami, 33139, Fort Lauderdale…)"
             list="sfla-cities"
             className="col-span-2 md:col-span-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-lofty-400"
           />

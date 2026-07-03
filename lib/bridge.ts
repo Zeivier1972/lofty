@@ -164,7 +164,7 @@ export function buildDisplayAddress(l: any): string {
 
 // IDX search — Active, for-sale Residential only (excludes rentals, commercial, land).
 export async function searchIdxListings(params: {
-  city?: string; minPrice?: number; maxPrice?: number; minBeds?: number
+  city?: string; zip?: string; minPrice?: number; maxPrice?: number; minBeds?: number
   minBaths?: number; minGarage?: number; propertySubType?: string
   limit?: number; offset?: number
 }): Promise<any[]> {
@@ -185,6 +185,7 @@ export async function searchIdxListings(params: {
   if (params.minBeds) filters.push(`BedroomsTotal ge ${params.minBeds}`)
   if (params.minBaths) filters.push(`BathroomsTotalDecimal ge ${params.minBaths}`)
   if (params.minGarage) filters.push(`GarageSpaces ge ${params.minGarage}`)
+  if (params.zip) filters.push(`PostalCode eq '${esc(params.zip.trim())}'`)
   if (params.city) {
     // MLS stores city Title-cased (e.g. "Miami", "Fort Lauderdale") and OData
     // eq is case-sensitive — normalize the user's input so "miami" matches.
