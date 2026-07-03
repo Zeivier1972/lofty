@@ -22,13 +22,17 @@ const DEFAULT_HERO_SLIDES = [
 ]
 
 // ─── Featured Areas ───────────────────────────────────────────────────────────
+// `search` overrides the city sent to /homes when the display name isn't an MLS City value.
 const FEATURED_AREAS = [
   { name: "Miami",              img: "https://images.unsplash.com/photo-1533106497176-45ae19e68ba2?auto=format&fit=crop&w=1200&q=90" },
-  { name: "Brickell",          img: "https://images.unsplash.com/photo-1486325212027-8081e485255e?auto=format&fit=crop&w=1200&q=90" },
+  { name: "Brickell",          img: "https://images.unsplash.com/photo-1486325212027-8081e485255e?auto=format&fit=crop&w=1200&q=90", search: "Miami" },
   { name: "Coral Gables",      img: "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=1200&q=90" },
   { name: "Doral",             img: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&w=1200&q=90" },
   { name: "Sunny Isles Beach", img: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=90" },
   { name: "Kendall",           img: "https://images.unsplash.com/photo-1449844908441-8829872d2607?auto=format&fit=crop&w=1200&q=90" },
+  { name: "Homestead",         img: "https://images.unsplash.com/photo-1570129477492-45c003edd2be?auto=format&fit=crop&w=1200&q=90" },
+  { name: "Palmetto Bay",      img: "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?auto=format&fit=crop&w=1200&q=90" },
+  { name: "Cutler Bay",        img: "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=1200&q=90" },
 ]
 
 const NAV_LINKS = [
@@ -545,7 +549,7 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
               <motion.div key={area.name} variants={fadeUp}
                 className={idx === 0 ? "md:col-span-2 md:row-span-2" : ""}
                 style={{ height: idx === 0 ? "420px" : "200px" }}>
-                <Link href={`/homes?city=${encodeURIComponent(area.name)}`}
+                <Link href={`/homes?city=${encodeURIComponent((area as any).search ?? area.name)}`}
                   className="relative overflow-hidden rounded-2xl group border-2 border-transparent hover:border-[#c9a84c] transition-all duration-300 block w-full h-full">
                   <img src={area.img} alt={area.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />

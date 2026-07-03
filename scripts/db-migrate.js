@@ -72,6 +72,24 @@ const STMTS = [
   )`,
   `ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "instagramIgsid" TEXT`,
   `ALTER TABLE "SocialAutoPilotConfig" ADD COLUMN IF NOT EXISTS "videoEnabled" BOOLEAN NOT NULL DEFAULT TRUE`,
+  // Saved IDX searches (new-listing alerts)
+  `CREATE TABLE IF NOT EXISTS "SavedSearch" (
+    "id"              TEXT NOT NULL,
+    "contactId"       TEXT NOT NULL,
+    "label"           TEXT NOT NULL,
+    "city"            TEXT,
+    "zip"             TEXT,
+    "minPrice"        DOUBLE PRECISION,
+    "maxPrice"        DOUBLE PRECISION,
+    "minBeds"         INTEGER,
+    "minBaths"        DOUBLE PRECISION,
+    "propertySubType" TEXT,
+    "isActive"        BOOLEAN NOT NULL DEFAULT true,
+    "lastNotifiedAt"  TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt"       TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "SavedSearch_pkey" PRIMARY KEY ("id")
+  )`,
+  `CREATE INDEX IF NOT EXISTS "SavedSearch_contactId_idx" ON "SavedSearch"("contactId")`,
 ]
 
 // ─── Email templates ─────────────────────────────────────────────────────────

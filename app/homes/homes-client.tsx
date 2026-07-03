@@ -5,7 +5,7 @@ import Link from "next/link"
 import { Building2, Search, Bed, Bath, Maximize2, MapPin, Loader2, Phone, SlidersHorizontal, ChevronUp, ChevronDown, Heart } from "lucide-react"
 import { IdxDisclaimer } from "@/components/idx-disclaimer"
 import { LeadCaptureModal } from "@/components/idx/lead-capture-modal"
-import { getFavs, setFavs, getLead, saveHome, type LeadFields } from "@/lib/idx-favorites"
+import { getFavs, setFavs, getLead, setLead, saveHome, type LeadFields } from "@/lib/idx-favorites"
 
 interface Result {
   listingKey: string
@@ -115,11 +115,55 @@ export default function HomesClient() {
     setShowLead(false); setPendingKey(null)
   }
 
+  // Saved searches
+  const [searchCaptureOpen, setSearchCaptureOpen] = useState(false)
+  const [searchSaved, setSearchSaved] = useState(false)
+
+  function buildSearchLabel(): string {
+    const parts: string[] = []
+    if (city.trim()) parts.push(city.trim())
+    if (propType) parts.push(PROPERTY_TYPES.find(t => t.value === propType)?.label || "")
+    if (minBeds) parts.push(`${minBeds}+ cuartos`)
+    if (maxPrice) parts.push(`hasta $${Number(maxPrice).toLocaleString()}`)
+    return parts.filter(Boolean).join(" · ") || "Todas las propiedades"
+  }
+
+  async function saveCurrentSearch(lead?: LeadFields): Promise<boolean> {
+    const isZip = /^\d{5}$/.test(city.trim())
+    const res = await fetch("/api/idx/save-search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        label: buildSearchLabel(),
+        city: isZip ? undefined : (city.trim() || undefined),
+        zip: isZip ? city.trim() : undefined,
+        minPrice: minPrice || undefined, maxPrice: maxPrice || undefined,
+        minBeds: minBeds || undefined, minBaths: minBaths || undefined,
+        type: propType || undefined,
+        contactId: getLead()?.contactId,
+        ...lead,
+      }),
+    })
+    const data = await res.json()
+    if (res.ok && data.contactId) setLead({ contactId: data.contactId, firstName: data.firstName })
+    return res.ok
+  }
+
+  async function onSaveSearchClick() {
+    if (!getLead()) { setSearchCaptureOpen(true); return }
+    if (await saveCurrentSearch()) setSearchSaved(true)
+  }
+
+  async function onSearchLeadSubmit(lead: LeadFields) {
+    if (await saveCurrentSearch(lead)) { setSearchSaved(true); setSearchCaptureOpen(false) }
+  }
+
   // Fetch with an explicit set of values (used for both the button and the
   // initial URL-driven search from the homepage bar).
   const runQuery = useCallback(async (p: Record<string, string | boolean>) => {
     setLoading(true)
     setError(null)
+    setSearchSaved(false)
     try {
       const params = new URLSearchParams()
       const setStr = (k: string, v: any) => { if (typeof v === "string" && v.trim()) params.set(k, v.trim()) }
@@ -286,7 +330,17 @@ export default function HomesClient() {
           <div className="text-center py-24 text-gray-400 text-sm">No se encontraron propiedades. Ajusta los filtros.</div>
         ) : (
           <>
-            <p className="text-sm text-gray-500 mb-4">{results.length} propiedades activas</p>
+            <div className="flex items-center justify-between mb-4 gap-3">
+              <p className="text-sm text-gray-500">{results.length} propiedades activas</p>
+              {searchSaved ? (
+                <span className="text-sm text-green-600 font-medium flex items-center gap-1">✓ Búsqueda guardada — te avisaremos</span>
+              ) : (
+                <button onClick={onSaveSearchClick}
+                  className="flex items-center gap-1.5 text-sm text-lofty-700 font-semibold hover:text-lofty-800 border border-lofty-200 rounded-lg px-3 py-1.5 hover:bg-lofty-50">
+                  🔔 Guardar esta búsqueda
+                </button>
+              )}
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
               {results.map(r => (
                 <Link key={r.listingKey} href={`/homes/${r.listingKey}`} className="group bg-white rounded-2xl border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow">
@@ -329,6 +383,11 @@ export default function HomesClient() {
         open={showLead}
         onClose={() => { setShowLead(false); setPendingKey(null) }}
         onSubmit={onLeadSubmit}
+      />
+      <LeadCaptureModal
+        open={searchCaptureOpen}
+        onClose={() => setSearchCaptureOpen(false)}
+        onSubmit={onSearchLeadSubmit}
       />
     </div>
   )
