@@ -14,7 +14,7 @@ interface PrefsFormData {
   timelineMonths: number | null
   budgetMin: number | null
   budgetMax: number | null
-  propertyType: string
+  propertyTypes: string[]
   bedroomsMin: number | null
   bathroomsMin: number | null
   location: string
@@ -35,10 +35,10 @@ const TIMELINES = [
 ]
 
 const PROPERTY_TYPES = [
-  { value: "SINGLE_FAMILY", label: "Single Family", icon: Home },
-  { value: "CONDO", label: "Condo", icon: Building2 },
-  { value: "TOWNHOUSE", label: "Townhouse", icon: Layers },
-  { value: "", label: "Any Type", icon: Sparkles },
+  { value: "SINGLE_FAMILY", label: "Single Family", labelEs: "Casa unifamiliar", icon: Home },
+  { value: "CONDO", label: "Condo", labelEs: "Condominio", icon: Building2 },
+  { value: "TOWNHOUSE", label: "Townhouse", labelEs: "Townhouse", icon: Layers },
+  { value: "MULTI_FAMILY", label: "Multi-Family", labelEs: "Multifamiliar", icon: Sparkles },
 ]
 
 const BUDGET_PRESETS = [300000, 500000, 750000, 1000000, 1500000, 2000000]
@@ -84,7 +84,10 @@ export default function PreferencesClient({
     timelineMonths: initialPrefs?.timelineMonths || null,
     budgetMin: initialPrefs?.budgetMin || null,
     budgetMax: initialPrefs?.budgetMax || null,
-    propertyType: initialPrefs?.propertyType || "",
+    propertyTypes: (() => {
+      const raw = initialPrefs?.propertyType || ""
+      return raw ? raw.split(",").map(s => s.trim()).filter(Boolean) : []
+    })(),
     bedroomsMin: initialPrefs?.bedroomsMin || null,
     bathroomsMin: initialPrefs?.bathroomsMin || null,
     location: initialPrefs?.location || "",
@@ -106,13 +109,25 @@ export default function PreferencesClient({
     }))
   }
 
+  function togglePropertyType(val: string) {
+    setData(d => ({
+      ...d,
+      propertyTypes: d.propertyTypes.includes(val)
+        ? d.propertyTypes.filter(x => x !== val)
+        : [...d.propertyTypes, val],
+    }))
+  }
+
   async function handleSubmit() {
     setSaving(true)
     try {
       await fetch("/api/portal/preferences", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          ...data,
+          propertyType: data.propertyTypes.join(","), // comma-separated for DB
+        }),
       })
       router.push("/portal/matches")
     } catch {
@@ -277,28 +292,37 @@ export default function PreferencesClient({
         <div className="space-y-6">
           <div>
             <h2 className="text-lg font-bold text-gray-900 mb-1">Property type</h2>
-            <p className="text-sm text-gray-500 mb-4">Tipo de propiedad</p>
+            <p className="text-sm text-gray-500 mb-4">Tipo de propiedad · Select all that apply</p>
             <div className="grid grid-cols-2 gap-3">
-              {PROPERTY_TYPES.map(pt => (
-                <button
-                  key={pt.value}
-                  onClick={() => set("propertyType", pt.value)}
-                  className={cn(
-                    "flex items-center gap-3 p-3.5 rounded-xl border-2 transition-all",
-                    data.propertyType === pt.value
-                      ? "border-lofty-600 bg-lofty-50"
-                      : "border-gray-200 bg-white hover:border-lofty-300"
-                  )}
-                >
-                  <div className={cn(
-                    "w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0",
-                    data.propertyType === pt.value ? "bg-lofty-600 text-white" : "bg-gray-100 text-gray-500"
-                  )}>
-                    <pt.icon className="w-4.5 h-4.5" />
-                  </div>
-                  <span className="text-sm font-semibold text-gray-900">{pt.label}</span>
-                </button>
-              ))}
+              {PROPERTY_TYPES.map(pt => {
+                const selected = data.propertyTypes.includes(pt.value)
+                return (
+                  <button
+                    key={pt.value}
+                    onClick={() => togglePropertyType(pt.value)}
+                    className={cn(
+                      "flex items-center gap-3 p-3.5 rounded-xl border-2 transition-all text-left",
+                      selected
+                        ? "border-lofty-600 bg-lofty-50"
+                        : "border-gray-200 bg-white hover:border-lofty-300"
+                    )}
+                  >
+                    <div className={cn(
+                      "w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0",
+                      selected ? "bg-lofty-600 text-white" : "bg-gray-100 text-gray-500"
+                    )}>
+                      <pt.icon className="w-4.5 h-4.5" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-gray-900 flex items-center gap-1">
+                        {pt.label}
+                        {selected && <CheckCircle2 className="w-3.5 h-3.5 text-lofty-600 flex-shrink-0" />}
+                      </div>
+                      <div className="text-xs text-gray-500 truncate">{pt.labelEs}</div>
+                    </div>
+                  </button>
+                )
+              })}
             </div>
           </div>
 

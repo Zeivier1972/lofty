@@ -6,6 +6,7 @@ import PortalShell from "../_components/portal-shell"
 import MatchesClient from "./matches-client"
 import { prisma } from "@/lib/prisma"
 import { scoreProperty } from "@/lib/property-scoring"
+import { fetchPrimaryPhotos } from "@/lib/bridge"
 import Anthropic from "@anthropic-ai/sdk"
 
 interface Property {
@@ -98,17 +99,45 @@ export default async function MatchesPage() {
 
   const hasPrefs = prefs?.matchPrefsCompletedAt != null
 
-  const properties = await prisma.property.findMany({
-    where: { status: "ACTIVE" },
+  const rawProperties = await prisma.property.findMany({
+    where: {
+      status: "ACTIVE",
+      price: { gte: 50000 }, // exclude rental listings (monthly rent < $50k; sales always >= $100k)
+    },
     orderBy: { createdAt: "desc" },
-    take: 30,
+    take: 40,
     select: {
       id: true, address: true, city: true, state: true,
       price: true, bedrooms: true, bathrooms: true, sqft: true,
       propertyType: true, pool: true, garage: true, features: true,
-      images: true, status: true,
+      images: true, status: true, mlsId: true,
     },
   })
+
+  // Enrich with real photos from Bridge Web API for properties missing images
+  const hasPhoto = (images: string | null) => {
+    try { const a = JSON.parse(images || "[]"); return Array.isArray(a) && a.some(u => u) } catch { return false }
+  }
+  const needsPhoto = rawProperties.filter(p => p.mlsId && !hasPhoto(p.images))
+  let photoMap: Record<string, string> = {}
+  if (needsPhoto.length > 0) {
+    photoMap = await fetchPrimaryPhotos(needsPhoto.map(p => p.mlsId!)).catch(() => ({}))
+  }
+  const properties = rawProperties.slice(0, 30).map(p => ({
+    ...p,
+    images: hasPhoto(p.images)
+      ? p.images
+      : photoMap[p.mlsId!]
+        ? JSON.stringify([photoMap[p.mlsId!]])
+        : p.images,
+  }))
+
+  // Also update DB with fetched photos (fire-and-forget)
+  for (const p of needsPhoto) {
+    if (photoMap[p.mlsId!]) {
+      prisma.property.update({ where: { id: p.id }, data: { images: JSON.stringify([photoMap[p.mlsId!]]) } }).catch(() => {})
+    }
+  }
 
   const savedIds = new Set(contact.propertySaves.map(s => s.property.id))
 

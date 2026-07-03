@@ -12,6 +12,7 @@ import Link from "next/link"
 import { format } from "date-fns"
 import HelpPanel from "@/components/help-panel"
 import HotActivity from "./hot-activity"
+import PropertyCards from "./property-cards"
 
 interface DashboardClientProps {
   stats: {
@@ -270,6 +271,9 @@ export default function DashboardClient({
 
       {/* Hot buyers + popular properties (IDX activity) */}
       <HotActivity />
+
+      {/* Property cards with interested buyers */}
+      <PropertyCards />
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

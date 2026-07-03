@@ -5,6 +5,19 @@ import { auth } from "@/lib/auth"
 import ReportsClient from "./reports-client"
 import { subMonths, startOfMonth, endOfMonth } from "date-fns"
 
+type MessagingVolume = {
+  smsMonthly: { month: string; count: number }[]
+  emailMonthly: { month: string; count: number }[]
+  totals: {
+    smsLast30: number
+    emailLast30: number
+    smsLast7: number
+    emailLast7: number
+    smsCost: number
+    emailCost: number
+  }
+} | null
+
 export default async function ReportsPage() {
   let contactsByMonth: any[] = []
   let tasksByStatus: any[] = []
@@ -12,6 +25,7 @@ export default async function ReportsPage() {
   let topLeadSources: any[] = []
   let revenueByMonth: any[] = []
   let pipelineByStage: any[] = []
+  let messagingVolume: MessagingVolume = null
 
   try {
     const session = await auth()
@@ -49,6 +63,58 @@ export default async function ReportsPage() {
     console.error("Reports page error:", e)
   }
 
+  try {
+    const now = new Date()
+    const months = Array.from({ length: 6 }, (_, i) => {
+      const d = subMonths(now, 5 - i)
+      return { start: startOfMonth(d), end: endOfMonth(d), label: d.toLocaleString("default", { month: "short" }) }
+    })
+    const days30ago = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+    const days7ago = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+
+    const [smsOut, emailAct, emailOut] = await Promise.all([
+      prisma.sMSMessage.findMany({
+        where: { direction: "OUTBOUND", createdAt: { gte: months[0].start } },
+        select: { createdAt: true },
+      }),
+      prisma.activity.findMany({
+        where: { type: "EMAIL_SENT", createdAt: { gte: months[0].start } },
+        select: { createdAt: true },
+      }),
+      prisma.email.findMany({
+        where: { direction: "OUTBOUND", createdAt: { gte: months[0].start } },
+        select: { createdAt: true },
+      }),
+    ])
+
+    const smsDates = smsOut.map((s) => s.createdAt)
+    const allEmailDates = [
+      ...emailAct.map((e) => e.createdAt),
+      ...emailOut.map((e) => e.createdAt),
+    ].sort((a, b) => a.getTime() - b.getTime())
+
+    const groupByMonth = (dates: Date[]) =>
+      months.map((m) => ({
+        month: m.label,
+        count: dates.filter((d) => d >= m.start && d <= m.end).length,
+      }))
+
+    const smsLast30 = smsDates.filter((d) => d >= days30ago).length
+    const emailLast30 = allEmailDates.filter((d) => d >= days30ago).length
+    const smsLast7 = smsDates.filter((d) => d >= days7ago).length
+    const emailLast7 = allEmailDates.filter((d) => d >= days7ago).length
+    const smsCost = smsLast30 * 0.0075
+    const emailCost = Math.max(0, emailLast30 - 3000) * 0.001
+
+    messagingVolume = {
+      smsMonthly: groupByMonth(smsDates),
+      emailMonthly: groupByMonth(allEmailDates),
+      totals: { smsLast30, emailLast30, smsLast7, emailLast7, smsCost, emailCost },
+    }
+  } catch (e) {
+    console.error("Messaging volume error:", e)
+  }
+
   return (
     <ReportsClient
       contactsByMonth={contactsByMonth}
@@ -57,6 +123,7 @@ export default async function ReportsPage() {
       topLeadSources={JSON.parse(JSON.stringify(topLeadSources))}
       revenueByMonth={revenueByMonth}
       pipelineByStage={JSON.parse(JSON.stringify(pipelineByStage))}
+      messagingVolume={messagingVolume}
     />
   )
 }

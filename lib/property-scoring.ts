@@ -85,10 +85,11 @@ export function scoreProperty(
     score += 20
   }
 
-  // Property Type (15 pts)
+  // Property Type (15 pts) — supports comma-separated list e.g. "SINGLE_FAMILY,TOWNHOUSE"
   if (prefs.buyerPropertyType && p.propertyType) {
     const norm = (s: string) => s.toLowerCase().replace(/[_\s]/g, "")
-    if (norm(p.propertyType) === norm(prefs.buyerPropertyType)) {
+    const preferredTypes = prefs.buyerPropertyType.split(",").map(t => norm(t.trim())).filter(Boolean)
+    if (preferredTypes.length === 0 || preferredTypes.includes(norm(p.propertyType))) {
       score += 15
       reasons.push(p.propertyType.replace(/_/g, " ").toLowerCase())
     } else {

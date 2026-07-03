@@ -1,4 +1,5 @@
 import twilio from "twilio"
+import { prisma } from "@/lib/prisma"
 
 let client: twilio.Twilio | null = null
 
@@ -11,17 +12,30 @@ function getClient() {
 
 export async function sendSMS(to: string, body: string, mediaUrls?: string[]): Promise<string | null> {
   const c = getClient()
+  let sid: string
   if (!c) {
     console.log("[SMS MOCK] To:", to, "Body:", body, "Media:", mediaUrls)
-    return "mock-sid"
+    sid = "mock-sid"
+  } else {
+    const msg = await c.messages.create({
+      body,
+      from: process.env.TWILIO_PHONE_NUMBER!,
+      to,
+      ...(mediaUrls?.length ? { mediaUrl: mediaUrls } : {}),
+    })
+    sid = msg.sid
   }
-  const msg = await c.messages.create({
-    body,
-    from: process.env.TWILIO_PHONE_NUMBER!,
-    to,
-    ...(mediaUrls?.length ? { mediaUrl: mediaUrls } : {}),
-  })
-  return msg.sid
+  // Fire-and-forget DB log (don't await, don't fail the send)
+  prisma.sMSMessage.create({
+    data: {
+      direction: "OUTBOUND",
+      body,
+      fromNumber: process.env.TWILIO_PHONE_NUMBER || "unknown",
+      toNumber: to,
+      status: "SENT",
+    },
+  }).catch(() => {})
+  return sid
 }
 
 export async function initiateCall(to: string, callbackUrl: string): Promise<string | null> {

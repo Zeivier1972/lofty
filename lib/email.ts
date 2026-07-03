@@ -1,5 +1,6 @@
 import { Resend } from "resend"
 import nodemailer from "nodemailer"
+import { prisma } from "@/lib/prisma"
 
 interface EmailOptions {
   to: string
@@ -87,9 +88,21 @@ function withReplyTo(opts: EmailOptions): EmailOptions {
 export async function sendEmail(opts: EmailOptions): Promise<boolean> {
   opts = withReplyTo(opts)
   try {
-    if (await sendViaResend(opts)) return true
-    if (await sendViaNodemailer(opts)) return true
-    console.log("[EMAIL MOCK] To:", opts.to, "Subject:", opts.subject)
+    if (!(await sendViaResend(opts)) && !(await sendViaNodemailer(opts))) {
+      console.log("[EMAIL MOCK] To:", opts.to, "Subject:", opts.subject)
+    }
+    // Fire-and-forget DB log (don't await, don't fail the send)
+    prisma.email.create({
+      data: {
+        subject: opts.subject,
+        body: opts.html.slice(0, 2000),
+        fromAddress: opts.from || process.env.RESEND_FROM || "sofia@catherinegomezrealtor.com",
+        toAddress: opts.to,
+        direction: "OUTBOUND",
+        status: "SENT",
+        sentAt: new Date(),
+      },
+    }).catch(() => {})
     return true
   } catch (e) {
     console.error("sendEmail error:", e)
