@@ -39,6 +39,28 @@ const PROPERTY_TYPES = [
   { label: "Cooperativa", value: "Stock Cooperative" },
 ]
 
+// South Florida cities (Miami-Dade, Broward, Palm Beach) for the city autocomplete.
+const SOUTH_FLORIDA_CITIES = [
+  // Miami-Dade
+  "Miami", "Miami Beach", "Coral Gables", "Doral", "Hialeah", "Hialeah Gardens",
+  "Homestead", "Kendall", "Aventura", "Sunny Isles Beach", "North Miami",
+  "North Miami Beach", "Miami Gardens", "Miami Lakes", "Miami Springs", "Cutler Bay",
+  "Palmetto Bay", "Pinecrest", "Key Biscayne", "South Miami", "West Miami",
+  "Sweetwater", "Bal Harbour", "Surfside", "Bay Harbor Islands", "Golden Beach",
+  "Opa-locka", "Florida City",
+  // Broward
+  "Fort Lauderdale", "Hollywood", "Pembroke Pines", "Miramar", "Coral Springs",
+  "Pompano Beach", "Davie", "Plantation", "Sunrise", "Weston", "Deerfield Beach",
+  "Coconut Creek", "Tamarac", "Margate", "Lauderhill", "Hallandale Beach",
+  "Oakland Park", "Wilton Manors", "Cooper City", "Dania Beach", "Lauderdale Lakes",
+  "Parkland", "North Lauderdale", "Lighthouse Point", "Southwest Ranches",
+  // Palm Beach
+  "West Palm Beach", "Boca Raton", "Boynton Beach", "Delray Beach",
+  "Palm Beach Gardens", "Jupiter", "Wellington", "Royal Palm Beach", "Lake Worth",
+  "Palm Beach", "Riviera Beach", "Greenacres", "Palm Springs", "North Palm Beach",
+  "Lantana", "Juno Beach", "Tequesta", "Loxahatchee",
+]
+
 function fmtPrice(n: number | null): string {
   if (!n) return "Consultar precio"
   return n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })
@@ -109,9 +131,13 @@ export default function HomesClient() {
             value={city}
             onChange={e => setCity(e.target.value)}
             onKeyDown={e => e.key === "Enter" && search()}
-            placeholder="Ciudad (ej: Miami, Doral)"
+            placeholder="Ciudad (Miami, Fort Lauderdale, West Palm Beach…)"
+            list="sfla-cities"
             className="col-span-2 md:col-span-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-lofty-400"
           />
+          <datalist id="sfla-cities">
+            {SOUTH_FLORIDA_CITIES.map(c => <option key={c} value={c} />)}
+          </datalist>
           <select value={propType} onChange={e => setPropType(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-lofty-400">
             {PROPERTY_TYPES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
