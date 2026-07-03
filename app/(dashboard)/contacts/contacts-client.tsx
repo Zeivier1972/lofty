@@ -161,7 +161,7 @@ function PipelineSettingsModal({
 function ImportModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
   const [csv, setCsv] = useState("")
   const [importing, setImporting] = useState(false)
-  const [result, setResult] = useState<{ imported: number; skipped: number; errors: string[]; total: number } | null>(null)
+  const [result, setResult] = useState<{ imported: number; emailsSent?: number; skipped: number; errors: string[]; total: number } | null>(null)
   const [preview, setPreview] = useState<{ headers: string[]; rows: string[][] } | null>(null)
   const { toast } = useToast()
 
@@ -246,6 +246,9 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
               <div>
                 <p className="font-semibold text-green-800">Importación completa</p>
                 <p className="text-sm text-green-700">{result.imported} importados · {result.skipped} omitidos (duplicados) · {result.total} total en archivo</p>
+                {result.emailsSent != null && result.emailsSent > 0 && (
+                  <p className="text-sm text-green-700">📧 {result.emailsSent} correos de bienvenida enviados</p>
+                )}
               </div>
             </div>
             {result.errors.length > 0 && (

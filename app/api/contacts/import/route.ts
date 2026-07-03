@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth"
+import { sendEmail } from "@/lib/email"
 
 // ─── CSV parser (handles quoted fields with commas) ────────────────────────
 function parseCSVRow(row: string): string[] {
@@ -80,6 +81,7 @@ export async function POST(req: Request) {
       contact: any
       tagNames: string[]
       pipelineName: string
+      notesText: string
     }
     const parsed: ParsedRow[] = []
     let parseSkipped = 0
@@ -166,9 +168,19 @@ export async function POST(req: Request) {
       // ── Pipeline ──────────────────────────────────────────────────────
       const pipelineName = (row.pipeline || "").trim()
 
+      // ── Notes ─────────────────────────────────────────────────────────
+      // Lofty exports notes in a single column; also handle common variants
+      const notesText = (row.notes || row.contact_note || row.note || row.agent_notes || "").trim()
+
+      // ── Buyer criteria flag ────────────────────────────────────────────
+      // Set matchPrefsCompletedAt so the match-alert cron picks up this lead
+      const hasBuyerCriteria = !isSeller && (maxPrice || minPrice || minBeds || buyerLocation || propType)
+      const matchPrefsCompletedAt = hasBuyerCriteria ? new Date() : undefined
+
       parsed.push({
         tagNames,
         pipelineName,
+        notesText,
         contact: {
           firstName: firstName || "Unknown",
           lastName:  lastName  || undefined,
@@ -186,6 +198,7 @@ export async function POST(req: Request) {
           birthday,
           assignedToId: (session.user as any)?.id,
           customFields: Object.keys(customData).length > 0 ? JSON.stringify(customData) : undefined,
+          matchPrefsCompletedAt,
           ...(isSeller ? {
             sellerAddress: sellerAddress || undefined,
             sellerEstimatedValue: sellerPrice || undefined,
@@ -235,14 +248,22 @@ export async function POST(req: Request) {
     const stageMap = new Map<string, string>() // stage name (lower) → stageId
     defaultPipeline?.stages.forEach(s => stageMap.set(s.name.toLowerCase(), s.id))
 
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
+    const aiConfig = await prisma.aIConfig.findFirst({
+      select: { realtorName: true, realtorPhone: true, realtorEmail: true },
+    }).catch(() => null)
+    const agentName  = aiConfig?.realtorName  || "Catherine Gomez"
+    const agentPhone = aiConfig?.realtorPhone || "305-283-0872"
+
     // ── Phase 5: create contacts in batches of 25 ───────────────────────
     let imported = 0
+    let emailsSent = 0
     const errors: string[] = []
     const BATCH = 25
 
     for (let i = 0; i < toCreate.length; i += BATCH) {
       const batch = toCreate.slice(i, i + BATCH)
-      await Promise.all(batch.map(async ({ contact, tagNames, pipelineName }) => {
+      await Promise.all(batch.map(async ({ contact, tagNames, pipelineName, notesText }) => {
         try {
           const created = await prisma.contact.create({ data: contact })
 
@@ -268,6 +289,79 @@ export async function POST(req: Request) {
             }
           }
 
+          // Notes from previous CRM
+          if (notesText) {
+            await prisma.note.create({
+              data: {
+                content: `[Importado de Lofty]\n\n${notesText}`,
+                contactId: created.id,
+                isPinned: false,
+              },
+            }).catch(() => {})
+          }
+
+          // Portal access — required for match-alert cron to send emails
+          const access = await prisma.clientPortalAccess.create({
+            data: { contactId: created.id },
+          }).catch(() => null)
+
+          // Welcome email with magic login link (only if they have an email and aren't opted out)
+          if (access && created.email && !created.doNotEmail) {
+            const portalUrl = `${appUrl}/portal/login?token=${access.token}`
+            const hasCriteria = created.buyerBudgetMax || created.buyerLocation || created.buyerBedroomsMin
+            await sendEmail({
+              to: created.email,
+              subject: `🏠 ${agentName} — Your property search continues here`,
+              html: `<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px 12px">
+<tr><td align="center">
+<table width="580" cellpadding="0" cellspacing="0" style="max-width:580px;width:100%">
+  <tr><td style="background:linear-gradient(135deg,#0a1628 0%,#1a2f50 100%);border-radius:16px 16px 0 0;padding:32px;text-align:center">
+    <p style="color:#c9a84c;font-size:11px;letter-spacing:3px;text-transform:uppercase;margin:0 0 8px">✨ SOFIA · AI Real Estate Assistant</p>
+    <h1 style="color:white;font-size:24px;font-weight:900;margin:0 0 6px">Your Client Portal Is Ready</h1>
+    <p style="color:#8fa3c4;font-size:14px;margin:0">Tu portal personal de búsqueda de propiedades</p>
+  </td></tr>
+  <tr><td style="background:white;padding:28px 28px 8px">
+    <p style="color:#374151;font-size:15px;margin:0 0 12px">Hola <strong>${created.firstName}</strong>! 👋</p>
+    <p style="color:#374151;font-size:14px;margin:0 0 16px">
+      I'm Sofía, ${agentName}'s AI assistant. We've set up your personal client portal so your property search continues seamlessly — everything you were working on is here.
+    </p>
+    ${hasCriteria ? `
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:16px;margin:0 0 20px">
+      <p style="color:#15803d;font-size:13px;font-weight:700;margin:0 0 6px">✅ Your search preferences are set</p>
+      <p style="color:#374151;font-size:13px;margin:0">Sofía will automatically alert you when new homes matching your criteria hit the market.</p>
+    </div>` : ""}
+    <p style="color:#374151;font-size:14px;margin:0 0 20px">With your portal you can:</p>
+    <table cellpadding="0" cellspacing="0" style="width:100%;margin:0 0 24px">
+      <tr><td style="padding:6px 0;font-size:14px;color:#374151">🏠 &nbsp;Ver propiedades recomendadas para ti</td></tr>
+      <tr><td style="padding:6px 0;font-size:14px;color:#374151">🔔 &nbsp;Recibir alertas automáticas de nuevas propiedades</td></tr>
+      <tr><td style="padding:6px 0;font-size:14px;color:#374151">❤️ &nbsp;Guardar tus propiedades favoritas</td></tr>
+      <tr><td style="padding:6px 0;font-size:14px;color:#374151">💬 &nbsp;Enviarme mensajes directamente</td></tr>
+    </table>
+    <div style="text-align:center;margin:0 0 24px">
+      <a href="${portalUrl}" style="display:inline-block;background:#0e1f3d;color:white;padding:14px 36px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">
+        Acceder a Mi Portal →
+      </a>
+      <p style="color:#9ca3af;font-size:12px;margin:12px 0 0">One-click access — no password needed / Acceso sin contraseña</p>
+    </div>
+  </td></tr>
+  <tr><td style="background:white;padding:8px 28px 28px;border-radius:0 0 16px 16px">
+    <div style="border-top:1px solid #f3f4f6;padding-top:20px;text-align:center">
+      <p style="color:#374151;font-size:14px;margin:0 0 4px"><strong>${agentName}</strong></p>
+      <p style="color:#6b7280;font-size:13px;margin:0">${agentPhone} · Luxury Real Estate Miami</p>
+    </div>
+  </td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>`,
+            }).then(() => { emailsSent++ }).catch(() => {})
+          }
+
           // Activity log
           await prisma.activity.create({
             data: {
@@ -286,6 +380,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       imported,
+      emailsSent,
       skipped: parseSkipped + dupSkipped,
       errors: errors.slice(0, 10),
       total: lines.length - 1,
