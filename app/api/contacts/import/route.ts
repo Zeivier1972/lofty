@@ -1,4 +1,5 @@
 export const dynamic = "force-dynamic"
+export const maxDuration = 300 // 5 min — large CSV imports need time for DB writes + welcome emails
 
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
@@ -354,11 +355,11 @@ export async function POST(req: Request) {
             data: { contactId: created.id },
           }).catch(() => null)
 
-          // Welcome email with magic login link (only if they have an email and aren't opted out)
+          // Welcome email — fire-and-forget so it doesn't block the import batch
           if (access && created.email && !created.doNotEmail) {
             const portalUrl = `${appUrl}/portal/login?token=${access.token}`
             const hasCriteria = created.buyerBudgetMax || created.buyerLocation || created.buyerBedroomsMin
-            await sendEmail({
+            sendEmail({
               to: created.email,
               subject: `🏠 ${agentName} — Your property search continues here`,
               html: `<!DOCTYPE html>
