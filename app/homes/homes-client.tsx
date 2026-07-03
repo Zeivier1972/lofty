@@ -92,6 +92,9 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
   const [results, setResults] = useState<Result[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [hasMore, setHasMore] = useState(false)
+  const [page, setPage] = useState(1)
+  const [snap, setSnap] = useState<any>(null)
   // Favorites + lead capture
   const [favs, setFavsState] = useState<string[]>([])
   const [showLead, setShowLead] = useState(false)
@@ -179,15 +182,24 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
       if (p.pool) params.set("pool", "1")
       if (p.waterfront) params.set("waterfront", "1")
       if (p.mode === "rent") params.set("mode", "rent")
+      if (p.offset) params.set("offset", String(p.offset))
       const res = await fetch(`/api/idx/search?${params.toString()}`)
       const data = await res.json()
       if (!data.ok) throw new Error(data.error || "Error en la búsqueda")
       setResults(data.results || [])
+      setHasMore(!!data.hasMore)
     } catch (e: any) {
       setError(e.message)
       setResults([])
     } finally {
       setLoading(false)
+    }
+    // Market snapshot for the searched city (sale-side, area-wide)
+    const cityStr = typeof p.city === "string" ? p.city.trim() : ""
+    if (cityStr && !/^\d{5}$/.test(cityStr)) {
+      fetch(`/api/site/market-snapshot?city=${encodeURIComponent(cityStr)}`).then(r => r.json()).then(setSnap).catch(() => setSnap(null))
+    } else {
+      setSnap(null)
     }
   }, [])
 
@@ -195,12 +207,21 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
     city, minPrice, maxPrice, minBeds, maxBeds, minBaths, maxBaths, minGarage, propType, mode,
     minSqft, maxSqft, minYear, maxYear, maxHoa, maxDom, pool, waterfront,
   })
-  const search = useCallback(() => runQuery(currentFilters()), [runQuery, city, minPrice, maxPrice, minBeds, maxBeds, minBaths, maxBaths, minGarage, propType, mode, minSqft, maxSqft, minYear, maxYear, maxHoa, maxDom, pool, waterfront]) // eslint-disable-line react-hooks/exhaustive-deps
+  const search = useCallback(() => { setPage(1); runQuery({ ...currentFilters(), offset: "0" }) }, [runQuery, city, minPrice, maxPrice, minBeds, maxBeds, minBaths, maxBaths, minGarage, propType, mode, minSqft, maxSqft, minYear, maxYear, maxHoa, maxDom, pool, waterfront]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function switchMode(m: "sale" | "rent") {
     if (m === mode) return
     setMode(m)
-    runQuery({ ...currentFilters(), mode: m })
+    setPage(1)
+    runQuery({ ...currentFilters(), mode: m, offset: "0" })
+  }
+
+  const PAGE_SIZE = 24
+  function goToPage(n: number) {
+    if (n < 1) return
+    setPage(n)
+    runQuery({ ...currentFilters(), offset: String((n - 1) * PAGE_SIZE) })
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" })
   }
 
   // On load, pre-fill filters from the URL (from the homepage search bar) and search.
@@ -344,6 +365,28 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
 
       {/* Results */}
       <main className="max-w-screen-xl mx-auto px-4 py-6">
+        {/* Market snapshot for the searched city */}
+        {snap && snap.activeListings != null && (
+          <div className="mb-6 bg-white border border-gray-200 rounded-2xl p-5">
+            <p className="text-xs font-black uppercase tracking-[0.15em] text-lofty-600 mb-3">
+              Mercado en {city} {snap.dateRange ? <span className="text-gray-400 font-medium normal-case tracking-normal">· {snap.dateRange}</span> : null}
+            </p>
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div>
+                <p className="text-2xl font-extrabold text-gray-900">{Number(snap.activeListings).toLocaleString()}</p>
+                <p className="text-xs text-gray-500 mt-1">Propiedades activas</p>
+              </div>
+              <div>
+                <p className="text-2xl font-extrabold text-gray-900">{snap.avgPrice ? `$${snap.avgPrice >= 1e6 ? (snap.avgPrice / 1e6).toFixed(1) + "M" : Math.round(snap.avgPrice / 1000) + "K"}` : "—"}</p>
+                <p className="text-xs text-gray-500 mt-1">Precio promedio</p>
+              </div>
+              <div>
+                <p className="text-2xl font-extrabold text-gray-900">{snap.avgDaysOnMarket ?? "—"}</p>
+                <p className="text-xs text-gray-500 mt-1">Días en el mercado</p>
+              </div>
+            </div>
+          </div>
+        )}
         {loading ? (
           <div className="flex items-center justify-center py-24 text-gray-400">
             <Loader2 className="w-6 h-6 animate-spin mr-2" /> Buscando propiedades…
@@ -355,7 +398,7 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
         ) : (
           <>
             <div className="flex items-center justify-between mb-4 gap-3">
-              <p className="text-sm text-gray-500">{results.length} propiedades activas</p>
+              <p className="text-sm text-gray-500">{results.length} propiedades{page > 1 ? ` · página ${page}` : ""}</p>
               {searchSaved ? (
                 <span className="text-sm text-green-600 font-medium flex items-center gap-1">✓ Búsqueda guardada — te avisaremos</span>
               ) : (
@@ -398,6 +441,21 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
                 </Link>
               ))}
             </div>
+
+            {/* Pagination */}
+            {(page > 1 || hasMore) && (
+              <div className="flex items-center justify-center gap-3 mt-8">
+                <button onClick={() => goToPage(page - 1)} disabled={page <= 1}
+                  className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-50">
+                  ← Anterior
+                </button>
+                <span className="text-sm text-gray-500">Página {page}</span>
+                <button onClick={() => goToPage(page + 1)} disabled={!hasMore}
+                  className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-200 disabled:opacity-40 hover:bg-gray-50">
+                  Siguiente →
+                </button>
+              </div>
+            )}
           </>
         )}
         <IdxDisclaimer />
