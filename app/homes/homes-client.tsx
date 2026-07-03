@@ -68,8 +68,8 @@ function fmtPrice(n: number | null): string {
   return n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })
 }
 
-export default function HomesClient() {
-  const [city, setCity] = useState("")
+export default function HomesClient({ initialCity }: { initialCity?: string } = {}) {
+  const [city, setCity] = useState(initialCity || "")
   const [minPrice, setMinPrice] = useState("")
   const [maxPrice, setMaxPrice] = useState("")
   const [minBeds, setMinBeds] = useState("")
@@ -198,7 +198,7 @@ export default function HomesClient() {
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search)
     const init = {
-      city: sp.get("city") || "",
+      city: initialCity || sp.get("city") || "",
       minPrice: sp.get("minPrice") || "",
       maxPrice: sp.get("maxPrice") || "",
       minBeds: sp.get("minBeds") || "",
