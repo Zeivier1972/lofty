@@ -130,7 +130,7 @@ export default function PropertyDetailClient({ property }: { property: Property 
       <header className="bg-white border-b sticky top-0 z-40 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            <Link href="/search" className="flex items-center gap-2 text-gray-600 hover:text-lofty-700">
+            <Link href="/homes" className="flex items-center gap-2 text-gray-600 hover:text-lofty-700">
               <ArrowLeft className="w-4 h-4" /> Back to Search
             </Link>
             <div className="flex items-center gap-2">

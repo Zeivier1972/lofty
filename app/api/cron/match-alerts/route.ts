@@ -261,7 +261,13 @@ export async function GET(req: Request) {
           prefs.buyerBedroomsMin ? `${prefs.buyerBedroomsMin}+ cuartos` : null,
           prefs.buyerBudgetMax ? `hasta $${prefs.buyerBudgetMax.toLocaleString()}` : null,
         ].filter(Boolean).join(" · ")
-        const searchUrl = `${appUrl}/search`
+        // Link to the native IDX search (/homes), pre-filtered by the buyer's
+        // saved preferences — NOT the old /search MLS-widget page.
+        const homesParams = new URLSearchParams()
+        if (prefs.buyerLocation) homesParams.set("city", prefs.buyerLocation)
+        if (prefs.buyerBedroomsMin) homesParams.set("minBeds", String(prefs.buyerBedroomsMin))
+        if (prefs.buyerBudgetMax) homesParams.set("maxPrice", String(prefs.buyerBudgetMax))
+        const searchUrl = `${appUrl}/homes${homesParams.toString() ? `?${homesParams.toString()}` : ""}`
 
         // Build and send email
         const html = buildAlertEmail({

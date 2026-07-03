@@ -215,7 +215,7 @@ async function runTool(name: string, input: any, contactId: string): Promise<{te
       // Count only — used to gauge availability, NOT to redistribute listing fields
       const count = await prisma.property.count({ where })
       const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
-      const searchUrl = `${appUrl}/search`
+      const searchUrl = `${appUrl}/homes`
 
       if (count === 0) {
         return {
