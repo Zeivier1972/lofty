@@ -166,7 +166,7 @@ export function buildDisplayAddress(l: any): string {
 export async function searchIdxListings(params: {
   city?: string; zip?: string; minPrice?: number; maxPrice?: number
   minBeds?: number; maxBeds?: number; minBaths?: number; maxBaths?: number
-  minGarage?: number; propertySubType?: string
+  minGarage?: number; propertySubType?: string; mode?: "sale" | "rent"
   minSqft?: number; maxSqft?: number; minYear?: number; maxYear?: number
   maxHoa?: number; maxDom?: number; pool?: boolean; waterfront?: boolean
   limit?: number; offset?: number
@@ -175,12 +175,15 @@ export async function searchIdxListings(params: {
   if (!token) throw new Error("BRIDGE_SERVER_TOKEN not set")
   const esc = (s: string) => s.replace(/'/g, "''")
 
+  // "rent" → Residential Lease; "sale" (default) → Residential (for-sale).
+  const resoType = params.mode === "rent" ? "Residential Lease" : "Residential"
+
   // InternetEntireListingDisplayYN gates IDX display: listings whose agent/seller
   // opted out must NOT be shown (compliance) — and those are exactly the ones whose
   // photo URLs come back null. Filtering to true fixes both.
   const filters = [
     `StandardStatus eq 'Active'`,
-    `PropertyType eq 'Residential'`,
+    `PropertyType eq '${resoType}'`,
     `InternetEntireListingDisplayYN eq true`,
   ]
   if (params.minPrice) filters.push(`ListPrice ge ${params.minPrice}`)

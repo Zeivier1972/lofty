@@ -29,6 +29,7 @@ export async function GET(req: Request) {
       maxBaths: num("maxBaths"),
       minGarage: num("minGarage"),
       propertySubType: searchParams.get("type") || undefined,
+      mode: searchParams.get("mode") === "rent" ? "rent" : "sale",
       minSqft: num("minSqft"),
       maxSqft: num("maxSqft"),
       minYear: num("minYear"),

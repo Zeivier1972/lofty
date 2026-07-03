@@ -38,7 +38,7 @@ const FEATURED_AREAS = [
 const NAV_LINKS = [
   { label: "HOME",             href: "/site" },
   { label: "BUY",              href: "/homes" },
-  { label: "SELL",             href: "/site#contact" },
+  { label: "SELL",             href: "/valuacion" },
   { label: "PRE-CONSTRUCTION", href: "/search" },
   { label: "ABOUT",            href: "/site#about" },
   { label: "MARKET SNAPSHOT",  href: "/site#market" },

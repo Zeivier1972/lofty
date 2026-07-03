@@ -69,6 +69,7 @@ function fmtPrice(n: number | null): string {
 }
 
 export default function HomesClient({ initialCity }: { initialCity?: string } = {}) {
+  const [mode, setMode] = useState<"sale" | "rent">("sale")
   const [city, setCity] = useState(initialCity || "")
   const [minPrice, setMinPrice] = useState("")
   const [maxPrice, setMaxPrice] = useState("")
@@ -177,6 +178,7 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
       setStr("maxHoa", p.maxHoa); setStr("maxDom", p.maxDom)
       if (p.pool) params.set("pool", "1")
       if (p.waterfront) params.set("waterfront", "1")
+      if (p.mode === "rent") params.set("mode", "rent")
       const res = await fetch(`/api/idx/search?${params.toString()}`)
       const data = await res.json()
       if (!data.ok) throw new Error(data.error || "Error en la búsqueda")
@@ -189,21 +191,31 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
     }
   }, [])
 
-  const search = useCallback(() => runQuery({
-    city, minPrice, maxPrice, minBeds, maxBeds, minBaths, maxBaths, minGarage, propType,
+  const currentFilters = () => ({
+    city, minPrice, maxPrice, minBeds, maxBeds, minBaths, maxBaths, minGarage, propType, mode,
     minSqft, maxSqft, minYear, maxYear, maxHoa, maxDom, pool, waterfront,
-  }), [runQuery, city, minPrice, maxPrice, minBeds, maxBeds, minBaths, maxBaths, minGarage, propType, minSqft, maxSqft, minYear, maxYear, maxHoa, maxDom, pool, waterfront])
+  })
+  const search = useCallback(() => runQuery(currentFilters()), [runQuery, city, minPrice, maxPrice, minBeds, maxBeds, minBaths, maxBaths, minGarage, propType, mode, minSqft, maxSqft, minYear, maxYear, maxHoa, maxDom, pool, waterfront]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function switchMode(m: "sale" | "rent") {
+    if (m === mode) return
+    setMode(m)
+    runQuery({ ...currentFilters(), mode: m })
+  }
 
   // On load, pre-fill filters from the URL (from the homepage search bar) and search.
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search)
+    const m: "sale" | "rent" = sp.get("mode") === "rent" ? "rent" : "sale"
     const init = {
       city: initialCity || sp.get("city") || "",
       minPrice: sp.get("minPrice") || "",
       maxPrice: sp.get("maxPrice") || "",
       minBeds: sp.get("minBeds") || "",
       propType: sp.get("type") || "",
+      mode: m,
     }
+    setMode(m)
     if (init.city) setCity(init.city)
     if (init.minPrice) setMinPrice(init.minPrice)
     if (init.maxPrice) setMaxPrice(init.maxPrice)
@@ -234,6 +246,18 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
 
       {/* Search bar */}
       <div className="bg-white border-b">
+        <div className="max-w-screen-xl mx-auto px-4 pt-4">
+          <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden text-sm font-semibold">
+            <button onClick={() => switchMode("sale")}
+              className={mode === "sale" ? "px-5 py-2 bg-lofty-600 text-white" : "px-5 py-2 text-gray-600 hover:bg-gray-50"}>
+              Comprar
+            </button>
+            <button onClick={() => switchMode("rent")}
+              className={mode === "rent" ? "px-5 py-2 bg-lofty-600 text-white" : "px-5 py-2 text-gray-600 hover:bg-gray-50"}>
+              Rentar
+            </button>
+          </div>
+        </div>
         <div className="max-w-screen-xl mx-auto px-4 py-4 grid grid-cols-2 md:grid-cols-4 gap-3">
           <input
             value={city}
@@ -360,7 +384,7 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
                     </button>
                   </div>
                   <div className="p-4">
-                    <p className="text-xl font-extrabold text-lofty-700">{fmtPrice(r.price)}</p>
+                    <p className="text-xl font-extrabold text-lofty-700">{fmtPrice(r.price)}{mode === "rent" && r.price ? <span className="text-sm font-semibold text-gray-500">/mes</span> : ""}</p>
                     <p className="text-sm font-medium text-gray-800 mt-1 flex items-start gap-1">
                       <MapPin className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-gray-400" /> {r.address}
                     </p>
