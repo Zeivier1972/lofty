@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth"
+import { triggerMatchAlert } from "@/lib/trigger-match-alert"
 
 export async function GET(req: Request) {
   try {
@@ -66,6 +67,14 @@ export async function POST(req: Request) {
         userId: session?.user?.id,
       },
     })
+
+    // Ensure portal access exists for match-alert emails
+    await prisma.clientPortalAccess.create({ data: { contactId: contact.id } }).catch(() => {})
+
+    // If buyer prefs are set on creation, send immediate match alert
+    if (contact.buyerBudgetMax || contact.buyerLocation || contact.buyerBedroomsMin) {
+      triggerMatchAlert(contact.id).catch(() => {})
+    }
 
     return NextResponse.json(contact, { status: 201 })
   } catch (error) {

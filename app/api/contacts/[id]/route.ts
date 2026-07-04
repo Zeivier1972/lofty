@@ -4,6 +4,7 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth"
 import { sendCapiEvent } from "@/lib/facebook"
+import { triggerMatchAlert } from "@/lib/trigger-match-alert"
 
 export async function GET(req: Request, { params }: { params: { id: string } }) {
   try {
@@ -35,7 +36,10 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     const data = await req.json()
     const { id, assignedTo, tags, notes, tasks, activities, pipelineLeads, enrollments, propertyInterests, emails, appointments, transactions, _count, ...updateData } = data
 
-    const prevContact = await prisma.contact.findUnique({ where: { id: params.id }, select: { status: true, email: true, phone: true, firstName: true, lastName: true, facebookLeadId: true } })
+    const prevContact = await prisma.contact.findUnique({
+      where: { id: params.id },
+      select: { status: true, email: true, phone: true, firstName: true, lastName: true, facebookLeadId: true, buyerBudgetMax: true, buyerLocation: true, buyerBedroomsMin: true },
+    })
 
     const contact = await prisma.contact.update({
       where: { id: params.id },
@@ -60,6 +64,13 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
         userId: session?.user?.id,
       },
     })
+
+    // If buyer prefs were newly added/changed, trigger immediate match alert
+    const hadPrefs = prevContact?.buyerBudgetMax || prevContact?.buyerLocation || prevContact?.buyerBedroomsMin
+    const hasPrefs = contact.buyerBudgetMax || contact.buyerLocation || contact.buyerBedroomsMin
+    if (hasPrefs && !hadPrefs) {
+      triggerMatchAlert(params.id).catch(() => {})
+    }
 
     return NextResponse.json(contact)
   } catch {

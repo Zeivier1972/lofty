@@ -161,7 +161,7 @@ function PipelineSettingsModal({
 function ImportModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
   const [csv, setCsv] = useState("")
   const [importing, setImporting] = useState(false)
-  const [result, setResult] = useState<{ imported: number; emailsSent?: number; skipped: number; errors: string[]; total: number } | null>(null)
+  const [result, setResult] = useState<{ imported: number; updated?: number; emailsSent?: number; skipped: number; errors: string[]; total: number } | null>(null)
   const [progress, setProgress] = useState<{ done: number; total: number; imported: number } | null>(null)
   const [preview, setPreview] = useState<{ headers: string[]; rows: string[][] } | null>(null)
   const { toast } = useToast()
@@ -218,7 +218,7 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
       chunks.push([header, ...dataRows.slice(i, i + CHUNK)].join("\n"))
     }
 
-    const totals = { imported: 0, skipped: 0, emailsSent: 0, errors: [] as string[], total: dataRows.length }
+    const totals = { imported: 0, updated: 0, skipped: 0, emailsSent: 0, errors: [] as string[], total: dataRows.length }
 
     try {
       for (let i = 0; i < chunks.length; i++) {
@@ -231,6 +231,7 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
         const data = await res.json()
         if (!res.ok) throw new Error(data.error)
         totals.imported   += data.imported   || 0
+        totals.updated    += data.updated    || 0
         totals.skipped    += data.skipped    || 0
         totals.emailsSent += data.emailsSent || 0
         totals.errors.push(...(data.errors || []))
@@ -270,7 +271,7 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
               <CheckCircle2 className="w-6 h-6 text-green-600 flex-shrink-0" />
               <div>
                 <p className="font-semibold text-green-800">Importación completa</p>
-                <p className="text-sm text-green-700">{result.imported} importados · {result.skipped} omitidos (duplicados) · {result.total} total en archivo</p>
+                <p className="text-sm text-green-700">{result.imported} nuevos · {result.updated ?? 0} actualizados · {result.skipped} omitidos · {result.total} total</p>
                 {result.emailsSent != null && result.emailsSent > 0 && (
                   <p className="text-sm text-green-700">📧 {result.emailsSent} correos de bienvenida enviados</p>
                 )}
