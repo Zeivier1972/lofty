@@ -4,6 +4,7 @@ export interface PropertyForScoring {
   bathrooms: number | null
   propertyType: string
   city: string
+  zip: string
   address: string
   pool: boolean
   garage: number | null
@@ -70,14 +71,28 @@ export function scoreProperty(
     score += 10
   }
 
-  // Location (20 pts)
+  // Location (20 pts) — supports city names, zip codes, or comma-separated mix
   if (prefs.buyerLocation) {
-    const locLow = prefs.buyerLocation.toLowerCase()
-    const cityLow = p.city.toLowerCase()
-    const addrLow = p.address.toLowerCase()
-    if (cityLow.includes(locLow) || locLow.includes(cityLow) || addrLow.includes(locLow)) {
+    const parts = prefs.buyerLocation.split(/[,|]/).map(s => s.trim()).filter(Boolean)
+    const zipParts = parts.filter(s => /^\d{5}$/.test(s))
+    const cityParts = parts.filter(s => !/^\d{5}$/.test(s))
+    let locationMatch = false
+    // Zip code match
+    if (zipParts.length > 0 && zipParts.includes(p.zip?.trim())) {
+      locationMatch = true
+    }
+    // City/county match
+    if (!locationMatch && cityParts.length > 0) {
+      const cityLow = p.city.toLowerCase()
+      const addrLow = p.address.toLowerCase()
+      locationMatch = cityParts.some(part => {
+        const pl = part.toLowerCase()
+        return cityLow.includes(pl) || pl.includes(cityLow) || addrLow.includes(pl)
+      })
+    }
+    if (locationMatch) {
       score += 20
-      reasons.push(`In ${p.city}`)
+      reasons.push(`In ${zipParts.length > 0 ? p.zip || p.city : p.city}`)
     } else {
       score += 3
     }

@@ -1373,6 +1373,7 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
   const [bulkMoving, setBulkMoving] = useState(false)
   const [bulkTagging, setBulkTagging] = useState(false)
   const [bulkEnrolling, setBulkEnrolling] = useState(false)
+  const [globalSelectAll, setGlobalSelectAll] = useState(false)
   const [showPowerDialer, setShowPowerDialer] = useState(false)
 
   const totalPages = Math.ceil(total / pageSize)
@@ -1428,7 +1429,7 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
   }
 
   const toggleAll = () => {
-    if (allSelected) setSelected(new Set())
+    if (allSelected) { setSelected(new Set()); setGlobalSelectAll(false) }
     else setSelected(new Set(contacts.map(c => c.id)))
   }
 
@@ -1471,18 +1472,30 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
   }
 
   const bulkEnrollPlan = async (planId: string, planName: string) => {
-    if (!selected.size) return
+    if (!selected.size && !globalSelectAll) return
     setBulkEnrolling(true)
     try {
+      let contactIds = Array.from(selected)
+
+      // In global-select mode, fetch all matching IDs from the server first
+      if (globalSelectAll) {
+        const params = buildParams()
+        const idsRes = await fetch(`/api/contacts/ids?${params}`)
+        const idsData = await idsRes.json()
+        if (!idsRes.ok) throw new Error(idsData.error)
+        contactIds = idsData.ids
+      }
+
       const res = await fetch("/api/smart-plans/bulk-enroll", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planId, contactIds: Array.from(selected) }),
+        body: JSON.stringify({ planId, contactIds }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
       toast({ title: `${data.enrolled} contact${data.enrolled !== 1 ? "s" : ""} enrolled in "${planName}"` })
       setSelected(new Set())
+      setGlobalSelectAll(false)
       router.refresh()
     } catch {
       toast({ title: "Failed to enroll contacts", variant: "destructive" })
@@ -1649,9 +1662,27 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
       {/* Bulk action bar */}
       {someSelected && (
         <div className="bg-gray-900 text-white rounded-xl px-5 py-3 flex flex-wrap items-center gap-3 shadow-lg">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <CheckSquare className="w-4 h-4" />
-            <span className="font-semibold text-sm">{selected.size} selected</span>
+            <span className="font-semibold text-sm">
+              {globalSelectAll ? `All ${total.toLocaleString()} contacts selected` : `${selected.size} selected`}
+            </span>
+            {allSelected && !globalSelectAll && total > contacts.length && (
+              <button
+                onClick={() => setGlobalSelectAll(true)}
+                className="text-xs underline text-blue-300 hover:text-blue-100"
+              >
+                Select all {total.toLocaleString()} contacts
+              </button>
+            )}
+            {globalSelectAll && (
+              <button
+                onClick={() => setGlobalSelectAll(false)}
+                className="text-xs underline text-blue-300 hover:text-blue-100"
+              >
+                Clear global selection
+              </button>
+            )}
           </div>
           <div className="w-px h-5 bg-white/20 hidden sm:block" />
           <div className="flex flex-wrap gap-2 ml-auto">
@@ -1749,7 +1780,7 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
             <Button
               size="sm"
               variant="ghost"
-              onClick={() => setSelected(new Set())}
+              onClick={() => { setSelected(new Set()); setGlobalSelectAll(false) }}
               className="text-white/60 hover:text-white hover:bg-white/10"
             >
               <X className="w-4 h-4" />
