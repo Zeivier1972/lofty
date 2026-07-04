@@ -18,6 +18,8 @@ interface AgentContext {
     buyerBudgetMax?: number | null
     buyerLocation?: string | null
     buyerBedroomsMin?: number | null
+    doNotCall?: boolean | null
+    doNotEmail?: boolean | null
   }
   trigger:
     | "PROPERTY_SAVED"
