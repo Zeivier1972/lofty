@@ -250,6 +250,7 @@ export async function GET(req: Request) {
         buyerBedroomsMin: true, buyerBathroomsMin: true,
         buyerPropertyType: true, buyerMustHaves: true,
         buyerLocation: true,
+        portalAccess: { select: { token: true } },
       },
     })
     log.push(`Contacts with preferences + portal: ${contacts.length}`)
@@ -302,16 +303,12 @@ export async function GET(req: Request) {
           prefs.buyerBudgetMax ? `hasta $${prefs.buyerBudgetMax.toLocaleString()}` : null,
         ].filter(Boolean).join(" · ")
 
-        // Build search URL — zip-code buyers get zip param, city buyers get city param
-        const homesParams = new URLSearchParams()
-        if (zipParts.length > 0) {
-          homesParams.set("zip", zipParts[0]) // /homes page uses first zip for display
-        } else if (cityParts.length > 0) {
-          homesParams.set("city", cityParts[0])
-        }
-        if (prefs.buyerBedroomsMin) homesParams.set("minBeds", String(prefs.buyerBedroomsMin))
-        if (prefs.buyerBudgetMax) homesParams.set("maxPrice", String(prefs.buyerBudgetMax))
-        const searchUrl = `${appUrl}/homes${homesParams.toString() ? `?${homesParams.toString()}` : ""}`
+        // Link to portal matches page (shows properties from our DB, not IDX)
+        // Magic token logs the lead in automatically on click
+        const portalToken = contact.portalAccess?.token
+        const searchUrl = portalToken
+          ? `${appUrl}/portal/login?token=${portalToken}&next=/portal/matches`
+          : `${appUrl}/portal/matches`
 
         // Build and send email
         const html = buildAlertEmail({

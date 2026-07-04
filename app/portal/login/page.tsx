@@ -7,10 +7,10 @@ import PortalLoginClient from "./login-client"
 export default async function PortalLoginPage({
   searchParams,
 }: {
-  searchParams: { token?: string; email?: string; error?: string }
+  searchParams: { token?: string; email?: string; error?: string; next?: string }
 }) {
   const session = await getPortalSession()
-  if (session) redirect("/portal/dashboard")
+  if (session) redirect(searchParams.next || "/portal/dashboard")
 
-  return <PortalLoginClient prefillToken={searchParams.token} error={searchParams.error} />
+  return <PortalLoginClient prefillToken={searchParams.token} error={searchParams.error} next={searchParams.next} />
 }
