@@ -23,7 +23,7 @@ export default async function SitePage() {
     const noPhoto = rawProps.filter(p => {
       try { const a = JSON.parse(p.images || "[]"); return !Array.isArray(a) || !a.some(Boolean) } catch { return true }
     })
-    const photoMap = noPhoto.length > 0
+    const photoMap: Record<string, string> = noPhoto.length > 0
       ? await fetchPrimaryPhotos(noPhoto.map(p => p.mlsId!).filter(Boolean)).catch(() => ({}))
       : {}
     featuredProperties = rawProps.map(p => {

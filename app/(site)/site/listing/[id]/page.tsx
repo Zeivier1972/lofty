@@ -31,7 +31,7 @@ export default async function ListingDetailPage({ params }: PageProps) {
   // Enrich main property photo if missing
   let enrichedProperty = property
   if (!hasPhoto(property.images) && property.mlsId) {
-    const photoMap = await fetchPrimaryPhotos([property.mlsId]).catch(() => ({}))
+    const photoMap: Record<string, string> = await fetchPrimaryPhotos([property.mlsId]).catch(() => ({}))
     if (photoMap[property.mlsId]) {
       enrichedProperty = { ...property, images: JSON.stringify([photoMap[property.mlsId]]) }
     }
@@ -41,7 +41,7 @@ export default async function ListingDetailPage({ params }: PageProps) {
   const needsPhoto = similar.filter(p => !hasPhoto(p.images) && p.mlsId)
   let similarEnriched = similar
   if (needsPhoto.length > 0) {
-    const photoMap = await fetchPrimaryPhotos(needsPhoto.map(p => p.mlsId!)).catch(() => ({}))
+    const photoMap: Record<string, string> = await fetchPrimaryPhotos(needsPhoto.map(p => p.mlsId!)).catch(() => ({}))
     similarEnriched = similar.map(p =>
       photoMap[p.mlsId!] ? { ...p, images: JSON.stringify([photoMap[p.mlsId!]]) } : p
     )
