@@ -20,10 +20,11 @@ function isAuthorized(req: Request): boolean {
 
 // ─── Step 1: Sync fresh listings from Bridge API ──────────────────────────────
 
-async function syncFreshListings(): Promise<{ created: number; updated: number }> {
+async function syncFreshListings(extraZips: string[] = []): Promise<{ created: number; updated: number }> {
   const cities = ["Miami", "Miami Beach", "Doral", "Kendall", "Coral Gables", "Aventura", "Sunny Isles Beach", "Hialeah", "Homestead"]
   let created = 0, updated = 0
 
+  // Sync by city
   for (const city of cities) {
     try {
       const listings = await fetchListings({ city, limit: 50 })
@@ -43,6 +44,29 @@ async function syncFreshListings(): Promise<{ created: number; updated: number }
       }
     } catch (e) {
       console.error(`[match-alerts] Bridge sync error for ${city}:`, e)
+    }
+  }
+
+  // Sync by zip code (for contacts whose buyerLocation is zip-based)
+  for (const zip of extraZips) {
+    try {
+      const listings = await fetchListings({ zipCode: zip, limit: 30 })
+      for (const listing of listings) {
+        const data = bridgeToProperty(listing)
+        if (!data.mlsId) continue
+        try {
+          const existing = await prisma.property.findFirst({ where: { mlsId: data.mlsId } })
+          if (existing) {
+            await prisma.property.update({ where: { id: existing.id }, data })
+            updated++
+          } else {
+            await prisma.property.create({ data })
+            created++
+          }
+        } catch { /* skip individual errors */ }
+      }
+    } catch (e) {
+      console.error(`[match-alerts] Bridge sync error for zip ${zip}:`, e)
     }
   }
 
@@ -172,9 +196,20 @@ export async function GET(req: Request) {
   let emailsSent = 0
 
   try {
+    // 1. Collect unique zip codes from contact preferences for targeted sync
+    const zipContacts = await prisma.contact.findMany({
+      where: { matchPrefsCompletedAt: { not: null }, buyerLocation: { contains: "33" } },
+      select: { buyerLocation: true },
+    })
+    const uniqueZips = Array.from(new Set(
+      zipContacts.flatMap(c =>
+        (c.buyerLocation || "").split(/[,|]/).map(s => s.trim()).filter(s => /^\d{5}$/.test(s))
+      )
+    )).slice(0, 20) // cap at 20 zips to avoid rate limits
+
     // 1. Sync fresh listings
-    log.push("Syncing Bridge API listings...")
-    const { created, updated } = await syncFreshListings()
+    log.push(`Syncing Bridge API listings (+ ${uniqueZips.length} zip codes)...`)
+    const { created, updated } = await syncFreshListings(uniqueZips)
     log.push(`Sync complete: ${created} new, ${updated} updated`)
 
     // 2. Get all active properties (fresh enough to send)
@@ -182,7 +217,7 @@ export async function GET(req: Request) {
     const freshProperties = await prisma.property.findMany({
       where: { status: "ACTIVE", createdAt: { gte: cutoff } },
       select: {
-        id: true, address: true, city: true, state: true,
+        id: true, address: true, city: true, state: true, zip: true,
         price: true, bedrooms: true, bathrooms: true, sqft: true,
         propertyType: true, pool: true, garage: true, features: true,
         images: true, status: true,
@@ -256,15 +291,24 @@ export async function GET(req: Request) {
         // MLS/IDX compliance: do NOT embed listing details in the alert email.
         // Send a notification with a count + criteria and link the lead to the
         // public search page where listings are displayed compliantly.
+        // Parse buyerLocation into zip codes vs city names
+        const locParts = (prefs.buyerLocation || "").split(/[,|]/).map(s => s.trim()).filter(Boolean)
+        const zipParts = locParts.filter(s => /^\d{5}$/.test(s))
+        const cityParts = locParts.filter(s => !/^\d{5}$/.test(s))
+
         const criteriaSummary = [
           prefs.buyerLocation ? prefs.buyerLocation : null,
           prefs.buyerBedroomsMin ? `${prefs.buyerBedroomsMin}+ cuartos` : null,
           prefs.buyerBudgetMax ? `hasta $${prefs.buyerBudgetMax.toLocaleString()}` : null,
         ].filter(Boolean).join(" · ")
-        // Link to the native IDX search (/homes), pre-filtered by the buyer's
-        // saved preferences — NOT the old /search MLS-widget page.
+
+        // Build search URL — zip-code buyers get zip param, city buyers get city param
         const homesParams = new URLSearchParams()
-        if (prefs.buyerLocation) homesParams.set("city", prefs.buyerLocation)
+        if (zipParts.length > 0) {
+          homesParams.set("zip", zipParts[0]) // /homes page uses first zip for display
+        } else if (cityParts.length > 0) {
+          homesParams.set("city", cityParts[0])
+        }
         if (prefs.buyerBedroomsMin) homesParams.set("minBeds", String(prefs.buyerBedroomsMin))
         if (prefs.buyerBudgetMax) homesParams.set("maxPrice", String(prefs.buyerBudgetMax))
         const searchUrl = `${appUrl}/homes${homesParams.toString() ? `?${homesParams.toString()}` : ""}`
