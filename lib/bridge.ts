@@ -164,7 +164,7 @@ export function buildDisplayAddress(l: any): string {
 
 // IDX search — Active, for-sale Residential only (excludes rentals, commercial, land).
 export async function searchIdxListings(params: {
-  city?: string; zip?: string; minPrice?: number; maxPrice?: number
+  city?: string; cities?: string[]; zip?: string; minPrice?: number; maxPrice?: number
   minBeds?: number; maxBeds?: number; minBaths?: number; maxBaths?: number
   minGarage?: number; propertySubType?: string; mode?: "sale" | "rent"
   minSqft?: number; maxSqft?: number; minYear?: number; maxYear?: number
@@ -174,6 +174,7 @@ export async function searchIdxListings(params: {
   const token = process.env.BRIDGE_SERVER_TOKEN
   if (!token) throw new Error("BRIDGE_SERVER_TOKEN not set")
   const esc = (s: string) => s.replace(/'/g, "''")
+  const titleCase = (s: string) => s.trim().toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
 
   // "rent" → Residential Lease; "sale" (default) → Residential (for-sale).
   const resoType = params.mode === "rent" ? "Residential Lease" : "Residential"
@@ -202,12 +203,19 @@ export async function searchIdxListings(params: {
   if (params.pool) filters.push(`PoolPrivateYN eq true`)
   if (params.waterfront) filters.push(`WaterfrontYN eq true`)
   if (params.zip) filters.push(`PostalCode eq '${esc(params.zip.trim())}'`)
-  if (params.city) {
-    // MLS stores city Title-cased (e.g. "Miami", "Fort Lauderdale") and OData
-    // eq is case-sensitive — normalize the user's input so "miami" matches.
-    const titleCity = params.city.trim().toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
-    filters.push(`City eq '${esc(titleCity)}'`)
+
+  // Support single city or multiple cities (comma-separated from email links)
+  const allCities = params.cities && params.cities.length > 0
+    ? params.cities
+    : params.city ? [params.city] : []
+  if (allCities.length === 1) {
+    // MLS stores city Title-cased; OData eq is case-sensitive — normalize.
+    filters.push(`City eq '${esc(titleCase(allCities[0]))}'`)
+  } else if (allCities.length > 1) {
+    const cityClauses = allCities.map(c => `City eq '${esc(titleCase(c))}'`).join(" or ")
+    filters.push(`(${cityClauses})`)
   }
+
   if (params.propertySubType) filters.push(`PropertySubType eq '${esc(params.propertySubType)}'`)
 
   const query = new URLSearchParams()

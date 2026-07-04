@@ -12,9 +12,14 @@ export async function GET(req: Request) {
   }
 
   try {
-    // The location box accepts a city OR a 5-digit ZIP — detect which.
+    // The location box accepts a city, comma-separated cities, or a 5-digit ZIP.
     const loc = (searchParams.get("city") || "").trim()
     const isZip = /^\d{5}$/.test(loc)
+
+    // Support comma-separated multi-city values (e.g. from old email alert links)
+    const cityTokens = loc && !isZip
+      ? loc.split(",").map(s => s.trim()).filter(Boolean)
+      : []
 
     const bool = (k: string) => searchParams.get(k) === "1" || searchParams.get(k) === "true"
 
@@ -22,7 +27,7 @@ export async function GET(req: Request) {
     const offset = num("offset") || 0
 
     const listings = await searchIdxListings({
-      city: isZip ? undefined : (loc || undefined),
+      cities: cityTokens.length > 0 ? cityTokens : undefined,
       zip: isZip ? loc : (searchParams.get("zip") || undefined),
       minPrice: num("minPrice"),
       maxPrice: num("maxPrice"),

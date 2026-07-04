@@ -214,10 +214,11 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
     } finally {
       setLoading(false)
     }
-    // Market snapshot for the searched city (sale-side, area-wide)
+    // Market snapshot for the searched city (sale-side, area-wide); use first city if comma-separated
     const cityStr = typeof p.city === "string" ? p.city.trim() : ""
-    if (cityStr && !/^\d{5}$/.test(cityStr)) {
-      fetch(`/api/site/market-snapshot?city=${encodeURIComponent(cityStr)}`).then(r => r.json()).then(setSnap).catch(() => setSnap(null))
+    const firstCity = cityStr.split(",")[0].trim()
+    if (firstCity && !/^\d{5}$/.test(firstCity)) {
+      fetch(`/api/site/market-snapshot?city=${encodeURIComponent(firstCity)}`).then(r => r.json()).then(setSnap).catch(() => setSnap(null))
     } else {
       setSnap(null)
     }
@@ -401,7 +402,7 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
         {snap && snap.activeListings != null && (
           <div className="mb-6 bg-white border border-gray-200 rounded-2xl p-5">
             <p className="text-xs font-black uppercase tracking-[0.15em] text-lofty-600 mb-3">
-              Mercado en {city} {snap.dateRange ? <span className="text-gray-400 font-medium normal-case tracking-normal">· {snap.dateRange}</span> : null}
+              Mercado en {city.split(",")[0].trim()} {snap.dateRange ? <span className="text-gray-400 font-medium normal-case tracking-normal">· {snap.dateRange}</span> : null}
             </p>
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
