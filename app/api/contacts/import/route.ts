@@ -113,7 +113,9 @@ export async function POST(req: Request) {
       const phoneRaw  = (row.primary_phone || row.phone || row.phone_number || row.mobile || row.cell || "").trim()
       const phoneCC   = (row.primary_phone_country_code || row.phone_country_code || "US").trim()
 
-      if (!firstName && !lastName && !email && !phoneRaw) { parseSkipped++; continue }
+      // Skip rows with no way to contact the lead (no email AND no phone)
+      // These are typically bot/test accounts or social handles with no real contact info
+      if (!email && !phoneRaw) { parseSkipped++; continue }
 
       // ── Lofty lead ID (store for reference, strip backticks) ──────────
       const loftyId = (row.lead_id || "").replace(/[`'"]/g, "").trim()
