@@ -8,12 +8,14 @@ import { prisma } from "@/lib/prisma"
  * POST /api/smart-plans/bulk-enroll
  * Enrolls matching contacts into a smart plan.
  * body: {
- *   planName: string,
+ *   planId?: string,                 // enroll by plan ID (preferred for UI calls)
+ *   planName?: string,               // enroll by partial plan name match
+ *   contactIds?: string[],           // enroll specific contacts directly
  *   tagNames?: string[],
  *   pipelineNames?: string[],
- *   importedOnly?: boolean,          // only Lofty-imported contacts (have loftyId in customFields)
- *   excludeTagNames?: string[],      // remove contacts with these tags
- *   excludePipelineNames?: string[], // remove contacts in these pipelines
+ *   importedOnly?: boolean,
+ *   excludeTagNames?: string[],
+ *   excludePipelineNames?: string[],
  * }
  */
 export async function POST(req: Request) {
@@ -22,7 +24,9 @@ export async function POST(req: Request) {
 
   try {
     const {
+      planId,
       planName,
+      contactIds = [],
       tagNames = [],
       pipelineNames = [],
       importedOnly = false,
@@ -30,22 +34,27 @@ export async function POST(req: Request) {
       excludePipelineNames = [],
     } = await req.json()
 
-    if (!planName) return NextResponse.json({ error: "planName is required" }, { status: 400 })
-    if (!tagNames.length && !pipelineNames.length && !importedOnly) {
+    if (!planId && !planName) return NextResponse.json({ error: "planId or planName is required" }, { status: 400 })
+    if (!contactIds.length && !tagNames.length && !pipelineNames.length && !importedOnly) {
       return NextResponse.json(
-        { error: "Provide at least one of: tagNames, pipelineNames, or importedOnly:true" },
+        { error: "Provide at least one of: contactIds, tagNames, pipelineNames, or importedOnly:true" },
         { status: 400 }
       )
     }
 
-    // Find the smart plan by name (case-insensitive partial match)
+    // Find the smart plan by ID or name
     const plan = await prisma.smartPlan.findFirst({
-      where: { name: { contains: planName, mode: "insensitive" } },
+      where: planId ? { id: planId } : { name: { contains: planName, mode: "insensitive" } },
       include: { steps: { orderBy: { order: "asc" }, take: 1 } },
     })
-    if (!plan) return NextResponse.json({ error: `Smart plan not found: "${planName}"` }, { status: 404 })
+    if (!plan) return NextResponse.json({ error: `Smart plan not found` }, { status: 404 })
 
-    const contactIds = new Set<string>()
+    const candidateIds = new Set<string>()
+
+    // Directly specified contact IDs
+    if (contactIds.length > 0) {
+      contactIds.forEach((id: string) => candidateIds.add(id))
+    }
 
     // All Lofty-imported contacts (customFields JSON contains loftyId key)
     if (importedOnly) {
@@ -53,7 +62,7 @@ export async function POST(req: Request) {
         where: { customFields: { contains: '"loftyId"' } },
         select: { id: true },
       })
-      imported.forEach(c => contactIds.add(c.id))
+      imported.forEach(c => candidateIds.add(c.id))
     }
 
     // Find contacts by tag names
@@ -64,7 +73,7 @@ export async function POST(req: Request) {
           where: { tagId: { in: tags.map(t => t.id) } },
           select: { contactId: true },
         })
-        tagContacts.forEach(c => contactIds.add(c.contactId))
+        tagContacts.forEach(c => candidateIds.add(c.contactId))
       }
     }
 
@@ -76,7 +85,7 @@ export async function POST(req: Request) {
           where: { stageId: { in: stages.map(s => s.id) } },
           select: { contactId: true },
         })
-        pipelineContacts.forEach(c => contactIds.add(c.contactId))
+        pipelineContacts.forEach(c => candidateIds.add(c.contactId))
       }
 
       // Also match by pipeline name directly
@@ -90,11 +99,11 @@ export async function POST(req: Request) {
           where: { stageId: { in: allStageIds } },
           select: { contactId: true },
         })
-        pipelineContacts.forEach(c => contactIds.add(c.contactId))
+        pipelineContacts.forEach(c => candidateIds.add(c.contactId))
       }
     }
 
-    if (contactIds.size === 0) {
+    if (candidateIds.size === 0) {
       return NextResponse.json({ enrolled: 0, skipped: 0, message: "No matching contacts found" })
     }
 
@@ -138,7 +147,7 @@ export async function POST(req: Request) {
     }
 
     // Apply exclusions
-    const eligibleIds = Array.from(contactIds).filter(id => !excludeIds.has(id))
+    const eligibleIds = Array.from(candidateIds).filter(id => !excludeIds.has(id))
 
     if (eligibleIds.length === 0) {
       return NextResponse.json({ enrolled: 0, skipped: 0, excluded: excludeIds.size, message: "All matching contacts were excluded" })
@@ -179,7 +188,7 @@ export async function POST(req: Request) {
       enrolled,
       skipped: enrolledSet.size,
       excluded: excludeIds.size,
-      total: contactIds.size,
+      total: candidateIds.size,
     })
   } catch (e) {
     console.error("Bulk enroll error:", e)

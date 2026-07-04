@@ -1372,6 +1372,7 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
   const [bulkDeleting, setBulkDeleting] = useState(false)
   const [bulkMoving, setBulkMoving] = useState(false)
   const [bulkTagging, setBulkTagging] = useState(false)
+  const [bulkEnrolling, setBulkEnrolling] = useState(false)
   const [showPowerDialer, setShowPowerDialer] = useState(false)
 
   const totalPages = Math.ceil(total / pageSize)
@@ -1467,6 +1468,25 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
     } catch {
       toast({ title: "Failed to move contacts", variant: "destructive" })
     } finally { setBulkMoving(false) }
+  }
+
+  const bulkEnrollPlan = async (planId: string, planName: string) => {
+    if (!selected.size) return
+    setBulkEnrolling(true)
+    try {
+      const res = await fetch("/api/smart-plans/bulk-enroll", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ planId, contactIds: Array.from(selected) }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      toast({ title: `${data.enrolled} contact${data.enrolled !== 1 ? "s" : ""} enrolled in "${planName}"` })
+      setSelected(new Set())
+      router.refresh()
+    } catch {
+      toast({ title: "Failed to enroll contacts", variant: "destructive" })
+    } finally { setBulkEnrolling(false) }
   }
 
   const bulkApplyTag = async (tagId: string, tagName: string) => {
@@ -1675,6 +1695,26 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
+
+            {/* Enroll in Smart Plan */}
+            {smartPlans.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="sm" className="bg-white/10 hover:bg-white/20 text-white border-white/20 gap-1.5" disabled={bulkEnrolling}>
+                    {bulkEnrolling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                    Enroll in Plan
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-64 max-h-72 overflow-y-auto">
+                  {smartPlans.map((plan) => (
+                    <DropdownMenuItem key={plan.id} onClick={() => bulkEnrollPlan(plan.id, plan.name)} className="gap-2">
+                      <Zap className="w-3.5 h-3.5 text-yellow-500 flex-shrink-0" />
+                      <span className="text-sm truncate">{plan.name}</span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
 
             <Button
               size="sm"
