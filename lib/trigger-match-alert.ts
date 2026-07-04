@@ -61,7 +61,7 @@ export async function triggerMatchAlert(contactId: string): Promise<{ sent: bool
   try {
     const contact = await prisma.contact.findUnique({
       where: { id: contactId },
-      include: { portalAccess: true },
+      include: { portalAccess: true, portalMessages: { select: { id: true } } },
     })
     if (!contact) return { sent: false, reason: "Contact not found" }
     if (!contact.email) return { sent: false, reason: "No email" }
@@ -123,16 +123,11 @@ export async function triggerMatchAlert(contactId: string): Promise<{ sent: bool
     const newMatches = scored.filter(m => m.score >= 40 && !sentIds.has(m.property.id)).slice(0, 5)
     if (newMatches.length === 0) return { sent: false, reason: "No new matches" }
 
-    // Build search URL
-    const locParts = (prefs.buyerLocation || "").split(/[,|]/).map(s => s.trim()).filter(Boolean)
-    const zipParts = locParts.filter(s => /^\d{5}$/.test(s))
-    const cityParts = locParts.filter(s => !/^\d{5}$/.test(s))
-    const homesParams = new URLSearchParams()
-    if (zipParts.length > 0) homesParams.set("zip", zipParts[0])
-    else if (cityParts.length > 0) homesParams.set("city", cityParts[0])
-    if (prefs.buyerBedroomsMin) homesParams.set("minBeds", String(prefs.buyerBedroomsMin))
-    if (prefs.buyerBudgetMax) homesParams.set("maxPrice", String(prefs.buyerBudgetMax))
-    const searchUrl = `${APP_URL}/homes${homesParams.toString() ? `?${homesParams.toString()}` : ""}`
+    // Build portal matches URL with magic link token so the click logs them in directly
+    const portalToken = contact.portalAccess?.token
+    const searchUrl = portalToken
+      ? `${APP_URL}/portal/login?token=${portalToken}&next=/portal/matches`
+      : `${APP_URL}/portal/matches`
 
     const criteriaSummary = [
       prefs.buyerLocation || null,

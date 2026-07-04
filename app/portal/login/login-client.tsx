@@ -7,9 +7,10 @@ import { Building2, Mail, Key, ArrowRight, Loader2 } from "lucide-react"
 interface Props {
   prefillToken?: string
   error?: string
+  next?: string
 }
 
-export default function PortalLoginClient({ prefillToken, error }: Props) {
+export default function PortalLoginClient({ prefillToken, error, next }: Props) {
   const router = useRouter()
   const [mode, setMode] = useState<"magic" | "email">("magic")
   const [token, setToken] = useState(prefillToken || "")
@@ -35,7 +36,7 @@ export default function PortalLoginClient({ prefillToken, error }: Props) {
         body: JSON.stringify({ token: t }),
       })
       if (res.ok) {
-        router.push("/portal/dashboard")
+        router.push(next || "/portal/dashboard")
       } else {
         const data = await res.json()
         setErrorMsg(data.error || "Invalid or expired link")
