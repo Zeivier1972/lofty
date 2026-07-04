@@ -11,6 +11,7 @@ import type { Property } from "@prisma/client"
 interface ListingDetailClientProps {
   property: Property
   similar: Property[]
+  agent: { name: string; phone: string; email: string }
 }
 
 function parseImages(images: string | null | undefined): string[] {
@@ -82,7 +83,7 @@ function SimilarCard({ property }: { property: Property }) {
   )
 }
 
-export default function ListingDetailClient({ property, similar }: ListingDetailClientProps) {
+export default function ListingDetailClient({ property, similar, agent }: ListingDetailClientProps) {
   const images = parseImages(property.images)
   const features = parseFeatures(property.features)
   const [activeImage, setActiveImage] = useState(0)
@@ -334,27 +335,25 @@ export default function ListingDetailClient({ property, similar }: ListingDetail
                     className="w-16 h-16 rounded-full mx-auto mb-3 flex items-center justify-center text-xl font-bold text-white"
                     style={{ background: "linear-gradient(135deg, #c9a84c, #e8c97a)" }}
                   >
-                    {property.agentName ? property.agentName.charAt(0) : "A"}
+                    {agent.name.charAt(0)}
                   </div>
-                  <p className="font-serif font-bold text-[#1a1a2e]">
-                    {property.agentName || "Your Agent"}
-                  </p>
-                  <p className="text-gray-500 text-sm">Listing Agent</p>
+                  <p className="font-serif font-bold text-[#1a1a2e]">{agent.name}</p>
+                  <p className="text-gray-500 text-sm">Your Real Estate Agent</p>
                 </div>
 
                 <div className="flex gap-3 mb-5">
-                  {property.agentPhone && (
+                  {agent.phone && (
                     <a
-                      href={`tel:${property.agentPhone}`}
+                      href={`tel:${agent.phone}`}
                       className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:border-[#c9a84c] hover:text-[#c9a84c] transition-colors"
                     >
                       <Phone className="w-4 h-4" />
                       Call
                     </a>
                   )}
-                  {property.agentEmail && (
+                  {agent.email && (
                     <a
-                      href={`mailto:${property.agentEmail}`}
+                      href={`mailto:${agent.email}`}
                       className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:border-[#c9a84c] hover:text-[#c9a84c] transition-colors"
                     >
                       <Mail className="w-4 h-4" />

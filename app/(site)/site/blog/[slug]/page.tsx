@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import { prisma } from "@/lib/prisma"
+import { fetchPrimaryPhotos } from "@/lib/bridge"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { Calendar, User, ArrowLeft, Phone, Mail, BedDouble, Bath, Maximize2 } from "lucide-react"
@@ -28,9 +29,24 @@ export default async function BlogPostPage({ params }: { params: { slug: string 
     })
   } catch {}
 
+  // Enrich missing photos from Bridge API
+  const needsPhoto = relatedProperties.filter(p => {
+    try { const a = JSON.parse(p.images || "[]"); return !Array.isArray(a) || !a.some(Boolean) } catch { return true }
+  })
+  let photoMap: Record<string, string> = {}
+  if (needsPhoto.length > 0) {
+    photoMap = await fetchPrimaryPhotos(needsPhoto.map(p => p.mlsId!).filter(Boolean)).catch(() => ({}))
+  }
+
   const listings = relatedProperties.map(p => ({
     ...p,
-    images: (() => { try { return JSON.parse(p.images || "[]") } catch { return [] } })(),
+    images: (() => {
+      try {
+        const a = JSON.parse(p.images || "[]")
+        if (Array.isArray(a) && a.some(Boolean)) return a
+      } catch {}
+      return photoMap[p.mlsId!] ? [photoMap[p.mlsId!]] : []
+    })(),
   }))
 
   return (
