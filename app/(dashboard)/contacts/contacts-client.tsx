@@ -48,7 +48,7 @@ interface ContactsClientProps {
   page: number
   pageSize: number
   tags: any[]
-  filters: { status?: string; search?: string; source?: string; tags?: string }
+  filters: { status?: string; search?: string; source?: string; tags?: string; smartPlanId?: string; smartPlanEnrolled?: string }
   activeTab: string
   stageCounts: Record<string, number>
   stages: Stage[]
@@ -1357,7 +1357,7 @@ function relativeTime(date: string | null) {
   return `${Math.floor(d / 30)}mo ago`
 }
 
-export default function ContactsClient({ contacts, total, page, pageSize, tags, filters, activeTab, stageCounts, stages: initialStages, pipelineId }: ContactsClientProps) {
+export default function ContactsClient({ contacts, total, page, pageSize, tags, smartPlans = [], filters, activeTab, stageCounts, stages: initialStages, pipelineId }: ContactsClientProps & { smartPlans?: { id: string; name: string }[] }) {
   const router = useRouter()
   const { toast } = useToast()
   const [search, setSearch] = useState(filters.search || "")
@@ -1495,6 +1495,8 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
       status: filters.status,
       source: filters.source,
       tags: filters.tags,
+      smartPlanId: filters.smartPlanId,
+      smartPlanEnrolled: filters.smartPlanEnrolled,
       tab: activeTab !== "all" ? activeTab : undefined,
     }
     const merged = { ...base, ...overrides }
@@ -1751,6 +1753,62 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
             ))}
           </SelectContent>
         </Select>
+
+        {/* Smart Plan filter */}
+        {smartPlans.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className={cn(
+                  "h-9 gap-1.5 font-normal",
+                  filters.smartPlanId && "border-lofty-500 text-lofty-700 bg-lofty-50"
+                )}
+              >
+                <Zap className="w-3.5 h-3.5" />
+                {filters.smartPlanId
+                  ? `${smartPlans.find(p => p.id === filters.smartPlanId)?.name?.split(" ").slice(0, 3).join(" ") ?? "Plan"} · ${filters.smartPlanEnrolled === "false" ? "Not enrolled" : "Enrolled"}`
+                  : "Filter by Plan"}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-72 max-h-80 overflow-y-auto">
+              {smartPlans.map((plan) => {
+                const isActive = filters.smartPlanId === plan.id
+                return (
+                  <div key={plan.id} className="px-1 py-0.5">
+                    <div className="text-xs font-semibold text-gray-500 px-2 py-1 truncate">{plan.name}</div>
+                    <DropdownMenuItem
+                      onClick={() => router.push(`/contacts?${buildParams({ smartPlanId: plan.id, smartPlanEnrolled: "true" })}`)}
+                      className={cn("gap-2 cursor-pointer pl-4", isActive && filters.smartPlanEnrolled !== "false" && "bg-lofty-50")}
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
+                      <span className="text-sm">Enrolled</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => router.push(`/contacts?${buildParams({ smartPlanId: plan.id, smartPlanEnrolled: "false" })}`)}
+                      className={cn("gap-2 cursor-pointer pl-4", isActive && filters.smartPlanEnrolled === "false" && "bg-lofty-50")}
+                    >
+                      <X className="w-3.5 h-3.5 text-gray-400" />
+                      <span className="text-sm">Not enrolled</span>
+                    </DropdownMenuItem>
+                  </div>
+                )
+              })}
+              {filters.smartPlanId && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => router.push(`/contacts?${buildParams({ smartPlanId: undefined, smartPlanEnrolled: undefined })}`)}
+                    className="text-gray-500 text-xs gap-2"
+                  >
+                    <X className="w-3.5 h-3.5" /> Clear plan filter
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
 
         {/* Tag filter */}
         {tags.length > 0 && (

@@ -6,11 +6,12 @@ import ContactsClient from "./contacts-client"
 export default async function ContactsPage({
   searchParams,
 }: {
-  searchParams: { status?: string; search?: string; source?: string; page?: string; tab?: string; tags?: string }
+  searchParams: { status?: string; search?: string; source?: string; page?: string; tab?: string; tags?: string; smartPlanId?: string; smartPlanEnrolled?: string }
 }) {
   let contacts: any[] = []
   let total = 0
   let tags: any[] = []
+  let smartPlans: any[] = []
   let stageCounts: Record<string, number> = {}
   let stages: any[] = []
   let pipelineId = ""
@@ -69,6 +70,13 @@ export default async function ContactsPage({
       const tagIds = searchParams.tags.split(",").filter(Boolean)
       if (tagIds.length > 0) tabWhere.tags = { some: { tagId: { in: tagIds } } }
     }
+    if (searchParams.smartPlanId) {
+      if (searchParams.smartPlanEnrolled === "false") {
+        tabWhere.enrollments = { none: { planId: searchParams.smartPlanId, status: "ACTIVE" } }
+      } else {
+        tabWhere.enrollments = { some: { planId: searchParams.smartPlanId, status: "ACTIVE" } }
+      }
+    }
 
     // Count per stage in parallel
     const stageCountResults = await Promise.all(
@@ -78,7 +86,7 @@ export default async function ContactsPage({
     )
     stages.forEach((s, i) => { stageCounts[s.id] = stageCountResults[i] })
 
-    ;[contacts, total, tags] = await Promise.all([
+    ;[contacts, total, tags, smartPlans] = await Promise.all([
       prisma.contact.findMany({
         where: tabWhere,
         include: {
@@ -94,6 +102,7 @@ export default async function ContactsPage({
       }),
       prisma.contact.count({ where: tabWhere }),
       prisma.tag.findMany({ orderBy: { name: "asc" } }),
+      prisma.smartPlan.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
     ])
   } catch (e) {
     console.error("Contacts page error:", e)
@@ -106,7 +115,8 @@ export default async function ContactsPage({
       page={page}
       pageSize={pageSize}
       tags={JSON.parse(JSON.stringify(tags))}
-      filters={{ status: searchParams.status, search: searchParams.search, source: searchParams.source, tags: searchParams.tags }}
+      filters={{ status: searchParams.status, search: searchParams.search, source: searchParams.source, tags: searchParams.tags, smartPlanId: searchParams.smartPlanId, smartPlanEnrolled: searchParams.smartPlanEnrolled }}
+      smartPlans={JSON.parse(JSON.stringify(smartPlans))}
       activeTab={searchParams.tab || "all"}
       stageCounts={stageCounts}
       stages={JSON.parse(JSON.stringify(stages))}
