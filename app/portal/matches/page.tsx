@@ -107,7 +107,7 @@ export default async function MatchesPage() {
     orderBy: { createdAt: "desc" },
     take: 40,
     select: {
-      id: true, address: true, city: true, state: true,
+      id: true, address: true, city: true, state: true, zip: true,
       price: true, bedrooms: true, bathrooms: true, sqft: true,
       propertyType: true, pool: true, garage: true, features: true,
       images: true, status: true, mlsId: true,
