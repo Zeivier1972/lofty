@@ -268,8 +268,8 @@ Responde ÚNICAMENTE con este JSON (sin texto adicional):
 
     const executedActions: string[] = []
 
-    // Send SMS
-    if (parsed.sms && contact.phone && config.autoRespondSMS) {
+    // Send SMS — skip if contact opted out
+    if (parsed.sms && contact.phone && config.autoRespondSMS && !contact.doNotCall) {
       try {
         await sendSMS(contact.phone, parsed.sms)
         executedActions.push("SMS enviado")
@@ -307,7 +307,7 @@ Responde ÚNICAMENTE con este JSON (sin texto adicional):
     }
 
     // Send Email
-    if (parsed.emailSubject && parsed.emailBody && contact.email && config.autoRespondEmail) {
+    if (parsed.emailSubject && parsed.emailBody && contact.email && config.autoRespondEmail && !contact.doNotEmail) {
       try {
         await sendEmail({ to: contact.email, subject: parsed.emailSubject, html: parsed.emailBody })
         executedActions.push("Email enviado")
