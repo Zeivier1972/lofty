@@ -1374,6 +1374,13 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
   const router = useRouter()
   const { toast } = useToast()
   const [search, setSearch] = useState(filters.search || "")
+  const getInitialCategory = () => {
+    if (filters.source) return "source"
+    if (filters.status) return "status"
+    if (filters.tags) return "tag"
+    return ""
+  }
+  const [filterCategory, setFilterCategory] = useState<string>(getInitialCategory)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [showBulkSMS, setShowBulkSMS] = useState(false)
   const [showBulkEmail, setShowBulkEmail] = useState(false)
@@ -1571,6 +1578,14 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
     const params = buildParams({ tags: undefined })
     router.push(`/contacts?${params.toString()}`)
   }
+
+  const clearAllFilters = () => {
+    setFilterCategory("")
+    const params = buildParams({ source: undefined, status: undefined, tags: undefined, smartPlanId: undefined, smartPlanEnrolled: undefined })
+    router.push(`/contacts?${params.toString()}`)
+  }
+
+  const hasActiveFilter = !!(filters.source || filters.status || filters.tags || filters.smartPlanId)
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -1803,7 +1818,8 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
       )}
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-3">
+      <div className="flex flex-col sm:flex-row gap-2">
+        {/* Search */}
         <form onSubmit={handleSearch} className="relative flex-1 min-w-0 sm:min-w-60">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <Input
@@ -1814,155 +1830,125 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
           />
         </form>
 
-        <Select value={filters.status || "ALL"} onValueChange={(v) => updateFilter("status", v)}>
-          <SelectTrigger className="w-44 h-9">
-            <SelectValue placeholder="All Statuses" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">All Statuses</SelectItem>
-            {STATUSES.map((s) => (
-              <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {/* Two-step filter: category → value */}
+        <div className="flex gap-2 items-center">
+          {/* Step 1: what to filter by */}
+          <Select
+            value={filterCategory || "none"}
+            onValueChange={(v) => {
+              if (v === "none") { clearAllFilters(); return }
+              if (v !== filterCategory) {
+                // Clear existing filter value when switching category
+                const params = buildParams({ source: undefined, status: undefined, tags: undefined })
+                router.push(`/contacts?${params.toString()}`)
+              }
+              setFilterCategory(v)
+            }}
+          >
+            <SelectTrigger className={cn("w-36 h-9", hasActiveFilter && "border-lofty-500 text-lofty-700 bg-lofty-50")}>
+              <SelectValue placeholder="Filter by..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">All leads</SelectItem>
+              <SelectItem value="source">Source</SelectItem>
+              <SelectItem value="status">Status</SelectItem>
+              <SelectItem value="tag">Tag</SelectItem>
+            </SelectContent>
+          </Select>
 
-        <Select value={filters.source || "ALL"} onValueChange={(v) => updateFilter("source", v)}>
-          <SelectTrigger className="w-40 h-9">
-            <SelectValue placeholder="All Sources" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">All Sources</SelectItem>
-            {SOURCES.map((s) => (
-              <SelectItem key={s} value={s}>{s.replace("_", " ")}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          {/* Step 2: the specific value */}
+          {filterCategory === "source" && (
+            <Select value={filters.source || "ALL"} onValueChange={(v) => updateFilter("source", v)}>
+              <SelectTrigger className="w-44 h-9">
+                <SelectValue placeholder="Select source..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">All Sources</SelectItem>
+                {SOURCES.map((s) => (
+                  <SelectItem key={s} value={s}>{s.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, c => c.toUpperCase())}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
 
-        {/* Smart Plan filter */}
-        {smartPlans.length > 0 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className={cn(
-                  "h-9 gap-1.5 font-normal",
-                  filters.smartPlanId && "border-lofty-500 text-lofty-700 bg-lofty-50"
-                )}
-              >
-                <Zap className="w-3.5 h-3.5" />
-                {filters.smartPlanId
-                  ? `${smartPlans.find(p => p.id === filters.smartPlanId)?.name?.split(" ").slice(0, 3).join(" ") ?? "Plan"} · ${filters.smartPlanEnrolled === "false" ? "Not enrolled" : "Enrolled"}`
-                  : "Filter by Plan"}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-72 max-h-80 overflow-y-auto">
-              {smartPlans.map((plan) => {
-                const isActive = filters.smartPlanId === plan.id
-                return (
-                  <div key={plan.id} className="px-1 py-0.5">
-                    <div className="text-xs font-semibold text-gray-500 px-2 py-1 truncate">{plan.name}</div>
-                    <DropdownMenuItem
-                      onClick={() => router.push(`/contacts?${buildParams({ smartPlanId: plan.id, smartPlanEnrolled: "true" })}`)}
-                      className={cn("gap-2 cursor-pointer pl-4", isActive && filters.smartPlanEnrolled !== "false" && "bg-lofty-50")}
-                    >
-                      <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
-                      <span className="text-sm">Enrolled</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => router.push(`/contacts?${buildParams({ smartPlanId: plan.id, smartPlanEnrolled: "false" })}`)}
-                      className={cn("gap-2 cursor-pointer pl-4", isActive && filters.smartPlanEnrolled === "false" && "bg-lofty-50")}
-                    >
-                      <X className="w-3.5 h-3.5 text-gray-400" />
-                      <span className="text-sm">Not enrolled</span>
-                    </DropdownMenuItem>
-                  </div>
-                )
-              })}
-              {filters.smartPlanId && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={() => router.push(`/contacts?${buildParams({ smartPlanId: undefined, smartPlanEnrolled: undefined })}`)}
-                    className="text-gray-500 text-xs gap-2"
-                  >
-                    <X className="w-3.5 h-3.5" /> Clear plan filter
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+          {filterCategory === "status" && (
+            <Select value={filters.status || "ALL"} onValueChange={(v) => updateFilter("status", v)}>
+              <SelectTrigger className="w-44 h-9">
+                <SelectValue placeholder="Select status..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">All Statuses</SelectItem>
+                {STATUSES.map((s) => (
+                  <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
 
-        {/* Tag filter */}
-        {tags.length > 0 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className={cn(
-                  "h-9 gap-1.5 font-normal",
-                  activeTagIds.length > 0 && "border-lofty-500 text-lofty-700 bg-lofty-50"
-                )}
-              >
-                <Tag className="w-3.5 h-3.5" />
-                {activeTagIds.length > 0 ? `Tags (${activeTagIds.length})` : "Filter by Tag"}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-52 max-h-72 overflow-y-auto">
-              {tags.map((t: any) => {
-                const active = activeTagIds.includes(t.id)
-                return (
-                  <DropdownMenuItem
-                    key={t.id}
-                    onClick={(e) => { e.preventDefault(); toggleTagFilter(t.id) }}
-                    className="gap-2 cursor-pointer"
-                  >
-                    <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: t.color || "#6366F1" }} />
-                    <span className="flex-1 text-sm">{t.name}</span>
-                    {active && <CheckCircle2 className="w-3.5 h-3.5 text-lofty-600 flex-shrink-0" />}
-                  </DropdownMenuItem>
-                )
-              })}
-              {activeTagIds.length > 0 && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={clearTagFilter} className="text-gray-500 text-xs gap-2">
-                    <X className="w-3.5 h-3.5" /> Clear tag filters
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+          {filterCategory === "tag" && (
+            <Select
+              value={activeTagIds[0] || "ALL"}
+              onValueChange={(v) => {
+                if (v === "ALL") clearTagFilter()
+                else router.push(`/contacts?${buildParams({ tags: v })}`)
+              }}
+            >
+              <SelectTrigger className="w-56 h-9">
+                <SelectValue placeholder="Select tag..." />
+              </SelectTrigger>
+              <SelectContent className="max-h-72">
+                <SelectItem value="ALL">All Tags</SelectItem>
+                {tags.map((t: any) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: t.color || "#6366F1" }} />
+                      {t.name}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+
+          {/* Clear button */}
+          {hasActiveFilter && (
+            <button
+              onClick={clearAllFilters}
+              className="h-9 px-2 text-gray-400 hover:text-gray-700 transition-colors"
+              title="Clear filter"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Active tag filter pills */}
-      {activeTagIds.length > 0 && (
+      {/* Active filter pill */}
+      {hasActiveFilter && (
         <div className="flex flex-wrap gap-2 -mt-1">
+          {filters.source && (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-lofty-100 text-lofty-700">
+              Source: {filters.source.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase())}
+              <button onClick={clearAllFilters} className="hover:opacity-70"><X className="w-3 h-3" /></button>
+            </span>
+          )}
+          {filters.status && (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-lofty-100 text-lofty-700">
+              Status: {STATUSES.find(s => s.value === filters.status)?.label || filters.status}
+              <button onClick={clearAllFilters} className="hover:opacity-70"><X className="w-3 h-3" /></button>
+            </span>
+          )}
           {activeTagIds.map(tagId => {
             const tag = tags.find((t: any) => t.id === tagId)
             if (!tag) return null
             return (
-              <span
-                key={tagId}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium"
-                style={{ backgroundColor: (tag.color || "#6366F1") + "20", color: tag.color || "#6366F1" }}
-              >
-                {tag.name}
-                <button
-                  onClick={() => toggleTagFilter(tagId)}
-                  className="ml-0.5 hover:opacity-70 transition-opacity"
-                >
-                  <X className="w-3 h-3" />
-                </button>
+              <span key={tagId} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium"
+                style={{ backgroundColor: (tag.color || "#6366F1") + "20", color: tag.color || "#6366F1" }}>
+                Tag: {tag.name}
+                <button onClick={clearAllFilters} className="hover:opacity-70"><X className="w-3 h-3" /></button>
               </span>
             )
           })}
-          <button onClick={clearTagFilter} className="text-xs text-gray-400 hover:text-gray-600 px-1">
-            Clear all
-          </button>
         </div>
       )}
 
