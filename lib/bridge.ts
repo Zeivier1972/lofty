@@ -219,10 +219,10 @@ export async function searchIdxListings(params: {
 
   if (params.propertySubType) filters.push(`PropertySubType eq '${esc(params.propertySubType)}'`)
 
-  // Full-text keyword search across address and public remarks (building/development name)
+  // Full-text keyword search — covers address, MLS#, and public remarks
   if (params.keyword) {
     const kw = esc(params.keyword.trim())
-    filters.push(`(contains(UnparsedAddress,'${kw}') or contains(PublicRemarks,'${kw}'))`)
+    filters.push(`(contains(ListingId,'${kw}') or contains(UnparsedAddress,'${kw}') or contains(PublicRemarks,'${kw}'))`)
   }
 
   const query = new URLSearchParams()

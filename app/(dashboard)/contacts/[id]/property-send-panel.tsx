@@ -3,7 +3,8 @@
 import { useState } from "react"
 import {
   Search, Mail, MessageSquare, Loader2, Home, MapPin,
-  Bed, Bath, Maximize2, CheckCircle, ChevronDown, ChevronUp, Send,
+  Bed, Bath, Maximize2, CheckCircle, ChevronDown, ChevronUp,
+  Send, Square, CheckSquare, X,
 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 
@@ -29,43 +30,77 @@ interface Props {
   defaultMinBeds?: number
 }
 
-function formatPrice(price: number) {
-  if (price >= 1_000_000)
-    return "$" + (price / 1_000_000).toFixed(price % 1_000_000 === 0 ? 0 : 1) + "M"
+function fmtPrice(price: number) {
+  if (price >= 1_000_000) return "$" + (price / 1_000_000).toFixed(price % 1_000_000 === 0 ? 0 : 1) + "M"
   return "$" + price.toLocaleString()
 }
 
 export default function PropertySendPanel({
-  contactId,
-  contactEmail,
-  contactPhone,
-  defaultLocation = "",
-  defaultMaxPrice,
-  defaultMinBeds,
+  contactId, contactEmail, contactPhone,
+  defaultLocation = "", defaultMaxPrice, defaultMinBeds,
 }: Props) {
   const { toast } = useToast()
 
+  // Panel open/close
   const [open, setOpen] = useState(false)
+
+  // Search form
+  const [keyword, setKeyword] = useState("")        // MLS# or address keyword
   const [location, setLocation] = useState(defaultLocation)
-  const [minPrice, setMinPrice] = useState("")
   const [maxPrice, setMaxPrice] = useState(defaultMaxPrice ? String(defaultMaxPrice) : "")
   const [beds, setBeds] = useState(defaultMinBeds ? String(defaultMinBeds) : "")
+
+  // Results
   const [searching, setSearching] = useState(false)
   const [listings, setListings] = useState<MlsListing[]>([])
   const [searched, setSearched] = useState(false)
-  const [noteFor, setNoteFor] = useState<string | null>(null)
+
+  // Selection
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+
+  // Per-card single send (email/sms keys)
+  const [sending, setSending] = useState<string | null>(null)
+  const [sentKeys, setSentKeys] = useState<Set<string>>(new Set())
+
+  // Batch send
+  const [batchSending, setBatchSending] = useState<"email" | "sms" | null>(null)
+  const [batchSent, setBatchSent] = useState(false)
+
+  // Note
   const [note, setNote] = useState("")
-  const [sending, setSending] = useState<string | null>(null) // `${listingKey}:email` or `${listingKey}:sms`
-  const [sent, setSent] = useState<Set<string>>(new Set())
+  const [showNote, setShowNote] = useState(false)
+
+  function markSent(key: string) {
+    setSentKeys(prev => new Set(Array.from(prev).concat(key)))
+  }
+
+  function toggleSelect(listingKey: string) {
+    setSelected(prev => {
+      const next = new Set(Array.from(prev))
+      if (next.has(listingKey)) next.delete(listingKey)
+      else next.add(listingKey)
+      return next
+    })
+  }
+
+  function selectAll() {
+    setSelected(new Set(listings.map(l => l.listingKey)))
+  }
+
+  function clearSelection() {
+    setSelected(new Set())
+  }
 
   async function search() {
     setSearching(true)
     setListings([])
     setSearched(false)
+    setSelected(new Set())
+    setBatchSent(false)
     try {
       const qs = new URLSearchParams()
+      if (keyword.trim()) qs.set("keyword", keyword.trim())
       if (location.trim()) qs.set("city", location.trim())
-      if (minPrice) qs.set("minPrice", minPrice)
       if (maxPrice) qs.set("maxPrice", maxPrice)
       if (beds) qs.set("minBeds", beds)
       qs.set("limit", "12")
@@ -80,16 +115,13 @@ export default function PropertySendPanel({
     }
   }
 
-  async function send(listing: MlsListing, method: "email" | "sms") {
+  async function sendOne(listing: MlsListing, method: "email" | "sms") {
     if (method === "email" && !contactEmail) {
-      toast({ title: "No email", description: "This contact has no email address.", variant: "destructive" })
-      return
+      toast({ title: "No email on file", variant: "destructive" }); return
     }
     if (method === "sms" && !contactPhone) {
-      toast({ title: "No phone", description: "This contact has no phone number.", variant: "destructive" })
-      return
+      toast({ title: "No phone on file", variant: "destructive" }); return
     }
-
     const key = `${listing.listingKey}:${method}`
     setSending(key)
     try {
@@ -97,29 +129,17 @@ export default function PropertySendPanel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          listingKey: listing.listingKey,
-          listingId: listing.listingId,
-          address: listing.address,
-          city: listing.city,
-          state: listing.state,
-          price: listing.price,
-          beds: listing.beds,
-          baths: listing.baths,
-          sqft: listing.sqft,
-          photoUrl: listing.photo,
-          method,
-          note: note.trim() || undefined,
+          listingKey: listing.listingKey, listingId: listing.listingId,
+          address: listing.address, city: listing.city, state: listing.state,
+          price: listing.price, beds: listing.beds, baths: listing.baths,
+          sqft: listing.sqft, photoUrl: listing.photo,
+          method, note: note.trim() || undefined,
         }),
       })
       const data = await res.json()
       if (!data.ok) throw new Error(data.error || "Failed")
-      setSent(prev => new Set(Array.from(prev).concat(key)))
-      setNoteFor(null)
-      setNote("")
-      toast({
-        title: `Property sent via ${method === "email" ? "email" : "SMS"}`,
-        description: `${listing.address || listing.listingId} sent to ${method === "email" ? contactEmail : contactPhone}`,
-      })
+      markSent(key)
+      toast({ title: `Sent via ${method}`, description: listing.address || listing.listingId })
     } catch (e: any) {
       toast({ title: "Send failed", description: e.message, variant: "destructive" })
     } finally {
@@ -127,112 +147,229 @@ export default function PropertySendPanel({
     }
   }
 
+  async function sendBatch(method: "email" | "sms") {
+    if (method === "email" && !contactEmail) {
+      toast({ title: "No email on file", variant: "destructive" }); return
+    }
+    if (method === "sms" && !contactPhone) {
+      toast({ title: "No phone on file", variant: "destructive" }); return
+    }
+    const toSend = listings.filter(l => selected.has(l.listingKey))
+    if (!toSend.length) return
+
+    setBatchSending(method)
+    try {
+      const res = await fetch(`/api/contacts/${contactId}/send-properties-batch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          listings: toSend.map(l => ({
+            listingKey: l.listingKey, listingId: l.listingId,
+            address: l.address, city: l.city, state: l.state,
+            price: l.price, beds: l.beds, baths: l.baths,
+            sqft: l.sqft, photoUrl: l.photo,
+          })),
+          method,
+          note: note.trim() || undefined,
+        }),
+      })
+      const data = await res.json()
+      if (!data.ok) throw new Error(data.error || "Failed")
+      // Mark each selected listing as sent for that method
+      toSend.forEach(l => markSent(`${l.listingKey}:${method}`))
+      setBatchSent(true)
+      clearSelection()
+      toast({
+        title: `${toSend.length} propert${toSend.length === 1 ? "y" : "ies"} sent via ${method}`,
+        description: method === "email" ? `Sent to ${contactEmail}` : `Sent to ${contactPhone}`,
+      })
+    } catch (e: any) {
+      toast({ title: "Batch send failed", description: e.message, variant: "destructive" })
+    } finally {
+      setBatchSending(null)
+    }
+  }
+
+  const selectedCount = selected.size
+
   return (
     <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-      {/* Header — click to expand */}
+      {/* Header */}
       <button
         onClick={() => setOpen(o => !o)}
         className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors"
       >
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-lofty-50 flex items-center justify-center">
-            <Send className="w-4 h-4 text-lofty-600" />
+          <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center">
+            <Send className="w-4 h-4 text-blue-600" />
           </div>
           <div className="text-left">
             <p className="font-semibold text-gray-900 text-sm">Search &amp; Send Properties</p>
-            <p className="text-xs text-gray-400">Search the live MLS and send listings directly to this client</p>
+            <p className="text-xs text-gray-400">Search live MLS listings and send directly to this client</p>
           </div>
         </div>
         {open ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
       </button>
 
       {open && (
-        <div className="border-t border-gray-100 px-5 pb-5 pt-4 space-y-4">
+        <div className="border-t border-gray-100">
           {/* Search form */}
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <div className="sm:col-span-2">
-              <label className="text-xs font-semibold text-gray-500 mb-1 block">Location / City</label>
+          <div className="px-5 pt-4 pb-3 space-y-3">
+            {/* Row 1: keyword (MLS# or address) */}
+            <div>
+              <label className="text-xs font-semibold text-gray-500 mb-1 block">MLS# or Address</label>
               <div className="relative">
-                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
                 <input
-                  value={location}
-                  onChange={e => setLocation(e.target.value)}
+                  value={keyword}
+                  onChange={e => setKeyword(e.target.value)}
                   onKeyDown={e => e.key === "Enter" && search()}
-                  placeholder="Miami, Aventura, Brickell…"
-                  className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-lofty-400"
+                  placeholder="A11234567, 123 Main St, Brickell…"
+                  className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
                 />
               </div>
             </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-500 mb-1 block">Max Price</label>
-              <input
-                type="number"
-                value={maxPrice}
-                onChange={e => setMaxPrice(e.target.value)}
-                placeholder="800000"
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-lofty-400"
-              />
+
+            {/* Row 2: city, price, beds */}
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="text-xs font-semibold text-gray-500 mb-1 block">City / Area</label>
+                <div className="relative">
+                  <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
+                  <input
+                    value={location}
+                    onChange={e => setLocation(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && search()}
+                    placeholder="Miami"
+                    className="w-full pl-7 pr-2 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 mb-1 block">Max Price</label>
+                <input
+                  type="number"
+                  value={maxPrice}
+                  onChange={e => setMaxPrice(e.target.value)}
+                  placeholder="800000"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 mb-1 block">Min Beds</label>
+                <input
+                  type="number"
+                  value={beds}
+                  onChange={e => setBeds(e.target.value)}
+                  placeholder="2"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
+                />
+              </div>
             </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-500 mb-1 block">Min Beds</label>
-              <input
-                type="number"
-                value={beds}
-                onChange={e => setBeds(e.target.value)}
-                placeholder="2"
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-lofty-400"
-              />
-            </div>
+
+            <button
+              onClick={search}
+              disabled={searching}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+              style={{ background: "linear-gradient(135deg, #1a2744, #2d4070)" }}
+            >
+              {searching
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> Searching MLS…</>
+                : <><Search className="w-4 h-4" /> Search MLS</>}
+            </button>
           </div>
 
-          <button
-            onClick={search}
-            disabled={searching}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-            style={{ background: "linear-gradient(135deg, #1a2744, #2d4070)" }}
-          >
-            {searching
-              ? <><Loader2 className="w-4 h-4 animate-spin" /> Searching MLS…</>
-              : <><Search className="w-4 h-4" /> Search MLS</>}
-          </button>
-
           {/* Results */}
-          {searched && listings.length === 0 && !searching && (
-            <div className="text-center py-8 text-gray-400 text-sm">
+          {searched && !searching && listings.length === 0 && (
+            <div className="text-center py-10 text-gray-400 text-sm border-t border-gray-100">
               No listings found. Try adjusting your filters.
             </div>
           )}
 
           {listings.length > 0 && (
-            <div className="space-y-3">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{listings.length} listing{listings.length !== 1 ? "s" : ""} found</p>
-              {listings.map(listing => {
-                const emailKey = `${listing.listingKey}:email`
-                const smsKey = `${listing.listingKey}:sms`
-                const emailSent = sent.has(emailKey)
-                const smsSent = sent.has(smsKey)
-                const showNote = noteFor === listing.listingKey
+            <div className="border-t border-gray-100">
+              {/* Toolbar: select-all + note toggle */}
+              <div className="px-5 py-2.5 flex items-center justify-between border-b border-gray-100 bg-gray-50">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={selectedCount === listings.length ? clearSelection : selectAll}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-gray-900 transition-colors"
+                  >
+                    {selectedCount === listings.length
+                      ? <><CheckSquare className="w-3.5 h-3.5 text-blue-600" /> Deselect all</>
+                      : <><Square className="w-3.5 h-3.5" /> Select all</>}
+                  </button>
+                  {selectedCount > 0 && (
+                    <span className="text-xs text-blue-600 font-semibold">
+                      {selectedCount} selected
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => setShowNote(n => !n)}
+                  className="text-xs text-gray-400 hover:text-gray-700 transition-colors"
+                >
+                  {showNote ? "Hide note" : "+ Add note"}
+                </button>
+              </div>
 
-                return (
-                  <div key={listing.listingKey} className="border border-gray-100 rounded-xl overflow-hidden">
-                    <div className="flex items-start gap-3 p-3">
+              {/* Optional note */}
+              {showNote && (
+                <div className="px-5 py-3 border-b border-gray-100 bg-yellow-50">
+                  <textarea
+                    value={note}
+                    onChange={e => setNote(e.target.value)}
+                    placeholder="Add a personal note to include with the properties…"
+                    rows={2}
+                    className="w-full px-3 py-2 text-sm border border-yellow-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 resize-none bg-white"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">Included in all sends (single and batch)</p>
+                </div>
+              )}
+
+              {/* Listing cards */}
+              <div className="divide-y divide-gray-100">
+                {listings.map(listing => {
+                  const isSelected = selected.has(listing.listingKey)
+                  const emailKey = `${listing.listingKey}:email`
+                  const smsKey = `${listing.listingKey}:sms`
+                  const emailSent = sentKeys.has(emailKey)
+                  const smsSent = sentKeys.has(smsKey)
+
+                  return (
+                    <div
+                      key={listing.listingKey}
+                      className={`flex items-start gap-3 px-5 py-3 transition-colors ${isSelected ? "bg-blue-50" : "hover:bg-gray-50"}`}
+                    >
+                      {/* Checkbox */}
+                      <button
+                        onClick={() => toggleSelect(listing.listingKey)}
+                        className="flex-shrink-0 mt-1"
+                      >
+                        {isSelected
+                          ? <CheckSquare className="w-4.5 h-4.5 text-blue-600" style={{ width: 18, height: 18 }} />
+                          : <Square className="w-4.5 h-4.5 text-gray-300 hover:text-gray-500" style={{ width: 18, height: 18 }} />}
+                      </button>
+
                       {/* Photo */}
-                      <div className="w-20 h-20 flex-shrink-0 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
+                      <div className="w-16 h-16 flex-shrink-0 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
                         {listing.photo
                           ? <img src={listing.photo} alt={listing.address} className="w-full h-full object-cover" />
-                          : <Home className="w-6 h-6 text-gray-300" />
-                        }
+                          : <Home className="w-5 h-5 text-gray-300" />}
                       </div>
 
                       {/* Info */}
                       <div className="flex-1 min-w-0">
                         {listing.price != null && (
-                          <p className="font-bold text-emerald-700 text-sm">{formatPrice(listing.price)}</p>
+                          <p className="font-bold text-emerald-700 text-sm">{fmtPrice(listing.price)}</p>
                         )}
                         <p className="text-sm font-medium text-gray-900 truncate">{listing.address}</p>
-                        <p className="text-xs text-gray-500 flex items-center gap-1">
-                          {listing.city && <><MapPin className="w-3 h-3" /> {listing.city}{listing.state ? `, ${listing.state}` : ""}</>}
-                        </p>
+                        {listing.city && (
+                          <p className="text-xs text-gray-500 flex items-center gap-1">
+                            <MapPin className="w-3 h-3" />
+                            {listing.city}{listing.state ? `, ${listing.state}` : ""}
+                          </p>
+                        )}
                         <div className="flex flex-wrap gap-2 mt-1">
                           {listing.beds != null && (
                             <span className="flex items-center gap-0.5 text-xs text-gray-500">
@@ -255,14 +392,13 @@ export default function PropertySendPanel({
                         )}
                       </div>
 
-                      {/* Actions */}
+                      {/* Per-card quick send buttons */}
                       <div className="flex flex-col gap-1.5 flex-shrink-0">
-                        {/* Email */}
                         <button
-                          onClick={() => emailSent ? null : send(listing, "email")}
+                          onClick={() => !emailSent && sendOne(listing, "email")}
                           disabled={sending === emailKey || !contactEmail}
-                          title={!contactEmail ? "No email on file" : emailSent ? "Sent!" : "Send via email"}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                          title={!contactEmail ? "No email on file" : emailSent ? "Already sent" : "Send via email"}
+                          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                             emailSent
                               ? "bg-green-50 text-green-700 border border-green-200"
                               : !contactEmail
@@ -272,19 +408,15 @@ export default function PropertySendPanel({
                         >
                           {sending === emailKey
                             ? <Loader2 className="w-3 h-3 animate-spin" />
-                            : emailSent
-                              ? <CheckCircle className="w-3 h-3" />
-                              : <Mail className="w-3 h-3" />
-                          }
+                            : emailSent ? <CheckCircle className="w-3 h-3" /> : <Mail className="w-3 h-3" />}
                           {emailSent ? "Sent" : "Email"}
                         </button>
 
-                        {/* SMS */}
                         <button
-                          onClick={() => smsSent ? null : send(listing, "sms")}
+                          onClick={() => !smsSent && sendOne(listing, "sms")}
                           disabled={sending === smsKey || !contactPhone}
-                          title={!contactPhone ? "No phone on file" : smsSent ? "Sent!" : "Send via SMS"}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                          title={!contactPhone ? "No phone on file" : smsSent ? "Already sent" : "Send via SMS"}
+                          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                             smsSent
                               ? "bg-green-50 text-green-700 border border-green-200"
                               : !contactPhone
@@ -294,39 +426,52 @@ export default function PropertySendPanel({
                         >
                           {sending === smsKey
                             ? <Loader2 className="w-3 h-3 animate-spin" />
-                            : smsSent
-                              ? <CheckCircle className="w-3 h-3" />
-                              : <MessageSquare className="w-3 h-3" />
-                          }
+                            : smsSent ? <CheckCircle className="w-3 h-3" /> : <MessageSquare className="w-3 h-3" />}
                           {smsSent ? "Sent" : "SMS"}
-                        </button>
-
-                        {/* Add note toggle */}
-                        <button
-                          onClick={() => { setNoteFor(showNote ? null : listing.listingKey); if (showNote) setNote("") }}
-                          className="text-xs text-gray-400 hover:text-gray-600 transition-colors text-center"
-                        >
-                          {showNote ? "Cancel note" : "+ note"}
                         </button>
                       </div>
                     </div>
+                  )
+                })}
+              </div>
 
-                    {/* Optional personal note */}
-                    {showNote && (
-                      <div className="border-t border-gray-100 px-3 pb-3 pt-2">
-                        <textarea
-                          value={note}
-                          onChange={e => setNote(e.target.value)}
-                          placeholder="Add a personal note to include with this property…"
-                          rows={2}
-                          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-lofty-400 resize-none"
-                        />
-                        <p className="text-xs text-gray-400 mt-1">Note will be included when you click Email or SMS above</p>
-                      </div>
-                    )}
+              {/* Batch send bar — appears when ≥1 selected */}
+              {selectedCount > 0 && (
+                <div className="sticky bottom-0 border-t border-blue-200 bg-blue-600 px-5 py-3 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <button onClick={clearSelection} className="text-blue-200 hover:text-white transition-colors">
+                      <X className="w-4 h-4" />
+                    </button>
+                    <span className="text-white font-semibold text-sm">
+                      {selectedCount} propert{selectedCount === 1 ? "y" : "ies"} selected
+                    </span>
                   </div>
-                )
-              })}
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => sendBatch("sms")}
+                      disabled={!!batchSending || !contactPhone}
+                      title={!contactPhone ? "No phone on file" : ""}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-white/20 text-white hover:bg-white/30 disabled:opacity-50 transition-colors"
+                    >
+                      {batchSending === "sms"
+                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        : <MessageSquare className="w-3.5 h-3.5" />}
+                      Send {selectedCount} via SMS
+                    </button>
+                    <button
+                      onClick={() => sendBatch("email")}
+                      disabled={!!batchSending || !contactEmail}
+                      title={!contactEmail ? "No email on file" : ""}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-white text-blue-700 hover:bg-blue-50 disabled:opacity-50 transition-colors"
+                    >
+                      {batchSending === "email"
+                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        : <Mail className="w-3.5 h-3.5" />}
+                      Send {selectedCount} via Email
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
