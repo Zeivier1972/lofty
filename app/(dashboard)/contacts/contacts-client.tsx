@@ -207,38 +207,28 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
     setImporting(true)
     setProgress(null)
 
-    // Split into chunks of 300 rows so each request finishes in ~10s
-    // (works on mobile where long-running connections get dropped)
     const lines = csv.trim().split(/\r?\n/).filter((l: string) => l.trim())
-    const header = lines[0]
-    const dataRows = lines.slice(1)
-    const CHUNK = 300
-    const chunks: string[] = []
-    for (let i = 0; i < dataRows.length; i += CHUNK) {
-      chunks.push([header, ...dataRows.slice(i, i + CHUNK)].join("\n"))
-    }
-
-    const totals = { imported: 0, updated: 0, skipped: 0, emailsSent: 0, errors: [] as string[], total: dataRows.length }
+    const total = lines.length - 1
+    setProgress({ done: 0, total: 1, imported: 0 })
 
     try {
-      for (let i = 0; i < chunks.length; i++) {
-        setProgress({ done: i, total: chunks.length, imported: totals.imported })
-        const res = await fetch("/api/contacts/import", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ csv: chunks[i] }),
-        })
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.error)
-        totals.imported   += data.imported   || 0
-        totals.updated    += data.updated    || 0
-        totals.skipped    += data.skipped    || 0
-        totals.emailsSent += data.emailsSent || 0
-        totals.errors.push(...(data.errors || []))
-      }
+      const res = await fetch("/api/contacts/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ csv: csv.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
       setProgress(null)
-      setResult(totals)
-      if (totals.imported > 0) onImported()
+      setResult({
+        imported:   data.imported   || 0,
+        updated:    data.updated    || 0,
+        skipped:    data.skipped    || 0,
+        emailsSent: data.emailsSent || 0,
+        errors:     data.errors     || [],
+        total,
+      })
+      if ((data.imported || 0) > 0) onImported()
     } catch (e: any) {
       setProgress(null)
       toast({ title: e.message || "Import failed", variant: "destructive" })
@@ -290,7 +280,7 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
             <Loader2 className="w-10 h-10 text-lofty-600 animate-spin mx-auto" />
             <div>
               <p className="font-semibold text-gray-900 mb-1">Importando contactos...</p>
-              <p className="text-sm text-gray-500">Lote {progress.done + 1} de {progress.total} · {progress.imported} importados hasta ahora</p>
+              <p className="text-sm text-gray-500">Procesando el archivo completo en el servidor...</p>
               <p className="text-xs text-gray-400 mt-1">No cierres esta pantalla</p>
             </div>
             <div className="w-full bg-gray-100 rounded-full h-2.5">

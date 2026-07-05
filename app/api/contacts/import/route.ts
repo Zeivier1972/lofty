@@ -1,5 +1,5 @@
 export const dynamic = "force-dynamic"
-export const maxDuration = 300 // 5 min — large CSV imports need time for DB writes + welcome emails
+export const maxDuration = 300 // 5 min — handles up to ~10k rows in one request
 
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
@@ -305,12 +305,12 @@ export async function POST(req: Request) {
     const agentName  = aiConfig?.realtorName  || "Catherine Gomez"
     const agentPhone = aiConfig?.realtorPhone || "305-283-0872"
 
-    // ── Phase 5: upsert contacts in batches of 25 ───────────────────────
+    // ── Phase 5: upsert contacts in batches ─────────────────────────────
     let imported = 0
     let updated = 0
     const emailsSent = 0
     const errors: string[] = []
-    const BATCH = 10
+    const BATCH = 50
 
     for (let i = 0; i < parsed.length; i += BATCH) {
       const batch = parsed.slice(i, i + BATCH)
