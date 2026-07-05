@@ -68,7 +68,9 @@ export async function GET(req: Request) {
       beds: l.BedroomsTotal ?? null,
       baths: l.BathroomsTotalDecimal ?? null,
       sqft: l.LivingArea ?? null,
+      yearBuilt: l.YearBuilt ?? null,
       subType: l.PropertySubType ?? null,
+      description: l.PublicRemarks ? String(l.PublicRemarks).slice(0, 300) : null,
       photo: photos[l.ListingKey] || null,
       office: l.ListOfficeName || null,
     }))
