@@ -255,7 +255,7 @@ export async function POST(req: Request) {
 
     let imported = 0, updated = 0
     const errors: string[] = []
-    const BATCH = 10
+    const BATCH = 50
 
     for (let i = 0; i < parsed.length; i += BATCH) {
       const batch = parsed.slice(i, i + BATCH)
