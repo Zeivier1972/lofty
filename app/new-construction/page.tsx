@@ -15,7 +15,7 @@ export default async function PreConstructionPage() {
   ])
 
   const keys = listings.map((l: any) => l.ListingKey).filter(Boolean)
-  const photos = await fetchPrimaryPhotos(keys).catch(() => ({}))
+  const photos: Record<string, string> = await fetchPrimaryPhotos(keys).catch(() => ({} as Record<string, string>))
 
   const initialResults = listings.map((l: any) => ({
     listingKey: l.ListingKey as string,
@@ -30,7 +30,7 @@ export default async function PreConstructionPage() {
     yearBuilt: (l.YearBuilt ?? null) as number | null,
     subType: (l.PropertySubType ?? null) as string | null,
     description: l.PublicRemarks ? String(l.PublicRemarks).slice(0, 300) : null,
-    photo: photos[l.ListingKey as string] || null,
+    photo: photos[String(l.ListingKey)] || null,
   }))
 
   return (
