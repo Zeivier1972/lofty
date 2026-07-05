@@ -223,11 +223,18 @@ export async function searchIdxListings(params: {
   if (params.keyword) {
     const raw = params.keyword.trim()
     const kw = esc(raw)
+    const kwLower = esc(raw.toLowerCase())
     // MLS# pattern: letter(s) followed by digits, e.g. A11234567
     if (/^[A-Za-z]\d{5,}$/.test(raw)) {
       filters.push(`ListingId eq '${kw}'`)
     } else {
-      filters.push(`(contains(UnparsedAddress,'${kw}') or contains(PublicRemarks,'${kw}'))`)
+      // Case-insensitive address search using tolower() — OData 4.0 standard
+      filters.push(
+        `(contains(tolower(UnparsedAddress),'${kwLower}')` +
+        ` or contains(tolower(StreetName),'${kwLower}')` +
+        ` or contains(tolower(City),'${kwLower}')` +
+        ` or contains(tolower(PublicRemarks),'${kwLower}'))`
+      )
     }
   }
 
