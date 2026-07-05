@@ -1,9 +1,10 @@
 "use client"
 
 import { useState, useCallback } from "react"
+import Link from "next/link"
 import {
   Bed, Bath, Maximize2, MapPin, Calendar, Phone, ChevronDown,
-  Search, Filter, Loader2, Home, ArrowRight, Lock,
+  Search, Filter, Loader2, Home, ArrowRight,
 } from "lucide-react"
 import InquiryModal from "./inquiry-modal"
 
@@ -85,8 +86,8 @@ function PropertyCard({
 
   return (
     <div className="bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden group flex flex-col">
-      {/* Photo */}
-      <div className="aspect-[4/3] overflow-hidden relative flex-shrink-0">
+      {/* Photo — links to detail page */}
+      <Link href={`/new-construction/${listing.listingKey}`} className="aspect-[4/3] overflow-hidden relative flex-shrink-0 block">
         {listing.photo ? (
           <img
             src={listing.photo}
@@ -115,14 +116,13 @@ function PropertyCard({
             </span>
           </div>
         )}
-        {/* Lock overlay on hover */}
-        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200" style={{ background: "rgba(10,14,26,0.6)", backdropFilter: "blur(2px)" }}>
-          <div className="text-center px-4">
-            <Lock className="w-6 h-6 text-yellow-400 mx-auto mb-1.5" />
-            <p className="text-white text-xs font-medium">Inquire for full address &amp; details</p>
-          </div>
+        {/* View details overlay on hover */}
+        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200" style={{ background: "rgba(10,14,26,0.55)", backdropFilter: "blur(2px)" }}>
+          <span className="px-4 py-2 rounded-full text-sm font-semibold text-white border border-white/40 bg-white/10">
+            View Photos &amp; Details →
+          </span>
         </div>
-      </div>
+      </Link>
 
       {/* Content */}
       <div className="p-5 flex flex-col flex-1">
@@ -131,7 +131,9 @@ function PropertyCard({
             {formatPrice(listing.price)}
           </p>
         )}
-        <p className="text-gray-700 text-sm font-semibold mb-0.5">{typeLabel}</p>
+        <Link href={`/new-construction/${listing.listingKey}`} className="text-gray-700 text-sm font-semibold mb-0.5 hover:text-gray-900 transition-colors">
+          {typeLabel}
+        </Link>
         {locationLabel && (
           <p className="text-gray-500 text-xs mb-1 flex items-center gap-1">
             <MapPin className="w-3 h-3" /> {locationLabel}
@@ -163,13 +165,19 @@ function PropertyCard({
           </p>
         )}
 
-        <div className="mt-auto">
+        <div className="mt-auto flex gap-2">
+          <Link
+            href={`/new-construction/${listing.listingKey}`}
+            className="flex-1 text-center py-2.5 rounded-xl text-sm font-medium border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            More Photos
+          </Link>
           <button
             onClick={() => onInquire(listing)}
-            className="block w-full text-center py-2.5 rounded-xl text-sm font-semibold transition-opacity hover:opacity-90"
+            className="flex-1 text-center py-2.5 rounded-xl text-sm font-semibold transition-opacity hover:opacity-90"
             style={{ background: "linear-gradient(135deg, #c9a84c, #e8c97a)", color: "#0a0e1a" }}
           >
-            Get Details &amp; Schedule Tour
+            Inquire
           </button>
         </div>
       </div>
