@@ -238,10 +238,24 @@ export async function searchIdxListings(params: {
     if (/^[A-Za-z]\d{5,}$/.test(raw)) {
       filters.push(`ListingId eq '${kw}'`)
     } else {
-      // Case-insensitive address search using tolower() — OData 4.0 standard
+      // When input looks like a full address (starts with a house number), strip
+      // trailing city/state/zip before searching UnparsedAddress. The MLS only
+      // stores the street portion (e.g. "11556 SW 234TH ST"), so searching for
+      // "11556 sw 234th st homestead fl 33032" would never match.
+      let streetSearch = raw
+      if (/^\d+\s/.test(raw)) {
+        const tokens = raw.split(/\s+/)
+        let end = tokens.length
+        if (/^\d{5}$/.test(tokens[end - 1])) end--           // strip trailing zip
+        if (end > 0 && /^[A-Za-z]{2}$/.test(tokens[end - 1])) end-- // strip state abbrev
+        // Keep max 4 tokens = house number + direction + street name + suffix
+        streetSearch = tokens.slice(0, Math.min(end, 4)).join(" ")
+      }
+      const srchLower = esc(streetSearch.toLowerCase())
+      // Case-insensitive search using tolower() — OData 4.0 standard
       filters.push(
-        `(contains(tolower(UnparsedAddress),'${kwLower}')` +
-        ` or contains(tolower(StreetName),'${kwLower}')` +
+        `(contains(tolower(UnparsedAddress),'${srchLower}')` +
+        ` or contains(tolower(StreetName),'${srchLower}')` +
         ` or contains(tolower(City),'${kwLower}')` +
         ` or contains(tolower(PublicRemarks),'${kwLower}'))`
       )

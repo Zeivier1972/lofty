@@ -91,10 +91,10 @@ export async function triggerMatchAlert(contactId: string): Promise<{ sent: bool
 
     // Parse buyerLocation into zip codes and/or city names
     const rawLoc = (prefs.buyerLocation || "").trim()
-    const locTokens = rawLoc ? rawLoc.split(",").map(s => s.trim()).filter(Boolean) : []
+    const locTokens = rawLoc ? rawLoc.split(",").map((s: string) => s.trim()).filter(Boolean) : []
     const ZIP_RE = /^\d{5}$/
-    const zipTokens = locTokens.filter(l => ZIP_RE.test(l))
-    const cityTokens = locTokens.filter(l => !ZIP_RE.test(l))
+    const zipTokens = locTokens.filter((l: string) => ZIP_RE.test(l))
+    const cityTokens = locTokens.filter((l: string) => !ZIP_RE.test(l))
     // Prefer zip over city when both exist (zip is more specific)
     const primaryZip = zipTokens[0] || undefined
     const primaryCities = !primaryZip && cityTokens.length > 0 ? cityTokens : undefined
@@ -132,8 +132,8 @@ export async function triggerMatchAlert(contactId: string): Promise<{ sent: bool
     })
     const sentListingKeys = new Set<string>(
       recentAlerts
-        .map(a => { try { return (JSON.parse(a.metadata || "{}") as any).listingKey as string } catch { return null } })
-        .filter((k): k is string => !!k)
+        .map((a: { metadata: string | null }) => { try { return (JSON.parse(a.metadata || "{}") as any).listingKey as string } catch { return null } })
+        .filter((k: string | null): k is string => !!k)
     )
 
     const newMatches = mlsListings
