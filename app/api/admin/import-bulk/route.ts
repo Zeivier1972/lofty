@@ -191,7 +191,7 @@ export async function POST(req: Request) {
         notesText,
         contact: {
           firstName: firstName || "Unknown",
-          lastName:  lastName  || undefined,
+          lastName:  lastName  || "",
           email:     email     || undefined,
           phone:     phoneRaw  ? normalizePhone(phoneRaw, phoneCC) : undefined,
           address:   address   || undefined,
