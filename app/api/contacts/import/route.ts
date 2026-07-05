@@ -5,7 +5,6 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth"
 import { sendEmail } from "@/lib/email"
-import { triggerMatchAlert } from "@/lib/trigger-match-alert"
 
 // ─── CSV parser (handles quoted fields with commas) ────────────────────────
 function parseCSVRow(row: string): string[] {
@@ -309,9 +308,9 @@ export async function POST(req: Request) {
     // ── Phase 5: upsert contacts in batches of 25 ───────────────────────
     let imported = 0
     let updated = 0
-    let emailsSent = 0
+    const emailsSent = 0
     const errors: string[] = []
-    const BATCH = 25
+    const BATCH = 10
 
     for (let i = 0; i < parsed.length; i += BATCH) {
       const batch = parsed.slice(i, i + BATCH)
@@ -323,18 +322,12 @@ export async function POST(req: Request) {
           let isNew = false
 
           if (existingId) {
-            // UPDATE existing contact — preserve prefs if already set, don't overwrite with nulls
-            const existing = await prisma.contact.findUnique({
-              where: { id: existingId },
-              select: { buyerBudgetMax: true, buyerLocation: true, matchPrefsCompletedAt: true },
-            })
-            const updateData = { ...contact }
-            // Don't clobber existing buyer prefs with empty values
-            if (existing?.buyerBudgetMax && !updateData.buyerBudgetMax) delete updateData.buyerBudgetMax
-            if (existing?.buyerLocation && !updateData.buyerLocation) delete updateData.buyerLocation
-            if (existing?.matchPrefsCompletedAt) delete updateData.matchPrefsCompletedAt
-            // Never overwrite createdAt on update
-            delete updateData.createdAt
+            // UPDATE existing — only send non-null fields, never overwrite createdAt
+            const updateData: Record<string, any> = {}
+            for (const [k, v] of Object.entries(contact)) {
+              if (k === "createdAt") continue
+              if (v !== null && v !== undefined && v !== "") updateData[k] = v
+            }
             await prisma.contact.update({ where: { id: existingId }, data: updateData })
             contactId = existingId
             updated++
@@ -363,69 +356,17 @@ export async function POST(req: Request) {
             }
           }
 
-          // Notes — check for existing "[Importado de Lofty]" note to avoid duplication
-          if (notesText) {
-            const existingNote = await prisma.note.findFirst({
-              where: { contactId, content: { startsWith: "[Importado de Lofty]" } },
-            })
-            if (!existingNote) {
-              await prisma.note.create({
-                data: { content: `[Importado de Lofty]\n\n${notesText}`, contactId, isPinned: false },
-              }).catch(() => {})
-            }
+          // Notes — only for new contacts; skip dedup query, use try/catch on unique violation
+          if (isNew && notesText) {
+            await prisma.note.create({
+              data: { content: `[Importado de Lofty]\n\n${notesText}`, contactId, isPinned: false },
+            }).catch(() => {})
           }
 
-          // Portal access (new contacts only)
+          // Portal access (new contacts only — no welcome email during bulk import,
+          // cron will pick up and send match alerts next run)
           if (isNew) {
-            const access = await prisma.clientPortalAccess.create({ data: { contactId } }).catch(() => null)
-
-            // Welcome + immediate match alert email (fire-and-forget)
-            if (access && contact.email && !contact.doNotEmail) {
-              const portalUrl = `${appUrl}/portal/login?token=${access.token}`
-              const hasCriteria = contact.buyerBudgetMax || contact.buyerLocation || contact.buyerBedroomsMin
-              sendEmail({
-                to: contact.email,
-                subject: `🏠 ${agentName} — Your property search continues here`,
-                html: `<!DOCTYPE html>
-<html lang="es"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
-<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px 12px">
-<tr><td align="center">
-<table width="580" cellpadding="0" cellspacing="0" style="max-width:580px;width:100%">
-  <tr><td style="background:linear-gradient(135deg,#0a1628 0%,#1a2f50 100%);border-radius:16px 16px 0 0;padding:32px;text-align:center">
-    <p style="color:#c9a84c;font-size:11px;letter-spacing:3px;text-transform:uppercase;margin:0 0 8px">✨ SOFIA · AI Real Estate Assistant</p>
-    <h1 style="color:white;font-size:24px;font-weight:900;margin:0 0 6px">Your Client Portal Is Ready</h1>
-    <p style="color:#8fa3c4;font-size:14px;margin:0">Tu portal personal de búsqueda de propiedades</p>
-  </td></tr>
-  <tr><td style="background:white;padding:28px">
-    <p style="color:#374151;font-size:15px;margin:0 0 12px">Hola <strong>${contact.firstName}</strong>! 👋</p>
-    <p style="color:#374151;font-size:14px;margin:0 0 16px">I'm Sofía, ${agentName}'s AI assistant. Your client portal is ready — access your personalized property search with one click.</p>
-    ${hasCriteria ? `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:16px;margin:0 0 20px"><p style="color:#15803d;font-size:13px;font-weight:700;margin:0 0 6px">✅ Your search preferences are set</p><p style="color:#374151;font-size:13px;margin:0">Sofía will alert you automatically when matching homes hit the market.</p></div>` : ""}
-    <div style="text-align:center;margin:0 0 20px">
-      <a href="${portalUrl}" style="display:inline-block;background:#0e1f3d;color:white;padding:14px 36px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Acceder a Mi Portal →</a>
-      <p style="color:#9ca3af;font-size:12px;margin:10px 0 0">One-click access — no password needed</p>
-    </div>
-    <div style="border-top:1px solid #f3f4f6;padding-top:16px;text-align:center">
-      <p style="color:#374151;font-size:14px;margin:0"><strong>${agentName}</strong> · ${agentPhone}</p>
-    </div>
-  </td></tr>
-</table></td></tr></table>
-</body></html>`,
-              }).then(() => { emailsSent++ }).catch(() => {})
-
-              // Trigger immediate match alert if they have buyer prefs
-              if (hasCriteria) {
-                triggerMatchAlert(contactId).catch(() => {})
-              }
-            }
-
-            await prisma.activity.create({
-              data: {
-                type: "CONTACT_CREATED",
-                title: `Lead importado: ${contact.firstName} ${contact.lastName || ""}`.trim(),
-                contactId,
-              },
-            }).catch(() => {})
+            await prisma.clientPortalAccess.create({ data: { contactId } }).catch(() => {})
           }
         } catch (e: any) {
           errors.push(`${contact.firstName} ${contact.lastName || ""}: ${e?.message?.slice(0, 80)}`)
