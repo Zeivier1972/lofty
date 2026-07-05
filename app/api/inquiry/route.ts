@@ -37,7 +37,7 @@ export async function POST(req: Request) {
       data: {
         contactId,
         type: "NOTE",
-        note: `Website inquiry: ${propLabel}${message ? ` | "${message}"` : ""}`,
+        title: `Website inquiry: ${propLabel}${message ? ` | "${message}"` : ""}`,
       },
     })
 
