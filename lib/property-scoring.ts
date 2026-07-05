@@ -141,6 +141,18 @@ export function scoreProperty(
   return { score: Math.min(score, 100), reasons }
 }
 
+// Returns true if the property price is within acceptable range of the buyer's budget.
+// More than 15% over max budget or more than 20% below min budget → hard exclude.
+export function propertyMatchesBudget(
+  price: number,
+  budgetMin: number | null | undefined,
+  budgetMax: number | null | undefined
+): boolean {
+  if (budgetMax != null && price > budgetMax * 1.15) return false
+  if (budgetMin != null && price < budgetMin * 0.80) return false
+  return true
+}
+
 // Returns true only if the property's location matches the buyer's location preference.
 // Zip codes are matched exactly; city names are matched with contains logic.
 // When no location preference is set, all properties pass.

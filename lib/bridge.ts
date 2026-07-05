@@ -81,7 +81,8 @@ export async function fetchListings(params: {
 
   // OData $filter (single quotes in string literals are escaped by doubling)
   const esc = (s: string) => s.replace(/'/g, "''")
-  const filters: string[] = [`StandardStatus eq 'Active'`]
+  // PropertyType eq 'Residential' excludes commercial, land, and rental-only listings
+  const filters: string[] = [`StandardStatus eq 'Active'`, `PropertyType eq 'Residential'`]
   if (params.minPrice) filters.push(`ListPrice ge ${params.minPrice}`)
   if (params.maxPrice) filters.push(`ListPrice le ${params.maxPrice}`)
   if (params.minBeds) filters.push(`BedroomsTotal ge ${params.minBeds}`)
