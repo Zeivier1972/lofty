@@ -63,6 +63,13 @@ const BEDS_OPTIONS = [
   { label: "4+", value: 4 },
 ]
 
+const TYPE_OPTIONS = [
+  { label: "All Types", value: "" },
+  { label: "Single Family", value: "SingleFamilyResidence" },
+  { label: "Townhouse", value: "Townhouse" },
+  { label: "Condominium", value: "Condominium" },
+]
+
 function formatPrice(price: number) {
   if (price >= 1_000_000) {
     return "$" + (price / 1_000_000).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + "M"
@@ -197,6 +204,7 @@ export default function PreConstructionListingsClient({ initialResults, calendly
   const [priceIndex, setPriceIndex] = useState(0)
   const [minBeds, setMinBeds] = useState<number | undefined>(undefined)
   const [city, setCity] = useState("All Cities")
+  const [propType, setPropType] = useState("")
 
   const selectedPrice = PRICE_OPTIONS[priceIndex]
 
@@ -208,10 +216,11 @@ export default function PreConstructionListingsClient({ initialResults, calendly
     if (selectedPrice.min != null) p.set("minPrice", String(selectedPrice.min))
     if (selectedPrice.max != null) p.set("maxPrice", String(selectedPrice.max))
     if (minBeds != null) p.set("minBeds", String(minBeds))
+    if (propType) p.set("type", propType)
     p.set("sort", "price_asc")
     if (extra?.offset) p.set("offset", String(extra.offset))
     return p.toString()
-  }, [minYear, city, selectedPrice, minBeds])
+  }, [minYear, city, selectedPrice, minBeds, propType])
 
   async function search(opts?: { append?: boolean; currentOffset?: number }) {
     setLoading(true)
@@ -331,6 +340,16 @@ export default function PreConstructionListingsClient({ initialResults, calendly
                     {opt.label}
                   </button>
                 ))}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Property Type</label>
+              <div className="relative">
+                <select value={propType} onChange={e => setPropType(e.target.value)} className="appearance-none border border-gray-200 rounded-xl px-4 py-2.5 pr-8 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-yellow-400">
+                  {TYPE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                </select>
+                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
               </div>
             </div>
 
