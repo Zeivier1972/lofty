@@ -48,20 +48,30 @@ export async function POST(req: Request) {
 
     const agentEmail = config?.realtorEmail || process.env.RESEND_FROM
     if (agentEmail) {
+      const mlsBox = mlsId
+        ? `<div style="margin:0 0 16px;padding:12px 16px;background:#fdf8ee;border:2px solid #c9a84c;border-radius:8px;font-size:15px">
+            <span style="color:#666;font-size:12px;text-transform:uppercase;letter-spacing:1px">MLS # to look up</span><br/>
+            <strong style="font-size:22px;color:#0a0e1a;letter-spacing:1px">${mlsId}</strong>
+           </div>`
+        : `<div style="margin:0 0 16px;padding:12px 16px;background:#f9fafb;border-radius:8px;font-size:13px;color:#666">General inquiry — no specific listing selected</div>`
+
       sendEmail({
         to: agentEmail,
-        subject: `New Pre-Construction Inquiry — ${city || "Miami"}`,
+        subject: `New Pre-Construction Inquiry${mlsId ? ` — MLS# ${mlsId}` : ""} — ${city || "Miami"}`,
         html: `
-          <h2 style="margin:0 0 12px">New inquiry from your website</h2>
-          <table style="border-collapse:collapse;font-size:14px">
-            <tr><td style="padding:4px 12px 4px 0;color:#666">Name</td><td><strong>${firstName} ${lastName || ""}</strong></td></tr>
-            ${email ? `<tr><td style="padding:4px 12px 4px 0;color:#666">Email</td><td>${email}</td></tr>` : ""}
-            ${phone ? `<tr><td style="padding:4px 12px 4px 0;color:#666">Phone</td><td>${phone}</td></tr>` : ""}
-            <tr><td style="padding:4px 12px 4px 0;color:#666">Property</td><td>${propLabel}</td></tr>
-            ${message ? `<tr><td style="padding:4px 12px 4px 0;color:#666">Message</td><td>${message}</td></tr>` : ""}
-            <tr><td style="padding:4px 12px 4px 0;color:#666">Status</td><td>${isNew ? "✨ New contact created" : "Existing contact updated"}</td></tr>
+          <h2 style="margin:0 0 16px;font-size:18px">New inquiry from your website</h2>
+          ${mlsBox}
+          <table style="border-collapse:collapse;font-size:14px;width:100%">
+            <tr><td style="padding:6px 16px 6px 0;color:#666;white-space:nowrap">Name</td><td><strong>${firstName} ${lastName || ""}</strong></td></tr>
+            ${email ? `<tr><td style="padding:6px 16px 6px 0;color:#666">Email</td><td><a href="mailto:${email}" style="color:#1a2744">${email}</a></td></tr>` : ""}
+            ${phone ? `<tr><td style="padding:6px 16px 6px 0;color:#666">Phone</td><td><a href="tel:${phone}" style="color:#1a2744">${phone}</a></td></tr>` : ""}
+            <tr><td style="padding:6px 16px 6px 0;color:#666;white-space:nowrap">Property</td><td>${propLabel}</td></tr>
+            ${message ? `<tr><td style="padding:6px 16px 6px 0;color:#666;vertical-align:top">Message</td><td><em>"${message}"</em></td></tr>` : ""}
+            <tr><td style="padding:6px 16px 6px 0;color:#666">Status</td><td>${isNew ? "✨ New contact created in CRM" : "↩ Existing contact updated"}</td></tr>
           </table>
-          <p style="margin-top:16px"><a href="${process.env.NEXT_PUBLIC_APP_URL}/contacts/${contactId}" style="background:#c9a84c;color:#fff;padding:8px 18px;border-radius:6px;text-decoration:none;font-size:13px">View in CRM →</a></p>
+          <p style="margin-top:20px">
+            <a href="${process.env.NEXT_PUBLIC_APP_URL}/contacts/${contactId}" style="background:#c9a84c;color:#0a0e1a;padding:10px 20px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600">View Contact in CRM →</a>
+          </p>
         `,
       }).catch(() => {})
     }

@@ -230,9 +230,19 @@ export default function PreConstructionListingsClient({ initialResults, calendly
       {/* Hero */}
       <div
         className="relative flex flex-col items-center justify-center text-center px-4 py-24"
-        style={{ background: "linear-gradient(135deg, #0a0e1a 0%, #1a2744 50%, #0d1420 100%)", minHeight: "420px" }}
+        style={{ minHeight: "480px" }}
       >
-        <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse at 60% 40%, rgba(201,168,76,0.12) 0%, transparent 70%)" }} />
+        {/* Background photo */}
+        <img
+          src="https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=1920&q=85"
+          alt=""
+          aria-hidden="true"
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+        {/* Dark gradient overlay */}
+        <div className="absolute inset-0" style={{ background: "linear-gradient(to bottom, rgba(10,14,26,0.72) 0%, rgba(10,14,26,0.85) 100%)" }} />
+        {/* Gold glow */}
+        <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse at 60% 30%, rgba(201,168,76,0.15) 0%, transparent 65%)" }} />
         <div className="relative z-10 max-w-3xl mx-auto">
           <span className="inline-block px-4 py-1.5 rounded-full text-xs font-semibold tracking-widest mb-4" style={{ background: "rgba(201,168,76,0.15)", color: "#c9a84c", border: "1px solid rgba(201,168,76,0.3)" }}>
             LIVE MLS · UPDATED DAILY
