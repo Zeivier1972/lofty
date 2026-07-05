@@ -5,7 +5,7 @@ import { getPortalContact } from "@/lib/portal-auth"
 import PortalShell from "../_components/portal-shell"
 import MatchesClient from "./matches-client"
 import { prisma } from "@/lib/prisma"
-import { scoreProperty } from "@/lib/property-scoring"
+import { scoreProperty, propertyMatchesLocation } from "@/lib/property-scoring"
 import { fetchPrimaryPhotos } from "@/lib/bridge"
 import Anthropic from "@anthropic-ai/sdk"
 
@@ -105,7 +105,7 @@ export default async function MatchesPage() {
       price: { gte: 50000 }, // exclude rental listings (monthly rent < $50k; sales always >= $100k)
     },
     orderBy: { createdAt: "desc" },
-    take: 40,
+    take: 200,
     select: {
       id: true, address: true, city: true, state: true, zip: true,
       price: true, bedrooms: true, bathrooms: true, sqft: true,
@@ -114,16 +114,23 @@ export default async function MatchesPage() {
     },
   })
 
+  // Hard location filter: only show properties in the buyer's specified area.
+  // Zip codes match exactly; city names match by contains. This prevents e.g.
+  // zip 33158 (Pinecrest) from showing Homestead results.
+  const locationFiltered = prefs?.buyerLocation
+    ? rawProperties.filter(p => propertyMatchesLocation(p, prefs.buyerLocation))
+    : rawProperties
+
   // Enrich with real photos from Bridge Web API for properties missing images
   const hasPhoto = (images: string | null) => {
     try { const a = JSON.parse(images || "[]"); return Array.isArray(a) && a.some(u => u) } catch { return false }
   }
-  const needsPhoto = rawProperties.filter(p => p.mlsId && !hasPhoto(p.images))
+  const needsPhoto = locationFiltered.filter(p => p.mlsId && !hasPhoto(p.images))
   let photoMap: Record<string, string> = {}
   if (needsPhoto.length > 0) {
     photoMap = await fetchPrimaryPhotos(needsPhoto.map(p => p.mlsId!)).catch(() => ({}))
   }
-  const properties = rawProperties.slice(0, 30).map(p => ({
+  const properties = locationFiltered.slice(0, 30).map(p => ({
     ...p,
     images: hasPhoto(p.images)
       ? p.images

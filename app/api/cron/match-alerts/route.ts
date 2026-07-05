@@ -5,7 +5,7 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { fetchListings, bridgeToProperty } from "@/lib/bridge"
 import { sendEmail } from "@/lib/email"
-import { scoreProperty } from "@/lib/property-scoring"
+import { scoreProperty, propertyMatchesLocation } from "@/lib/property-scoring"
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
@@ -270,7 +270,12 @@ export async function GET(req: Request) {
           buyerLocation: contact.buyerLocation,
         }
 
-        const scored = freshProperties
+        // Hard location filter first — only score properties in the buyer's area
+        const locationCandidates = freshProperties.filter(p =>
+          propertyMatchesLocation(p, prefs.buyerLocation)
+        )
+
+        const scored = locationCandidates
           .map(p => ({ property: p, ...scoreProperty(p, prefs) }))
           .filter(m => m.score >= 40)
           .sort((a, b) => b.score - a.score)

@@ -141,6 +141,38 @@ export function scoreProperty(
   return { score: Math.min(score, 100), reasons }
 }
 
+// Returns true only if the property's location matches the buyer's location preference.
+// Zip codes are matched exactly; city names are matched with contains logic.
+// When no location preference is set, all properties pass.
+export function propertyMatchesLocation(
+  p: { city: string; zip: string; address: string },
+  buyerLocation: string | null | undefined
+): boolean {
+  if (!buyerLocation) return true
+  const parts = buyerLocation.split(/[,|]/).map(s => s.trim()).filter(Boolean)
+  if (parts.length === 0) return true
+
+  const zipParts = parts.filter(s => /^\d{5}$/.test(s))
+  const cityParts = parts.filter(s => !/^\d{5}$/.test(s))
+
+  if (zipParts.length > 0 && zipParts.includes((p.zip || "").trim())) return true
+
+  if (cityParts.length > 0) {
+    const cityLow = (p.city || "").toLowerCase()
+    const addrLow = (p.address || "").toLowerCase()
+    if (cityParts.some(part => {
+      const pl = part.toLowerCase()
+      return cityLow.includes(pl) || pl.includes(cityLow) || addrLow.includes(pl)
+    })) return true
+  }
+
+  // If only zips were specified and none matched, exclude
+  if (zipParts.length > 0 && cityParts.length === 0) return false
+  // If only cities were specified and none matched, exclude
+  if (cityParts.length > 0 && zipParts.length === 0) return false
+  return false
+}
+
 export function scoreColor(score: number): string {
   if (score >= 80) return "#16a34a"
   if (score >= 60) return "#c9a84c"
