@@ -4,6 +4,7 @@ import { NextResponse } from "next/server"
 import { ingestLead } from "@/lib/lead-ingest"
 import { sendEmail } from "@/lib/email"
 import { prisma } from "@/lib/prisma"
+import { scoreContact } from "@/lib/scoring"
 
 export async function POST(req: Request) {
   try {
@@ -86,6 +87,21 @@ export async function POST(req: Request) {
         `,
       }).catch(() => {})
     }
+
+    // Score the contact so Sofia has accurate data to work with
+    scoreContact(contactId).catch(() => {})
+
+    // Trigger Sofia — same as any new lead from the website.
+    // She will send the initial follow-up text/email and continue the conversation.
+    fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/ai/trigger`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        trigger: "NEW_LEAD",
+        contactId,
+        context: propLabel, // gives Sofia property context for her first message
+      }),
+    }).catch(() => {})
 
     return NextResponse.json({ ok: true, isNew })
   } catch (e: any) {
