@@ -212,10 +212,11 @@ export async function GET(req: Request) {
     const { created, updated } = await syncFreshListings(uniqueZips)
     log.push(`Sync complete: ${created} new, ${updated} updated`)
 
-    // 2. Get all active properties (fresh enough to send)
-    const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000) // last 48h
+    // 2. Get all active properties — use PropertyAlertSent per-contact to dedup
     const freshProperties = await prisma.property.findMany({
-      where: { status: "ACTIVE", createdAt: { gte: cutoff } },
+      where: { status: "ACTIVE", price: { gte: 50000 } },
+      orderBy: { createdAt: "desc" },
+      take: 200,
       select: {
         id: true, address: true, city: true, state: true, zip: true,
         price: true, bedrooms: true, bathrooms: true, sqft: true,
@@ -223,7 +224,7 @@ export async function GET(req: Request) {
         images: true, status: true,
       },
     })
-    log.push(`Fresh properties (last 48h): ${freshProperties.length}`)
+    log.push(`Active properties in DB: ${freshProperties.length}`)
 
     if (freshProperties.length === 0) {
       return NextResponse.json({ success: true, log, emailsSent: 0 })
@@ -237,12 +238,12 @@ export async function GET(req: Request) {
     const agentPhone = aiConfig?.realtorPhone || "305-283-0872"
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
 
-    // 4. Find all portal contacts with preferences + email
+    // 4. Find all contacts with buyer preferences + email (no doNotEmail)
     const contacts = await prisma.contact.findMany({
       where: {
         matchPrefsCompletedAt: { not: null },
         email: { not: null },
-        portalAccess: { isActive: true },
+        doNotEmail: false,
       },
       select: {
         id: true, firstName: true, email: true,
@@ -253,7 +254,7 @@ export async function GET(req: Request) {
         portalAccess: { select: { token: true } },
       },
     })
-    log.push(`Contacts with preferences + portal: ${contacts.length}`)
+    log.push(`Contacts with buyer prefs + email: ${contacts.length}`)
 
     // 5. Process each contact
     for (const contact of contacts) {
@@ -303,9 +304,14 @@ export async function GET(req: Request) {
           prefs.buyerBudgetMax ? `hasta $${prefs.buyerBudgetMax.toLocaleString()}` : null,
         ].filter(Boolean).join(" · ")
 
-        // Link to portal matches page (shows properties from our DB, not IDX)
-        // Magic token logs the lead in automatically on click
-        const portalToken = contact.portalAccess?.token
+        // Ensure portal access exists (creates one if missing, e.g. for bulk-imported contacts)
+        let portalToken = contact.portalAccess?.token
+        if (!portalToken) {
+          const pa = await prisma.clientPortalAccess.create({ data: { contactId: contact.id } }).catch(() => null)
+          portalToken = pa?.token
+        }
+
+        // Link to portal matches page — magic token logs the lead in automatically
         const searchUrl = portalToken
           ? `${appUrl}/portal/login?token=${portalToken}&next=/portal/matches`
           : `${appUrl}/portal/matches`
