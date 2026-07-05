@@ -60,6 +60,7 @@ export async function GET(req: Request) {
 
     const results = listings.map((l: any) => ({
       listingKey: l.ListingKey,
+      listingId: l.ListingId ?? l.ListingKey ?? "", // real MLS# (e.g. A11234567)
       address: buildDisplayAddress(l),
       city: l.City ?? null,
       state: l.StateOrProvince ?? null,

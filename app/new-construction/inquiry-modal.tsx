@@ -5,6 +5,7 @@ import { X, Phone, Mail, User, MessageSquare, CheckCircle, Calendar, Loader2, Ma
 
 interface Listing {
   listingKey: string
+  listingId: string
   city: string | null
   state: string | null
   price: number | null
@@ -57,7 +58,7 @@ export default function InquiryModal({ listing, calendlyUrl, agentName, onClose 
           phone: form.phone,
           email: form.email,
           message: form.message,
-          mlsId: listing.listingKey,
+          mlsId: listing.listingId || listing.listingKey, // real MLS# (A11234567)
           city: listing.city,
           price: listing.price,
           propertyType: typeLabel,

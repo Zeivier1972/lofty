@@ -19,6 +19,7 @@ export default async function PreConstructionPage() {
 
   const initialResults = listings.map((l: any) => ({
     listingKey: l.ListingKey as string,
+    listingId: (l.ListingId ?? l.ListingKey ?? "") as string, // real MLS# (e.g. A11234567)
     address: buildDisplayAddress(l),
     city: (l.City ?? null) as string | null,
     state: (l.StateOrProvince ?? null) as string | null,

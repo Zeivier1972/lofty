@@ -9,6 +9,7 @@ import InquiryModal from "./inquiry-modal"
 
 interface Listing {
   listingKey: string
+  listingId: string   // real MLS# like A11234567
   address: string
   city: string | null
   state: string | null
@@ -136,7 +137,7 @@ function PropertyCard({
             <MapPin className="w-3 h-3" /> {locationLabel}
           </p>
         )}
-        <p className="text-gray-400 text-[10px] mb-3 font-mono tracking-wide">MLS# {listing.listingKey}</p>
+        <p className="text-gray-400 text-[10px] mb-3 font-mono tracking-wide">MLS# {listing.listingId || listing.listingKey}</p>
 
         <div className="flex flex-wrap gap-2 mb-3">
           {listing.beds != null && (
@@ -255,7 +256,7 @@ export default function PreConstructionListingsClient({ initialResults, calendly
           </p>
           <div className="flex flex-wrap gap-3 justify-center">
             <button
-              onClick={() => setInquiryListing(listings[0] ?? { listingKey: "", address: "", city: "Miami", state: "FL", zip: null, price: null, beds: null, baths: null, sqft: null, yearBuilt: null, subType: null, description: null, photo: null })}
+              onClick={() => setInquiryListing(listings[0] ?? { listingKey: "", listingId: "", address: "", city: "Miami", state: "FL", zip: null, price: null, beds: null, baths: null, sqft: null, yearBuilt: null, subType: null, description: null, photo: null })}
               className="inline-flex items-center gap-2 px-6 py-3 rounded-full font-semibold text-sm transition-opacity hover:opacity-90"
               style={{ background: "linear-gradient(135deg, #c9a84c, #e8c97a)", color: "#0a0e1a" }}
             >
@@ -399,7 +400,7 @@ export default function PreConstructionListingsClient({ initialResults, calendly
         </p>
         <div className="flex flex-wrap gap-4 justify-center">
           <button
-            onClick={() => setInquiryListing(listings[0] ?? { listingKey: "", address: "", city: "Miami", state: "FL", zip: null, price: null, beds: null, baths: null, sqft: null, yearBuilt: null, subType: null, description: null, photo: null })}
+            onClick={() => setInquiryListing(listings[0] ?? { listingKey: "", listingId: "", address: "", city: "Miami", state: "FL", zip: null, price: null, beds: null, baths: null, sqft: null, yearBuilt: null, subType: null, description: null, photo: null })}
             className="inline-flex items-center gap-2 px-7 py-3.5 rounded-full font-semibold text-sm transition-opacity hover:opacity-90"
             style={{ background: "linear-gradient(135deg, #c9a84c, #e8c97a)", color: "#0a0e1a" }}
           >

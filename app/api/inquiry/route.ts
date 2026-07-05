@@ -41,12 +41,23 @@ export async function POST(req: Request) {
       },
     })
 
-    // Notify agent (fire-and-forget)
+    // CRM notification (shows in the bell/dashboard)
+    await prisma.aINotification.create({
+      data: {
+        type: "NEW_LEAD",
+        priority: "HIGH",
+        title: `New website inquiry${mlsId ? ` — MLS# ${mlsId}` : ""}`,
+        body: `${firstName} ${lastName || ""} requested info on a ${propLabel}`,
+        contactId,
+      },
+    }).catch(() => {})
+
+    // Notify agent via email (fire-and-forget)
     const config = await prisma.aIConfig.findFirst({
       select: { realtorEmail: true, realtorName: true },
     }).catch(() => null)
 
-    const agentEmail = config?.realtorEmail || process.env.RESEND_FROM
+    const agentEmail = config?.realtorEmail || process.env.REALTOR_EMAIL || process.env.AGENT_EMAIL
     if (agentEmail) {
       const mlsBox = mlsId
         ? `<div style="margin:0 0 16px;padding:12px 16px;background:#fdf8ee;border:2px solid #c9a84c;border-radius:8px;font-size:15px">
