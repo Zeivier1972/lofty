@@ -26,9 +26,11 @@ export async function GET(req: Request) {
     const pageSize = Math.min(num("limit") || 24, 48)
     const offset = num("offset") || 0
 
+    const keyword = searchParams.get("keyword")?.trim() || undefined
+    // When keyword is set, skip city/zip — they'd AND together and block MLS# / address results
     const listings = await searchIdxListings({
-      cities: cityTokens.length > 0 ? cityTokens : undefined,
-      zip: isZip ? loc : (searchParams.get("zip") || undefined),
+      cities: (!keyword && cityTokens.length > 0) ? cityTokens : undefined,
+      zip: (!keyword && isZip) ? loc : (!keyword ? (searchParams.get("zip") || undefined) : undefined),
       minPrice: num("minPrice"),
       maxPrice: num("maxPrice"),
       minBeds: num("minBeds"),
@@ -49,6 +51,7 @@ export async function GET(req: Request) {
       sort: searchParams.get("sort") || undefined,
       limit: pageSize,
       offset,
+      keyword,
     })
     const total = idxTotalFromResult(listings)
     const totalPages = Math.max(1, Math.ceil(total / pageSize))

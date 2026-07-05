@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import Link from "next/link"
 import {
   Bed, Bath, Maximize2, MapPin, Calendar, Phone, ChevronDown,
@@ -192,6 +192,9 @@ function PropertyCard({
   )
 }
 
+const SESSION_KEY = "nc-search-state"
+const SESSION_TTL = 30 * 60 * 1000 // 30 minutes
+
 export default function PreConstructionListingsClient({ initialResults, calendlyUrl, agentName, agentPhone }: Props) {
   const [listings, setListings] = useState<Listing[]>(initialResults)
   const [loading, setLoading] = useState(false)
@@ -205,6 +208,25 @@ export default function PreConstructionListingsClient({ initialResults, calendly
   const [minBeds, setMinBeds] = useState<number | undefined>(undefined)
   const [city, setCity] = useState("All Cities")
   const [propType, setPropType] = useState("")
+
+  // Restore search state when navigating back from a detail page
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(SESSION_KEY)
+      if (!raw) return
+      const saved = JSON.parse(raw)
+      if (Date.now() - saved.ts > SESSION_TTL) { sessionStorage.removeItem(SESSION_KEY); return }
+      setListings(saved.listings)
+      setOffset(saved.offset)
+      setTotal(saved.total)
+      setHasMore(saved.hasMore)
+      setMinYear(saved.minYear ?? "")
+      setPriceIndex(saved.priceIndex ?? 0)
+      setMinBeds(saved.minBeds)
+      setCity(saved.city ?? "All Cities")
+      setPropType(saved.propType ?? "")
+    } catch {}
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedPrice = PRICE_OPTIONS[priceIndex]
 
@@ -229,15 +251,36 @@ export default function PreConstructionListingsClient({ initialResults, calendly
       const res = await fetch(`/api/idx/search?${qs}`)
       const data = await res.json()
       if (!data.ok) return
+
+      let nextListings: Listing[]
+      let nextOffset: number
       if (opts?.append) {
-        setListings(prev => [...prev, ...data.results])
-        setOffset((opts.currentOffset ?? 0) + data.results.length)
+        nextListings = [...listings, ...data.results]
+        nextOffset = (opts.currentOffset ?? 0) + data.results.length
+        setListings(nextListings)
+        setOffset(nextOffset)
       } else {
-        setListings(data.results)
-        setOffset(data.results.length)
+        nextListings = data.results
+        nextOffset = data.results.length
+        setListings(nextListings)
+        setOffset(nextOffset)
       }
-      setTotal(data.total ?? data.count)
-      setHasMore(data.hasMore ?? false)
+      const nextTotal = data.total ?? data.count
+      const nextHasMore = data.hasMore ?? false
+      setTotal(nextTotal)
+      setHasMore(nextHasMore)
+
+      // Persist so Back button restores this exact state
+      try {
+        sessionStorage.setItem(SESSION_KEY, JSON.stringify({
+          listings: nextListings,
+          offset: nextOffset,
+          total: nextTotal,
+          hasMore: nextHasMore,
+          minYear, priceIndex, minBeds, city, propType,
+          ts: Date.now(),
+        }))
+      } catch {}
     } finally {
       setLoading(false)
     }
