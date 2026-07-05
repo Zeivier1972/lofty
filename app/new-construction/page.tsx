@@ -30,7 +30,7 @@ export default async function PreConstructionPage() {
     yearBuilt: (l.YearBuilt ?? null) as number | null,
     subType: (l.PropertySubType ?? null) as string | null,
     description: l.PublicRemarks ? String(l.PublicRemarks).slice(0, 300) : null,
-    photo: photos[l.ListingKey] || null,
+    photo: photos[l.ListingKey as string] || null,
   }))
 
   return (
