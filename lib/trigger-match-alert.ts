@@ -2,10 +2,17 @@
 // Called after lead creation/update with buyer prefs, or after Sofia extracts prefs from notes.
 
 import { prisma } from "@/lib/prisma"
-import { scoreProperty } from "@/lib/property-scoring"
-import { fetchPrimaryPhotos } from "@/lib/bridge"
+import { searchIdxListings, fetchPrimaryPhotos, buildDisplayAddress } from "@/lib/bridge"
 import { sendEmail } from "@/lib/email"
 import Anthropic from "@anthropic-ai/sdk"
+
+// Map CRM buyerPropertyType enum → Bridge MLS PropertySubType string
+const PROP_TYPE_MAP: Record<string, string> = {
+  SINGLE_FAMILY: "Single Family Residence",
+  CONDO: "Condominium",
+  TOWNHOUSE: "Townhouse",
+  MULTI_FAMILY: "Multi Family",
+}
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
 
@@ -82,45 +89,57 @@ export async function triggerMatchAlert(contactId: string): Promise<{ sent: bool
       return { sent: false, reason: "No buyer prefs" }
     }
 
-    // Fetch active properties (exclude rentals)
-    const rawProperties = await prisma.property.findMany({
-      where: { status: "ACTIVE", price: { gte: 50000 } },
-      orderBy: { createdAt: "desc" },
-      take: 40,
-      select: {
-        id: true, address: true, city: true, state: true, zip: true,
-        price: true, bedrooms: true, bathrooms: true, sqft: true,
-        propertyType: true, pool: true, garage: true, features: true,
-        images: true, status: true, mlsId: true,
+    // Parse buyerLocation into zip codes and/or city names
+    const rawLoc = (prefs.buyerLocation || "").trim()
+    const locTokens = rawLoc ? rawLoc.split(",").map(s => s.trim()).filter(Boolean) : []
+    const ZIP_RE = /^\d{5}$/
+    const zipTokens = locTokens.filter(l => ZIP_RE.test(l))
+    const cityTokens = locTokens.filter(l => !ZIP_RE.test(l))
+    // Prefer zip over city when both exist (zip is more specific)
+    const primaryZip = zipTokens[0] || undefined
+    const primaryCities = !primaryZip && cityTokens.length > 0 ? cityTokens : undefined
+
+    const propSubType = prefs.buyerPropertyType
+      ? PROP_TYPE_MAP[prefs.buyerPropertyType]
+      : undefined
+
+    // Query live Bridge MLS with buyer's criteria
+    const mlsListings = await searchIdxListings({
+      zip: primaryZip,
+      cities: primaryCities,
+      minPrice: prefs.buyerBudgetMin || undefined,
+      maxPrice: prefs.buyerBudgetMax || undefined,
+      minBeds: prefs.buyerBedroomsMin || undefined,
+      minBaths: prefs.buyerBathroomsMin || undefined,
+      propertySubType: propSubType,
+      limit: 40,
+    })
+
+    // Fetch photos for MLS results
+    const listingKeys = mlsListings.map((l: any) => l.ListingKey).filter(Boolean)
+    const photoMap: Record<string, string> = listingKeys.length > 0
+      ? await fetchPrimaryPhotos(listingKeys).catch(() => ({}))
+      : {}
+
+    // Dedup: skip listings already sent to this contact in the past 60 days (stored in Activity)
+    const recentAlerts = await prisma.activity.findMany({
+      where: {
+        contactId,
+        type: "PROPERTY_ALERT_SENT",
+        createdAt: { gte: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000) },
       },
+      select: { metadata: true },
     })
+    const sentListingKeys = new Set<string>(
+      recentAlerts
+        .map(a => { try { return (JSON.parse(a.metadata || "{}") as any).listingKey as string } catch { return null } })
+        .filter((k): k is string => !!k)
+    )
 
-    // Enrich photos
-    const hasPhoto = (images: string | null) => {
-      try { const a = JSON.parse(images || "[]"); return Array.isArray(a) && a.some(Boolean) } catch { return false }
-    }
-    const needsPhoto = rawProperties.filter(p => p.mlsId && !hasPhoto(p.images))
-    let photoMap: Record<string, string> = {}
-    if (needsPhoto.length > 0) {
-      photoMap = await fetchPrimaryPhotos(needsPhoto.map(p => p.mlsId!)).catch(() => ({}))
-    }
-    const properties = rawProperties.map(p => ({
-      ...p,
-      images: hasPhoto(p.images) ? p.images : photoMap[p.mlsId!] ? JSON.stringify([photoMap[p.mlsId!]]) : p.images,
-    }))
+    const newMatches = mlsListings
+      .filter((l: any) => l.ListingKey && !sentListingKeys.has(l.ListingKey))
+      .slice(0, 5)
 
-    // Score and find already-sent
-    const alreadySent = await prisma.propertyAlertSent.findMany({
-      where: { contactId, propertyId: { in: properties.map(p => p.id) } },
-      select: { propertyId: true },
-    })
-    const sentIds = new Set(alreadySent.map(s => s.propertyId))
-
-    const scored = properties
-      .map(p => ({ property: p, ...scoreProperty(p, prefs) }))
-      .sort((a, b) => b.score - a.score)
-
-    const newMatches = scored.filter(m => m.score >= 40 && !sentIds.has(m.property.id)).slice(0, 5)
     if (newMatches.length === 0) return { sent: false, reason: "No new matches" }
 
     // Build portal matches URL with magic link token so the click logs them in directly
@@ -155,10 +174,19 @@ export async function triggerMatchAlert(contactId: string): Promise<{ sent: bool
       }),
     })
 
-    // Record sent
-    await prisma.propertyAlertSent.createMany({
-      data: newMatches.map(m => ({ contactId, propertyId: m.property.id })),
-      skipDuplicates: true,
+    // Record sent listings as Activity records for dedup (avoids schema dependency on local propertyId)
+    await prisma.activity.createMany({
+      data: newMatches.map((l: any) => ({
+        contactId,
+        type: "PROPERTY_ALERT_SENT",
+        title: `Property alert sent: ${buildDisplayAddress(l)}`,
+        metadata: JSON.stringify({
+          listingKey: l.ListingKey,
+          listingId: l.ListingId,
+          address: buildDisplayAddress(l),
+          price: l.ListPrice,
+        }),
+      })),
     })
 
     // Ensure portal access exists so they can log in

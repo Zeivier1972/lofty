@@ -1230,6 +1230,7 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
                   defaultLocation={contact.buyerLocation || ""}
                   defaultMaxPrice={contact.buyerBudgetMax || undefined}
                   defaultMinBeds={contact.buyerBedroomsMin || undefined}
+                  defaultPropertyType={contact.buyerPropertyType || null}
                 />
 
                 {/* IDX Saved properties (from /homes favorites) */}

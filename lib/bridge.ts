@@ -167,7 +167,7 @@ export function buildDisplayAddress(l: any): string {
 export async function searchIdxListings(params: {
   city?: string; cities?: string[]; zip?: string; minPrice?: number; maxPrice?: number
   minBeds?: number; maxBeds?: number; minBaths?: number; maxBaths?: number
-  minGarage?: number; propertySubType?: string; mode?: "sale" | "rent"
+  minGarage?: number; propertySubType?: string; propertySubTypes?: string[]; mode?: "sale" | "rent"
   minSqft?: number; maxSqft?: number; minYear?: number; maxYear?: number
   maxHoa?: number; maxDom?: number; pool?: boolean; waterfront?: boolean
   sort?: string; limit?: number; offset?: number; keyword?: string
@@ -217,7 +217,17 @@ export async function searchIdxListings(params: {
     filters.push(`(${cityClauses})`)
   }
 
-  if (params.propertySubType) filters.push(`PropertySubType eq '${esc(params.propertySubType)}'`)
+  // Multi-type filter: OR across subtypes; falls back to single subtype
+  if (params.propertySubTypes && params.propertySubTypes.length > 0) {
+    if (params.propertySubTypes.length === 1) {
+      filters.push(`PropertySubType eq '${esc(params.propertySubTypes[0])}'`)
+    } else {
+      const clauses = params.propertySubTypes.map(t => `PropertySubType eq '${esc(t)}'`).join(" or ")
+      filters.push(`(${clauses})`)
+    }
+  } else if (params.propertySubType) {
+    filters.push(`PropertySubType eq '${esc(params.propertySubType)}'`)
+  }
 
   // Keyword search: MLS# gets an exact ListingId match; anything else searches address + remarks
   if (params.keyword) {
