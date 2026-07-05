@@ -4,7 +4,8 @@ import { useState } from "react"
 import {
   Building2, Plus, Trash2, Edit, ExternalLink, X, Save, Loader2,
   TrendingUp, MapPin, Calendar, DollarSign, Users, ChevronDown, ChevronUp,
-  Search, AlertCircle, RefreshCw, CheckCircle2, Bot,
+  Search, AlertCircle, RefreshCw, CheckCircle2, Bot, Home, Sparkles,
+  Bed, Bath, Square,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -41,6 +42,25 @@ const EMPTY_FORM: Partial<Project> = {
   investmentHighlights: "", estimatedROI: "", downPayment: "", bedrooms: "", deliveryDate: "",
 }
 
+type MLSListing = {
+  mlsId: string
+  address: string
+  city: string
+  state: string
+  zip: string
+  price: number
+  bedrooms: number | null
+  bathrooms: number | null
+  sqft: number | null
+  yearBuilt: number | null
+  propertySubType: string
+  description: string
+  agentName: string
+  office: string
+  daysOnMarket: number | null
+  image: string | null
+}
+
 type ScrapedCommunity = {
   area: string
   city: string
@@ -72,6 +92,12 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState<{ count: number; strategy: string; chromiumPath?: string | null; errors?: string[] } | null>(null)
   const [liveScrapped, setLiveScraped] = useState<ScrapedCommunity[]>(scrapedCommunities)
+  const [mlsListings, setMlsListings] = useState<MLSListing[]>([])
+  const [mlsLoading, setMlsLoading] = useState(false)
+  const [mlsTotal, setMlsTotal] = useState<number | null>(null)
+  const [mlsError, setMlsError] = useState<string | null>(null)
+  const [mlsMinYear, setMlsMinYear] = useState(2025)
+  const [savingMlsId, setSavingMlsId] = useState<string | null>(null)
 
   const filtered = projects.filter(p =>
     `${p.name} ${p.developer} ${p.neighborhood} ${p.city}`.toLowerCase().includes(search.toLowerCase())
@@ -126,6 +152,53 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
     }
   }
 
+  async function searchMLS() {
+    setMlsLoading(true)
+    setMlsError(null)
+    try {
+      const res = await fetch(`/api/mls/new-construction?minYear=${mlsMinYear}&limit=48`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Search failed")
+      setMlsListings(data.results || [])
+      setMlsTotal(data.total ?? null)
+    } catch (e: any) {
+      setMlsError(e.message)
+    } finally {
+      setMlsLoading(false)
+    }
+  }
+
+  async function saveFromMLS(l: MLSListing) {
+    setSavingMlsId(l.mlsId)
+    try {
+      const project = {
+        name: l.address,
+        developer: l.office || l.agentName || "",
+        neighborhood: "",
+        city: l.city,
+        zipCode: l.zip,
+        priceMin: l.price,
+        priceMax: l.price,
+        bedrooms: l.bedrooms != null ? `${l.bedrooms}BR` : undefined,
+        deliveryDate: l.yearBuilt ? `${l.yearBuilt}` : undefined,
+        status: "under_construction",
+        description: l.description || undefined,
+      }
+      const res = await fetch("/api/pre-construction", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(project),
+      })
+      const saved: Project = await res.json()
+      setProjects(prev => {
+        if (prev.find(p => p.id === saved.id)) return prev
+        return [...prev, saved]
+      })
+    } finally {
+      setSavingMlsId(null)
+    }
+  }
+
   return (
     <div className="flex flex-col h-full bg-gray-50">
       {/* Header */}
@@ -135,7 +208,26 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
             <h1 className="text-2xl font-bold text-gray-900">Pre-Construction Projects</h1>
             <p className="text-sm text-gray-500 mt-0.5">Investment properties available for Colombian and Latin American buyers</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 border border-gray-200 rounded-lg overflow-hidden bg-white">
+              <select
+                value={mlsMinYear}
+                onChange={e => setMlsMinYear(Number(e.target.value))}
+                className="text-sm px-2 py-2 bg-transparent border-none outline-none text-gray-700"
+              >
+                <option value={2025}>From 2025</option>
+                <option value={2026}>From 2026</option>
+                <option value={2027}>From 2027</option>
+              </select>
+              <button
+                onClick={searchMLS}
+                disabled={mlsLoading}
+                className="flex items-center gap-2 px-3 py-2 bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-40"
+              >
+                {mlsLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                Search MLS New Construction
+              </button>
+            </div>
             <button
               onClick={syncShowingNew}
               disabled={syncing}
@@ -273,6 +365,90 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
                 Save Project
               </button>
               <button onClick={() => setForm(null)} className="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 text-sm">Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {/* MLS New Construction results */}
+        {(mlsListings.length > 0 || mlsError) && (
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <Home className="w-4 h-4 text-indigo-600" />
+              <h2 className="text-sm font-semibold text-gray-700">
+                From MLS — New Construction {mlsMinYear}+
+                {mlsTotal != null && <span className="text-gray-400 font-normal"> ({mlsTotal.toLocaleString()} total)</span>}
+              </h2>
+              <span className="text-xs text-gray-400">— click "Save as Project" to add to your list</span>
+            </div>
+
+            {mlsError && (
+              <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2 mb-3">
+                {mlsError}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
+              {mlsListings.map((l) => {
+                const alreadySaved = projects.some(p => p.name === l.address && p.city === l.city)
+                return (
+                  <div key={l.mlsId} className="bg-indigo-50 border border-indigo-100 rounded-xl overflow-hidden">
+                    {l.image && (
+                      <img src={l.image} alt={l.address} className="w-full h-36 object-cover" />
+                    )}
+                    {!l.image && (
+                      <div className="w-full h-20 bg-indigo-100 flex items-center justify-center">
+                        <Home className="w-8 h-8 text-indigo-300" />
+                      </div>
+                    )}
+                    <div className="p-3">
+                      <div className="flex items-start justify-between gap-2 mb-1.5">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-indigo-900 leading-tight truncate">{l.address}</p>
+                          <p className="text-xs text-indigo-600">{l.city}, {l.state} {l.zip}</p>
+                        </div>
+                        <span className="text-xs font-bold text-indigo-700 flex-shrink-0">${l.price.toLocaleString()}</span>
+                      </div>
+
+                      <div className="flex items-center gap-3 text-xs text-gray-600 mb-2">
+                        {l.bedrooms != null && <span className="flex items-center gap-1"><Bed className="w-3 h-3" />{l.bedrooms}bd</span>}
+                        {l.bathrooms != null && <span className="flex items-center gap-1"><Bath className="w-3 h-3" />{l.bathrooms}ba</span>}
+                        {l.sqft && <span className="flex items-center gap-1"><Square className="w-3 h-3" />{l.sqft.toLocaleString()} sqft</span>}
+                        {l.yearBuilt && <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />Built {l.yearBuilt}</span>}
+                      </div>
+
+                      {l.propertySubType && (
+                        <span className="inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 mb-2">{l.propertySubType}</span>
+                      )}
+
+                      {l.description && (
+                        <p className="text-[11px] text-gray-500 leading-relaxed line-clamp-2 mb-2">{l.description}</p>
+                      )}
+
+                      {l.agentName && (
+                        <p className="text-[10px] text-gray-400 truncate mb-2">Agent: {l.agentName} · {l.office}</p>
+                      )}
+
+                      <button
+                        onClick={() => saveFromMLS(l)}
+                        disabled={savingMlsId === l.mlsId || alreadySaved}
+                        className={cn(
+                          "w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition-colors",
+                          alreadySaved
+                            ? "bg-gray-100 text-gray-400 cursor-default"
+                            : "bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40"
+                        )}
+                      >
+                        {savingMlsId === l.mlsId
+                          ? <><Loader2 className="w-3 h-3 animate-spin" /> Saving…</>
+                          : alreadySaved
+                            ? <><CheckCircle2 className="w-3 h-3" /> Saved</>
+                            : <><Plus className="w-3 h-3" /> Save as Project</>
+                        }
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </div>
         )}
