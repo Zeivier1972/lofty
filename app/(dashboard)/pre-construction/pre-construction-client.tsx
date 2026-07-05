@@ -103,6 +103,12 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
     `${p.name} ${p.developer} ${p.neighborhood} ${p.city}`.toLowerCase().includes(search.toLowerCase())
   )
 
+  const mlsFiltered = search.trim()
+    ? mlsListings.filter(l =>
+        `${l.address} ${l.city} ${l.zip} ${l.propertySubType} ${l.description}`.toLowerCase().includes(search.toLowerCase())
+      )
+    : mlsListings
+
   const statusInfo = (s: string) => STATUS_OPTIONS.find(o => o.value === s) || STATUS_OPTIONS[0]
 
   async function save() {
@@ -376,7 +382,11 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
               <Home className="w-4 h-4 text-indigo-600" />
               <h2 className="text-sm font-semibold text-gray-700">
                 From MLS — New Construction {mlsMinYear}+
-                {mlsTotal != null && <span className="text-gray-400 font-normal"> ({mlsTotal.toLocaleString()} total)</span>}
+                {mlsTotal != null && (
+                  <span className="text-gray-400 font-normal">
+                    {" "}({search.trim() ? `${mlsFiltered.length} of ${mlsTotal.toLocaleString()}` : mlsTotal.toLocaleString()} total)
+                  </span>
+                )}
               </h2>
               <span className="text-xs text-gray-400">— click "Save as Project" to add to your list</span>
             </div>
@@ -388,7 +398,7 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
             )}
 
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
-              {mlsListings.map((l) => {
+              {mlsFiltered.map((l) => {
                 const alreadySaved = projects.some(p => p.name === l.address && p.city === l.city)
                 return (
                   <div key={l.mlsId} className="bg-indigo-50 border border-indigo-100 rounded-xl overflow-hidden">
