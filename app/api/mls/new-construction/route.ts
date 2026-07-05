@@ -21,15 +21,17 @@ export async function GET(req: Request) {
   const minPrice = parseInt(url.searchParams.get("minPrice") || "0") || undefined
   const maxPrice = parseInt(url.searchParams.get("maxPrice") || "0") || undefined
   const limit = Math.min(parseInt(url.searchParams.get("limit") || "48"), 100)
+  const keyword = url.searchParams.get("keyword")?.trim() || undefined
 
   try {
     const listings = await searchIdxListings({
-      cities: city ? [city] : MIAMI_METRO_CITIES,
+      cities: city ? [city] : (keyword ? undefined : MIAMI_METRO_CITIES),
       minYear,
       minPrice,
       maxPrice,
       limit,
       sort: "price_asc",
+      keyword,
     })
 
     const results = listings.map((l: any) => ({

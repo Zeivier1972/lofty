@@ -170,7 +170,7 @@ export async function searchIdxListings(params: {
   minGarage?: number; propertySubType?: string; mode?: "sale" | "rent"
   minSqft?: number; maxSqft?: number; minYear?: number; maxYear?: number
   maxHoa?: number; maxDom?: number; pool?: boolean; waterfront?: boolean
-  sort?: string; limit?: number; offset?: number
+  sort?: string; limit?: number; offset?: number; keyword?: string
 }): Promise<any[]> {
   const token = process.env.BRIDGE_SERVER_TOKEN
   if (!token) throw new Error("BRIDGE_SERVER_TOKEN not set")
@@ -218,6 +218,12 @@ export async function searchIdxListings(params: {
   }
 
   if (params.propertySubType) filters.push(`PropertySubType eq '${esc(params.propertySubType)}'`)
+
+  // Full-text keyword search across address and public remarks (building/development name)
+  if (params.keyword) {
+    const kw = esc(params.keyword.trim())
+    filters.push(`(contains(UnparsedAddress,'${kw}') or contains(PublicRemarks,'${kw}'))`)
+  }
 
   const query = new URLSearchParams()
   query.set("access_token", token)

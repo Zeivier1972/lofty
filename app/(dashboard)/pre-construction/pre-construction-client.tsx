@@ -97,6 +97,7 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
   const [mlsTotal, setMlsTotal] = useState<number | null>(null)
   const [mlsError, setMlsError] = useState<string | null>(null)
   const [mlsMinYear, setMlsMinYear] = useState(2025)
+  const [mlsKeyword, setMlsKeyword] = useState("")
   const [savingMlsId, setSavingMlsId] = useState<string | null>(null)
 
   const filtered = projects.filter(p =>
@@ -162,7 +163,9 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
     setMlsLoading(true)
     setMlsError(null)
     try {
-      const res = await fetch(`/api/mls/new-construction?minYear=${mlsMinYear}&limit=48`)
+      const params = new URLSearchParams({ minYear: String(mlsMinYear), limit: "48" })
+      if (mlsKeyword.trim()) params.set("keyword", mlsKeyword.trim())
+      const res = await fetch(`/api/mls/new-construction?${params}`)
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Search failed")
       setMlsListings(data.results || [])
@@ -225,6 +228,15 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
                 <option value={2026}>From 2026</option>
                 <option value={2027}>From 2027</option>
               </select>
+              <div className="w-px h-6 bg-gray-200" />
+              <input
+                type="text"
+                value={mlsKeyword}
+                onChange={e => setMlsKeyword(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && searchMLS()}
+                placeholder="Building name… (e.g. Domus)"
+                className="text-sm px-2 py-2 bg-transparent border-none outline-none text-gray-700 w-44 placeholder:text-gray-400"
+              />
               <button
                 onClick={searchMLS}
                 disabled={mlsLoading}
