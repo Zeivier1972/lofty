@@ -89,15 +89,13 @@ export async function triggerMatchAlert(contactId: string): Promise<{ sent: bool
       return { sent: false, reason: "No buyer prefs" }
     }
 
-    // Parse buyerLocation into zip codes and/or city names
+    // Parse buyerLocation into zip codes and/or city names — ALL of them are
+    // used (OR'd together), so "33032, 33034, Homestead" matches any area.
     const rawLoc = (prefs.buyerLocation || "").trim()
     const locTokens = rawLoc ? rawLoc.split(",").map((s: string) => s.trim()).filter(Boolean) : []
     const ZIP_RE = /^\d{5}$/
     const zipTokens = locTokens.filter((l: string) => ZIP_RE.test(l))
     const cityTokens = locTokens.filter((l: string) => !ZIP_RE.test(l))
-    // Prefer zip over city when both exist (zip is more specific)
-    const primaryZip = zipTokens[0] || undefined
-    const primaryCities = !primaryZip && cityTokens.length > 0 ? cityTokens : undefined
 
     const propSubType = prefs.buyerPropertyType
       ? PROP_TYPE_MAP[prefs.buyerPropertyType]
@@ -105,8 +103,8 @@ export async function triggerMatchAlert(contactId: string): Promise<{ sent: bool
 
     // Query live Bridge MLS with buyer's criteria
     const mlsListings = await searchIdxListings({
-      zip: primaryZip,
-      cities: primaryCities,
+      zips: zipTokens.length > 0 ? zipTokens : undefined,
+      cities: cityTokens.length > 0 ? cityTokens : undefined,
       minPrice: prefs.buyerBudgetMin || undefined,
       maxPrice: prefs.buyerBudgetMax || undefined,
       minBeds: prefs.buyerBedroomsMin || undefined,

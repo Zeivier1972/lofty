@@ -23,14 +23,14 @@ export async function GET(req: Request) {
   }
 
   try {
-    // The location box accepts a city, comma-separated cities, or a 5-digit ZIP.
+    // The location box accepts any mix of cities and 5-digit ZIPs, comma-separated:
+    // "Miami", "33032", "33032, 33034, 33035", "Homestead, 33032" all work.
     const loc = (searchParams.get("city") || "").trim()
-    const isZip = /^\d{5}$/.test(loc)
-
-    // Support comma-separated multi-city values (e.g. from old email alert links)
-    const cityTokens = loc && !isZip
-      ? loc.split(",").map(s => s.trim()).filter(Boolean)
-      : []
+    const locTokens = loc ? loc.split(",").map(s => s.trim()).filter(Boolean) : []
+    const zipTokens = locTokens.filter(t => /^\d{5}$/.test(t))
+    const cityTokens = locTokens.filter(t => !/^\d{5}$/.test(t))
+    const zipParam = (searchParams.get("zip") || "").trim()
+    if (/^\d{5}$/.test(zipParam)) zipTokens.push(zipParam)
 
     const bool = (k: string) => searchParams.get(k) === "1" || searchParams.get(k) === "true"
 
@@ -41,7 +41,7 @@ export async function GET(req: Request) {
     // When keyword is set, skip city/zip — they'd AND together and block MLS# / address results
     const listings = await searchIdxListings({
       cities: (!keyword && cityTokens.length > 0) ? cityTokens : undefined,
-      zip: (!keyword && isZip) ? loc : (!keyword ? (searchParams.get("zip") || undefined) : undefined),
+      zips: (!keyword && zipTokens.length > 0) ? zipTokens : undefined,
       minPrice: num("minPrice"),
       maxPrice: num("maxPrice"),
       minBeds: num("minBeds"),
