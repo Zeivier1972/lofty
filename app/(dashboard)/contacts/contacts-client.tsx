@@ -1593,6 +1593,17 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
     router.push(`/contacts?${params.toString()}`)
   }
 
+  // Live search: apply automatically 500ms after the user stops typing
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if ((search || "") !== (filters.search || "")) {
+        const params = buildParams({ search: search || undefined })
+        router.push(`/contacts?${params.toString()}`)
+      }
+    }, 500)
+    return () => clearTimeout(t)
+  }, [search])
+
   const selectedIds = Array.from(selected)
 
   return (
