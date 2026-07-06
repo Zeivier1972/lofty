@@ -133,6 +133,7 @@ export default async function ContactsPage({
           assignedTo: { select: { id: true, name: true } },
           pipelineLeads: { include: { stage: true }, take: 1, orderBy: { updatedAt: "desc" } },
           enrollments: { include: { plan: true }, take: 1 },
+          leadReferrals: { select: { status: true, partner: { select: { name: true } } }, orderBy: { sentAt: "desc" }, take: 1 },
           _count: { select: { tasks: true, notes: true, activities: true, dialerCalls: true, emails: true } },
         },
         orderBy: [{ createdAt: "desc" }],
