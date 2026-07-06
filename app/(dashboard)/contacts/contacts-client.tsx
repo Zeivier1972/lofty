@@ -2018,6 +2018,16 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
                           <span className="text-xs text-gray-400">{relativeTime(lastTouch)}</span>
                           {isBuyer && <span className="text-[10px] px-1.5 py-0 rounded-full bg-blue-100 text-blue-700 font-medium">Buyer</span>}
                           {isSeller && <span className="text-[10px] px-1.5 py-0 rounded-full bg-green-100 text-green-700 font-medium">Seller</span>}
+                          {contact.leadReferrals?.[0]?.partner && !["RETURNED"].includes(contact.leadReferrals[0].status) && (
+                            <span className={cn(
+                              "text-[10px] px-1.5 py-0 rounded-full font-medium",
+                              ["CLOSED", "LOST"].includes(contact.leadReferrals[0].status)
+                                ? "bg-gray-100 text-gray-500"
+                                : "bg-emerald-100 text-emerald-700"
+                            )}>
+                              🤝 {contact.leadReferrals[0].partner.name}
+                            </span>
+                          )}
                         </div>
                         {contact.phone && (
                           <a

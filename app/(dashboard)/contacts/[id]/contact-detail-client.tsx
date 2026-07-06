@@ -681,6 +681,20 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
                     {ct.tag.name}
                   </span>
                 ))}
+                {contact.leadReferrals?.[0] && !["RETURNED"].includes(contact.leadReferrals[0].status) && (
+                  <a
+                    href="/referrals"
+                    title={`Referral status: ${contact.leadReferrals[0].status.replace(/_/g, " ")} — click to manage`}
+                    className={cn(
+                      "text-xs px-2 py-0.5 rounded-full font-medium border transition-colors hover:opacity-80",
+                      ["CLOSED", "LOST"].includes(contact.leadReferrals[0].status)
+                        ? "bg-gray-100 text-gray-500 border-gray-200"
+                        : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                    )}
+                  >
+                    🤝 Assigned to {contact.leadReferrals[0].partner?.name}
+                  </a>
+                )}
               </div>
             </div>
           </div>
