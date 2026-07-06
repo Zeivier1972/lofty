@@ -4,7 +4,6 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { sendEmail } from "@/lib/email"
-import { sendSMS } from "@/lib/sms"
 import crypto from "crypto"
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
@@ -126,19 +125,7 @@ export async function POST(req: Request) {
       html: buildReferralEmail({ partnerName: partner.name, contact, note: note?.trim() || null, agentName, agentPhone, portalUrl }),
     }).catch(() => false)
   }
-  if (partner.phone) {
-    const smsBody = [
-      `🤝 ${agentName} te refiere un lead:`,
-      `${contact.firstName} ${contact.lastName || ""}`.trim(),
-      contact.phone ? `Tel: ${contact.phone}` : null,
-      contact.email ? `Email: ${contact.email}` : null,
-      contact.buyerLocation ? `Área: ${contact.buyerLocation}` : null,
-      contact.buyerBudgetMax ? `Presupuesto: hasta $${Number(contact.buyerBudgetMax).toLocaleString()}` : null,
-      note?.trim() ? `Nota: ${note.trim()}` : null,
-      `Portal: ${portalUrl}`,
-    ].filter(Boolean).join("\n")
-    smsSent = !!(await sendSMS(partner.phone, smsBody).catch(() => null))
-  }
+  // SMS notification intentionally disabled — partners are notified by email only.
 
   // Log on the contact's timeline
   await prisma.activity.create({

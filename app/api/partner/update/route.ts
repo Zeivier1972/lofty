@@ -11,11 +11,15 @@ import { getPartnerSession } from "@/lib/partner-auth"
 const STATUSES = ["SENT", "CONTACTED", "SHOWING", "UNDER_CONTRACT", "CLOSED", "LOST", "RETURNED"]
 const KINDS = ["NOTE", "CALL", "STATUS"]
 
+// CRM pipeline stages a partner may move their leads into — these drive the
+// system's automated follow-up texts/emails for the lead.
+const ALLOWED_CRM_STAGES = ["contacted 1", "contacted 2", "contacted 3", "contacted 4", "drip campaign"]
+
 export async function POST(req: Request) {
   const session = await getPartnerSession()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const { referralId, status, note, kind } = await req.json()
+  const { referralId, status, note, kind, crmStageId } = await req.json()
   if (!referralId) return NextResponse.json({ error: "referralId required" }, { status: 400 })
 
   const referral = await prisma.leadReferral.findUnique({
@@ -27,6 +31,39 @@ export async function POST(req: Request) {
   }
 
   const updates: any[] = []
+
+  // Move the lead's CRM pipeline stage (Contacted 1-4 / Drip Campaign) so the
+  // system's automation keeps sending the lead the right messages. Smart Plan
+  // enrollments are untouched and continue running.
+  if (crmStageId) {
+    const stage = await prisma.pipelineStage.findUnique({
+      where: { id: crmStageId },
+      select: { id: true, name: true },
+    })
+    if (!stage || !ALLOWED_CRM_STAGES.includes(stage.name.toLowerCase().trim())) {
+      return NextResponse.json({ error: "Stage not allowed" }, { status: 400 })
+    }
+    const existingLead = await prisma.pipelineLead.findFirst({
+      where: { contactId: referral.contact.id },
+      orderBy: { updatedAt: "desc" },
+    })
+    if (existingLead) {
+      await prisma.pipelineLead.update({ where: { id: existingLead.id }, data: { stageId: stage.id } })
+    } else {
+      await prisma.pipelineLead.create({ data: { contactId: referral.contact.id, stageId: stage.id } })
+    }
+    const stageUpdate = await prisma.referralUpdate.create({
+      data: { referralId, author: "PARTNER", kind: "STATUS", body: `CRM stage → ${stage.name}` },
+    })
+    updates.push(stageUpdate)
+    await prisma.activity.create({
+      data: {
+        contactId: referral.contact.id,
+        type: "PIPELINE_MOVED",
+        title: `${referral.partner.name} moved lead to ${stage.name}`,
+      },
+    }).catch(() => {})
+  }
 
   if (status && STATUSES.includes(status) && status !== referral.status) {
     await prisma.leadReferral.update({ where: { id: referralId }, data: { status } })
