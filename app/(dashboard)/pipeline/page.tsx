@@ -16,7 +16,16 @@ export default async function PipelinePage() {
           stages: {
             include: {
               leads: {
-                include: { contact: { include: { tags: { include: { tag: true } } } } },
+                include: {
+                  // Only the fields the kanban cards render — not the full contact record
+                  contact: {
+                    select: {
+                      id: true, firstName: true, lastName: true, phone: true, email: true,
+                      lastContacted: true,
+                      tags: { include: { tag: true } },
+                    },
+                  },
+                },
                 orderBy: { createdAt: "desc" },
               },
             },

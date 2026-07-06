@@ -37,20 +37,28 @@ export default async function DashboardPage() {
       prisma.transaction.count({ where: { status: { in: ["ACTIVE_LISTING", "UNDER_CONTRACT"] } } }),
       prisma.task.findMany({
         where: { status: { in: ["PENDING", "IN_PROGRESS"] }, ...(userId && { assignedToId: userId }) },
-        include: { contact: true },
+        include: { contact: { select: { id: true, firstName: true, lastName: true } } },
         orderBy: [{ priority: "desc" }, { dueDate: "asc" }],
         take: 8,
       }),
       prisma.appointment.findMany({
         where: { startTime: { gte: new Date() }, ...(userId && { userId }), status: { in: ["SCHEDULED", "CONFIRMED"] } },
-        include: { contact: true },
+        include: { contact: { select: { id: true, firstName: true, lastName: true } } },
         orderBy: { startTime: "asc" },
         take: 5,
       }),
-      prisma.activity.findMany({ include: { contact: true, user: true }, orderBy: { createdAt: "desc" }, take: 10 }),
+      prisma.activity.findMany({
+        select: {
+          id: true, type: true, title: true, createdAt: true,
+          contact: { select: { id: true, firstName: true, lastName: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+      }),
+      // Only lead values are needed for the pipeline chart — not full contact records
       prisma.pipelineStage.findMany({
         where: { pipeline: { isDefault: true } },
-        include: { leads: { include: { contact: true } } },
+        select: { id: true, name: true, leads: { select: { value: true } } },
         orderBy: { order: "asc" },
       }),
       prisma.contact.groupBy({ by: ["status"], _count: true, where: { isArchived: false } }),
