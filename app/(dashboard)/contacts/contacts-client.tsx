@@ -1387,7 +1387,10 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
     return ""
   }
   const [filterCategory, setFilterCategory] = useState<string>(getInitialCategory)
-  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [selected, setSelected] = useState<Set<string>>(() => {
+    if (typeof window === "undefined") return new Set()
+    try { return new Set<string>(JSON.parse(sessionStorage.getItem("contacts_selection") || "[]")) } catch { return new Set() }
+  })
   const [showBulkSMS, setShowBulkSMS] = useState(false)
   const [showBulkEmail, setShowBulkEmail] = useState(false)
   const [showImport, setShowImport] = useState(false)
@@ -1447,6 +1450,11 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
     }
   }
 
+  // Selection survives searching for more names, paging, and navigation
+  useEffect(() => {
+    try { sessionStorage.setItem("contacts_selection", JSON.stringify(Array.from(selected))) } catch {}
+  }, [selected])
+
   const toggleSelect = (id: string) => {
     setSelected(prev => {
       const next = new Set(prev)
@@ -1457,8 +1465,18 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
   }
 
   const toggleAll = () => {
-    if (allSelected) { setSelected(new Set()); setGlobalSelectAll(false) }
-    else setSelected(new Set(contacts.map(c => c.id)))
+    if (allSelected) {
+      // Unselect only the visible contacts — keep ones picked in other searches/pages
+      setSelected(prev => {
+        const next = new Set(prev)
+        contacts.forEach(c => next.delete(c.id))
+        return next
+      })
+      setGlobalSelectAll(false)
+    } else {
+      // Add the visible contacts to whatever is already selected
+      setSelected(prev => new Set([...Array.from(prev), ...contacts.map(c => c.id)]))
+    }
   }
 
   const bulkDeleteContacts = async () => {
