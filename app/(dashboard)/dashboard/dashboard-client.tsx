@@ -120,7 +120,7 @@ function SofiaBriefing({ hotAlerts: initialHotAlerts, matchAlertsSentToday, newL
     },
   ].filter(Boolean) as any[]
 
-  const allClear = hotAlerts.length === 0 && portalUnread === 0 && tasksDueToday === 0
+  const allClear = localHotAlerts.length === 0 && portalUnread === 0 && tasksDueToday === 0
 
   return (
     <div className="rounded-2xl overflow-hidden shadow-md border border-white/10">
