@@ -129,6 +129,13 @@ const STMTS = [
     CONSTRAINT "ReferralUpdate_pkey" PRIMARY KEY ("id")
   )`,
   `CREATE INDEX IF NOT EXISTS "ReferralUpdate_referralId_idx" ON "ReferralUpdate"("referralId")`,
+  // Inbox read tracking — existing messages start as read (clean slate), new ones unread
+  `ALTER TABLE "SMSMessage" ADD COLUMN IF NOT EXISTS "isRead" BOOLEAN NOT NULL DEFAULT true`,
+  `ALTER TABLE "SMSMessage" ALTER COLUMN "isRead" SET DEFAULT false`,
+  `ALTER TABLE "WhatsAppMessage" ADD COLUMN IF NOT EXISTS "isRead" BOOLEAN NOT NULL DEFAULT true`,
+  `ALTER TABLE "WhatsAppMessage" ALTER COLUMN "isRead" SET DEFAULT false`,
+  `ALTER TABLE "FacebookMessage" ADD COLUMN IF NOT EXISTS "isRead" BOOLEAN NOT NULL DEFAULT true`,
+  `ALTER TABLE "FacebookMessage" ALTER COLUMN "isRead" SET DEFAULT false`,
 ]
 
 // ─── Email templates ─────────────────────────────────────────────────────────

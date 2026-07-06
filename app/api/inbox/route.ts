@@ -33,8 +33,10 @@ export async function GET(req: Request) {
     if (!threadMap.has(msg.contactId)) {
       threadMap.set(msg.contactId, {
         contactId: msg.contactId, lastMessage: msg.body, lastMessageAt: msg.createdAt,
-        lastDirection: msg.direction, channel: "sms", unread: msg.direction === "INBOUND",
+        lastDirection: msg.direction, channel: "sms", unread: msg.direction === "INBOUND" && !msg.isRead,
       })
+    } else if (msg.direction === "INBOUND" && !msg.isRead) {
+      threadMap.get(msg.contactId).unread = true
     }
   }
 
@@ -44,10 +46,13 @@ export async function GET(req: Request) {
     if (!existing) {
       threadMap.set(msg.contactId, {
         contactId: msg.contactId, lastMessage: msg.body, lastMessageAt: msg.createdAt,
-        lastDirection: msg.direction, channel: "whatsapp", unread: msg.direction === "INBOUND",
+        lastDirection: msg.direction, channel: "whatsapp", unread: msg.direction === "INBOUND" && !msg.isRead,
       })
-    } else if (msg.createdAt > existing.lastMessageAt) {
-      Object.assign(existing, { lastMessage: msg.body, lastMessageAt: msg.createdAt, lastDirection: msg.direction, channel: "whatsapp" })
+    } else {
+      if (msg.createdAt > existing.lastMessageAt) {
+        Object.assign(existing, { lastMessage: msg.body, lastMessageAt: msg.createdAt, lastDirection: msg.direction, channel: "whatsapp" })
+      }
+      if (msg.direction === "INBOUND" && !msg.isRead) existing.unread = true
     }
   }
 
@@ -57,10 +62,13 @@ export async function GET(req: Request) {
     if (!existing) {
       threadMap.set(msg.contactId, {
         contactId: msg.contactId, lastMessage: msg.body, lastMessageAt: msg.createdAt,
-        lastDirection: msg.direction, channel: "facebook", unread: msg.direction === "INBOUND",
+        lastDirection: msg.direction, channel: "facebook", unread: msg.direction === "INBOUND" && !msg.isRead,
       })
-    } else if (msg.createdAt > existing.lastMessageAt) {
-      Object.assign(existing, { lastMessage: msg.body, lastMessageAt: msg.createdAt, lastDirection: msg.direction, channel: "facebook" })
+    } else {
+      if (msg.createdAt > existing.lastMessageAt) {
+        Object.assign(existing, { lastMessage: msg.body, lastMessageAt: msg.createdAt, lastDirection: msg.direction, channel: "facebook" })
+      }
+      if (msg.direction === "INBOUND" && !msg.isRead) existing.unread = true
     }
   }
 
@@ -72,8 +80,11 @@ export async function GET(req: Request) {
         contactId: msg.contactId, lastMessage: msg.content, lastMessageAt: msg.createdAt,
         lastDirection: "INBOUND", channel: "portal", unread: !msg.isRead,
       })
-    } else if (msg.createdAt > existing.lastMessageAt) {
-      Object.assign(existing, { lastMessage: msg.content, lastMessageAt: msg.createdAt, lastDirection: "INBOUND", channel: "portal", unread: !msg.isRead })
+    } else {
+      if (msg.createdAt > existing.lastMessageAt) {
+        Object.assign(existing, { lastMessage: msg.content, lastMessageAt: msg.createdAt, lastDirection: "INBOUND", channel: "portal" })
+      }
+      if (!msg.isRead) existing.unread = true
     }
   }
 
@@ -92,10 +103,25 @@ export async function GET(req: Request) {
     .filter(t => t.contact)
     .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime())
 
-  const unreadSms = (smsMessages as any[]).filter(m => m.direction === "INBOUND").length
-  const unreadWa = (waMessages as any[]).filter(m => m.direction === "INBOUND").length
-  const unreadFb = (fbMessages as any[]).filter(m => m.direction === "INBOUND").length
+  const unreadSms = (smsMessages as any[]).filter(m => m.direction === "INBOUND" && !m.isRead).length
+  const unreadWa = (waMessages as any[]).filter(m => m.direction === "INBOUND" && !m.isRead).length
+  const unreadFb = (fbMessages as any[]).filter(m => m.direction === "INBOUND" && !m.isRead).length
   const unreadPortal = (portalMessages as any[]).filter(m => !m.isRead).length
 
   return NextResponse.json({ threads, unreadSms, unreadWa, unreadFb, unreadPortal })
+}
+
+// PATCH — mark all inbox messages as read
+export async function PATCH() {
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  await Promise.all([
+    prisma.sMSMessage.updateMany({ where: { direction: "INBOUND", isRead: false }, data: { isRead: true } }),
+    prisma.whatsAppMessage.updateMany({ where: { direction: "INBOUND", isRead: false }, data: { isRead: true } }),
+    prisma.facebookMessage.updateMany({ where: { direction: "INBOUND", isRead: false }, data: { isRead: true } }),
+    prisma.portalMessage.updateMany({ where: { fromClient: true, isRead: false }, data: { isRead: true } }),
+  ])
+
+  return NextResponse.json({ ok: true })
 }

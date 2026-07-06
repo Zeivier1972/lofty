@@ -95,10 +95,20 @@ export default function InboxClient() {
       const res = await fetch(`/api/inbox/${contactId}`)
       const data = await res.json()
       setConversation(data)
+      // Opening the conversation marked it read server-side — update the list/badges
+      setThreads(prev => prev.map(t => t.contactId === contactId ? { ...t, unread: false } : t))
+      fetchThreads()
     } catch {
       toast({ title: "Error cargando conversación", variant: "destructive" })
     }
-  }, [toast])
+  }, [toast, fetchThreads])
+
+  const markAllRead = useCallback(async () => {
+    await fetch("/api/inbox", { method: "PATCH" }).catch(() => {})
+    setThreads(prev => prev.map(t => ({ ...t, unread: false })))
+    setUnreadSms(0); setUnreadWa(0); setUnreadFb(0); setUnreadPortal(0)
+    fetchThreads()
+  }, [fetchThreads])
 
   useEffect(() => { fetchThreads() }, [fetchThreads])
   useEffect(() => {
@@ -172,9 +182,18 @@ export default function InboxClient() {
         <div className="px-4 py-3 border-b border-gray-200">
           <div className="flex items-center justify-between mb-3">
             <h1 className="font-bold text-gray-900 text-lg">Bandeja Unificada</h1>
-            <button onClick={fetchThreads} className="p-1 hover:bg-gray-100 rounded">
+            <button onClick={fetchThreads} className="p-1 hover:bg-gray-100 rounded" title="Actualizar">
               <RefreshCw className="w-4 h-4 text-gray-500" />
             </button>
+            {(unreadSms + unreadWa + unreadFb + unreadPortal) > 0 && (
+              <button
+                onClick={markAllRead}
+                className="ml-auto text-xs text-lofty-600 hover:text-lofty-800 hover:underline whitespace-nowrap"
+                title="Marcar todos los mensajes como leídos"
+              >
+                ✓ Marcar todo leído
+              </button>
+            )}
           </div>
           <div className="relative mb-3">
             <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
