@@ -1598,6 +1598,13 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
     router.push(`/contacts?${params.toString()}`)
   }
 
+  // Pagination that keeps the current stage tab, search, and filters
+  const gotoPage = (p: number) => {
+    const params = buildParams()
+    if (p > 1) params.set("page", String(p))
+    router.push(`/contacts?${params.toString()}`)
+  }
+
   // Live search: apply automatically 500ms after the user stops typing
   useEffect(() => {
     const t = setTimeout(() => {
@@ -2256,16 +2263,20 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
                 variant="outline"
                 size="sm"
                 disabled={page === 1}
-                onClick={() => router.push(`/contacts?page=${page - 1}`)}
+                onClick={() => gotoPage(page - 1)}
               >
                 <ChevronLeft className="w-4 h-4" />
               </Button>
-              {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => i + 1).map((p) => (
+              {(() => {
+                const start = Math.max(1, Math.min(page - 2, totalPages - 4))
+                const end = Math.min(totalPages, start + 4)
+                return Array.from({ length: end - start + 1 }, (_, i) => start + i)
+              })().map((p) => (
                 <Button
                   key={p}
                   variant={p === page ? "default" : "outline"}
                   size="sm"
-                  onClick={() => router.push(`/contacts?page=${p}`)}
+                  onClick={() => gotoPage(p)}
                   className={p === page ? "bg-lofty-600 hover:bg-lofty-700" : ""}
                 >
                   {p}
@@ -2275,7 +2286,7 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
                 variant="outline"
                 size="sm"
                 disabled={page === totalPages}
-                onClick={() => router.push(`/contacts?page=${page + 1}`)}
+                onClick={() => gotoPage(page + 1)}
               >
                 <ChevronRight className="w-4 h-4" />
               </Button>
