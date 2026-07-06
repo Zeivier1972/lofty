@@ -6,6 +6,8 @@ import { Handshake, Phone, Mail, MapPin, DollarSign, BedDouble, Clock, LogOut, L
 import { cn, formatPhone } from "@/lib/utils"
 
 interface Update { id: string; author: string; kind: string; body: string; createdAt: string }
+interface CrmStage { id: string; name: string }
+
 interface Referral {
   id: string
   status: string
@@ -15,6 +17,7 @@ interface Referral {
     id: string; firstName: string; lastName: string; phone: string | null; email: string | null
     buyerLocation: string | null; buyerBudgetMin: number | null; buyerBudgetMax: number | null
     buyerBedroomsMin: number | null; buyerPropertyType: string | null; buyerTimelineMonths: number | null
+    pipelineLeads?: { stage: { id: string; name: string } | null }[]
   }
   updates: Update[]
 }
@@ -30,11 +33,12 @@ const STATUS_META: Record<string, { label: string; color: string }> = {
 }
 const STATUSES = Object.keys(STATUS_META)
 
-export default function PartnerClient({ partnerName, agentName, agentPhone, referrals: initialReferrals }: {
+export default function PartnerClient({ partnerName, agentName, agentPhone, referrals: initialReferrals, crmStages }: {
   partnerName: string
   agentName: string
   agentPhone: string
   referrals: Referral[]
+  crmStages: CrmStage[]
 }) {
   const router = useRouter()
   const [referrals, setReferrals] = useState(initialReferrals)
@@ -42,7 +46,7 @@ export default function PartnerClient({ partnerName, agentName, agentPhone, refe
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState<string | null>(null)
 
-  async function updateReferral(referralId: string, payload: { status?: string; note?: string; kind?: string }) {
+  async function updateReferral(referralId: string, payload: { status?: string; note?: string; kind?: string; crmStageId?: string }) {
     setSaving(referralId)
     try {
       const res = await fetch("/api/partner/update", {
@@ -52,12 +56,16 @@ export default function PartnerClient({ partnerName, agentName, agentPhone, refe
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Update failed")
+      const newStage = payload.crmStageId ? crmStages.find(st => st.id === payload.crmStageId) : null
       setReferrals(prev => prev.map(r => {
         if (r.id !== referralId) return r
         return {
           ...r,
           status: payload.status || r.status,
           updates: [...(data.updates || []), ...r.updates],
+          contact: newStage
+            ? { ...r.contact, pipelineLeads: [{ stage: { id: newStage.id, name: newStage.name } }] }
+            : r.contact,
         }
       }))
       if (payload.note) setNoteDrafts(d => ({ ...d, [referralId]: "" }))
@@ -167,6 +175,42 @@ export default function PartnerClient({ partnerName, agentName, agentPhone, refe
                       ))}
                     </div>
                   </div>
+
+                  {/* CRM follow-up stage — drives automated texts/emails to the lead */}
+                  {crmStages.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Seguimiento automático</p>
+                      <p className="text-[11px] text-gray-400 mb-2">
+                        Etapa del lead en el CRM — el sistema le envía los mensajes de seguimiento según la etapa.
+                        {(() => {
+                          const cur = c.pipelineLeads?.[0]?.stage
+                          return cur && !crmStages.some(st => st.id === cur.id)
+                            ? ` Etapa actual: ${cur.name}.`
+                            : ""
+                        })()}
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {crmStages.map(st => {
+                          const isCurrent = c.pipelineLeads?.[0]?.stage?.id === st.id
+                          return (
+                            <button
+                              key={st.id}
+                              onClick={() => !isCurrent && updateReferral(r.id, { crmStageId: st.id })}
+                              disabled={saving === r.id}
+                              className={cn(
+                                "px-2.5 py-1 rounded-full text-xs font-semibold border transition-all",
+                                isCurrent
+                                  ? "bg-lofty-50 text-lofty-700 border-lofty-300 ring-2 ring-offset-1 ring-lofty-300"
+                                  : "bg-white text-gray-400 border-gray-200 hover:border-gray-300"
+                              )}
+                            >
+                              {st.name}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Add note / log call */}
                   <div>
