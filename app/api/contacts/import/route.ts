@@ -298,6 +298,22 @@ export async function POST(req: Request) {
     const stageMap = new Map<string, string>()
     defaultPipeline?.stages.forEach(s => stageMap.set(s.name.toLowerCase(), s.id))
 
+    // Auto-create any stage names in the CSV that don't exist yet — previously
+    // unknown stages silently fell back to the first stage, misfiling contacts.
+    if (defaultPipeline) {
+      const neededStageNames = Array.from(new Set(
+        parsed.map(r => r.pipelineName).filter(Boolean).map(n => n.trim())
+      ))
+      let nextOrder = defaultPipeline.stages.reduce((m, s) => Math.max(m, s.order), 0) + 1
+      for (const name of neededStageNames) {
+        if (stageMap.has(name.toLowerCase())) continue
+        const created = await prisma.pipelineStage.create({
+          data: { pipelineId: defaultPipeline.id, name, color: "#94A3B8", order: nextOrder++ },
+        }).catch(() => null)
+        if (created) stageMap.set(name.toLowerCase(), created.id)
+      }
+    }
+
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
     const aiConfig = await prisma.aIConfig.findFirst({
       select: { realtorName: true, realtorPhone: true, realtorEmail: true },
@@ -308,6 +324,8 @@ export async function POST(req: Request) {
     // ── Phase 5: upsert contacts in batches ─────────────────────────────
     let imported = 0
     let updated = 0
+    let stagePlaced = 0
+    let stageMoved = 0
     const emailsSent = 0
     const errors: string[] = []
     const BATCH = 50
@@ -348,11 +366,26 @@ export async function POST(req: Request) {
             })
           }
 
-          // Pipeline (only for new contacts — don't add duplicate pipeline entries)
-          if (isNew && pipelineName && defaultPipeline) {
-            const stageId = stageMap.get(pipelineName.toLowerCase()) || defaultPipeline.stages[0]?.id
+          // Pipeline — ensure the contact sits in the CSV's stage.
+          // Applies to existing contacts too: earlier imports never staged
+          // updated contacts, leaving them out of the pipeline entirely.
+          if (pipelineName && defaultPipeline) {
+            const stageId = stageMap.get(pipelineName.toLowerCase())
             if (stageId) {
-              await prisma.pipelineLead.create({ data: { contactId, stageId } }).catch(() => {})
+              const existingLead = await prisma.pipelineLead.findFirst({
+                where: { contactId },
+                orderBy: { updatedAt: "desc" },
+              })
+              if (!existingLead) {
+                await prisma.pipelineLead.create({ data: { contactId, stageId } }).catch(() => {})
+                stagePlaced++
+              } else if (existingLead.stageId !== stageId) {
+                await prisma.pipelineLead.update({
+                  where: { id: existingLead.id },
+                  data: { stageId },
+                }).catch(() => {})
+                stageMoved++
+              }
             }
           }
 
@@ -377,6 +410,8 @@ export async function POST(req: Request) {
     return NextResponse.json({
       imported,
       updated,
+      stagePlaced,
+      stageMoved,
       emailsSent,
       skipped: parseSkipped,
       errors: errors.slice(0, 10),
