@@ -1137,29 +1137,45 @@ model LeadMagnetDelivery {
 // ─── Realtor referral partners (leads shared with other agents) ─────────────
 
 model ReferralPartner {
-  id        String         @id @default(cuid())
-  name      String
-  email     String?
-  phone     String?
-  brokerage String?
-  feePct    Float?
-  isActive  Boolean        @default(true)
-  notes     String?
-  createdAt DateTime       @default(now())
-  referrals LeadReferral[]
+  id          String         @id @default(cuid())
+  name        String
+  email       String?
+  phone       String?
+  brokerage   String?
+  feePct      Float?
+  isActive    Boolean        @default(true)
+  notes       String?
+  token       String?        @unique
+  lastLoginAt DateTime?
+  createdAt   DateTime       @default(now())
+  referrals   LeadReferral[]
 }
 
 model LeadReferral {
-  id        String          @id @default(cuid())
-  contact   Contact         @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  id        String           @id @default(cuid())
+  contact   Contact          @relation(fields: [contactId], references: [id], onDelete: Cascade)
   contactId String
-  partner   ReferralPartner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  partner   ReferralPartner  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
   partnerId String
-  status    String          @default("SENT") // SENT, CONTACTED, SHOWING, UNDER_CONTRACT, CLOSED, LOST, RETURNED
+  status    String           @default("SENT") // SENT, CONTACTED, SHOWING, UNDER_CONTRACT, CLOSED, LOST, RETURNED
   notes     String?
-  sentAt    DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
+  sentAt    DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  updates   ReferralUpdate[]
 
   @@index([contactId])
   @@index([partnerId])
+}
+
+// Activity trail on a referral — notes and call logs from the partner (or agent)
+model ReferralUpdate {
+  id         String       @id @default(cuid())
+  referral   LeadReferral @relation(fields: [referralId], references: [id], onDelete: Cascade)
+  referralId String
+  author     String       @default("PARTNER") // PARTNER | AGENT
+  kind       String       @default("NOTE") // NOTE | CALL | STATUS
+  body       String
+  createdAt  DateTime     @default(now())
+
+  @@index([referralId])
 }

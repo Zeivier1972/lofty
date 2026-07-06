@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { Fragment, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Handshake, Plus, Phone, Mail, Pencil, Trash2, X, Loader2, Users } from "lucide-react"
@@ -18,6 +18,8 @@ interface Partner {
   referrals: { id: string; status: string }[]
 }
 
+interface Update { id: string; author: string; kind: string; body: string; createdAt: string }
+
 interface Referral {
   id: string
   status: string
@@ -26,6 +28,7 @@ interface Referral {
   updatedAt: string
   contact: { id: string; firstName: string; lastName: string; phone: string | null; email: string | null; buyerLocation: string | null; buyerBudgetMax: number | null }
   partner: { id: string; name: string; brokerage: string | null }
+  updates: Update[]
 }
 
 const STATUS_META: Record<string, { label: string; color: string }> = {
@@ -53,6 +56,7 @@ export default function ReferralsClient({ partners: initialPartners, referrals: 
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [statusFilter, setStatusFilter] = useState<string>("ACTIVE")
+  const [expandedId, setExpandedId] = useState<string | null>(null)
   const [partnerFilter, setPartnerFilter] = useState<string>("all")
 
   async function savePartner() {
@@ -234,12 +238,16 @@ export default function ReferralsClient({ partners: initialPartners, referrals: 
                   <th className="px-5 py-2.5 font-semibold">Partner</th>
                   <th className="px-5 py-2.5 font-semibold">Status</th>
                   <th className="px-5 py-2.5 font-semibold">Sent</th>
-                  <th className="px-5 py-2.5 font-semibold">Last update</th>
+                  <th className="px-5 py-2.5 font-semibold">Partner activity</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {visibleReferrals.map(r => (
-                  <tr key={r.id} className="hover:bg-gray-50">
+                {visibleReferrals.map(r => {
+                  const latest = r.updates?.[0]
+                  const isExpanded = expandedId === r.id
+                  return (
+                  <Fragment key={r.id}>
+                  <tr className="hover:bg-gray-50">
                     <td className="px-5 py-3">
                       <Link href={`/contacts/${r.contact.id}`} className="font-medium text-lofty-700 hover:underline">
                         {r.contact.firstName} {r.contact.lastName}
@@ -262,9 +270,39 @@ export default function ReferralsClient({ partners: initialPartners, referrals: 
                       </select>
                     </td>
                     <td className="px-5 py-3 text-xs text-gray-500">{new Date(r.sentAt).toLocaleDateString()}</td>
-                    <td className="px-5 py-3 text-xs text-gray-500">{new Date(r.updatedAt).toLocaleDateString()}</td>
+                    <td className="px-5 py-3">
+                      {latest ? (
+                        <button onClick={() => setExpandedId(isExpanded ? null : r.id)} className="text-left group">
+                          <p className="text-xs text-gray-700 max-w-[220px] truncate">
+                            {latest.kind === "CALL" ? "📞 " : latest.kind === "STATUS" ? "🔄 " : "📝 "}{latest.body}
+                          </p>
+                          <p className="text-[11px] text-gray-400 group-hover:text-lofty-600">
+                            {new Date(latest.createdAt).toLocaleDateString()} · {r.updates.length} update{r.updates.length > 1 ? "s" : ""} {isExpanded ? "▲" : "▼"}
+                          </p>
+                        </button>
+                      ) : (
+                        <p className="text-xs text-gray-300 italic">No activity yet</p>
+                      )}
+                    </td>
                   </tr>
-                ))}
+                  {isExpanded && r.updates.length > 0 && (
+                    <tr className="bg-gray-50/70">
+                      <td colSpan={5} className="px-5 py-3">
+                        <ul className="space-y-1.5">
+                          {r.updates.map(u => (
+                            <li key={u.id} className="text-xs text-gray-600 flex items-start gap-2">
+                              <span>{u.kind === "CALL" ? "📞" : u.kind === "STATUS" ? "🔄" : "📝"}</span>
+                              <span className="flex-1">{u.body}</span>
+                              <span className="text-gray-400 flex-shrink-0">{new Date(u.createdAt).toLocaleString()}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
+                  )
+                })}
               </tbody>
             </table>
           </div>
