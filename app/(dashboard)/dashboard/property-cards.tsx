@@ -61,7 +61,7 @@ export default function PropertyCards() {
   function dismissCard(id: string) {
     const next = new Set(dismissed).add(id)
     setDismissed(next)
-    localStorage.setItem(LS_KEY, JSON.stringify([...next]))
+    localStorage.setItem(LS_KEY, JSON.stringify(Array.from(next)))
   }
 
   const visibleCards = cards.filter(c => !dismissed.has(c.id))

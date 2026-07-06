@@ -33,13 +33,13 @@ export default function HotActivity() {
   function dismissContact(id: string) {
     const next = new Set(dismissedContacts).add(id)
     setDismissedContacts(next)
-    localStorage.setItem(LS_CONTACTS, JSON.stringify([...next]))
+    localStorage.setItem(LS_CONTACTS, JSON.stringify(Array.from(next)))
   }
 
   function dismissProperty(id: string) {
     const next = new Set(dismissedProps).add(id)
     setDismissedProps(next)
-    localStorage.setItem(LS_PROPS, JSON.stringify([...next]))
+    localStorage.setItem(LS_PROPS, JSON.stringify(Array.from(next)))
   }
 
   const visibleContacts = contacts.filter(c => !dismissedContacts.has(c.id))
