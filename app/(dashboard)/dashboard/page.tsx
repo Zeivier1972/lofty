@@ -67,7 +67,7 @@ export default async function DashboardPage() {
         orderBy: { createdAt: "desc" },
         take: 5,
       }),
-      prisma.propertyAlertSent.count({ where: { sentAt: { gte: todayStart } } }),
+      prisma.activity.count({ where: { type: "PROPERTY_ALERT_SENT", createdAt: { gte: todayStart } } }),
       prisma.contact.count({ where: { createdAt: { gte: todayStart }, isArchived: false } }),
       prisma.portalMessage.count({ where: { isRead: false, fromClient: true } }),
     ])
