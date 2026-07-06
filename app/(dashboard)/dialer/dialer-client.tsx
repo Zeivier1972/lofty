@@ -27,6 +27,7 @@ interface Contact {
   buyerBudgetMax?: number | null
   buyerTimelineMonths?: number | null
   buyerPurpose?: string | null
+  leadReferrals?: { status: string; partner: { name: string } | null }[]
 }
 
 interface DialerCall {
@@ -85,6 +86,14 @@ function mapTimeline(months?: number | null): string {
   return "1+ año"
 }
 
+// Active referral → the lead is being serviced by a partner realtor
+const REFERRAL_ACTIVE = ["SENT", "CONTACTED", "SHOWING", "UNDER_CONTRACT"]
+function assignedPartner(c: Contact): string | null {
+  const r = c.leadReferrals?.[0]
+  if (r && REFERRAL_ACTIVE.includes(r.status) && r.partner?.name) return r.partner.name
+  return null
+}
+
 const DISPOSITIONS = [
   { value: "REACHED", label: "Reached", icon: CheckCircle2, color: "text-green-600" },
   { value: "VOICEMAIL", label: "Voicemail", icon: Voicemail, color: "text-amber-600" },
@@ -127,6 +136,7 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
   const [sessionRunning, setSessionRunning] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [callError, setCallError] = useState<string | null>(null)
+  const [skipNotice, setSkipNotice] = useState<string | null>(null)
   const [addingToQueue, setAddingToQueue] = useState(false)
   const [selectedStage, setSelectedStage] = useState<string>("all")
   // Auto-dial countdown
@@ -312,6 +322,24 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
 
   async function dialContact(contact: Contact) {
     if (!contact.phone) return
+
+    // Lead assigned to a partner realtor → skip it and tell the agent why
+    const partnerName = assignedPartner(contact)
+    if (partnerName) {
+      setSkipNotice(`⏭️ ${contact.firstName} ${contact.lastName || ""} skipped — assigned to ${partnerName}`.replace(/\s+/g, " "))
+      const idx = queue.findIndex(q => q.id === contact.id)
+      const next = idx + 1
+      if (next < queue.length) {
+        setCurrentCallIndex(next)
+        setCallStatus("idle")
+        if (sessionRunning) await dialContact(queue[next])
+      } else {
+        setSessionRunning(false)
+        setCallStatus("idle")
+      }
+      return
+    }
+
     if (!deviceRef.current) {
       setCallError(deviceError || "Browser calling is not ready yet — wait a moment and try again")
       setCallStatus("idle")
@@ -484,6 +512,12 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
               <button onClick={() => setCallError(null)} className="ml-1 hover:text-red-900">✕</button>
             </div>
           )}
+          {skipNotice && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+              <span>{skipNotice}</span>
+              <button onClick={() => setSkipNotice(null)} className="ml-1 hover:text-amber-950">✕</button>
+            </div>
+          )}
           <div className={cn("px-3 py-1.5 rounded-full text-sm font-medium", statusColor)}>
             {callStatusLabel}
             {callStatus === "connected" && (
@@ -561,7 +595,14 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
                     <div className="text-sm font-medium text-gray-900 truncate">
                       {c.firstName} {c.lastName}
                     </div>
-                    <div className="text-xs text-gray-500">{formatPhone(c.phone || "")}</div>
+                    <div className="text-xs text-gray-500 flex items-center gap-1.5 flex-wrap">
+                      {formatPhone(c.phone || "")}
+                      {assignedPartner(c) && (
+                        <span className="text-[10px] px-1.5 py-0 rounded-full bg-amber-100 text-amber-700 font-medium">
+                          🤝 {assignedPartner(c)} — will skip
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <button
                     onClick={e => { e.stopPropagation(); removeFromQueue(c.id) }}
