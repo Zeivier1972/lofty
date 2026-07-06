@@ -59,12 +59,48 @@ export default async function ContactsPage({
 
     if (searchParams.source) tabWhere.source = searchParams.source
     if (searchParams.search) {
-      tabWhere.OR = [
-        { firstName: { contains: searchParams.search, mode: "insensitive" } },
-        { lastName: { contains: searchParams.search, mode: "insensitive" } },
-        { email: { contains: searchParams.search, mode: "insensitive" } },
-        { phone: { contains: searchParams.search } },
+      const q = searchParams.search.trim()
+      const or: any[] = [
+        { firstName: { contains: q, mode: "insensitive" } },
+        { lastName: { contains: q, mode: "insensitive" } },
+        { email: { contains: q, mode: "insensitive" } },
+        { phone: { contains: q } },
+        { phone2: { contains: q } },
       ]
+
+      // Full-name search: "Maria Garcia" → first AND last (both orders)
+      const parts = q.split(/\s+/).filter(Boolean)
+      if (parts.length >= 2) {
+        const first = parts[0]
+        const rest = parts.slice(1).join(" ")
+        or.push({ AND: [
+          { firstName: { contains: first, mode: "insensitive" } },
+          { lastName: { contains: rest, mode: "insensitive" } },
+        ] })
+        or.push({ AND: [
+          { firstName: { contains: rest, mode: "insensitive" } },
+          { lastName: { contains: first, mode: "insensitive" } },
+        ] })
+      }
+
+      // Phone search that ignores formatting: "305-555-1234", "(305) 555 1234"
+      // and "3055551234" all match regardless of how the number is stored.
+      const digits = q.replace(/\D/g, "")
+      if (digits.length >= 4) {
+        try {
+          const idRows = await prisma.$queryRaw<{ id: string }[]>`
+            SELECT id FROM "Contact"
+            WHERE regexp_replace(coalesce(phone, ''), '\D', '', 'g') LIKE ${"%" + digits + "%"}
+               OR regexp_replace(coalesce(phone2, ''), '\D', '', 'g') LIKE ${"%" + digits + "%"}
+            LIMIT 500
+          `
+          if (idRows.length > 0) or.push({ id: { in: idRows.map(r => r.id) } })
+        } catch (e) {
+          console.error("Phone digit search failed:", e)
+        }
+      }
+
+      tabWhere.OR = or
     }
     if (searchParams.tags) {
       const tagIds = searchParams.tags.split(",").filter(Boolean)
