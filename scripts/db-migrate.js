@@ -115,6 +115,20 @@ const STMTS = [
   )`,
   `CREATE INDEX IF NOT EXISTS "LeadReferral_contactId_idx" ON "LeadReferral"("contactId")`,
   `CREATE INDEX IF NOT EXISTS "LeadReferral_partnerId_idx" ON "LeadReferral"("partnerId")`,
+  // Partner portal access + activity trail
+  `ALTER TABLE "ReferralPartner" ADD COLUMN IF NOT EXISTS "token" TEXT`,
+  `ALTER TABLE "ReferralPartner" ADD COLUMN IF NOT EXISTS "lastLoginAt" TIMESTAMP(3)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "ReferralPartner_token_key" ON "ReferralPartner"("token")`,
+  `CREATE TABLE IF NOT EXISTS "ReferralUpdate" (
+    "id"         TEXT NOT NULL,
+    "referralId" TEXT NOT NULL,
+    "author"     TEXT NOT NULL DEFAULT 'PARTNER',
+    "kind"       TEXT NOT NULL DEFAULT 'NOTE',
+    "body"       TEXT NOT NULL,
+    "createdAt"  TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "ReferralUpdate_pkey" PRIMARY KEY ("id")
+  )`,
+  `CREATE INDEX IF NOT EXISTS "ReferralUpdate_referralId_idx" ON "ReferralUpdate"("referralId")`,
 ]
 
 // ─── Email templates ─────────────────────────────────────────────────────────
@@ -1031,6 +1045,22 @@ async function seedBrickellKeywords(db) {
   console.log("[db-migrate] BRICKELL campaign keywords updated:", Array.from(current).join(", "))
 }
 
+
+
+// ─── Backfill portal tokens for referral partners ────────────────────────────
+
+async function backfillPartnerTokens(db) {
+  const crypto = require("crypto")
+  const partners = await db.referralPartner.findMany({ where: { token: null }, select: { id: true } })
+  for (const p of partners) {
+    await db.referralPartner.update({
+      where: { id: p.id },
+      data: { token: crypto.randomBytes(24).toString("hex") },
+    })
+  }
+  if (partners.length) console.log(`[db-migrate] backfilled ${partners.length} partner tokens`)
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -1045,6 +1075,7 @@ async function main() {
   await seedReIgniteDrip(db).catch(e => console.warn("[db-migrate] Re-Ignite drip skip:", e.message))
   await dedupPipelineLeads(db).catch(e => console.warn("[db-migrate] dedup pipeline leads skip:", e.message))
   await seedBrickellKeywords(db).catch(e => console.warn("[db-migrate] Brickell keywords skip:", e.message))
+  await backfillPartnerTokens(db).catch(e => console.warn("[db-migrate] partner tokens skip:", e.message))
   await db.$disconnect()
   console.log("[db-migrate] done")
   process.exit(0)

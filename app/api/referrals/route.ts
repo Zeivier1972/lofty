@@ -5,6 +5,9 @@ import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { sendEmail } from "@/lib/email"
 import { sendSMS } from "@/lib/sms"
+import crypto from "crypto"
+
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
 
 // GET — list lead referrals with contact + partner info
 export async function GET(req: Request) {
@@ -36,8 +39,9 @@ function buildReferralEmail(opts: {
   note: string | null
   agentName: string
   agentPhone: string
+  portalUrl: string
 }): string {
-  const { partnerName, contact: c, note, agentName, agentPhone } = opts
+  const { partnerName, contact: c, note, agentName, agentPhone, portalUrl } = opts
   const prefs = [
     c.buyerLocation ? `<tr><td style="padding:4px 12px 4px 0;color:#6b7280">Área de interés</td><td style="color:#111827">${c.buyerLocation}</td></tr>` : "",
     c.buyerBudgetMax ? `<tr><td style="padding:4px 12px 4px 0;color:#6b7280">Presupuesto</td><td style="color:#111827">${c.buyerBudgetMin ? "$" + Number(c.buyerBudgetMin).toLocaleString() + " – " : "hasta "}$${Number(c.buyerBudgetMax).toLocaleString()}</td></tr>` : "",
@@ -66,6 +70,12 @@ function buildReferralEmail(opts: {
       </table>
     </div>
     ${note ? `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 16px;margin:0 0 18px"><p style="color:#92400e;font-size:13px;margin:0"><strong>Nota de ${agentName}:</strong> ${note}</p></div>` : ""}
+    <div style="text-align:center;margin:0 0 18px">
+      <a href="${portalUrl}" style="display:inline-block;background:#0e1f3d;color:white;padding:13px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">
+        Ver mis leads y dar seguimiento →
+      </a>
+      <p style="color:#9ca3af;font-size:11px;margin:8px 0 0">En tu portal puedes actualizar el estado, agregar notas y registrar llamadas.</p>
+    </div>
     <p style="color:#6b7280;font-size:13px;margin:0">Cualquier pregunta, contáctame: <strong>${agentName}</strong> · ${agentPhone}</p>
   </td></tr>
 </table>
@@ -94,6 +104,14 @@ export async function POST(req: Request) {
   const agentName = aiConfig?.realtorName || "Catherine Gomez"
   const agentPhone = aiConfig?.realtorPhone || "305-283-0872"
 
+  // Ensure the partner has a portal access token (magic link)
+  let portalToken = partner.token
+  if (!portalToken) {
+    portalToken = crypto.randomBytes(24).toString("hex")
+    await prisma.referralPartner.update({ where: { id: partner.id }, data: { token: portalToken } })
+  }
+  const portalUrl = `${APP_URL}/partner/login?token=${portalToken}`
+
   const referral = await prisma.leadReferral.create({
     data: { contactId, partnerId, notes: note?.trim() || null },
   })
@@ -105,7 +123,7 @@ export async function POST(req: Request) {
     emailSent = await sendEmail({
       to: partner.email,
       subject: `🤝 Nuevo lead referido: ${contact.firstName} ${contact.lastName || ""}`.trim(),
-      html: buildReferralEmail({ partnerName: partner.name, contact, note: note?.trim() || null, agentName, agentPhone }),
+      html: buildReferralEmail({ partnerName: partner.name, contact, note: note?.trim() || null, agentName, agentPhone, portalUrl }),
     }).catch(() => false)
   }
   if (partner.phone) {
@@ -117,6 +135,7 @@ export async function POST(req: Request) {
       contact.buyerLocation ? `Área: ${contact.buyerLocation}` : null,
       contact.buyerBudgetMax ? `Presupuesto: hasta $${Number(contact.buyerBudgetMax).toLocaleString()}` : null,
       note?.trim() ? `Nota: ${note.trim()}` : null,
+      `Portal: ${portalUrl}`,
     ].filter(Boolean).join("\n")
     smsSent = !!(await sendSMS(partner.phone, smsBody).catch(() => null))
   }

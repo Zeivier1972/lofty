@@ -17,6 +17,7 @@ export default async function ReferralsPage() {
         include: {
           contact: { select: { id: true, firstName: true, lastName: true, phone: true, email: true, buyerLocation: true, buyerBudgetMax: true } },
           partner: { select: { id: true, name: true, brokerage: true } },
+          updates: { orderBy: { createdAt: "desc" }, take: 10 },
         },
         orderBy: { sentAt: "desc" },
         take: 200,
