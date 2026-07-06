@@ -161,7 +161,7 @@ function PipelineSettingsModal({
 function ImportModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
   const [csv, setCsv] = useState("")
   const [importing, setImporting] = useState(false)
-  const [result, setResult] = useState<{ imported: number; updated?: number; emailsSent?: number; skipped: number; errors: string[]; total: number } | null>(null)
+  const [result, setResult] = useState<{ imported: number; updated?: number; stagePlaced?: number; stageMoved?: number; emailsSent?: number; skipped: number; errors: string[]; total: number } | null>(null)
   const [progress, setProgress] = useState<{ done: number; total: number; imported: number } | null>(null)
   const [preview, setPreview] = useState<{ headers: string[]; rows: string[][] } | null>(null)
   const { toast } = useToast()
@@ -216,7 +216,7 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
       chunks.push([header, ...dataRows.slice(i, i + CHUNK)].join("\n"))
     }
 
-    const totals = { imported: 0, updated: 0, skipped: 0, emailsSent: 0, errors: [] as string[], total: dataRows.length }
+    const totals = { imported: 0, updated: 0, stagePlaced: 0, stageMoved: 0, skipped: 0, emailsSent: 0, errors: [] as string[], total: dataRows.length }
 
     async function sendChunk(chunkCsv: string, attempt = 1): Promise<any> {
       const res = await fetch("/api/contacts/import", {
@@ -241,6 +241,8 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
         setProgress({ done: rowsDone, total: dataRows.length, imported: totals.imported })
         const data = await sendChunk(chunks[i])
         totals.imported   += data.imported   || 0
+        totals.stagePlaced += data.stagePlaced || 0
+        totals.stageMoved  += data.stageMoved  || 0
         totals.updated    += data.updated    || 0
         totals.skipped    += data.skipped    || 0
         totals.emailsSent += data.emailsSent || 0
@@ -282,6 +284,9 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
               <div>
                 <p className="font-semibold text-green-800">Importación completa</p>
                 <p className="text-sm text-green-700">{result.imported} nuevos · {result.updated ?? 0} actualizados · {result.skipped} omitidos · {result.total} total</p>
+                {((result.stagePlaced ?? 0) > 0 || (result.stageMoved ?? 0) > 0) && (
+                  <p className="text-sm text-green-700">📊 Pipeline: {result.stagePlaced ?? 0} agregados a su etapa · {result.stageMoved ?? 0} movidos a la etapa correcta</p>
+                )}
                 {result.emailsSent != null && result.emailsSent > 0 && (
                   <p className="text-sm text-green-700">📧 {result.emailsSent} correos de bienvenida enviados</p>
                 )}
