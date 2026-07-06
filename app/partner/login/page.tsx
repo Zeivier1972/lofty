@@ -7,10 +7,10 @@ import PartnerLoginClient from "./login-client"
 export default async function PartnerLoginPage({
   searchParams,
 }: {
-  searchParams: { token?: string; error?: string }
+  searchParams: { token?: string; error?: string; preview?: string }
 }) {
   const session = await getPartnerSession()
   if (session) redirect("/partner")
 
-  return <PartnerLoginClient prefillToken={searchParams.token} error={searchParams.error} />
+  return <PartnerLoginClient prefillToken={searchParams.token} error={searchParams.error} preview={searchParams.preview === "1"} />
 }
