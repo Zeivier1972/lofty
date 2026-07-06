@@ -3,7 +3,7 @@
 import { Fragment, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Handshake, Plus, Phone, Mail, Pencil, Trash2, X, Loader2, Users } from "lucide-react"
+import { Handshake, Plus, Phone, Mail, Pencil, Trash2, X, Loader2, Users, Eye, Link2, Check } from "lucide-react"
 import { cn, formatPhone } from "@/lib/utils"
 
 interface Partner {
@@ -15,6 +15,7 @@ interface Partner {
   feePct: number | null
   isActive: boolean
   notes: string | null
+  token: string | null
   referrals: { id: string; status: string }[]
 }
 
@@ -57,6 +58,7 @@ export default function ReferralsClient({ partners: initialPartners, referrals: 
   const [saving, setSaving] = useState(false)
   const [statusFilter, setStatusFilter] = useState<string>("ACTIVE")
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [copiedId, setCopiedId] = useState<string | null>(null)
   const [partnerFilter, setPartnerFilter] = useState<string>("all")
 
   async function savePartner() {
@@ -167,6 +169,30 @@ export default function ReferralsClient({ partners: initialPartners, referrals: 
                 <div className="flex-1"><p className="text-lg font-bold text-green-600">{closed}</p><p className="text-[11px] text-gray-400">Closed</p></div>
                 {p.feePct != null && <div className="flex-1"><p className="text-lg font-bold text-amber-600">{p.feePct}%</p><p className="text-[11px] text-gray-400">Fee</p></div>}
               </div>
+              {p.token && (
+                <div className="flex gap-2 mt-3">
+                  <a
+                    href={`/partner/login?token=${p.token}&preview=1`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 border border-gray-200 text-gray-600 hover:text-lofty-700 hover:border-lofty-300 rounded-lg text-xs font-medium transition-colors"
+                    title="Open their portal exactly as they see it"
+                  >
+                    <Eye className="w-3.5 h-3.5" /> View portal
+                  </a>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(`${window.location.origin}/partner/login?token=${p.token}`)
+                      setCopiedId(p.id)
+                      setTimeout(() => setCopiedId(null), 2000)
+                    }}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 border border-gray-200 text-gray-600 hover:text-lofty-700 hover:border-lofty-300 rounded-lg text-xs font-medium transition-colors"
+                    title="Copy their access link to share by WhatsApp/text"
+                  >
+                    {copiedId === p.id ? <><Check className="w-3.5 h-3.5 text-green-600" /> Copied!</> : <><Link2 className="w-3.5 h-3.5" /> Copy link</>}
+                  </button>
+                </div>
+              )}
             </div>
           )
         })}

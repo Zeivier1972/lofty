@@ -4,9 +4,10 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Handshake, Loader2 } from "lucide-react"
 
-export default function PartnerLoginClient({ prefillToken, error: initialError }: {
+export default function PartnerLoginClient({ prefillToken, error: initialError, preview }: {
   prefillToken?: string
   error?: string
+  preview?: boolean
 }) {
   const router = useRouter()
   const [token, setToken] = useState(prefillToken || "")
@@ -20,7 +21,7 @@ export default function PartnerLoginClient({ prefillToken, error: initialError }
       const res = await fetch("/api/partner/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: t }),
+        body: JSON.stringify({ token: t, preview }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Login failed")
