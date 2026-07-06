@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
+  Handshake,
   Users, Plus, Search, Download, Upload,
   Phone, Mail, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, MoreVertical,
   Trash2, Edit, Eye, MessageSquare, X, Send, CheckSquare,
@@ -1397,6 +1398,8 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
   const [bulkDeleting, setBulkDeleting] = useState(false)
   const [bulkMoving, setBulkMoving] = useState(false)
   const [bulkTagging, setBulkTagging] = useState(false)
+  const [bulkReferring, setBulkReferring] = useState(false)
+  const [referralPartners, setReferralPartners] = useState<{ id: string; name: string; brokerage: string | null }[]>([])
   const [bulkEnrolling, setBulkEnrolling] = useState(false)
   const [globalSelectAll, setGlobalSelectAll] = useState(false)
   const [showPowerDialer, setShowPowerDialer] = useState(false)
@@ -1605,6 +1608,41 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
     router.push(`/contacts?${params.toString()}`)
   }
 
+  // Referral partners for the bulk "Refer to Partner" action
+  useEffect(() => {
+    fetch("/api/referral-partners")
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setReferralPartners(d.filter((p: any) => p.isActive)) })
+      .catch(() => {})
+  }, [])
+
+  const bulkReferToPartner = async (partnerId: string, partnerName: string) => {
+    if (!selected.size) return
+    if (globalSelectAll) {
+      toast({ title: "Select specific contacts to refer (select-all not supported for referrals)", variant: "destructive" })
+      return
+    }
+    if (!confirm(`Assign ${selected.size} lead${selected.size !== 1 ? "s" : ""} to ${partnerName}? They'll get one email with all the leads and see them in their portal.`)) return
+    setBulkReferring(true)
+    try {
+      const res = await fetch("/api/referrals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contactIds: Array.from(selected), partnerId }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to assign leads")
+      toast({
+        title: `✅ ${data.referred} lead${data.referred !== 1 ? "s" : ""} assigned to ${partnerName}`,
+        description: data.alreadyAssigned > 0 ? `${data.alreadyAssigned} already assigned — skipped` : undefined,
+      })
+      setSelected(new Set())
+      router.refresh()
+    } catch (e: any) {
+      toast({ title: e.message || "Failed to assign leads", variant: "destructive" })
+    } finally { setBulkReferring(false) }
+  }
+
   // Live search: apply automatically 500ms after the user stops typing
   useEffect(() => {
     const t = setTimeout(() => {
@@ -1777,6 +1815,26 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
+
+            {/* Refer to Partner */}
+            {referralPartners.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="sm" className="bg-white/10 hover:bg-white/20 text-white border-white/20 gap-1.5" disabled={bulkReferring}>
+                    {bulkReferring ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Handshake className="w-3.5 h-3.5" />}
+                    Refer to Partner
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56">
+                  {referralPartners.map(p => (
+                    <DropdownMenuItem key={p.id} onClick={() => bulkReferToPartner(p.id, p.name)} className="gap-2">
+                      <Handshake className="w-3.5 h-3.5 text-lofty-600 flex-shrink-0" />
+                      <span className="text-sm truncate">{p.name}{p.brokerage ? ` — ${p.brokerage}` : ""}</span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
 
             {/* Enroll in Smart Plan */}
             {smartPlans.length > 0 && (
