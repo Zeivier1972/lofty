@@ -27,6 +27,7 @@ import {
 import { useToast } from "@/components/ui/use-toast"
 import { AiAssistBar } from "@/components/ui/ai-assist-bar"
 import PropertySendPanel from "./property-send-panel"
+import ReferButton from "./refer-button"
 
 function generateInsight(contact: any): string | null {
   const emails = contact.emails || []
@@ -724,7 +725,10 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
             <SofiaCallButton contactId={contact.id} phone={contact.phone} name={`${contact.firstName} ${contact.lastName || ""}`.trim()} />
           </div>
 
-          <ShareWithLenderButton contactId={contact.id} />
+          <div className="flex items-center gap-2">
+            <ShareWithLenderButton contactId={contact.id} />
+            <ReferButton contactId={contact.id} contactName={`${contact.firstName} ${contact.lastName || ""}`.trim()} />
+          </div>
           <SendPortalInviteButton contactId={contact.id} email={contact.email} firstName={contact.firstName} />
 
           {/* Insight metrics */}

@@ -8,7 +8,7 @@ import {
   Zap, Settings, ChevronLeft, ChevronRight, BarChart3,
   MessageSquare, Bot, Phone, Share2, Key, Globe,
   BellRing, UserCheck, Send, Inbox, ClipboardList, Plug, X, Instagram, Landmark, Facebook,
-  Wand2, ChevronDown, Mail, TrendingUp, Megaphone,
+  Wand2, ChevronDown, Mail, TrendingUp, Megaphone, Handshake,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
@@ -83,6 +83,7 @@ const navGroups: NavGroup[] = [
       { href: "/transactions", icon: FileText, label: "Transactions" },
       { href: "/open-house", icon: Key, label: "Open House" },
       { href: "/partners", icon: Landmark, label: "Loan Officers" },
+      { href: "/referrals", icon: Handshake, label: "Lead Referrals" },
     ],
   },
   {
