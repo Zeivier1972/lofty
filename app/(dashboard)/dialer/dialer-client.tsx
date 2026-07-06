@@ -62,6 +62,7 @@ interface Props {
   contacts: Contact[]
   sessions: DialerSession[]
   pipelineStages: PipelineStage[]
+  initialContact?: Contact | null
 }
 
 function mapPropertyType(type?: string | null): string {
@@ -94,17 +95,22 @@ const DISPOSITIONS = [
   { value: "APPOINTMENT", label: "Appointment Set", icon: CheckCircle2, color: "text-emerald-600" },
 ]
 
-export default function DialerClient({ contacts, sessions: initialSessions, pipelineStages }: Props) {
+export default function DialerClient({ contacts, sessions: initialSessions, pipelineStages, initialContact }: Props) {
   const [sessions, setSessions] = useState<DialerSession[]>(initialSessions)
   const [activeSession, setActiveSession] = useState<DialerSession | null>(initialSessions[0] || null)
-  const [queue, setQueue] = useState<Contact[]>([])
+  const [queue, setQueue] = useState<Contact[]>(initialContact?.phone ? [initialContact] : [])
   const [searchQuery, setSearchQuery] = useState("")
   const [currentCallIndex, setCurrentCallIndex] = useState(0)
   const [callStatus, setCallStatus] = useState<"idle" | "calling" | "connected" | "ended">("idle")
   const [activeCallId, setActiveCallId] = useState<string | null>(null)
   const [activeTwilioSid, setActiveTwilioSid] = useState<string | null>(null)
   const [callDuration, setCallDuration] = useState(0)
-  const [callTimer, setCallTimer] = useState<NodeJS.Timeout | null>(null)
+  const callTimerRef = useRef<NodeJS.Timeout | null>(null)
+  // Browser softphone (Twilio Voice SDK) — audio runs through the browser mic/speakers
+  const deviceRef = useRef<any>(null)
+  const activeBrowserCallRef = useRef<any>(null)
+  const [deviceReady, setDeviceReady] = useState(false)
+  const [deviceError, setDeviceError] = useState<string | null>(null)
   const [disposition, setDisposition] = useState("")
   const [noteFields, setNoteFields] = useState({
     propertyType: "",
@@ -136,6 +142,48 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
     setAutoDialContact(null)
     dialContact(contact)
   }, [autoDialContact])
+
+  // Register the browser softphone once on mount
+  useEffect(() => {
+    let device: any = null
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch("/api/twilio/token")
+        const { token, error } = await res.json()
+        if (error || !token) {
+          if (!cancelled) setDeviceError(error || "Browser calling not configured")
+          return
+        }
+        const { Device } = await import("@twilio/voice-sdk")
+        device = new Device(token, { codecPreferences: ["opus", "pcmu"] as any })
+        device.on("error", (e: any) => {
+          console.error("[dialer] device error:", e)
+        })
+        device.on("tokenWillExpire", async () => {
+          try {
+            const r = await fetch("/api/twilio/token")
+            const d = await r.json()
+            if (d.token) device.updateToken(d.token)
+          } catch {}
+        })
+        if (!cancelled) {
+          deviceRef.current = device
+          setDeviceReady(true)
+          setDeviceError(null)
+        }
+      } catch (e) {
+        if (!cancelled) setDeviceError("Browser calling not available in this browser")
+      }
+    })()
+    return () => {
+      cancelled = true
+      activeBrowserCallRef.current?.disconnect()
+      device?.destroy()
+      deviceRef.current = null
+      setDeviceReady(false)
+    }
+  }, [])
 
   // Pre-fill notes from stored buyer preferences when the active contact changes
   useEffect(() => {
@@ -249,12 +297,11 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
 
   function startTimer() {
     setCallDuration(0)
-    const t = setInterval(() => setCallDuration(d => d + 1), 1000)
-    setCallTimer(t)
+    callTimerRef.current = setInterval(() => setCallDuration(d => d + 1), 1000)
   }
 
   function stopTimer() {
-    if (callTimer) { clearInterval(callTimer); setCallTimer(null) }
+    if (callTimerRef.current) { clearInterval(callTimerRef.current); callTimerRef.current = null }
   }
 
   function formatDuration(secs: number) {
@@ -265,6 +312,11 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
 
   async function dialContact(contact: Contact) {
     if (!contact.phone) return
+    if (!deviceRef.current) {
+      setCallError(deviceError || "Browser calling is not ready yet — wait a moment and try again")
+      setCallStatus("idle")
+      return
+    }
     setCallStatus("calling")
     setCallError(null)
     setDisposition("")
@@ -275,6 +327,7 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
     const sessionId = session!.id
 
     try {
+      // Log the call in the CRM (no server-side dial — audio runs through this browser)
       const res = await fetch("/api/dialer/call", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -282,18 +335,29 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
           contactId: contact.id,
           phoneNumber: contact.phone,
           sessionId,
+          browser: true,
         }),
       })
       const data = await res.json()
-      if (data.status === "FAILED" || data.error) {
-        setCallError(data.error || "Call failed to connect")
+      setActiveCallId(data.callId || null)
+
+      // Place the call through the browser softphone
+      const digits = contact.phone.replace(/\D/g, "")
+      const e164 = digits.length === 10 ? `+1${digits}` : `+${digits}`
+      const call = await deviceRef.current.connect({ params: { To: e164 } })
+      activeBrowserCallRef.current = call
+      call.on("accept", () => { setCallStatus("connected"); startTimer() })
+      call.on("disconnect", () => {
+        activeBrowserCallRef.current = null
+        stopTimer()
+      })
+      call.on("cancel", () => { activeBrowserCallRef.current = null; stopTimer() })
+      call.on("error", (e: any) => {
+        activeBrowserCallRef.current = null
+        stopTimer()
+        setCallError(e?.message || "Call error")
         setCallStatus("idle")
-        return
-      }
-      setActiveCallId(data.callId)
-      setActiveTwilioSid(data.twilioSid)
-      setCallStatus("connected")
-      startTimer()
+      })
     } catch (e: any) {
       setCallError(e.message || "Network error — call could not be placed")
       setCallStatus("idle")
@@ -302,9 +366,14 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
 
   async function endCall(status = "COMPLETED") {
     stopTimer()
+
+    // Hang up the browser softphone leg (frees both sides of the call)
+    activeBrowserCallRef.current?.disconnect()
+    activeBrowserCallRef.current = null
+
     if (!activeCallId) { setCallStatus("idle"); return }
 
-    // Terminate the Twilio call on Twilio's side first so the line is freed
+    // Legacy server-dialed calls: also terminate on Twilio's side
     if (activeTwilioSid) {
       fetch("/api/dialer/hangup", {
         method: "POST",
@@ -388,11 +457,23 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
+      {/* Browser calling not configured warning */}
+      {deviceError && (
+        <div className="bg-amber-50 border-b border-amber-200 px-6 py-3 text-sm text-amber-800">
+          <strong>⚠️ Browser calling unavailable:</strong> {deviceError}
+          {deviceError.toLowerCase().includes("not configured") && (
+            <span> — In Railway, set <code className="bg-amber-100 px-1 rounded">TWILIO_API_KEY_SID</code>, <code className="bg-amber-100 px-1 rounded">TWILIO_API_KEY_SECRET</code> and <code className="bg-amber-100 px-1 rounded">TWILIO_TWIML_APP_SID</code>, and point the TwiML App&apos;s Voice URL to <code className="bg-amber-100 px-1 rounded">/api/twilio/voice</code>.</span>
+          )}
+        </div>
+      )}
       {/* Header */}
       <div className="bg-white border-b px-6 py-4 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Power Dialer</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Multi-contact calling session management</p>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Multi-contact calling session management
+            {deviceReady && <span className="ml-2 text-green-600 font-medium">· 🎧 Browser phone ready</span>}
+          </p>
         </div>
         <div className="flex items-center gap-3">
           <HelpPanel section="dialer" />
@@ -635,7 +716,12 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
                     </button>
                   ) : callStatus === "calling" ? (
                     <button
-                      onClick={() => { stopTimer(); setCallStatus("idle") }}
+                      onClick={() => {
+                        activeBrowserCallRef.current?.disconnect()
+                        activeBrowserCallRef.current = null
+                        stopTimer()
+                        setCallStatus("idle")
+                      }}
                       className="flex items-center gap-2 px-6 py-3 bg-amber-500 text-white rounded-xl hover:bg-amber-600 font-semibold text-lg shadow-sm animate-pulse"
                     >
                       <PhoneOff className="w-5 h-5" /> Cancel

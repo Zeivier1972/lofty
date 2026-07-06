@@ -821,7 +821,7 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
                     {!selectMode && (
                       <div className="mt-2 flex gap-2">
                         {lead.contact.phone && (
-                          <a href={`tel:${lead.contact.phone}`} className="text-gray-400 hover:text-lofty-600 transition-colors" onClick={(e) => e.stopPropagation()}>
+                          <a href={`/dialer?contactId=${lead.contact.id}`} className="text-gray-400 hover:text-lofty-600 transition-colors" onClick={(e) => e.stopPropagation()}>
                             <Phone className="w-3.5 h-3.5" />
                           </a>
                         )}

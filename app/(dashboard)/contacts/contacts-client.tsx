@@ -2010,7 +2010,7 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
                         </div>
                         {contact.phone && (
                           <a
-                            href={`tel:${contact.phone}`}
+                            href={`/dialer?contactId=${contact.id}`}
                             onClick={e => e.stopPropagation()}
                             className="text-xs text-green-600 mt-0.5 block"
                           >

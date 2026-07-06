@@ -19,7 +19,7 @@ export async function POST(req: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const { contactId, phoneNumber, sessionId, notes } = await req.json()
+  const { contactId, phoneNumber, sessionId, notes, browser } = await req.json()
 
   const call = await prisma.dialerCall.create({
     data: {
@@ -31,6 +31,27 @@ export async function POST(req: Request) {
       agentId: session?.user?.id,
     },
   })
+
+  // Browser softphone call: audio is handled by the Twilio Voice SDK in the agent's
+  // browser (via /api/twilio/voice TwiML) — just log it, don't place a second call.
+  if (browser) {
+    await prisma.dialerCall.update({
+      where: { id: call.id },
+      data: { status: "RINGING", startedAt: new Date() },
+    })
+    if (contactId) {
+      await prisma.activity.create({
+        data: {
+          type: "CALL_MADE",
+          title: "Outbound call initiated",
+          description: `Called ${phoneNumber}`,
+          contactId,
+          userId: session?.user?.id,
+        },
+      })
+    }
+    return NextResponse.json({ callId: call.id, status: "RINGING" })
+  }
 
   try {
     const twimlUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/dialer/twiml?callId=${call.id}`
