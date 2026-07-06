@@ -18,6 +18,7 @@ export default async function DialerPage({ searchParams }: { searchParams?: { co
           id: true, firstName: true, lastName: true, phone: true, phone2: true, status: true, leadScore: true,
           buyerPropertyType: true, buyerLocation: true, buyerBedroomsMin: true, buyerBathroomsMin: true,
           buyerBudgetMin: true, buyerBudgetMax: true, buyerTimelineMonths: true, buyerPurpose: true,
+          leadReferrals: { select: { status: true, partner: { select: { name: true } } }, orderBy: { sentAt: "desc" }, take: 1 },
         },
         where: { phone: { not: null } },
         orderBy: { leadScore: "desc" },
@@ -50,6 +51,7 @@ export default async function DialerPage({ searchParams }: { searchParams?: { co
                     id: true, firstName: true, lastName: true, phone: true, phone2: true, status: true, leadScore: true,
                     buyerPropertyType: true, buyerLocation: true, buyerBedroomsMin: true, buyerBathroomsMin: true,
                     buyerBudgetMin: true, buyerBudgetMax: true, buyerTimelineMonths: true, buyerPurpose: true,
+                    leadReferrals: { select: { status: true, partner: { select: { name: true } } }, orderBy: { sentAt: "desc" }, take: 1 },
                   },
                 },
               },
@@ -77,6 +79,7 @@ export default async function DialerPage({ searchParams }: { searchParams?: { co
           id: true, firstName: true, lastName: true, phone: true, phone2: true, status: true, leadScore: true,
           buyerPropertyType: true, buyerLocation: true, buyerBedroomsMin: true, buyerBathroomsMin: true,
           buyerBudgetMin: true, buyerBudgetMax: true, buyerTimelineMonths: true, buyerPurpose: true,
+          leadReferrals: { select: { status: true, partner: { select: { name: true } } }, orderBy: { sentAt: "desc" }, take: 1 },
         },
       })
     }
