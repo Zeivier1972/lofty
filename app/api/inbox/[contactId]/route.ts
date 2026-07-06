@@ -28,5 +28,13 @@ export async function GET(req: Request, { params }: { params: { contactId: strin
     ...fbMessages.map(m => ({ ...m, channel: "facebook" })),
   ].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
 
+  // Opening the conversation marks its inbound messages as read
+  await Promise.all([
+    prisma.sMSMessage.updateMany({ where: { contactId, direction: "INBOUND", isRead: false }, data: { isRead: true } }),
+    prisma.whatsAppMessage.updateMany({ where: { contactId, direction: "INBOUND", isRead: false }, data: { isRead: true } }),
+    prisma.facebookMessage.updateMany({ where: { contactId, direction: "INBOUND", isRead: false }, data: { isRead: true } }),
+    prisma.portalMessage.updateMany({ where: { contactId, fromClient: true, isRead: false }, data: { isRead: true } }),
+  ]).catch(() => {})
+
   return NextResponse.json({ contact, messages })
 }

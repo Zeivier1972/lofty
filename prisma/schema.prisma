@@ -352,6 +352,7 @@ model SMSMessage {
   status     String   @default("SENT")
   contactId  String?
   userId     String?
+  isRead     Boolean  @default(false)
   createdAt  DateTime @default(now())
 }
 
@@ -825,6 +826,7 @@ model FacebookMessage {
   attachments String?
   contactId   String?
   contact     Contact? @relation(fields: [contactId], references: [id])
+  isRead      Boolean  @default(false)
   createdAt   DateTime @default(now())
 }
 
@@ -842,6 +844,7 @@ model WhatsAppMessage {
   twilioSid   String?
   contactId   String?
   contact     Contact? @relation(fields: [contactId], references: [id])
+  isRead      Boolean  @default(false)
   createdAt   DateTime @default(now())
 }
 
