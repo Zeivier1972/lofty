@@ -94,7 +94,7 @@ export default async function ContactsPage({
                OR regexp_replace(coalesce(phone2, ''), '\D', '', 'g') LIKE ${"%" + digits + "%"}
             LIMIT 500
           `
-          if (idRows.length > 0) or.push({ id: { in: idRows.map(r => r.id) } })
+          if (idRows.length > 0) or.push({ id: { in: idRows.map((r: { id: string }) => r.id) } })
         } catch (e) {
           console.error("Phone digit search failed:", e)
         }
@@ -114,13 +114,16 @@ export default async function ContactsPage({
       }
     }
 
-    // Count per stage in parallel
-    const stageCountResults = await Promise.all(
-      stages.map(s =>
-        prisma.contact.count({ where: { ...baseWhere, pipelineLeads: { some: { stageId: s.id } } } })
-      )
-    )
-    stages.forEach((s, i) => { stageCounts[s.id] = stageCountResults[i] })
+    // Count contacts per stage in a single grouped query (was one COUNT per stage)
+    const stageCountRows = await prisma.$queryRaw<{ stageId: string; count: number }[]>`
+      SELECT pl."stageId" AS "stageId", COUNT(DISTINCT pl."contactId")::int AS count
+      FROM "PipelineLead" pl
+      JOIN "Contact" c ON c.id = pl."contactId"
+      WHERE c."isArchived" = false
+      GROUP BY pl."stageId"
+    `
+    stages.forEach(s => { stageCounts[s.id] = 0 })
+    stageCountRows.forEach((r: { stageId: string; count: number }) => { stageCounts[r.stageId] = r.count })
 
     ;[contacts, total, tags, smartPlans] = await Promise.all([
       prisma.contact.findMany({
