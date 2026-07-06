@@ -90,6 +90,31 @@ const STMTS = [
     CONSTRAINT "SavedSearch_pkey" PRIMARY KEY ("id")
   )`,
   `CREATE INDEX IF NOT EXISTS "SavedSearch_contactId_idx" ON "SavedSearch"("contactId")`,
+  // Realtor referral partners
+  `CREATE TABLE IF NOT EXISTS "ReferralPartner" (
+    "id"        TEXT NOT NULL,
+    "name"      TEXT NOT NULL,
+    "email"     TEXT,
+    "phone"     TEXT,
+    "brokerage" TEXT,
+    "feePct"    DOUBLE PRECISION,
+    "isActive"  BOOLEAN NOT NULL DEFAULT true,
+    "notes"     TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "ReferralPartner_pkey" PRIMARY KEY ("id")
+  )`,
+  `CREATE TABLE IF NOT EXISTS "LeadReferral" (
+    "id"        TEXT NOT NULL,
+    "contactId" TEXT NOT NULL,
+    "partnerId" TEXT NOT NULL,
+    "status"    TEXT NOT NULL DEFAULT 'SENT',
+    "notes"     TEXT,
+    "sentAt"    TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "LeadReferral_pkey" PRIMARY KEY ("id")
+  )`,
+  `CREATE INDEX IF NOT EXISTS "LeadReferral_contactId_idx" ON "LeadReferral"("contactId")`,
+  `CREATE INDEX IF NOT EXISTS "LeadReferral_partnerId_idx" ON "LeadReferral"("partnerId")`,
 ]
 
 // ─── Email templates ─────────────────────────────────────────────────────────
