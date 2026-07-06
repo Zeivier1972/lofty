@@ -1,6 +1,7 @@
 "use client"
 
-import { Users, TrendingUp, FileText, CheckSquare, Sparkles, Flame, Mail, UserPlus, MessageCircle, ArrowRight } from "lucide-react"
+import { useState } from "react"
+import { Users, TrendingUp, FileText, CheckSquare, Sparkles, Flame, Mail, UserPlus, MessageCircle, ArrowRight, X } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -36,7 +37,7 @@ interface DashboardClientProps {
   portalUnread: number
 }
 
-function SofiaBriefing({ hotAlerts, matchAlertsSentToday, newLeadsToday, portalUnread, tasksDueToday, upcomingAppointments }: {
+function SofiaBriefing({ hotAlerts: initialHotAlerts, matchAlertsSentToday, newLeadsToday, portalUnread, tasksDueToday, upcomingAppointments }: {
   hotAlerts: any[]
   matchAlertsSentToday: number
   newLeadsToday: number
@@ -44,18 +45,30 @@ function SofiaBriefing({ hotAlerts, matchAlertsSentToday, newLeadsToday, portalU
   tasksDueToday: number
   upcomingAppointments: number
 }) {
+  const [localHotAlerts, setLocalHotAlerts] = useState(initialHotAlerts)
   const hour = new Date().getHours()
   const greeting = hour < 12 ? "Buenos días" : hour < 18 ? "Buenas tardes" : "Buenas noches"
 
+  async function dismissHotAlerts() {
+    const ids = localHotAlerts.map((a: any) => a.id)
+    setLocalHotAlerts([])
+    await fetch("/api/ai/notifications", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    }).catch(() => {})
+  }
+
   const items = [
-    hotAlerts.length > 0 && {
+    localHotAlerts.length > 0 && {
       icon: Flame,
       iconBg: "bg-red-100",
       iconColor: "text-red-600",
-      label: `${hotAlerts.length} hot alert${hotAlerts.length > 1 ? "s" : ""} — client${hotAlerts.length > 1 ? "s" : ""} showing strong interest`,
-      sub: hotAlerts.slice(0, 2).map((a: any) => a.contact ? `${a.contact.firstName} ${a.contact.lastName}` : "").filter(Boolean).join(", "),
+      label: `${localHotAlerts.length} hot alert${localHotAlerts.length > 1 ? "s" : ""} — client${localHotAlerts.length > 1 ? "s" : ""} showing strong interest`,
+      sub: localHotAlerts.slice(0, 2).map((a: any) => a.contact ? `${a.contact.firstName} ${a.contact.lastName}` : "").filter(Boolean).join(", "),
       href: "/property-alerts",
       urgent: true,
+      onDismiss: dismissHotAlerts,
     },
     portalUnread > 0 && {
       icon: MessageCircle,
@@ -137,23 +150,34 @@ function SofiaBriefing({ hotAlerts, matchAlertsSentToday, newLeadsToday, portalU
           </div>
         ) : (
           items.map((item, i) => (
-            <Link key={i} href={item.href} className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50 transition-colors group">
-              <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0", item.iconBg)}>
-                <item.icon className={cn("w-4 h-4", item.iconColor)} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className={cn("text-sm font-semibold", item.urgent ? "text-gray-900" : "text-gray-700")}>
-                  {item.label}
-                  {item.urgent && <span className="ml-2 inline-block w-1.5 h-1.5 rounded-full bg-red-500 align-middle" />}
-                </p>
-                {item.sub && <p className="text-xs text-gray-400 mt-0.5 truncate">{item.sub}</p>}
-              </div>
-              {item.done ? (
-                <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full flex-shrink-0">✓ Done</span>
-              ) : (
-                <ArrowRight className="w-4 h-4 text-gray-300 group-hover:text-gray-500 transition-colors flex-shrink-0" />
+            <div key={i} className="flex items-center hover:bg-gray-50 transition-colors group">
+              <Link href={item.href} className="flex items-center gap-4 px-6 py-4 flex-1 min-w-0">
+                <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0", item.iconBg)}>
+                  <item.icon className={cn("w-4 h-4", item.iconColor)} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className={cn("text-sm font-semibold", item.urgent ? "text-gray-900" : "text-gray-700")}>
+                    {item.label}
+                    {item.urgent && <span className="ml-2 inline-block w-1.5 h-1.5 rounded-full bg-red-500 align-middle" />}
+                  </p>
+                  {item.sub && <p className="text-xs text-gray-400 mt-0.5 truncate">{item.sub}</p>}
+                </div>
+                {item.done ? (
+                  <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full flex-shrink-0">✓ Done</span>
+                ) : !item.onDismiss ? (
+                  <ArrowRight className="w-4 h-4 text-gray-300 group-hover:text-gray-500 transition-colors flex-shrink-0" />
+                ) : null}
+              </Link>
+              {item.onDismiss && (
+                <button
+                  onClick={() => item.onDismiss!()}
+                  className="mr-5 p-1 rounded-full text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors flex-shrink-0"
+                  title="Mark as seen"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               )}
-            </Link>
+            </div>
           ))
         )}
       </div>
