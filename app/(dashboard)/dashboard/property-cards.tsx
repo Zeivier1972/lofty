@@ -176,7 +176,7 @@ export default function PropertyCards() {
                           <div className="flex flex-wrap items-center gap-2 mt-1">
                             {buyer.phone && (
                               <a
-                                href={`tel:${buyer.phone}`}
+                                href={`/dialer?contactId=${buyer.id}`}
                                 className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-lofty-600 bg-gray-50 border border-gray-200 px-2 py-0.5 rounded-full"
                               >
                                 <Phone className="w-3 h-3" />{buyer.phone}

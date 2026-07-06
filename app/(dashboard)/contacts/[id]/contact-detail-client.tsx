@@ -615,7 +615,7 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
             <p className="text-white text-sm leading-relaxed">{insight}</p>
             <div className="flex gap-2 mt-3">
               {contact.phone && (
-                <a href={`tel:${contact.phone}`}
+                <a href={`/dialer?contactId=${contact.id}`}
                   className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white text-xs font-medium px-3 py-1.5 rounded-full transition-colors">
                   <Phone className="w-3 h-3" /> Call to qualify needs
                 </a>
@@ -709,7 +709,7 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
 
           {/* Quick actions */}
           <div className="flex items-center gap-2">
-            <a href={`tel:${contact.phone}`}
+            <a href={`/dialer?contactId=${contact.id}`}
               className={cn("flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-white text-sm font-medium transition-colors",
                 contact.phone ? "bg-green-500 hover:bg-green-600" : "bg-gray-200 cursor-not-allowed text-gray-400")}>
               <Phone className="w-4 h-4" />
@@ -756,7 +756,7 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
             {contact.phone && (
               <div className="flex items-center gap-2 text-sm">
                 <Phone className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-                <a href={`tel:${contact.phone}`} className="text-gray-700 hover:text-lofty-600">{formatPhone(contact.phone)}</a>
+                <a href={`/dialer?contactId=${contact.id}`} className="text-gray-700 hover:text-lofty-600">{formatPhone(contact.phone)}</a>
                 <span className="ml-auto text-xs text-green-600 bg-green-50 px-1.5 py-0.5 rounded">Valid</span>
               </div>
             )}
