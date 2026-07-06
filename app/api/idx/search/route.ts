@@ -3,6 +3,17 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { searchIdxListings, fetchPrimaryPhotos, buildDisplayAddress, idxTotalFromResult } from "@/lib/bridge"
 
+// CORS: allow partner apps (e.g. Easy Rental) to consume this endpoint from the browser
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+}
+
+export async function OPTIONS() {
+  return new Response(null, { status: 204, headers: CORS_HEADERS })
+}
+
 // Public IDX search — Active, for-sale Residential listings from the MLS feed.
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
@@ -81,8 +92,8 @@ export async function GET(req: Request) {
       office: l.ListOfficeName || null,
     }))
 
-    return NextResponse.json({ ok: true, count: results.length, total, totalPages, page, hasMore, results })
+    return NextResponse.json({ ok: true, count: results.length, total, totalPages, page, hasMore, results }, { headers: CORS_HEADERS })
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e.message || "Search failed" }, { status: 500 })
+    return NextResponse.json({ ok: false, error: e.message || "Search failed" }, { status: 500, headers: CORS_HEADERS })
   }
 }
