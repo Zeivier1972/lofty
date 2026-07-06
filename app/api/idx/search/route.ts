@@ -26,9 +26,11 @@ export async function GET(req: Request) {
     const pageSize = Math.min(num("limit") || 24, 48)
     const offset = num("offset") || 0
 
+    const keyword = searchParams.get("keyword")?.trim() || undefined
+    // When keyword is set, skip city/zip — they'd AND together and block MLS# / address results
     const listings = await searchIdxListings({
-      cities: cityTokens.length > 0 ? cityTokens : undefined,
-      zip: isZip ? loc : (searchParams.get("zip") || undefined),
+      cities: (!keyword && cityTokens.length > 0) ? cityTokens : undefined,
+      zip: (!keyword && isZip) ? loc : (!keyword ? (searchParams.get("zip") || undefined) : undefined),
       minPrice: num("minPrice"),
       maxPrice: num("maxPrice"),
       minBeds: num("minBeds"),
@@ -36,7 +38,9 @@ export async function GET(req: Request) {
       minBaths: num("minBaths"),
       maxBaths: num("maxBaths"),
       minGarage: num("minGarage"),
-      propertySubType: searchParams.get("type") || undefined,
+      propertySubTypes: searchParams.get("type")
+        ? searchParams.get("type")!.split(",").map(s => s.trim()).filter(Boolean)
+        : undefined,
       mode: searchParams.get("mode") === "rent" ? "rent" : "sale",
       minSqft: num("minSqft"),
       maxSqft: num("maxSqft"),
@@ -49,6 +53,7 @@ export async function GET(req: Request) {
       sort: searchParams.get("sort") || undefined,
       limit: pageSize,
       offset,
+      keyword,
     })
     const total = idxTotalFromResult(listings)
     const totalPages = Math.max(1, Math.ceil(total / pageSize))
@@ -60,6 +65,7 @@ export async function GET(req: Request) {
 
     const results = listings.map((l: any) => ({
       listingKey: l.ListingKey,
+      listingId: l.ListingId ?? l.ListingKey ?? "", // real MLS# (e.g. A11234567)
       address: buildDisplayAddress(l),
       city: l.City ?? null,
       state: l.StateOrProvince ?? null,
@@ -68,7 +74,9 @@ export async function GET(req: Request) {
       beds: l.BedroomsTotal ?? null,
       baths: l.BathroomsTotalDecimal ?? null,
       sqft: l.LivingArea ?? null,
+      yearBuilt: l.YearBuilt ?? null,
       subType: l.PropertySubType ?? null,
+      description: l.PublicRemarks ? String(l.PublicRemarks).slice(0, 300) : null,
       photo: photos[l.ListingKey] || null,
       office: l.ListOfficeName || null,
     }))

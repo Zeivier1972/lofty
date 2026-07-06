@@ -39,7 +39,7 @@ const NAV_LINKS = [
   { label: "HOME",             href: "/site" },
   { label: "BUY",              href: "/homes" },
   { label: "SELL",             href: "/valuacion" },
-  { label: "PRE-CONSTRUCTION", href: "/search" },
+  { label: "PRE-CONSTRUCTION", href: "/new-construction" },
   { label: "ABOUT",            href: "/site#about" },
   { label: "MARKET SNAPSHOT",  href: "/site#market" },
 ]

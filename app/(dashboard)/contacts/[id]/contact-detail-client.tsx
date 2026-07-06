@@ -26,6 +26,7 @@ import {
 } from "@/lib/utils"
 import { useToast } from "@/components/ui/use-toast"
 import { AiAssistBar } from "@/components/ui/ai-assist-bar"
+import PropertySendPanel from "./property-send-panel"
 
 function generateInsight(contact: any): string | null {
   const emails = contact.emails || []
@@ -1221,6 +1222,17 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
             {/* Properties Tab */}
             {activeTab === "properties" && (
               <div className="space-y-3">
+                {/* Agent: search live MLS and send directly to client */}
+                <PropertySendPanel
+                  contactId={contact.id}
+                  contactEmail={contact.email || null}
+                  contactPhone={contact.phone || null}
+                  defaultLocation={contact.buyerLocation || ""}
+                  defaultMaxPrice={contact.buyerBudgetMax || undefined}
+                  defaultMinBeds={contact.buyerBedroomsMin || undefined}
+                  defaultPropertyType={contact.buyerPropertyType || null}
+                />
+
                 {/* IDX Saved properties (from /homes favorites) */}
                 {contact.propertySaves?.length > 0 && (
                   <>

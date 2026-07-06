@@ -7,3 +7,13 @@ healthcheckPath = "/api/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
+
+[[crons]]
+name = "sofia-match-alerts"
+schedule = "0 * * * *"
+command = "curl -sf -X POST ${NEXT_PUBLIC_APP_URL}/api/cron/match-alerts -H \"x-cron-secret: ${CRON_SECRET}\" || true"
+
+[[crons]]
+name = "daily-system-check"
+schedule = "0 8 * * *"
+command = "curl -sf \"${NEXT_PUBLIC_APP_URL}/api/cron/system-check\" -H \"x-cron-secret: ${CRON_SECRET}\" || true"

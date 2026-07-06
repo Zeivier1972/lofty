@@ -5,7 +5,7 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { fetchListings, bridgeToProperty } from "@/lib/bridge"
 import { sendEmail } from "@/lib/email"
-import { scoreProperty } from "@/lib/property-scoring"
+import { scoreProperty, propertyMatchesLocation, propertyMatchesBudget } from "@/lib/property-scoring"
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
@@ -212,9 +212,13 @@ export async function GET(req: Request) {
     const { created, updated } = await syncFreshListings(uniqueZips)
     log.push(`Sync complete: ${created} new, ${updated} updated`)
 
-    // 2. Get all active properties — use PropertyAlertSent per-contact to dedup
+    // 2. Get all active residential properties — use PropertyAlertSent per-contact to dedup
     const freshProperties = await prisma.property.findMany({
-      where: { status: "ACTIVE", price: { gte: 50000 } },
+      where: {
+        status: "ACTIVE",
+        price: { gte: 50000 },
+        propertyType: { in: ["SINGLE_FAMILY", "CONDO", "TOWNHOUSE", "MULTI_FAMILY"] },
+      },
       orderBy: { createdAt: "desc" },
       take: 200,
       select: {
@@ -270,7 +274,13 @@ export async function GET(req: Request) {
           buyerLocation: contact.buyerLocation,
         }
 
-        const scored = freshProperties
+        // Hard filters: location + budget before scoring
+        const locationCandidates = freshProperties.filter(p =>
+          propertyMatchesLocation(p, prefs.buyerLocation) &&
+          propertyMatchesBudget(p.price, prefs.buyerBudgetMin, prefs.buyerBudgetMax)
+        )
+
+        const scored = locationCandidates
           .map(p => ({ property: p, ...scoreProperty(p, prefs) }))
           .filter(m => m.score >= 40)
           .sort((a, b) => b.score - a.score)

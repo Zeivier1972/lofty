@@ -81,7 +81,8 @@ export async function fetchListings(params: {
 
   // OData $filter (single quotes in string literals are escaped by doubling)
   const esc = (s: string) => s.replace(/'/g, "''")
-  const filters: string[] = [`StandardStatus eq 'Active'`]
+  // PropertyType eq 'Residential' excludes commercial, land, and rental-only listings
+  const filters: string[] = [`StandardStatus eq 'Active'`, `PropertyType eq 'Residential'`]
   if (params.minPrice) filters.push(`ListPrice ge ${params.minPrice}`)
   if (params.maxPrice) filters.push(`ListPrice le ${params.maxPrice}`)
   if (params.minBeds) filters.push(`BedroomsTotal ge ${params.minBeds}`)
@@ -166,10 +167,10 @@ export function buildDisplayAddress(l: any): string {
 export async function searchIdxListings(params: {
   city?: string; cities?: string[]; zip?: string; minPrice?: number; maxPrice?: number
   minBeds?: number; maxBeds?: number; minBaths?: number; maxBaths?: number
-  minGarage?: number; propertySubType?: string; mode?: "sale" | "rent"
+  minGarage?: number; propertySubType?: string; propertySubTypes?: string[]; mode?: "sale" | "rent"
   minSqft?: number; maxSqft?: number; minYear?: number; maxYear?: number
   maxHoa?: number; maxDom?: number; pool?: boolean; waterfront?: boolean
-  sort?: string; limit?: number; offset?: number
+  sort?: string; limit?: number; offset?: number; keyword?: string
 }): Promise<any[]> {
   const token = process.env.BRIDGE_SERVER_TOKEN
   if (!token) throw new Error("BRIDGE_SERVER_TOKEN not set")
@@ -216,7 +217,50 @@ export async function searchIdxListings(params: {
     filters.push(`(${cityClauses})`)
   }
 
-  if (params.propertySubType) filters.push(`PropertySubType eq '${esc(params.propertySubType)}'`)
+  // Multi-type filter: OR across subtypes; falls back to single subtype
+  if (params.propertySubTypes && params.propertySubTypes.length > 0) {
+    if (params.propertySubTypes.length === 1) {
+      filters.push(`PropertySubType eq '${esc(params.propertySubTypes[0])}'`)
+    } else {
+      const clauses = params.propertySubTypes.map(t => `PropertySubType eq '${esc(t)}'`).join(" or ")
+      filters.push(`(${clauses})`)
+    }
+  } else if (params.propertySubType) {
+    filters.push(`PropertySubType eq '${esc(params.propertySubType)}'`)
+  }
+
+  // Keyword search: MLS# gets an exact ListingId match; anything else searches address + remarks
+  if (params.keyword) {
+    const raw = params.keyword.trim()
+    const kw = esc(raw)
+    const kwLower = esc(raw.toLowerCase())
+    // MLS# pattern: letter(s) followed by digits, e.g. A11234567
+    if (/^[A-Za-z]\d{5,}$/.test(raw)) {
+      filters.push(`ListingId eq '${kw}'`)
+    } else {
+      // When input looks like a full address (starts with a house number), strip
+      // trailing city/state/zip before searching UnparsedAddress. The MLS only
+      // stores the street portion (e.g. "11556 SW 234TH ST"), so searching for
+      // "11556 sw 234th st homestead fl 33032" would never match.
+      let streetSearch = raw
+      if (/^\d+\s/.test(raw)) {
+        const tokens = raw.split(/\s+/)
+        let end = tokens.length
+        if (/^\d{5}$/.test(tokens[end - 1])) end--           // strip trailing zip
+        if (end > 0 && /^[A-Za-z]{2}$/.test(tokens[end - 1])) end-- // strip state abbrev
+        // Keep max 4 tokens = house number + direction + street name + suffix
+        streetSearch = tokens.slice(0, Math.min(end, 4)).join(" ")
+      }
+      const srchLower = esc(streetSearch.toLowerCase())
+      // Case-insensitive search using tolower() — OData 4.0 standard
+      filters.push(
+        `(contains(tolower(UnparsedAddress),'${srchLower}')` +
+        ` or contains(tolower(StreetName),'${srchLower}')` +
+        ` or contains(tolower(City),'${kwLower}')` +
+        ` or contains(tolower(PublicRemarks),'${kwLower}'))`
+      )
+    }
+  }
 
   const query = new URLSearchParams()
   query.set("access_token", token)
