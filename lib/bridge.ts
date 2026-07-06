@@ -165,7 +165,7 @@ export function buildDisplayAddress(l: any): string {
 
 // IDX search — Active, for-sale Residential only (excludes rentals, commercial, land).
 export async function searchIdxListings(params: {
-  city?: string; cities?: string[]; zip?: string; minPrice?: number; maxPrice?: number
+  city?: string; cities?: string[]; zip?: string; zips?: string[]; minPrice?: number; maxPrice?: number
   minBeds?: number; maxBeds?: number; minBaths?: number; maxBaths?: number
   minGarage?: number; propertySubType?: string; propertySubTypes?: string[]; mode?: "sale" | "rent"
   minSqft?: number; maxSqft?: number; minYear?: number; maxYear?: number
@@ -203,19 +203,25 @@ export async function searchIdxListings(params: {
   if (params.maxDom) filters.push(`DaysOnMarket le ${params.maxDom}`)
   if (params.pool) filters.push(`PoolPrivateYN eq true`)
   if (params.waterfront) filters.push(`WaterfrontYN eq true`)
-  if (params.zip) filters.push(`PostalCode eq '${esc(params.zip.trim())}'`)
-
-  // Support single city or multiple cities (comma-separated from email links)
-  const allCities = params.cities && params.cities.length > 0
+  // Location: any number of ZIPs and/or cities, OR'd together — a listing in
+  // ANY of the given areas matches. (Previously zip AND city were ANDed and
+  // only a single zip was supported, so "33032, 33034" returned nothing.)
+  const allZips = [
+    ...(params.zips || []),
+    ...(params.zip ? [params.zip] : []),
+  ].map(z => String(z).trim()).filter(z => /^\d{5}$/.test(z))
+  const allCities = (params.cities && params.cities.length > 0
     ? params.cities
     : params.city ? [params.city] : []
-  if (allCities.length === 1) {
+  ).map(c => String(c).trim()).filter(Boolean)
+
+  const locClauses = [
+    ...allZips.map(z => `PostalCode eq '${esc(z)}'`),
     // MLS stores city Title-cased; OData eq is case-sensitive — normalize.
-    filters.push(`City eq '${esc(titleCase(allCities[0]))}'`)
-  } else if (allCities.length > 1) {
-    const cityClauses = allCities.map(c => `City eq '${esc(titleCase(c))}'`).join(" or ")
-    filters.push(`(${cityClauses})`)
-  }
+    ...allCities.map(c => `City eq '${esc(titleCase(c))}'`),
+  ]
+  if (locClauses.length === 1) filters.push(locClauses[0])
+  else if (locClauses.length > 1) filters.push(`(${locClauses.join(" or ")})`)
 
   // Multi-type filter: OR across subtypes; falls back to single subtype
   if (params.propertySubTypes && params.propertySubTypes.length > 0) {
