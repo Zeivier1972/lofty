@@ -27,6 +27,7 @@ import {
 import { useToast } from "@/components/ui/use-toast"
 import { AiAssistBar } from "@/components/ui/ai-assist-bar"
 import PropertySendPanel from "./property-send-panel"
+import PreconstructionSendPanel from "./preconstruction-send-panel"
 import ReferButton from "./refer-button"
 
 function generateInsight(contact: any): string | null {
@@ -1249,6 +1250,12 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
                   defaultMaxPrice={contact.buyerBudgetMax || undefined}
                   defaultMinBeds={contact.buyerBedroomsMin || undefined}
                   defaultPropertyType={contact.buyerPropertyType || null}
+                />
+
+                <PreconstructionSendPanel
+                  contactId={contact.id}
+                  contactEmail={contact.email || null}
+                  contactPhone={contact.phone || null}
                 />
 
                 {/* IDX Saved properties (from /homes favorites) */}
