@@ -94,6 +94,17 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ ok: true, count: results.length, total, totalPages, page, hasMore, results }, { headers: CORS_HEADERS })
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e.message || "Search failed" }, { status: 500, headers: CORS_HEADERS })
+    const msg = String(e?.message || "Search failed")
+    // Distinguish a configuration/connection problem (token missing or rejected
+    // by Bridge) from a normal "no results" so the UI can show the real cause.
+    const isAuth = /BRIDGE_SERVER_TOKEN|401|403|unauthor/i.test(msg)
+    console.error("[idx/search] error:", msg)
+    return NextResponse.json({
+      ok: false,
+      error: isAuth
+        ? "MLS/IDX connection error — the Bridge API token is missing or rejected. Check BRIDGE_SERVER_TOKEN in Railway."
+        : msg,
+      code: isAuth ? "IDX_DISCONNECTED" : "SEARCH_ERROR",
+    }, { status: isAuth ? 503 : 500, headers: CORS_HEADERS })
   }
 }

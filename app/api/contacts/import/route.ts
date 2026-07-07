@@ -73,7 +73,7 @@ export async function POST(req: Request) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   try {
-    const { csv } = await req.json()
+    const { csv, dryRun } = await req.json()
     if (!csv?.trim()) return NextResponse.json({ error: "No CSV data provided" }, { status: 400 })
 
     const lines = csv.trim().split(/\r?\n/).filter((l: string) => l.trim())
@@ -304,6 +304,52 @@ export async function POST(req: Request) {
         select: { id: true, phone: true },
       })
       existingP.forEach(c => { if (c.phone) existingByPhone.set(c.phone, c.id) })
+    }
+
+    // ── Dry run: verify the file against the CRM without writing ────────
+    if (dryRun) {
+      // Emails of phone-matched contacts (to detect fixable missing emails)
+      const phoneMatchedIds = Array.from(new Set(
+        parsed.map(r => (r.contact.phone ? existingByPhone.get(r.contact.phone) : undefined)).filter(Boolean)
+      )) as string[]
+      const idEmail = new Map<string, string | null>()
+      if (phoneMatchedIds.length > 0) {
+        const cs = await prisma.contact.findMany({
+          where: { id: { in: phoneMatchedIds } },
+          select: { id: true, email: true },
+        })
+        cs.forEach(c => idEmail.set(c.id, c.email))
+      }
+
+      let found = 0
+      let missing = 0
+      let wouldFixEmail = 0
+      const missingSamples: string[] = []
+      for (const { contact } of parsed) {
+        const emailKey = contact.email?.toLowerCase()
+        const byEmail = emailKey ? existingByEmail.get(emailKey) : undefined
+        const byPhone = contact.phone ? existingByPhone.get(contact.phone) : undefined
+        if (byEmail || byPhone) {
+          found++
+          if (!byEmail && byPhone && contact.email && !idEmail.get(byPhone)) wouldFixEmail++
+        } else {
+          missing++
+          if (missingSamples.length < 25) {
+            const label = `${contact.firstName} ${contact.lastName || ""}`.trim()
+            missingSamples.push(label + (contact.phone ? ` (${contact.phone})` : contact.email ? ` (${contact.email})` : ""))
+          }
+        }
+      }
+      return NextResponse.json({
+        dryRun: true,
+        checked: parsed.length,
+        found,
+        missing,
+        wouldFixEmail,
+        skipped: parseSkipped,
+        missingSamples,
+        total: lines.length - 1,
+      })
     }
 
     // ── Phase 3: pre-upsert all tags ────────────────────────────────────

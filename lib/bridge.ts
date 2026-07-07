@@ -210,10 +210,23 @@ export async function searchIdxListings(params: {
     ...(params.zips || []),
     ...(params.zip ? [params.zip] : []),
   ].map(z => String(z).trim()).filter(z => /^\d{5}$/.test(z))
+  // US state abbreviations and country/junk tokens that leak in from malformed
+  // buyerLocation strings like "miami,FL, 33158, America,FL" — these are NOT
+  // cities and would produce City eq 'Fl' (matches nothing), breaking search.
+  const US_STATES = new Set(["al","ak","az","ar","ca","co","ct","de","fl","ga","hi","id","il","in","ia","ks","ky","la","me","md","ma","mi","mn","ms","mo","mt","ne","nv","nh","nj","nm","ny","nc","nd","oh","ok","or","pa","ri","sc","sd","tn","tx","ut","vt","va","wa","wv","wi","wy","dc"])
+  const JUNK_LOC = new Set(["america","usa","us","united states","estados unidos","na","n/a","none"])
   const allCities = (params.cities && params.cities.length > 0
     ? params.cities
     : params.city ? [params.city] : []
-  ).map(c => String(c).trim()).filter(Boolean)
+  ).map(c => String(c).trim())
+    .filter(Boolean)
+    .filter(c => {
+      const low = c.toLowerCase()
+      if (US_STATES.has(low)) return false      // "FL" — a state, not a city
+      if (JUNK_LOC.has(low)) return false        // "America", "USA"
+      if (/^\d+$/.test(c)) return false          // stray numbers that aren't 5-digit zips
+      return true
+    })
 
   const locClauses = [
     ...allZips.map(z => `PostalCode eq '${esc(z)}'`),
