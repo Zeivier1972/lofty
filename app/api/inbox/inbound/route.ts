@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { prisma } from "@/lib/prisma"
 import { sendSMS, sendWhatsApp } from "@/lib/sms"
+import { searchIdxListings, fetchPrimaryPhotos, buildDisplayAddress } from "@/lib/bridge"
 import Anthropic from "@anthropic-ai/sdk"
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -191,42 +192,52 @@ async function runTool(name: string, input: any, contactId: string): Promise<{te
   }
 
   if (name === "search_properties") {
-    // MLS/IDX compliance: resale MLS listings may only be DISPLAYED on the public
-    // search website — never redistributed as listing detail over SMS/WhatsApp.
-    // So we direct the lead to the public IDX search page instead of texting MLS data.
+    // Query LIVE MLS via Bridge and return the actual matching listings so Sofía
+    // can share them directly (address, price, beds/baths) — same detail level the
+    // agent's manual "Send Properties" panel already sends over SMS/email.
     try {
-      const where: any = { status: "ACTIVE" }
-
-      if (input.price_min != null || input.price_max != null) {
-        where.price = {}
-        if (input.price_min != null) where.price.gte = input.price_min
-        if (input.price_max != null) where.price.lte = input.price_max
-      }
-      if (input.bedrooms_min != null) where.bedrooms = { gte: input.bedrooms_min }
-      if (input.property_type) where.propertyType = input.property_type
-      if (input.location) {
-        where.OR = [
-          { city: { contains: input.location, mode: "insensitive" } },
-          { address: { contains: input.location, mode: "insensitive" } },
-          { zip: { contains: input.location } },
-        ]
-      }
-
-      // Count only — used to gauge availability, NOT to redistribute listing fields
-      const count = await prisma.property.count({ where })
       const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
       const searchUrl = `${appUrl}/homes`
+      const PT: Record<string, string> = {
+        SINGLE_FAMILY: "Single Family Residence", CONDO: "Condominium",
+        TOWNHOUSE: "Townhouse", MULTI_FAMILY: "Multi Family",
+      }
+      const loc = String(input.location || "").trim()
+      const tokens = loc ? loc.split(",").map((s: string) => s.trim()).filter(Boolean) : []
+      const zips = tokens.filter((t: string) => /^\d{5}$/.test(t))
+      const cities = tokens.filter((t: string) => !/^\d{5}$/.test(t))
 
-      if (count === 0) {
+      const listings = await searchIdxListings({
+        zips: zips.length ? zips : undefined,
+        cities: cities.length ? cities : undefined,
+        minPrice: input.price_min || undefined,
+        maxPrice: input.price_max || undefined,
+        minBeds: input.bedrooms_min || undefined,
+        propertySubType: input.property_type ? PT[input.property_type] : undefined,
+        limit: 4,
+      })
+
+      if (!listings.length) {
         return {
-          text: `INSTRUCCIÓN INTERNA: No hay coincidencias exactas ahora mismo, pero el inventario del MLS cambia a diario. NO inventes propiedades, direcciones ni precios. Comparte este enlace para que el cliente vea todas las propiedades activas del MLS con fotos y detalles: ${searchUrl}. Ofrece avisarle a Catherine para una búsqueda personalizada y coordinar una visita.`,
+          text: `INSTRUCCIÓN INTERNA: No hubo coincidencias exactas ahora mismo (el inventario del MLS cambia a diario). NO inventes propiedades. Comparte este enlace para ver todo el inventario activo: ${searchUrl}. Ofrece que Catherine haga una búsqueda personalizada.`,
           imageUrls: [],
         }
       }
 
+      const photoMap: Record<string, string> = await fetchPrimaryPhotos(listings.map((l: any) => l.ListingKey).filter(Boolean)).catch(() => ({}))
+      const imageUrls = listings.map((l: any) => photoMap[l.ListingKey]).filter((u: any) => typeof u === "string" && u.startsWith("http")).slice(0, 3)
+
+      const lines = listings.slice(0, 4).map((l: any) => {
+        const parts = [`📍 ${buildDisplayAddress(l)}${l.City ? `, ${l.City}` : ""}`]
+        if (l.ListPrice) parts.push(`💰 $${Number(l.ListPrice).toLocaleString()}`)
+        const specs = [l.BedroomsTotal ? `${l.BedroomsTotal} cuartos` : "", l.BathroomsTotalDecimal ? `${l.BathroomsTotalDecimal} baños` : "", l.LivingArea ? `${Number(l.LivingArea).toLocaleString()} sqft` : ""].filter(Boolean).join(" | ")
+        if (specs) parts.push(`🏠 ${specs}`)
+        return parts.join("\n")
+      }).join("\n\n---\n\n")
+
       return {
-        text: `INSTRUCCIÓN INTERNA: Hay propiedades activas en el MLS que coinciden con lo que busca el cliente. NO inventes ni cites direcciones, precios ni detalles específicos de listados — por reglas del MLS las propiedades solo se muestran en el sitio web. Comparte este enlace para que el cliente las vea con fotos, precios y todos los detalles: ${searchUrl}. Invita al cliente a explorar y ofrece coordinar una visita con Catherine para las que le gusten. 🏠`,
-        imageUrls: [],
+        text: `INSTRUCCIÓN INTERNA: Comparte ESTAS propiedades activas del MLS con el cliente (son datos reales del MLS en vivo — puedes citarlas). Preséntalas de forma clara y ofrece coordinar un tour con Catherine para las que le gusten. Incluye el enlace ${searchUrl} para ver más.\n\n${lines}`,
+        imageUrls,
       }
     } catch (e: any) {
       return {text: "Error al buscar propiedades: " + (e.message || "desconocido"), imageUrls: []}
