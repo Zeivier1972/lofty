@@ -250,3 +250,40 @@ Return only the JSON object, nothing else. If no preferences are mentioned, retu
     return null
   }
 }
+
+// Build an SMS/WhatsApp reply listing the actual matching MLS resale properties.
+// Returns null if nothing matched. Address/price/beds are safe to show for resale.
+export async function buildListingsReply(prefs: {
+  buyerLocation?: string | null
+  buyerBudgetMin?: number | null
+  buyerBudgetMax?: number | null
+  buyerBedroomsMin?: number | null
+  buyerBathroomsMin?: number | null
+  buyerPropertyType?: string | null
+}, appUrl: string): Promise<string | null> {
+  const loc = (prefs.buyerLocation || "").trim()
+  const tokens = loc ? loc.split(",").map(s => s.trim()).filter(Boolean) : []
+  const zips = tokens.filter(t => /^\d{5}$/.test(t))
+  const cities = tokens.filter(t => !/^\d{5}$/.test(t))
+  try {
+    const listings = await searchIdxListings({
+      zips: zips.length ? zips : undefined,
+      cities: cities.length ? cities : undefined,
+      minPrice: prefs.buyerBudgetMin || undefined,
+      maxPrice: prefs.buyerBudgetMax || undefined,
+      minBeds: prefs.buyerBedroomsMin || undefined,
+      minBaths: prefs.buyerBathroomsMin || undefined,
+      propertySubType: prefs.buyerPropertyType ? PROP_TYPE_MAP[prefs.buyerPropertyType] : undefined,
+      limit: 4,
+    })
+    if (!listings.length) return null
+    const lines = listings.slice(0, 4).map((l: any) => {
+      const price = l.ListPrice ? `$${Number(l.ListPrice).toLocaleString()}` : ""
+      const specs = [l.BedroomsTotal ? `${l.BedroomsTotal}bd` : "", l.BathroomsTotalDecimal ? `${l.BathroomsTotalDecimal}ba` : ""].filter(Boolean).join("/")
+      return `• ${buildDisplayAddress(l)} — ${[price, specs].filter(Boolean).join(", ")}`
+    })
+    return `¡Encontré ${listings.length} opciones que coinciden! 🏠\n\n${lines.join("\n")}\n\nVer todas y agendar un tour: ${appUrl}/homes`
+  } catch {
+    return null
+  }
+}

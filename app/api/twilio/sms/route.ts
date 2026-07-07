@@ -7,7 +7,7 @@ import { sendSMS } from "@/lib/sms"
 import { scoreContact } from "@/lib/scoring"
 import { handleLeadEngaged, notifyAgentOfLeadReply } from "@/lib/lead-flow"
 import { detectKeyword, deliverLeadMagnet } from "@/lib/lead-magnet-delivery"
-import { extractBuyerPrefsFromNote, triggerMatchAlert } from "@/lib/trigger-match-alert"
+import { extractBuyerPrefsFromNote, triggerMatchAlert, buildListingsReply } from "@/lib/trigger-match-alert"
 
 export async function POST(req: Request) {
   const formData = await req.formData()
@@ -88,10 +88,33 @@ export async function POST(req: Request) {
       take: 10,
     })
 
-    // Generate AI reply
-    const messages = history.map(m => ({ role: m.role as "user" | "assistant", content: m.content }))
-    const contactCtx = `Contact: ${contact.firstName} ${contact.lastName}, Status: ${contact.status}, Score: ${contact.leadScore}`
-    const reply = await chatWithAI(messages, contactCtx)
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
+
+    // If the message reveals buyer criteria, reply with the ACTUAL matching
+    // listings (not a generic link). Save the prefs so alerts continue too.
+    let reply: string | null = null
+    const prefs = await extractBuyerPrefsFromNote(body).catch(() => null)
+    const hasCriteria = prefs && (prefs.buyerLocation || prefs.buyerBudgetMax || prefs.buyerBedroomsMin)
+    if (hasCriteria) {
+      const data: Record<string, any> = {}
+      for (const [k, v] of Object.entries(prefs!)) {
+        if (v !== null && v !== undefined && v !== "") data[k] = v
+      }
+      data.matchPrefsCompletedAt = new Date()
+      await prisma.contact.update({ where: { id: contact.id }, data }).catch(() => {})
+      // Merge stored prefs with just-extracted ones for the search
+      const merged = { ...contact, ...data }
+      reply = await buildListingsReply(merged, appUrl)
+      // Also email full property cards if we have an email
+      if (contact.email) triggerMatchAlert(contact.id).catch(() => {})
+    }
+
+    // No criteria (or no matches) → normal conversational AI reply
+    if (!reply) {
+      const messages = history.map(m => ({ role: m.role as "user" | "assistant", content: m.content }))
+      const contactCtx = `Contact: ${contact.firstName} ${contact.lastName}, Status: ${contact.status}, Score: ${contact.leadScore}`
+      reply = await chatWithAI(messages, contactCtx)
+    }
 
     // Save AI reply
     await prisma.aIMessage.create({
@@ -130,24 +153,6 @@ export async function POST(req: Request) {
 
     // Notify Catherine directly by SMS + email — she should never miss a reply
     notifyAgentOfLeadReply(contact, "SMS", body).catch(() => {})
-
-    // If the reply reveals buyer interest (area, budget, beds, resale/precon type),
-    // extract it, save it, and have Sofía send matching properties automatically.
-    extractBuyerPrefsFromNote(body).then(async prefs => {
-      if (!prefs) return
-      const data: Record<string, any> = {}
-      for (const [k, v] of Object.entries(prefs)) {
-        if (v !== null && v !== undefined && v !== "") data[k] = v
-      }
-      if (Object.keys(data).length === 0) return
-      data.matchPrefsCompletedAt = new Date()
-      await prisma.contact.update({ where: { id: contact.id }, data }).catch(() => {})
-      // triggerMatchAlert emails matching MLS listings; also text the lead a heads-up
-      const result = await triggerMatchAlert(contact.id).catch(() => null)
-      if (result?.sent && contact.email) {
-        await sendSMS(from, `¡Perfecto! Te envié algunas propiedades que coinciden a tu correo (${contact.email}). Revísalo 📩`).catch(() => {})
-      }
-    }).catch(() => {})
 
     // Notify Catherine (in-app record)
     await prisma.aINotification.create({
