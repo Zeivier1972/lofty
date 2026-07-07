@@ -82,7 +82,7 @@ export default async function ReportsPage() {
         select: { createdAt: true },
       }),
       prisma.email.findMany({
-        where: { direction: "OUTBOUND", createdAt: { gte: months[0].start } },
+        where: { direction: "OUTBOUND", status: "SENT", createdAt: { gte: months[0].start } },
         select: { createdAt: true },
       }),
     ])

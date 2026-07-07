@@ -95,7 +95,7 @@ async function checkEmailVolume(): Promise<CheckResult> {
     const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" })
     const todayStart = new Date(`${todayStr}T00:00:00-05:00`)
     const count = await prisma.email.count({
-      where: { direction: "OUTBOUND", createdAt: { gte: todayStart } },
+      where: { direction: "OUTBOUND", status: "SENT", createdAt: { gte: todayStart } },
     })
     const LIMIT = Number(process.env.EMAIL_DAILY_LIMIT || 100) // Resend free tier
     return {
