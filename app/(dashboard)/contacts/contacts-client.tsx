@@ -162,7 +162,7 @@ function PipelineSettingsModal({
 function ImportModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
   const [csv, setCsv] = useState("")
   const [importing, setImporting] = useState(false)
-  const [result, setResult] = useState<{ imported: number; updated?: number; stagePlaced?: number; stageMoved?: number; emailsSent?: number; skipped: number; errors: string[]; total: number } | null>(null)
+  const [result, setResult] = useState<{ imported: number; updated?: number; stagePlaced?: number; stageMoved?: number; emailsSent?: number; skipped: number; errors: string[]; total: number; dryRunMode?: boolean; found?: number; missing?: number; wouldFixEmail?: number; missingSamples?: string[] } | null>(null)
   const [progress, setProgress] = useState<{ done: number; total: number; imported: number } | null>(null)
   const [preview, setPreview] = useState<{ headers: string[]; rows: string[][] } | null>(null)
   const { toast } = useToast()
@@ -203,7 +203,7 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
     setPreview(parsePreview(text))
   }
 
-  async function handleImport() {
+  async function handleImport(dryRun = false) {
     if (!csv.trim()) return
     setImporting(true)
     setProgress(null)
@@ -217,13 +217,17 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
       chunks.push([header, ...dataRows.slice(i, i + CHUNK)].join("\n"))
     }
 
-    const totals = { imported: 0, updated: 0, stagePlaced: 0, stageMoved: 0, skipped: 0, emailsSent: 0, errors: [] as string[], total: dataRows.length }
+    const totals = {
+      imported: 0, updated: 0, stagePlaced: 0, stageMoved: 0, skipped: 0, emailsSent: 0,
+      errors: [] as string[], total: dataRows.length,
+      dryRunMode: dryRun, found: 0, missing: 0, wouldFixEmail: 0, missingSamples: [] as string[],
+    }
 
     async function sendChunk(chunkCsv: string, attempt = 1): Promise<any> {
       const res = await fetch("/api/contacts/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ csv: chunkCsv }),
+        body: JSON.stringify({ csv: chunkCsv, dryRun }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -247,11 +251,15 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
         totals.updated    += data.updated    || 0
         totals.skipped    += data.skipped    || 0
         totals.emailsSent += data.emailsSent || 0
+        totals.found      += data.found      || 0
+        totals.missing    += data.missing    || 0
+        totals.wouldFixEmail += data.wouldFixEmail || 0
+        totals.missingSamples.push(...(data.missingSamples || []).slice(0, 25 - totals.missingSamples.length))
         totals.errors.push(...(data.errors || []))
       }
       setProgress(null)
       setResult(totals)
-      if (totals.imported > 0) onImported()
+      if (!dryRun && totals.imported > 0) onImported()
     } catch (e: any) {
       setProgress(null)
       toast({ title: e.message || "Import failed", variant: "destructive" })
@@ -278,7 +286,42 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
           </button>
         </div>
 
-        {result ? (
+        {result?.dryRunMode ? (
+          <div className="p-6 space-y-4">
+            <div className={`flex items-start gap-3 p-4 rounded-xl border ${(result.missing ?? 0) === 0 ? "bg-green-50 border-green-200" : "bg-amber-50 border-amber-200"}`}>
+              <CheckCircle2 className={`w-6 h-6 flex-shrink-0 ${(result.missing ?? 0) === 0 ? "text-green-600" : "text-amber-600"}`} />
+              <div>
+                <p className={`font-semibold ${(result.missing ?? 0) === 0 ? "text-green-800" : "text-amber-800"}`}>
+                  Verificación completa — {(result.missing ?? 0) === 0 ? "todos los leads están en el CRM ✓" : `faltan ${result.missing} leads`}
+                </p>
+                <p className="text-sm text-gray-600 mt-1">
+                  ✓ {result.found} de {(result.found ?? 0) + (result.missing ?? 0)} leads encontrados en el CRM (por email o teléfono)
+                </p>
+                {(result.skipped ?? 0) > 0 && (
+                  <p className="text-sm text-gray-500">↷ {result.skipped} filas sin email ni teléfono (no importables)</p>
+                )}
+                {(result.wouldFixEmail ?? 0) > 0 && (
+                  <p className="text-sm text-amber-700">✉️ {result.wouldFixEmail} contactos existen sin email — reimporta el archivo para completarlos</p>
+                )}
+              </div>
+            </div>
+            {(result.missingSamples?.length ?? 0) > 0 && (
+              <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg max-h-48 overflow-y-auto">
+                <p className="text-xs font-medium text-gray-600 mb-1">Leads del archivo que NO están en el CRM ({result.missing}) — reimporta para agregarlos:</p>
+                {result.missingSamples!.map((m, i) => <p key={i} className="text-xs text-gray-500">• {m}</p>)}
+                {(result.missing ?? 0) > result.missingSamples!.length && (
+                  <p className="text-xs text-gray-400 mt-1">...y {(result.missing ?? 0) - result.missingSamples!.length} más</p>
+                )}
+              </div>
+            )}
+            <div className="flex gap-3">
+              <Button onClick={() => { setResult(null); handleImport(false) }} className="flex-1 bg-lofty-600 hover:bg-lofty-700">
+                Importar ahora (corrige todo)
+              </Button>
+              <Button onClick={onClose} variant="outline">Cerrar</Button>
+            </div>
+          </div>
+        ) : result ? (
           <div className="p-6 space-y-4">
             <div className="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-xl">
               <CheckCircle2 className="w-6 h-6 text-green-600 flex-shrink-0" />
@@ -392,8 +435,12 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
             )}
 
             <div className="flex gap-3">
-              <Button onClick={handleImport} disabled={importing || !csv.trim()} className="flex-1 bg-lofty-600 hover:bg-lofty-700 gap-2">
-                {importing ? <><Loader2 className="w-4 h-4 animate-spin" /> Importando...</> : `Importar${preview ? ` ${csv.trim().split(/\r?\n/).length - 1} leads` : ""}`}
+              <Button onClick={() => handleImport(false)} disabled={importing || !csv.trim()} className="flex-1 bg-lofty-600 hover:bg-lofty-700 gap-2">
+                {importing ? <><Loader2 className="w-4 h-4 animate-spin" /> Procesando...</> : `Importar${preview ? ` ${csv.trim().split(/\r?\n/).length - 1} leads` : ""}`}
+              </Button>
+              <Button onClick={() => handleImport(true)} disabled={importing || !csv.trim()} variant="outline" className="gap-1.5"
+                title="Compara el archivo con el CRM sin cambiar nada — reporta quién falta y quién no tiene email">
+                🔍 Verificar (sin cambios)
               </Button>
               <Button onClick={onClose} variant="outline">Cancelar</Button>
             </div>
