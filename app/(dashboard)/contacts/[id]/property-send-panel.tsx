@@ -478,13 +478,19 @@ export default function PropertySendPanel({
                     </button>
                     <span className="text-white font-semibold text-sm">
                       {selectedCount} propert{selectedCount === 1 ? "y" : "ies"} selected
+                    {(!contactEmail || !contactPhone) && (
+                      <span className="text-[11px] text-white/70">
+                        {!contactEmail && "· no email on file "}
+                        {!contactPhone && "· no phone on file"}
+                      </span>
+                    )}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => sendBatch("sms")}
                       disabled={!!batchSending || !contactPhone}
-                      title={!contactPhone ? "No phone on file" : ""}
+                      title={!contactPhone ? "This contact has no phone number — add one to send SMS" : "Send the selected properties by text message"}
                       className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-white/20 text-white hover:bg-white/30 disabled:opacity-50 transition-colors"
                     >
                       {batchSending === "sms"
@@ -495,7 +501,7 @@ export default function PropertySendPanel({
                     <button
                       onClick={() => sendBatch("email")}
                       disabled={!!batchSending || !contactEmail}
-                      title={!contactEmail ? "No email on file" : ""}
+                      title={!contactEmail ? "This contact has no email address — add one to send email" : "Send the selected properties by email"}
                       className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-white text-blue-700 hover:bg-blue-50 disabled:opacity-50 transition-colors"
                     >
                       {batchSending === "email"
