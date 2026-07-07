@@ -88,6 +88,27 @@ async function checkLeadFlow(): Promise<CheckResult> {
   }
 }
 
+async function checkEmailVolume(): Promise<CheckResult> {
+  const t = Date.now()
+  try {
+    // Midnight ET → UTC
+    const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" })
+    const todayStart = new Date(`${todayStr}T00:00:00-05:00`)
+    const count = await prisma.email.count({
+      where: { direction: "OUTBOUND", createdAt: { gte: todayStart } },
+    })
+    const LIMIT = Number(process.env.EMAIL_DAILY_LIMIT || 100) // Resend free tier
+    return {
+      name: "Email volume (today)",
+      ok: count < LIMIT * 0.9,
+      detail: `${count} sent · provider limit ~${LIMIT}/day${count >= LIMIT * 0.9 ? " — NEAR/OVER LIMIT, emails may be blocked" : ""}`,
+      ms: Date.now() - t,
+    }
+  } catch (e: any) {
+    return { name: "Email volume (today)", ok: false, detail: e.message, ms: Date.now() - t }
+  }
+}
+
 async function checkActivities(): Promise<CheckResult> {
   const t = Date.now()
   try {
@@ -176,6 +197,7 @@ export async function GET(req: Request) {
     checkAI(),
     checkLeadFlow(),
     checkActivities(),
+    checkEmailVolume(),
   ])
 
   const allOk = checks.every(c => c.ok)

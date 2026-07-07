@@ -26,7 +26,7 @@ export async function GET(req: Request) {
   // Last 7 days
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
 
-  const [todayAlerts, last7dAlerts, todayEmails, last7dEmails] = await Promise.all([
+  const [todayAlerts, last7dAlerts, todayEmails, last7dEmails, todayEmailsDelivered] = await Promise.all([
     prisma.activity.count({
       where: { type: "PROPERTY_ALERT_SENT", createdAt: { gte: todayStart } },
     }),
@@ -38,6 +38,9 @@ export async function GET(req: Request) {
     }),
     prisma.activity.count({
       where: { type: "EMAIL_SENT", createdAt: { gte: sevenDaysAgo } },
+    }),
+    prisma.email.count({
+      where: { direction: "OUTBOUND", createdAt: { gte: todayStart } },
     }),
   ])
 
@@ -80,6 +83,8 @@ export async function GET(req: Request) {
     emailsSent: {
       today: todayEmails,
       last7Days: last7dEmails,
+      deliveredToday: todayEmailsDelivered,
+      dailyLimit: Number(process.env.EMAIL_DAILY_LIMIT || 100),
     },
     todayByContact: Object.values(todayByContact).sort((a, b) => b.count - a.count),
     recentAlerts: recentAlerts.slice(0, 20).map(a => ({
