@@ -5,8 +5,9 @@ import { prisma } from "@/lib/prisma"
 import { chatWithAI } from "@/lib/ai-agent"
 import { sendSMS } from "@/lib/sms"
 import { scoreContact } from "@/lib/scoring"
-import { handleLeadEngaged } from "@/lib/lead-flow"
+import { handleLeadEngaged, notifyAgentOfLeadReply } from "@/lib/lead-flow"
 import { detectKeyword, deliverLeadMagnet } from "@/lib/lead-magnet-delivery"
+import { extractBuyerPrefsFromNote, triggerMatchAlert } from "@/lib/trigger-match-alert"
 
 export async function POST(req: Request) {
   const formData = await req.formData()
@@ -124,10 +125,31 @@ export async function POST(req: Request) {
     // Update score on inbound SMS reply
     scoreContact(contact.id).catch(() => {})
 
-    // Move to Warm pipeline, pause drip enrollments, notify Catherine
+    // Move to Warm pipeline, pause drip enrollments, notify Catherine (in-app)
     handleLeadEngaged(contact.id, "SMS", body).catch(() => {})
 
-    // Notify Catherine
+    // Notify Catherine directly by SMS + email — she should never miss a reply
+    notifyAgentOfLeadReply(contact, "SMS", body).catch(() => {})
+
+    // If the reply reveals buyer interest (area, budget, beds, resale/precon type),
+    // extract it, save it, and have Sofía send matching properties automatically.
+    extractBuyerPrefsFromNote(body).then(async prefs => {
+      if (!prefs) return
+      const data: Record<string, any> = {}
+      for (const [k, v] of Object.entries(prefs)) {
+        if (v !== null && v !== undefined && v !== "") data[k] = v
+      }
+      if (Object.keys(data).length === 0) return
+      data.matchPrefsCompletedAt = new Date()
+      await prisma.contact.update({ where: { id: contact.id }, data }).catch(() => {})
+      // triggerMatchAlert emails matching MLS listings; also text the lead a heads-up
+      const result = await triggerMatchAlert(contact.id).catch(() => null)
+      if (result?.sent && contact.email) {
+        await sendSMS(from, `¡Perfecto! Te envié algunas propiedades que coinciden a tu correo (${contact.email}). Revísalo 📩`).catch(() => {})
+      }
+    }).catch(() => {})
+
+    // Notify Catherine (in-app record)
     await prisma.aINotification.create({
       data: {
         type: "MESSAGE_RECEIVED",
