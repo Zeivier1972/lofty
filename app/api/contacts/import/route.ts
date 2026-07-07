@@ -107,8 +107,26 @@ export async function POST(req: Request) {
       // ── Names ────────────────────────────────────────────────────────
       const firstName = (row.first_name || row.firstname || row.first || "").trim()
       const lastName  = (row.last_name  || row.lastname  || row.last  || "").trim()
-      // Lofty uses "Primary Email"; fallback to generic "email" for other formats
-      const email     = (row.primary_email || row.email || row.email_address || "").toLowerCase().trim()
+      // Lofty uses "Primary Email"; fallback to generic "email" for other formats.
+      // Robust extraction: try known column names first, then ANY column whose
+      // header contains "email"; handle piped multi-values ("a@x"|"b@y") and
+      // validate the result actually looks like an email address.
+      const emailCandidates = [
+        row.primary_email, row.email, row.email_address, row.email_1, row.emails,
+        row.primary_email_address,
+        // any other email-ish column (skip flags like email_opt_out / do_not_email)
+        ...headers
+          .filter(hd => hd.includes("email") && !hd.includes("opt") && !hd.includes("do_not") && !hd.includes("family"))
+          .map(hd => row[hd]),
+      ]
+      let email = ""
+      for (const cand of emailCandidates) {
+        if (!cand) continue
+        // Piped/multi values: take the first token that looks like an email
+        const tokens = String(cand).split(/[|;,]/).map(t => t.replace(/['"]/g, "").trim())
+        const valid = tokens.find(t => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t))
+        if (valid) { email = valid.toLowerCase(); break }
+      }
       // Lofty uses "Primary Phone"; country code determines if +1 applies
       const phoneRaw  = (row.primary_phone || row.phone || row.phone_number || row.mobile || row.cell || "").trim()
       const phoneCC   = (row.primary_phone_country_code || row.phone_country_code || "US").trim()
@@ -266,7 +284,9 @@ export async function POST(req: Request) {
       })
     }
 
-    // ── Phase 2: look up existing contacts by email for upsert ─────────
+    // ── Phase 2: look up existing contacts by email AND phone for upsert ──
+    // Phone matching matters: contacts imported before the email fix have no
+    // email, so re-imports must find them by phone or they'd be duplicated.
     const allEmails = parsed.map(r => r.contact.email).filter(Boolean) as string[]
     const existingByEmail = new Map<string, string>() // email → contactId
     if (allEmails.length > 0) {
@@ -275,6 +295,15 @@ export async function POST(req: Request) {
         select: { id: true, email: true },
       })
       existing.forEach(c => { if (c.email) existingByEmail.set(c.email.toLowerCase(), c.id) })
+    }
+    const allPhones = parsed.map(r => r.contact.phone).filter(Boolean) as string[]
+    const existingByPhone = new Map<string, string>() // normalized phone → contactId
+    if (allPhones.length > 0) {
+      const existingP = await prisma.contact.findMany({
+        where: { phone: { in: allPhones } },
+        select: { id: true, phone: true },
+      })
+      existingP.forEach(c => { if (c.phone) existingByPhone.set(c.phone, c.id) })
     }
 
     // ── Phase 3: pre-upsert all tags ────────────────────────────────────
@@ -335,7 +364,8 @@ export async function POST(req: Request) {
       await Promise.all(batch.map(async ({ contact, tagNames, pipelineName, notesText }) => {
         try {
           const emailKey = contact.email?.toLowerCase()
-          const existingId = emailKey ? existingByEmail.get(emailKey) : undefined
+          const existingId = (emailKey ? existingByEmail.get(emailKey) : undefined)
+            || (contact.phone ? existingByPhone.get(contact.phone) : undefined)
           let contactId: string
           let isNew = false
 
@@ -353,6 +383,7 @@ export async function POST(req: Request) {
             const created = await prisma.contact.create({ data: contact })
             contactId = created.id
             if (emailKey) existingByEmail.set(emailKey, contactId)
+            if (contact.phone) existingByPhone.set(contact.phone, contactId)
             isNew = true
             imported++
           }
