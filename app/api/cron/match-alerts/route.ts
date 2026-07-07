@@ -3,9 +3,7 @@ export const maxDuration = 300 // 5 min — allow time for sync + AI calls
 
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { fetchListings, bridgeToProperty } from "@/lib/bridge"
-import { sendEmail } from "@/lib/email"
-import { scoreProperty, propertyMatchesLocation, propertyMatchesBudget } from "@/lib/property-scoring"
+import { triggerMatchAlert } from "@/lib/trigger-match-alert"
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
@@ -19,370 +17,52 @@ function isAuthorized(req: Request): boolean {
 }
 
 // ─── Step 1: Sync fresh listings from Bridge API ──────────────────────────────
-
-async function syncFreshListings(extraZips: string[] = []): Promise<{ created: number; updated: number }> {
-  const cities = ["Miami", "Miami Beach", "Doral", "Kendall", "Coral Gables", "Aventura", "Sunny Isles Beach", "Hialeah", "Homestead"]
-  let created = 0, updated = 0
-
-  // Sync by city
-  for (const city of cities) {
-    try {
-      const listings = await fetchListings({ city, limit: 50 })
-      for (const listing of listings) {
-        const data = bridgeToProperty(listing)
-        if (!data.mlsId) continue
-        try {
-          const existing = await prisma.property.findFirst({ where: { mlsId: data.mlsId } })
-          if (existing) {
-            await prisma.property.update({ where: { id: existing.id }, data })
-            updated++
-          } else {
-            await prisma.property.create({ data })
-            created++
-          }
-        } catch { /* skip individual errors */ }
-      }
-    } catch (e) {
-      console.error(`[match-alerts] Bridge sync error for ${city}:`, e)
-    }
-  }
-
-  // Sync by zip code (for contacts whose buyerLocation is zip-based)
-  for (const zip of extraZips) {
-    try {
-      const listings = await fetchListings({ zipCode: zip, limit: 30 })
-      for (const listing of listings) {
-        const data = bridgeToProperty(listing)
-        if (!data.mlsId) continue
-        try {
-          const existing = await prisma.property.findFirst({ where: { mlsId: data.mlsId } })
-          if (existing) {
-            await prisma.property.update({ where: { id: existing.id }, data })
-            updated++
-          } else {
-            await prisma.property.create({ data })
-            created++
-          }
-        } catch { /* skip individual errors */ }
-      }
-    } catch (e) {
-      console.error(`[match-alerts] Bridge sync error for zip ${zip}:`, e)
-    }
-  }
-
-  // Mark stale listings inactive
-  await prisma.property.updateMany({
-    where: { status: "ACTIVE", updatedAt: { lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
-    data: { status: "INACTIVE" },
-  })
-
-  return { created, updated }
-}
-
-// ─── Step 2: Build property alert email ──────────────────────────────────────
-
-function buildAlertEmail(opts: {
-  firstName: string
-  count: number
-  criteriaSummary: string
-  agentName: string
-  agentPhone: string
-  appUrl: string
-  searchUrl: string
-}): string {
-  const { firstName, count: n, criteriaSummary, agentName, agentPhone, appUrl, searchUrl } = opts
-
-  // MLS/IDX compliance: listing details (address, price, photos) may only be
-  // displayed on the public search website — never pushed in an email alert.
-  // So this email is a notification that drives the lead to the search page.
-  const criteriaLine = criteriaSummary
-    ? `<p style="color:#6b7280;font-size:13px;margin:0 0 16px;text-align:center">Basado en lo que buscas: <strong>${criteriaSummary}</strong></p>`
-    : ""
-
-  const propertyCards = `
-    <div style="border:1px solid #e5e7eb;border-radius:14px;padding:28px 20px;text-align:center;margin:0 0 20px;background:#f9fafb">
-      <div style="font-size:44px;margin:0 0 8px">🏠</div>
-      <p style="font-size:24px;font-weight:900;color:#0e1f3d;margin:0 0 4px">
-        ${n} nueva${n > 1 ? "s propiedades" : " propiedad"}
-      </p>
-      <p style="color:#6b7280;font-size:14px;margin:0 0 18px">
-        coincide${n > 1 ? "n" : ""} con lo que buscas
-      </p>
-      ${criteriaLine}
-      <a href="${searchUrl}" style="display:inline-block;background:#0e1f3d;color:white;padding:13px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">
-        Ver las propiedades →
-      </a>
-      <p style="color:#9ca3af;font-size:12px;margin:16px 0 0">
-        Fotos, precios y detalles completos en el sitio
-      </p>
-    </div>`
-
-  return `<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<div style="display:none;max-height:0;overflow:hidden">Sofia encontró ${n} nueva${n > 1 ? "s propiedades" : " propiedad"} que coincide${n > 1 ? "n" : ""} con lo que buscas — ¡mira!</div>
-</head>
-<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px 12px">
-<tr><td align="center">
-<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%">
-
-  <!-- Header -->
-  <tr><td style="background:linear-gradient(135deg,#0a1628 0%,#1a2f50 100%);border-radius:16px 16px 0 0;padding:32px;text-align:center">
-    <p style="color:#c9a84c;font-size:11px;letter-spacing:3px;text-transform:uppercase;margin:0 0 8px">✨ SOFIA · AI Real Estate Assistant</p>
-    <h1 style="color:white;font-size:26px;font-weight:900;margin:0 0 6px">
-      ${n} New Match${n > 1 ? "es" : ""} Found!
-    </h1>
-    <p style="color:#8fa3c4;font-size:14px;margin:0">
-      Sofia encontró ${n} propiedad${n > 1 ? "es" : ""} perfecta${n > 1 ? "s" : ""} para ti
-    </p>
-  </td></tr>
-
-  <!-- Intro -->
-  <tr><td style="background:white;padding:28px 28px 8px">
-    <p style="color:#374151;font-size:15px;margin:0 0 6px">
-      Hola <strong>${firstName}</strong>! 👋
-    </p>
-    <p style="color:#374151;font-size:14px;margin:0 0 4px">
-      I scanned today's new listings and found <strong>${n} home${n > 1 ? "s" : ""} that match${n === 1 ? "es" : ""} your preferences</strong>. Here are your top picks:
-    </p>
-    <p style="color:#9ca3af;font-size:13px;margin:0">
-      Analicé las nuevas propiedades y encontré las mejores opciones para ti.
-    </p>
-  </td></tr>
-
-  <!-- Property cards -->
-  <tr><td style="background:white;padding:12px 28px 4px">
-    ${propertyCards}
-  </td></tr>
-
-  <!-- Footer CTA -->
-  <tr><td style="background:white;padding:8px 28px 28px;border-radius:0 0 16px 16px">
-    <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:20px;text-align:center">
-      <p style="color:#374151;font-size:14px;margin:0 0 14px">¿No es lo que buscas? / Not quite right?</p>
-      <a href="${appUrl}/portal/preferences" style="display:inline-block;background:white;border:2px solid #1a2f50;color:#1a2f50;padding:9px 18px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px;margin:0 6px 8px">
-        Update My Preferences
-      </a>
-      <a href="${searchUrl}" style="display:inline-block;background:#1a2f50;color:white;padding:9px 18px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px;margin:0 6px 8px">
-        Search All Listings →
-      </a>
-    </div>
-    <div style="text-align:center;margin-top:20px">
-      <p style="color:#374151;font-size:14px;margin:0 0 4px"><strong>${agentName}</strong></p>
-      <p style="color:#6b7280;font-size:13px;margin:0 0 12px">${agentPhone} · Luxury Real Estate Miami</p>
-      <p style="color:#d1d5db;font-size:11px;margin:0">
-        <a href="${appUrl}/portal/preferences" style="color:#d1d5db">Cancelar alertas / Unsubscribe</a>
-      </p>
-    </div>
-  </td></tr>
-
-</table>
-</td></tr>
-</table>
-</body>
-</html>`
-}
-
 // ─── Main cron handler ────────────────────────────────────────────────────────
+// Hourly auto property alerts. Loops eligible buyers and reuses triggerMatchAlert
+// (live Bridge MLS + Activity-based 60-day dedup + Sofia email) — the same proven
+// path used by manual sends and inbound replies. No local-DB sync required.
 
-export async function GET(req: Request) {
-  if (!isAuthorized(req)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
-
+async function runMatchAlerts(): Promise<Response> {
   const log: string[] = []
   let emailsSent = 0
-
   try {
-    // 1. Collect unique zip codes from contact preferences for targeted sync
-    const zipContacts = await prisma.contact.findMany({
-      where: { matchPrefsCompletedAt: { not: null }, buyerLocation: { contains: "33" } },
-      select: { buyerLocation: true },
-    })
-    const uniqueZips = Array.from(new Set(
-      zipContacts.flatMap(c =>
-        (c.buyerLocation || "").split(/[,|]/).map(s => s.trim()).filter(s => /^\d{5}$/.test(s))
-      )
-    )).slice(0, 20) // cap at 20 zips to avoid rate limits
-
-    // 1. Sync fresh listings
-    log.push(`Syncing Bridge API listings (+ ${uniqueZips.length} zip codes)...`)
-    const { created, updated } = await syncFreshListings(uniqueZips)
-    log.push(`Sync complete: ${created} new, ${updated} updated`)
-
-    // 2. Get all active residential properties — use PropertyAlertSent per-contact to dedup
-    const freshProperties = await prisma.property.findMany({
-      where: {
-        status: "ACTIVE",
-        price: { gte: 50000 },
-        propertyType: { in: ["SINGLE_FAMILY", "CONDO", "TOWNHOUSE", "MULTI_FAMILY"] },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 200,
-      select: {
-        id: true, address: true, city: true, state: true, zip: true,
-        price: true, bedrooms: true, bathrooms: true, sqft: true,
-        propertyType: true, pool: true, garage: true, features: true,
-        images: true, status: true,
-      },
-    })
-    log.push(`Active properties in DB: ${freshProperties.length}`)
-
-    if (freshProperties.length === 0) {
-      return NextResponse.json({ success: true, log, emailsSent: 0 })
-    }
-
-    // 3. Get AI config for agent name/phone
-    const aiConfig = await prisma.aIConfig.findFirst({
-      select: { realtorName: true, realtorPhone: true, realtorEmail: true },
-    })
-    const agentName = aiConfig?.realtorName || "Catherine"
-    const agentPhone = aiConfig?.realtorPhone || "305-283-0872"
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
-
-    // 4. Find all contacts with buyer preferences + email (no doNotEmail)
     const contacts = await prisma.contact.findMany({
       where: {
         matchPrefsCompletedAt: { not: null },
         email: { not: null },
         doNotEmail: false,
       },
-      select: {
-        id: true, firstName: true, email: true,
-        buyerBudgetMin: true, buyerBudgetMax: true,
-        buyerBedroomsMin: true, buyerBathroomsMin: true,
-        buyerPropertyType: true, buyerMustHaves: true,
-        buyerLocation: true,
-        portalAccess: { select: { token: true } },
-      },
+      select: { id: true, firstName: true, email: true },
     })
-    log.push(`Contacts with buyer prefs + email: ${contacts.length}`)
+    log.push(`Eligible buyers with prefs + email: ${contacts.length}`)
 
-    // 5. Process each contact
     for (const contact of contacts) {
       try {
-        // Score all fresh properties for this contact
-        const prefs = {
-          buyerBudgetMin: contact.buyerBudgetMin,
-          buyerBudgetMax: contact.buyerBudgetMax,
-          buyerBedroomsMin: contact.buyerBedroomsMin,
-          buyerBathroomsMin: contact.buyerBathroomsMin,
-          buyerPropertyType: contact.buyerPropertyType,
-          buyerMustHaves: contact.buyerMustHaves,
-          buyerLocation: contact.buyerLocation,
+        const result = await triggerMatchAlert(contact.id)
+        if (result.sent) {
+          emailsSent++
+          log.push(`✓ Sent to ${contact.firstName} (${contact.email})`)
         }
-
-        // Hard filters: location + budget before scoring
-        const locationCandidates = freshProperties.filter(p =>
-          propertyMatchesLocation(p, prefs.buyerLocation) &&
-          propertyMatchesBudget(p.price, prefs.buyerBudgetMin, prefs.buyerBudgetMax)
-        )
-
-        const scored = locationCandidates
-          .map(p => ({ property: p, ...scoreProperty(p, prefs) }))
-          .filter(m => m.score >= 40)
-          .sort((a, b) => b.score - a.score)
-
-        if (scored.length === 0) continue
-
-        // Remove already-sent properties
-        const alreadySent = await prisma.propertyAlertSent.findMany({
-          where: {
-            contactId: contact.id,
-            propertyId: { in: scored.map(m => m.property.id) },
-          },
-          select: { propertyId: true },
-        })
-        const sentIds = new Set(alreadySent.map(s => s.propertyId))
-        const newMatches = scored.filter(m => !sentIds.has(m.property.id)).slice(0, 5)
-
-        if (newMatches.length === 0) continue
-
-        // MLS/IDX compliance: do NOT embed listing details in the alert email.
-        // Send a notification with a count + criteria and link the lead to the
-        // public search page where listings are displayed compliantly.
-        // Parse buyerLocation into zip codes vs city names
-        const locParts = (prefs.buyerLocation || "").split(/[,|]/).map(s => s.trim()).filter(Boolean)
-        const zipParts = locParts.filter(s => /^\d{5}$/.test(s))
-        const cityParts = locParts.filter(s => !/^\d{5}$/.test(s))
-
-        const criteriaSummary = [
-          prefs.buyerLocation ? prefs.buyerLocation : null,
-          prefs.buyerBedroomsMin ? `${prefs.buyerBedroomsMin}+ cuartos` : null,
-          prefs.buyerBudgetMax ? `hasta $${prefs.buyerBudgetMax.toLocaleString()}` : null,
-        ].filter(Boolean).join(" · ")
-
-        // Ensure portal access exists (creates one if missing, e.g. for bulk-imported contacts)
-        let portalToken = contact.portalAccess?.token
-        if (!portalToken) {
-          const pa = await prisma.clientPortalAccess.create({ data: { contactId: contact.id } }).catch(() => null)
-          portalToken = pa?.token
-        }
-
-        // Link to portal matches page — magic token logs the lead in automatically
-        const searchUrl = portalToken
-          ? `${appUrl}/portal/login?token=${portalToken}&next=/portal/matches`
-          : `${appUrl}/portal/matches`
-
-        // Build and send email
-        const html = buildAlertEmail({
-          firstName: contact.firstName,
-          count: newMatches.length,
-          criteriaSummary,
-          agentName,
-          agentPhone,
-          appUrl,
-          searchUrl,
-        })
-
-        await sendEmail({
-          to: contact.email!,
-          subject: `✨ Sofia found ${newMatches.length} new home${newMatches.length > 1 ? "s" : ""} perfect for you`,
-          html,
-          replyTo: aiConfig?.realtorEmail || undefined,
-        })
-
-        // Record sent properties
-        await prisma.propertyAlertSent.createMany({
-          data: newMatches.map(m => ({ contactId: contact.id, propertyId: m.property.id })),
-          skipDuplicates: true,
-        })
-
-        await prisma.activity.create({
-          data: {
-            type: "EMAIL_SENT",
-            title: `Match alert: ${newMatches.length} new home${newMatches.length > 1 ? "s" : ""} found`,
-            description: `Sofía sent ${newMatches.length} property match${newMatches.length > 1 ? "es" : ""} — top match: ${newMatches[0].property.address}`,
-            contactId: contact.id,
-          },
-        })
-
-        // Notify Catherine about the alert sent
-        await prisma.aINotification.create({
-          data: {
-            type: "MATCH_ALERT_SENT",
-            title: `📧 Match alert sent to ${contact.firstName}`,
-            body: `Sent ${newMatches.length} new match${newMatches.length > 1 ? "es" : ""} to ${contact.email}. Top match: ${newMatches[0].property.address} at ${newMatches[0].score}%`,
-            priority: "MEDIUM",
-            contactId: contact.id,
-            metadata: JSON.stringify({ count: newMatches.length, topScore: newMatches[0].score }),
-          },
-        })
-
-        emailsSent++
-        log.push(`✓ Sent ${newMatches.length} matches to ${contact.firstName} (${contact.email})`)
       } catch (e) {
-        log.push(`✗ Failed for ${contact.firstName}: ${(e as Error).message}`)
+        log.push(`✗ ${contact.firstName}: ${(e as Error).message}`)
       }
     }
 
     log.push(`Done. Emails sent: ${emailsSent}`)
-    return NextResponse.json({ success: true, created, updated: updated, emailsSent, log })
-
+    return NextResponse.json({ success: true, emailsSent, eligible: contacts.length, log })
   } catch (e) {
     console.error("[match-alerts cron] Fatal error:", e)
     return NextResponse.json({ error: (e as Error).message, log }, { status: 500 })
   }
+}
+
+export async function GET(req: Request) {
+  if (!isAuthorized(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  return runMatchAlerts()
+}
+
+// Railway's cron calls POST — support both so the hourly job actually runs.
+export async function POST(req: Request) {
+  if (!isAuthorized(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  return runMatchAlerts()
 }
