@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { scoreContact } from "@/lib/scoring"
 import { triggerOutboundCall } from "@/lib/vapi"
 import { sendCapiEvent } from "@/lib/facebook"
+import { triggerMatchAlert } from "@/lib/trigger-match-alert"
 
 // Public endpoint — no auth required
 export async function POST(req: Request) {
@@ -58,7 +59,8 @@ export async function POST(req: Request) {
         smsTCPAConsentMethod: smsConsent ? "web_form" : undefined,
         ...(isSeller
           ? { sellerAddress: area, sellerEstimatedValue: budgetNum }
-          : { buyerBudgetMax: budgetNum, buyerLocation: area }),
+          // matchPrefsCompletedAt lets the hourly Sofia cron pick this lead up too
+          : { buyerBudgetMax: budgetNum, buyerLocation: area, matchPrefsCompletedAt: (area || budgetNum) ? new Date() : undefined }),
       },
     })
 
@@ -89,6 +91,12 @@ export async function POST(req: Request) {
 
     // Trigger AI score
     scoreContact(contact.id).catch(() => {})
+
+    // Immediately send matching MLS properties (buyers with an area/budget + email).
+    // Uses the lead's location (e.g. 33032) against live MLS.
+    if (!isSeller && email && (area || budgetNum)) {
+      triggerMatchAlert(contact.id).catch(() => {})
+    }
 
     // Trigger AI outbound call if phone provided (30s delay so DB commits first)
     if (phone) {
