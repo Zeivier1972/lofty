@@ -40,7 +40,7 @@ export async function GET(req: Request) {
       where: { type: "EMAIL_SENT", createdAt: { gte: sevenDaysAgo } },
     }),
     prisma.email.count({
-      where: { direction: "OUTBOUND", createdAt: { gte: todayStart } },
+      where: { direction: "OUTBOUND", status: "SENT", createdAt: { gte: todayStart } },
     }),
   ])
 

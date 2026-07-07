@@ -87,27 +87,38 @@ function withReplyTo(opts: EmailOptions): EmailOptions {
 
 export async function sendEmail(opts: EmailOptions): Promise<boolean> {
   opts = withReplyTo(opts)
+  // Track the true outcome so the CRM log reflects reality, not just attempts.
+  let delivered = false
+  let failReason: string | null = null
   try {
-    if (!(await sendViaResend(opts)) && !(await sendViaNodemailer(opts))) {
-      console.log("[EMAIL MOCK] To:", opts.to, "Subject:", opts.subject)
+    if (await sendViaResend(opts)) {
+      delivered = true
+    } else if (await sendViaNodemailer(opts)) {
+      delivered = true
+    } else {
+      // No provider actually sent it (no RESEND_API_KEY / no SMTP configured)
+      failReason = "No email provider configured (Resend/SMTP)"
+      console.log("[EMAIL MOCK — NOT SENT] To:", opts.to, "Subject:", opts.subject)
     }
-    // Fire-and-forget DB log (don't await, don't fail the send)
-    prisma.email.create({
-      data: {
-        subject: opts.subject,
-        body: opts.html.slice(0, 2000),
-        fromAddress: opts.from || process.env.RESEND_FROM || "sofia@catherinegomezrealtor.com",
-        toAddress: opts.to,
-        direction: "OUTBOUND",
-        status: "SENT",
-        sentAt: new Date(),
-      },
-    }).catch(() => {})
-    return true
-  } catch (e) {
-    console.error("sendEmail error:", e)
-    throw e
+  } catch (e: any) {
+    failReason = e?.message || "send error"
+    console.error("sendEmail provider error:", failReason)
   }
+
+  // Log the ACTUAL result — only "SENT" when a provider confirmed delivery.
+  prisma.email.create({
+    data: {
+      subject: opts.subject,
+      body: opts.html.slice(0, 2000),
+      fromAddress: opts.from || process.env.RESEND_FROM || "sofia@catherinegomezrealtor.com",
+      toAddress: opts.to,
+      direction: "OUTBOUND",
+      status: delivered ? "SENT" : "FAILED",
+      sentAt: delivered ? new Date() : null,
+    },
+  }).catch(() => {})
+
+  return delivered
 }
 
 // Sends emails in batches, pausing between batches to respect rate limits.
