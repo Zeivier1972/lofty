@@ -107,7 +107,8 @@ const TOOLS: Anthropic.Tool[] = [
   },
 ]
 
-async function runTool(name: string, input: any, contactId: string): Promise<{text: string, imageUrls: string[]}> {
+type PropertyCard = { caption: string; imageUrl?: string }
+async function runTool(name: string, input: any, contactId: string): Promise<{text: string, imageUrls: string[], cards?: PropertyCard[]}> {
   if (name === "search_preconstruction") {
     const noImg: string[] = []
     try {
@@ -224,23 +225,28 @@ async function runTool(name: string, input: any, contactId: string): Promise<{te
         }
       }
 
-      const photoMap: Record<string, string> = await fetchPrimaryPhotos(listings.map((l: any) => l.ListingKey).filter(Boolean)).catch(() => ({}))
-      const imageUrls = listings.map((l: any) => photoMap[l.ListingKey]).filter((u: any) => typeof u === "string" && u.startsWith("http")).slice(0, 3)
+      const top = listings.slice(0, 3)
+      const photoMap: Record<string, string> = await fetchPrimaryPhotos(top.map((l: any) => l.ListingKey).filter(Boolean)).catch(() => ({}))
 
-      // Commission/IDX-safe over SMS: show general area (city), price, specs,
-      // and MLS# + photo — but NEVER the street address (the identifying detail).
-      const lines = listings.slice(0, 4).map((l: any) => {
-        const parts = [`📍 ${l.City || "Miami"}, FL`]
+      // One card per property — its info + its own photo — so each option is sent
+      // as a single MMS (info and image together, not photos dumped at the end).
+      // IDX-safe: city/price/specs/MLS# + photo, but NEVER the street address.
+      const cards: PropertyCard[] = top.map((l: any, i: number) => {
+        const parts = [`Opción ${i + 1}`, `📍 ${l.City || "Miami"}, FL`]
         if (l.ListPrice) parts.push(`💰 $${Number(l.ListPrice).toLocaleString()}`)
         const specs = [l.BedroomsTotal ? `${l.BedroomsTotal} cuartos` : "", l.BathroomsTotalDecimal ? `${l.BathroomsTotalDecimal} baños` : "", l.LivingArea ? `${Number(l.LivingArea).toLocaleString()} sqft` : ""].filter(Boolean).join(" | ")
         if (specs) parts.push(`🏠 ${specs}`)
         if (l.ListingId) parts.push(`🔑 MLS# ${l.ListingId}`)
-        return parts.join("\n")
-      }).join("\n\n---\n\n")
+        const img = photoMap[l.ListingKey]
+        return { caption: parts.join("\n"), imageUrl: (typeof img === "string" && img.startsWith("http")) ? img : undefined }
+      })
 
       return {
-        text: `INSTRUCCIÓN INTERNA: Comparte ESTAS propiedades activas del MLS (datos reales en vivo). IMPORTANTE: puedes dar ciudad, precio, cuartos/baños, sqft, número de MLS y la foto, pero NUNCA des la dirección exacta por mensaje — para ver la dirección y todos los detalles el cliente debe usar el sitio: ${searchUrl}. Preséntalas con entusiasmo y ofrece coordinar un tour con Catherine.\n\n${lines}`,
-        imageUrls,
+        // The cards are sent as separate MMS messages by the handler, so tell the
+        // AI to write ONLY a short intro and NOT re-list the properties itself.
+        text: `INSTRUCCIÓN INTERNA: Encontré ${listings.length} propiedades activas del MLS. El sistema las enviará como tarjetas individuales (cada una con su foto) justo después de tu mensaje — así que NO las listes tú. Escribe solo una intro corta y entusiasta (1-2 frases) presentándolas, y al final invita a agendar un tour con Catherine o ver más en ${searchUrl}. NUNCA des direcciones exactas.`,
+        imageUrls: [],
+        cards,
       }
     } catch (e: any) {
       return {text: "Error al buscar propiedades: " + (e.message || "desconocido"), imageUrls: []}
@@ -380,6 +386,7 @@ export async function POST(req: Request) {
     // Agentic loop — Claude calls tools until it has a final answer
     let reply = "Hola, soy Sofía de Catherine Gomez Realtor. ¿En qué puedo ayudarte hoy?"
     const collectedImages: string[] = []
+    const propertyCards: PropertyCard[] = []
     const MAX = 6
 
     for (let i = 0; i < MAX; i++) {
@@ -405,6 +412,7 @@ export async function POST(req: Request) {
           if (block.type === "tool_use") {
             const out = await runTool(block.name, block.input, contact.id)
             if (out.imageUrls?.length) collectedImages.push(...out.imageUrls)
+            if (out.cards?.length) propertyCards.push(...out.cards)
             results.push({ type: "tool_result", tool_use_id: block.id, content: out.text })
           }
         }
@@ -426,17 +434,37 @@ export async function POST(req: Request) {
       await prisma.whatsAppMessage.create({
         data: { body: reply, fromNumber: to, toNumber: phone, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
       })
-      // Send property images as separate messages (up to 3)
-      for (const imgUrl of collectedImages.slice(0, 3)) {
-        try {
-          await sendWhatsApp(toNum, "", imgUrl)
-        } catch { /* non-fatal if image fails */ }
+      if (propertyCards.length > 0) {
+        // Each property as its own message: info + its photo together
+        for (const card of propertyCards) {
+          try {
+            await sendWhatsApp(toNum, card.caption, card.imageUrl)
+            await prisma.whatsAppMessage.create({
+              data: { body: card.caption, fromNumber: to, toNumber: phone, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
+            })
+          } catch { /* non-fatal */ }
+        }
+      } else {
+        for (const imgUrl of collectedImages.slice(0, 3)) {
+          try { await sendWhatsApp(toNum, "", imgUrl) } catch { /* non-fatal */ }
+        }
       }
     } else {
-      await sendSMS(toNum, reply, collectedImages.slice(0, 3))
+      await sendSMS(toNum, reply)
       await prisma.sMSMessage.create({
         data: { body: reply, fromNumber: to, toNumber: phone, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
       })
+      if (propertyCards.length > 0) {
+        // One MMS per property: its info as the text + its photo attached
+        for (const card of propertyCards) {
+          try {
+            await sendSMS(toNum, card.caption, card.imageUrl ? [card.imageUrl] : undefined)
+            await prisma.sMSMessage.create({
+              data: { body: card.caption, fromNumber: to, toNumber: phone, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
+            })
+          } catch { /* non-fatal */ }
+        }
+      }
     }
 
     const channel = isWhatsApp ? "WhatsApp" : "SMS"
