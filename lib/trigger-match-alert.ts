@@ -277,12 +277,14 @@ export async function buildListingsReply(prefs: {
       limit: 4,
     })
     if (!listings.length) return null
+    // IDX-safe over SMS: city, price, specs, MLS# — NO street address.
     const lines = listings.slice(0, 4).map((l: any) => {
       const price = l.ListPrice ? `$${Number(l.ListPrice).toLocaleString()}` : ""
       const specs = [l.BedroomsTotal ? `${l.BedroomsTotal}bd` : "", l.BathroomsTotalDecimal ? `${l.BathroomsTotalDecimal}ba` : ""].filter(Boolean).join("/")
-      return `• ${buildDisplayAddress(l)} — ${[price, specs].filter(Boolean).join(", ")}`
+      const mls = l.ListingId ? `MLS# ${l.ListingId}` : ""
+      return `• ${l.City || "Miami"}, FL — ${[price, specs, mls].filter(Boolean).join(", ")}`
     })
-    return `¡Encontré ${listings.length} opciones que coinciden! 🏠\n\n${lines.join("\n")}\n\nVer todas y agendar un tour: ${appUrl}/homes`
+    return `¡Encontré ${listings.length} opciones que coinciden! 🏠\n\n${lines.join("\n")}\n\nDirección y detalles completos aquí: ${appUrl}/homes`
   } catch {
     return null
   }

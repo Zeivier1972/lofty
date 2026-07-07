@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { prisma } from "@/lib/prisma"
 import { sendSMS, sendWhatsApp } from "@/lib/sms"
-import { searchIdxListings, fetchPrimaryPhotos, buildDisplayAddress } from "@/lib/bridge"
+import { searchIdxListings, fetchPrimaryPhotos } from "@/lib/bridge"
 import Anthropic from "@anthropic-ai/sdk"
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -227,16 +227,19 @@ async function runTool(name: string, input: any, contactId: string): Promise<{te
       const photoMap: Record<string, string> = await fetchPrimaryPhotos(listings.map((l: any) => l.ListingKey).filter(Boolean)).catch(() => ({}))
       const imageUrls = listings.map((l: any) => photoMap[l.ListingKey]).filter((u: any) => typeof u === "string" && u.startsWith("http")).slice(0, 3)
 
+      // Commission/IDX-safe over SMS: show general area (city), price, specs,
+      // and MLS# + photo — but NEVER the street address (the identifying detail).
       const lines = listings.slice(0, 4).map((l: any) => {
-        const parts = [`📍 ${buildDisplayAddress(l)}${l.City ? `, ${l.City}` : ""}`]
+        const parts = [`📍 ${l.City || "Miami"}, FL`]
         if (l.ListPrice) parts.push(`💰 $${Number(l.ListPrice).toLocaleString()}`)
         const specs = [l.BedroomsTotal ? `${l.BedroomsTotal} cuartos` : "", l.BathroomsTotalDecimal ? `${l.BathroomsTotalDecimal} baños` : "", l.LivingArea ? `${Number(l.LivingArea).toLocaleString()} sqft` : ""].filter(Boolean).join(" | ")
         if (specs) parts.push(`🏠 ${specs}`)
+        if (l.ListingId) parts.push(`🔑 MLS# ${l.ListingId}`)
         return parts.join("\n")
       }).join("\n\n---\n\n")
 
       return {
-        text: `INSTRUCCIÓN INTERNA: Comparte ESTAS propiedades activas del MLS con el cliente (son datos reales del MLS en vivo — puedes citarlas). Preséntalas de forma clara y ofrece coordinar un tour con Catherine para las que le gusten. Incluye el enlace ${searchUrl} para ver más.\n\n${lines}`,
+        text: `INSTRUCCIÓN INTERNA: Comparte ESTAS propiedades activas del MLS (datos reales en vivo). IMPORTANTE: puedes dar ciudad, precio, cuartos/baños, sqft, número de MLS y la foto, pero NUNCA des la dirección exacta por mensaje — para ver la dirección y todos los detalles el cliente debe usar el sitio: ${searchUrl}. Preséntalas con entusiasmo y ofrece coordinar un tour con Catherine.\n\n${lines}`,
         imageUrls,
       }
     } catch (e: any) {
