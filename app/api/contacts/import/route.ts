@@ -1,5 +1,5 @@
 export const dynamic = "force-dynamic"
-export const maxDuration = 300 // 5 min — handles up to ~10k rows in one request
+export const maxDuration = 900 // 15 min — handles up to ~10k rows in one request with batched lookups
 
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
@@ -287,6 +287,7 @@ export async function POST(req: Request) {
     // ── Phase 2: look up existing contacts by email AND phone for upsert ──
     // Phone matching matters: contacts imported before the email fix have no
     // email, so re-imports must find them by phone or they'd be duplicated.
+    // Batch phone lookups to avoid overwhelming the database with huge IN queries.
     const allEmails = parsed.map(r => r.contact.email).filter(Boolean) as string[]
     const existingByEmail = new Map<string, string>() // email → contactId
     if (allEmails.length > 0) {
@@ -299,11 +300,16 @@ export async function POST(req: Request) {
     const allPhones = parsed.map(r => r.contact.phone).filter(Boolean) as string[]
     const existingByPhone = new Map<string, string>() // normalized phone → contactId
     if (allPhones.length > 0) {
-      const existingP = await prisma.contact.findMany({
-        where: { phone: { in: allPhones } },
-        select: { id: true, phone: true },
-      })
-      existingP.forEach(c => { if (c.phone) existingByPhone.set(c.phone, c.id) })
+      // Batch in chunks of 1000 to avoid huge database queries
+      const PHONE_BATCH = 1000
+      for (let i = 0; i < allPhones.length; i += PHONE_BATCH) {
+        const phoneBatch = allPhones.slice(i, i + PHONE_BATCH)
+        const existingP = await prisma.contact.findMany({
+          where: { phone: { in: phoneBatch } },
+          select: { id: true, phone: true },
+        })
+        existingP.forEach(c => { if (c.phone) existingByPhone.set(c.phone, c.id) })
+      }
     }
 
     // ── Phase 3: pre-upsert all tags ────────────────────────────────────
@@ -357,7 +363,7 @@ export async function POST(req: Request) {
     let stageMoved = 0
     const emailsSent = 0
     const errors: string[] = []
-    const BATCH = 50
+    const BATCH = 200  // Increased from 50 for better throughput on large imports
 
     for (let i = 0; i < parsed.length; i += BATCH) {
       const batch = parsed.slice(i, i + BATCH)
