@@ -283,6 +283,41 @@ export async function handleCallOutcome(
 }
 
 // ── Called when lead replies via SMS, email, WhatsApp, or any channel ────────
+// Notify Catherine directly (SMS + email) when a lead replies to Sofia, so she
+// never misses a live conversation. Uses realtorPhone/realtorEmail from AIConfig.
+export async function notifyAgentOfLeadReply(
+  contact: { id: string; firstName: string; lastName: string | null; phone: string | null },
+  channel: string,
+  message: string
+) {
+  try {
+    const config = await prisma.aIConfig.findFirst({
+      select: { realtorPhone: true, realtorEmail: true },
+    }).catch(() => null)
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
+    const agentPhone = config?.realtorPhone || process.env.REALTOR_PHONE
+    const agentEmail = config?.realtorEmail || process.env.REALTOR_EMAIL
+    const name = `${contact.firstName} ${contact.lastName || ""}`.trim()
+    const link = `${appUrl}/contacts/${contact.id}`
+    const snippet = message.slice(0, 160)
+
+    if (agentPhone) {
+      await sendSMS(agentPhone, `💬 ${name} respondió por ${channel}: "${snippet}"\nVer: ${link}`).catch(() => {})
+    }
+    if (agentEmail) {
+      await sendEmail({
+        to: agentEmail,
+        subject: `💬 ${name} respondió por ${channel}`,
+        html: `<p><strong>${name}</strong> respondió a Sofía por ${channel}:</p>
+               <blockquote style="border-left:3px solid #c9a84c;padding-left:12px;color:#374151">${snippet}</blockquote>
+               <p><a href="${link}">Abrir la conversación en el CRM →</a></p>`,
+      }).catch(() => {})
+    }
+  } catch (e) {
+    console.error("[notifyAgentOfLeadReply]", e)
+  }
+}
+
 export async function handleLeadEngaged(contactId: string, channel: string, messageSnippet?: string) {
   const contact = await prisma.contact.findUnique({ where: { id: contactId } })
   if (!contact) return

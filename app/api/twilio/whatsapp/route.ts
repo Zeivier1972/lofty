@@ -4,7 +4,8 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { chatWithAI } from "@/lib/ai-agent"
 import { sendWhatsApp } from "@/lib/sms"
-import { handleLeadEngaged } from "@/lib/lead-flow"
+import { handleLeadEngaged, notifyAgentOfLeadReply } from "@/lib/lead-flow"
+import { extractBuyerPrefsFromNote, triggerMatchAlert } from "@/lib/trigger-match-alert"
 
 export async function POST(req: Request) {
   const formData = await req.formData()
@@ -83,6 +84,25 @@ export async function POST(req: Request) {
 
     // Move to Warm pipeline, pause drip enrollments, notify Catherine
     handleLeadEngaged(contact.id, "WhatsApp", body).catch(() => {})
+
+    // Notify Catherine directly by SMS + email
+    notifyAgentOfLeadReply(contact, "WhatsApp", body).catch(() => {})
+
+    // Auto-extract buyer interest and send matching properties
+    extractBuyerPrefsFromNote(body).then(async prefs => {
+      if (!prefs) return
+      const data: Record<string, any> = {}
+      for (const [k, v] of Object.entries(prefs)) {
+        if (v !== null && v !== undefined && v !== "") data[k] = v
+      }
+      if (Object.keys(data).length === 0) return
+      data.matchPrefsCompletedAt = new Date()
+      await prisma.contact.update({ where: { id: contact.id }, data }).catch(() => {})
+      const result = await triggerMatchAlert(contact.id).catch(() => null)
+      if (result?.sent && contact.email) {
+        await sendWhatsApp(from, `¡Perfecto! Te envié propiedades que coinciden a tu correo (${contact.email}) 📩`).catch(() => {})
+      }
+    }).catch(() => {})
   }
 
   return new NextResponse(
