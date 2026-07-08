@@ -293,6 +293,34 @@ function daysAgo(date: string | null | undefined): number | null {
   return Math.floor((Date.now() - new Date(date).getTime()) / (1000 * 60 * 60 * 24))
 }
 
+// Where a lead came from → a short label + brand color, so you can tell a fresh
+// Facebook lead from a website or imported one at a glance (no tag-filtering).
+function sourceBadge(source: string | null | undefined): { label: string; bg: string; color: string } {
+  const s = (source || "").toUpperCase()
+  if (s.includes("FACEBOOK") || s === "FB") return { label: "Facebook", bg: "#E7F0FF", color: "#1877F2" }
+  if (s.includes("INSTAGRAM") || s === "IG") return { label: "Instagram", bg: "#FCE7F3", color: "#C2185B" }
+  if (s.includes("GOOGLE")) return { label: "Google", bg: "#FCE8E6", color: "#D93025" }
+  if (s.includes("IDX") || s.includes("WEBSITE") || s.includes("WEB") || s.includes("HOMES")) return { label: "Website", bg: "#E6F4EA", color: "#137333" }
+  if (s.includes("ZAPIER")) return { label: "Zapier", bg: "#FEEFE6", color: "#EA580C" }
+  if (s.includes("MANYCHAT")) return { label: "ManyChat", bg: "#E0F2FE", color: "#0369A1" }
+  if (s.includes("WHATSAPP")) return { label: "WhatsApp", bg: "#E6F4EA", color: "#128C7E" }
+  if (s.includes("SMS") || s.includes("TEXT")) return { label: "SMS", bg: "#EDE9FE", color: "#6D28D9" }
+  if (s.includes("IMPORT") || s.includes("CSV")) return { label: "Import", bg: "#F1F5F9", color: "#475569" }
+  if (s.includes("REFERRAL")) return { label: "Referral", bg: "#FEF3C7", color: "#B45309" }
+  if (!s || s === "MANUAL") return { label: "Manual", bg: "#F1F5F9", color: "#64748B" }
+  return { label: source!.charAt(0) + source!.slice(1).toLowerCase(), bg: "#F1F5F9", color: "#475569" }
+}
+
+// Compact arrival date: "Today", "Yesterday", or "Jul 8"
+function arrivalLabel(date: string | null | undefined): string | null {
+  if (!date) return null
+  const d = daysAgo(date)
+  if (d === null) return null
+  if (d === 0) return "Today"
+  if (d === 1) return "Yesterday"
+  return new Date(date).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+}
+
 function LeadEditPanel({ lead, onClose, onSaved }: {
   lead: any
   onClose: () => void
@@ -443,16 +471,26 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
   const [bulkMoving, setBulkMoving] = useState(false)
   const [bulkDeleting, setBulkDeleting] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
+  const [sourceFilter, setSourceFilter] = useState<string>("ALL")
   const [editLead, setEditLead] = useState<any>(null)
 
-  const filteredStages = searchQuery.trim()
+  // Distinct sources present across all leads → drives the "Source" filter chips
+  const availableSources: string[] = Array.from(
+    new Set(stages.flatMap((s: any) => s.leads.map((l: any) => sourceBadge(l.contact.source).label)) as string[])
+  ).sort()
+
+  const q = searchQuery.trim().toLowerCase()
+  const filteredStages = (q || sourceFilter !== "ALL")
     ? stages.map((s: any) => ({
         ...s,
-        leads: s.leads.filter((l: any) =>
-          `${l.contact.firstName} ${l.contact.lastName}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          (l.contact.email || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-          (l.contact.phone || "").includes(searchQuery)
-        ),
+        leads: s.leads.filter((l: any) => {
+          const matchesSearch = !q ||
+            `${l.contact.firstName} ${l.contact.lastName}`.toLowerCase().includes(q) ||
+            (l.contact.email || "").toLowerCase().includes(q) ||
+            (l.contact.phone || "").includes(searchQuery)
+          const matchesSource = sourceFilter === "ALL" || sourceBadge(l.contact.source).label === sourceFilter
+          return matchesSearch && matchesSource
+        }),
       }))
     : stages
 
@@ -637,7 +675,7 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
       </div>
 
       {/* Search bar */}
-      <div className="relative max-w-xs mb-5">
+      <div className="relative max-w-xs mb-3">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
         <input
           value={searchQuery}
@@ -651,6 +689,38 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
           </button>
         )}
       </div>
+
+      {/* Source filter — show only leads from a given channel (e.g. Facebook) */}
+      {availableSources.length > 1 && (
+        <div className="flex items-center gap-2 mb-5 flex-wrap">
+          <span className="text-xs font-medium text-gray-400 flex items-center gap-1">
+            <SlidersHorizontal className="w-3.5 h-3.5" /> Source:
+          </span>
+          <button
+            onClick={() => setSourceFilter("ALL")}
+            className={cn(
+              "text-xs px-2.5 py-1 rounded-full border transition-colors",
+              sourceFilter === "ALL" ? "bg-gray-900 text-white border-gray-900" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+            )}
+          >
+            All
+          </button>
+          {availableSources.map((label: string) => {
+            const b = sourceBadge(label)
+            const active = sourceFilter === label
+            return (
+              <button
+                key={label}
+                onClick={() => setSourceFilter(active ? "ALL" : label)}
+                className={cn("text-xs px-2.5 py-1 rounded-full border transition-colors", active ? "border-transparent font-semibold" : "border-gray-200 hover:bg-gray-50")}
+                style={active ? { backgroundColor: b.color, color: "#fff" } : { backgroundColor: b.bg, color: b.color }}
+              >
+                {label}
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       {/* Stage summary pills */}
       <div className="flex gap-3 mb-5 overflow-x-auto pb-2">
@@ -762,6 +832,31 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
                         </DropdownMenu>
                       )}
                     </div>
+
+                    {/* Source + arrival date — tell where each lead came from and when */}
+                    {(() => {
+                      const badge = sourceBadge(lead.contact.source)
+                      const arrived = arrivalLabel(lead.contact.createdAt)
+                      const daysSince = daysAgo(lead.contact.createdAt)
+                      const isNew = daysSince !== null && daysSince <= 2
+                      return (
+                        <div className="flex items-center flex-wrap gap-1.5 mt-2">
+                          <span className="text-xs px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: badge.bg, color: badge.color }}>
+                            {badge.label}
+                          </span>
+                          {arrived && (
+                            <span className="text-xs text-gray-400 flex items-center gap-1">
+                              <Calendar className="w-3 h-3" />{arrived}
+                            </span>
+                          )}
+                          {isNew && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 uppercase tracking-wide">
+                              New
+                            </span>
+                          )}
+                        </div>
+                      )
+                    })()}
 
                     {lead.contact.tags.length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-2">
