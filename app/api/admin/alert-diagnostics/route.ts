@@ -10,12 +10,39 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth"
 import { triggerMatchAlert } from "@/lib/trigger-match-alert"
+import { sendEmail } from "@/lib/email"
 
 export async function GET(req: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const run = new URL(req.url).searchParams.get("run") === "1"
+  const url = new URL(req.url)
+  const run = url.searchParams.get("run") === "1"
+
+  // ?test=you@example.com → send ONE plain email and return the raw result +
+  // the exact provider error, bypassing all dedup. Fastest way to see why sends fail.
+  const testTo = url.searchParams.get("test")
+  if (testTo) {
+    const delivered = await sendEmail({
+      to: testTo,
+      subject: "🔧 Lofty CRM email test",
+      html: "<p>This is a test email from your CRM to verify Resend delivery.</p>",
+    }).catch(() => false)
+    const row = await prisma.email.findFirst({
+      where: { toAddress: testTo, direction: "OUTBOUND" },
+      orderBy: { createdAt: "desc" },
+      select: { status: true, body: true, fromAddress: true },
+    })
+    const reason = row?.body.match(/^\[SEND FAILED: ([^\]]+)\]/)?.[1] || null
+    return NextResponse.json({
+      test: testTo,
+      delivered,
+      status: row?.status,
+      fromAddress: row?.fromAddress,
+      failureReason: reason,
+      resendFromEnv: process.env.RESEND_FROM || "(not set — using default sofia@catherinegomezrealtor.com)",
+    })
+  }
 
   // 1. Email provider config — the #1 reason "sends" don't actually deliver
   const emailConfig = {
