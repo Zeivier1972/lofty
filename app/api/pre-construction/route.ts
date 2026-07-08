@@ -54,12 +54,21 @@ export async function POST(req: Request) {
 
   const body = await req.json()
   const { id, name, developer, neighborhood, city, zipCode, priceMin, priceMax, bedrooms,
-    deliveryDate, status, description, url, investmentHighlights, estimatedROI, downPayment, units } = body
+    deliveryDate, status, description, url, investmentHighlights, estimatedROI, downPayment, units,
+    photos, imageUrl } = body
 
   if (!name?.trim()) return NextResponse.json({ error: "name required" }, { status: 400 })
 
   const projects = await getProjects()
   const existing = projects.findIndex(p => p.id === id)
+
+  // Resolve the project photo(s): accept an explicit photos array or a single
+  // imageUrl; on edit, keep the existing photo if none was provided this time.
+  let resolvedPhotos: string[] | undefined
+  if (Array.isArray(photos)) resolvedPhotos = photos.filter(Boolean)
+  else if (typeof imageUrl === "string" && imageUrl.trim()) resolvedPhotos = [imageUrl.trim()]
+  else if (existing >= 0) resolvedPhotos = projects[existing].photos
+
   const project: Project = {
     id: id || randomUUID(),
     name: name.trim(),
@@ -78,6 +87,7 @@ export async function POST(req: Request) {
     estimatedROI: estimatedROI?.trim() || undefined,
     downPayment: downPayment?.trim() || undefined,
     units: units ? Number(units) : undefined,
+    photos: resolvedPhotos && resolvedPhotos.length ? resolvedPhotos : undefined,
   }
 
   if (existing >= 0) projects[existing] = project
