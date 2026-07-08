@@ -159,11 +159,11 @@ export async function POST(req: Request) {
       const statusRaw   = (row.status || row.lead_status || leadTypeRaw || "lead").toLowerCase()
       const status      = STATUS_MAP[statusRaw] || "LEAD"
       const sourceRaw   = (row.source || row.lead_source || "").toLowerCase().trim()
-      // Lofty uses "facebook ads" — normalize to "facebook"
-      const sourceNorm  = sourceRaw.replace(" ads", "").replace(" ad", "").replace(".", "")
-      // Keep the CSV's real source when present; otherwise mark it as IMPORT so
-      // imported leads are identifiable (and show the "Import" badge in the CRM).
-      const source      = SOURCE_MAP[sourceNorm] || SOURCE_MAP[sourceRaw] || (sourceRaw ? "OTHER" : "IMPORT")
+      // Imported rows are ALWAYS labeled IMPORT — a Lofty export is not a new
+      // inbound lead even when its original channel was Facebook. Only leads
+      // arriving through the live webhooks get channel sources like FACEBOOK.
+      // The CSV's original channel is preserved in customFields.originalSource.
+      const source      = "IMPORT"
 
       // ── DNC / Consent ────────────────────────────────────────────────
       const dncRaw    = (row.phone_dnc_status || "").toLowerCase()
@@ -207,6 +207,7 @@ export async function POST(req: Request) {
       const customData: Record<string, string> = {}
       if (loftyId)           customData.loftyId       = loftyId
       if (regDateRaw)        customData.regDate        = regDateRaw
+      if (sourceRaw)         customData.originalSource = sourceRaw
       if (row.buyer_timeframe)  customData.buyerTimeframe = row.buyer_timeframe
       if (row.pre_qualified)    customData.preQualified   = row.pre_qualified
       if (row.language)         customData.language       = row.language.trim()
@@ -284,6 +285,34 @@ export async function POST(req: Request) {
           }),
         },
       })
+    }
+
+    // ── Phase 1.5: collapse duplicate rows inside the SAME file ─────────
+    // Lofty exports often repeat a contact. Batch upserts run in parallel, so
+    // two same-phone rows would both pass the "does it exist?" check and both
+    // create a contact. Merge same-email/same-phone rows before upserting.
+    let inFileDuplicates = 0
+    {
+      const seenKey = new Map<string, number>() // email/phone → index in deduped
+      const deduped: typeof parsed = []
+      for (const row of parsed) {
+        const keys = [row.contact.email?.toLowerCase(), row.contact.phone].filter(Boolean) as string[]
+        const hitIdx = keys.map(k => seenKey.get(k)).find(v => v !== undefined)
+        if (hitIdx !== undefined) {
+          const target = deduped[hitIdx]
+          target.tagNames = Array.from(new Set([...target.tagNames, ...row.tagNames]))
+          if (!target.pipelineName && row.pipelineName) target.pipelineName = row.pipelineName
+          // Fill any contact fields the first row was missing (e.g. email)
+          for (const [k, v] of Object.entries(row.contact)) {
+            if ((target.contact as any)[k] == null && v != null && v !== "") (target.contact as any)[k] = v
+          }
+          inFileDuplicates++
+          continue
+        }
+        keys.forEach(k => seenKey.set(k, deduped.length))
+        deduped.push(row)
+      }
+      parsed.splice(0, parsed.length, ...deduped)
     }
 
     // ── Phase 2: look up existing contacts by email AND phone for upsert ──
@@ -493,6 +522,7 @@ export async function POST(req: Request) {
       stageMoved,
       emailsSent,
       skipped: parseSkipped,
+      inFileDuplicates,
       errors: errors.slice(0, 10),
       total: lines.length - 1,
     })
