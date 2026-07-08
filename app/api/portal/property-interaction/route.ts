@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { getPortalSession } from "@/lib/portal-auth"
+import { handleLeadEngaged, notifyAgentOfLeadReply } from "@/lib/lead-flow"
 
 export async function POST(req: Request) {
   const session = await getPortalSession()
@@ -13,7 +14,7 @@ export async function POST(req: Request) {
 
   const contact = await prisma.contact.findUnique({
     where: { id: session.contactId },
-    select: { id: true, firstName: true, lastName: true },
+    select: { id: true, firstName: true, lastName: true, phone: true },
   })
   if (!contact) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
@@ -52,6 +53,12 @@ export async function POST(req: Request) {
           contactId: session.contactId,
         },
       })
+
+      // Treat a save as engagement: text+email Catherine directly, move to Warm,
+      // pause drips, create an urgent follow-up task.
+      const msg = `guardó ${property.address}, ${property.city} ($${property.price.toLocaleString()})`
+      notifyAgentOfLeadReply(contact, "propiedad guardada", msg).catch(() => {})
+      handleLeadEngaged(contact.id, "propiedad guardada", msg).catch(() => {})
     }
 
     return NextResponse.json({ saved: true })
@@ -85,6 +92,11 @@ export async function POST(req: Request) {
           metadata: JSON.stringify({ propertyId, propertyAddress: property.address, action: "VIEWED_2X" }),
         },
       })
+
+      // 2nd view = strong interest → notify Catherine directly + move to Warm
+      const msg = `vio 2 veces ${property.address}, ${property.city} ($${property.price.toLocaleString()})`
+      notifyAgentOfLeadReply(contact, "propiedad vista 2x", msg).catch(() => {})
+      handleLeadEngaged(contact.id, "propiedad vista 2x", msg).catch(() => {})
     }
 
     return NextResponse.json({ viewed: true, count: viewCount })

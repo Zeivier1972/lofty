@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { fetchListingByKey, fetchListingMedia, bridgeToProperty, buildDisplayAddress } from "@/lib/bridge"
 import { sendEmail } from "@/lib/email"
 import { sendSMS } from "@/lib/sms"
+import { handleLeadEngaged } from "@/lib/lead-flow"
 
 // Public: a site visitor saves (favorites) an IDX listing. Creates/finds the
 // Contact (lead capture), upserts the listing into Property, records a
@@ -156,6 +157,9 @@ export async function POST(req: Request) {
           }).catch(() => {})
         }
       }
+
+      // Saving a home = engagement → move to Warm, pause drips, urgent follow-up task
+      handleLeadEngaged(contact.id, "propiedad guardada (web)", label).catch(() => {})
     }
 
     return NextResponse.json({ ok: true, contactId: contact.id, firstName: contact.firstName })
