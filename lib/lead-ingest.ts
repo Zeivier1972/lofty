@@ -88,7 +88,9 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
     return { contactId: existing.id, isNew: false }
   }
 
-  // Create new contact
+  // Create new contact. Every lead gets a working property search from day one:
+  // if the form didn't provide an area/budget, default to Miami + Homestead,
+  // $400k–$650k, and mark prefs complete so the hourly auto-alerts include them.
   const contact = await prisma.contact.create({
     data: {
       firstName,
@@ -101,12 +103,21 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
       smsTCPAConsentDate: smsConsent ? new Date() : undefined,
       smsTCPAConsentMethod: smsConsent ? source.toLowerCase() : undefined,
       facebookLeadId: facebookLeadId || undefined,
-      buyerBudgetMax: budget || undefined,
-      buyerLocation: location || undefined,
+      buyerBudgetMin: budget ? undefined : 400000,
+      buyerBudgetMax: budget || 650000,
+      buyerLocation: location || "Miami, Homestead",
       buyerBedroomsMin: bedroomsMin || undefined,
       buyerPropertyType: propertyType || undefined,
+      matchPrefsCompletedAt: new Date(),
     },
   })
+
+  // Kick off their first property alert right away (fire-and-forget) so the
+  // lead hears from Sofia with real matching listings, not just a welcome.
+  import("@/lib/trigger-match-alert")
+    .then(m => m.triggerMatchAlert(contact.id))
+    .then(r => console.log(`[INGEST] First match alert for ${contact.id}: sent=${r?.sent}`))
+    .catch(e => console.error("[INGEST] First match alert failed:", e))
 
   // Report Lead event to Facebook Conversions API (fire-and-forget)
   sendCapiEvent("Lead", {

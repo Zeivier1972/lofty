@@ -59,8 +59,14 @@ export async function POST(req: Request) {
         smsTCPAConsentMethod: smsConsent ? "web_form" : undefined,
         ...(isSeller
           ? { sellerAddress: area, sellerEstimatedValue: budgetNum }
-          // matchPrefsCompletedAt lets the hourly Sofia cron pick this lead up too
-          : { buyerBudgetMax: budgetNum, buyerLocation: area, matchPrefsCompletedAt: (area || budgetNum) ? new Date() : undefined }),
+          // matchPrefsCompletedAt lets the hourly Sofia cron pick this lead up.
+          // No area/budget on the form → default search: Miami + Homestead, $400k–$650k.
+          : {
+              buyerBudgetMin: budgetNum ? undefined : 400000,
+              buyerBudgetMax: budgetNum || 650000,
+              buyerLocation: area || "Miami, Homestead",
+              matchPrefsCompletedAt: new Date(),
+            }),
       },
     })
 
