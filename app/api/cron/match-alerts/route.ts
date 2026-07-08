@@ -60,6 +60,11 @@ async function runMatchAlerts(): Promise<Response> {
     })
     log.push(`Eligible buyers with prefs + email: ${contacts.length}`)
 
+    // Pace sends to stay under Resend's API rate limit (~2 req/s) — bursting
+    // hundreds in a tight loop gets most rejected with 429. ~600ms ≈ 1.6/s.
+    const SEND_DELAY_MS = Number(process.env.EMAIL_SEND_DELAY_MS || 600)
+    const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+
     for (const contact of contacts) {
       if (emailsSent >= remaining) {
         log.push(`Reached daily budget (${remaining}) — stopping. Remaining buyers will be picked up on later runs.`)
@@ -71,6 +76,7 @@ async function runMatchAlerts(): Promise<Response> {
           emailsSent++
           // Mark as contacted so fairness rotation advances them to the back
           await prisma.contact.update({ where: { id: contact.id }, data: { lastContacted: new Date() } }).catch(() => {})
+          await sleep(SEND_DELAY_MS)
         }
       } catch (e) {
         log.push(`✗ ${contact.firstName}: ${(e as Error).message}`)

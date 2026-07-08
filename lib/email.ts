@@ -25,18 +25,30 @@ async function sendViaResend(opts: EmailOptions): Promise<boolean> {
     console.error("[EMAIL] RESEND_FROM env var is not set. Set it to e.g. 'Sofia <sofia@catherinegomezrealtor.com>' in Railway.")
     throw new Error("RESEND_FROM is not configured. Add it to Railway environment variables.")
   }
-  const { data, error } = await resend.emails.send({
-    from,
-    to: opts.to,
-    subject: opts.subject,
-    html: opts.html,
-    text: opts.text,
-    replyTo: opts.replyTo,
-    headers: opts.headers,
-  })
-  if (error) throw new Error(`Resend error: ${error.message}`)
-  console.log(`[EMAIL] Sent via Resend to ${opts.to} (id: ${data?.id})`)
-  return true
+  // Retry on rate-limit (429) with backoff — Resend caps API calls per second.
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const { data, error } = await resend.emails.send({
+      from,
+      to: opts.to,
+      subject: opts.subject,
+      html: opts.html,
+      text: opts.text,
+      replyTo: opts.replyTo,
+      headers: opts.headers,
+    })
+    if (!error) {
+      console.log(`[EMAIL] Sent via Resend to ${opts.to} (id: ${data?.id})`)
+      return true
+    }
+    const msg = error.message || ""
+    const isRateLimit = /rate.?limit|too many|429/i.test(msg)
+    if (isRateLimit && attempt < 3) {
+      await new Promise(r => setTimeout(r, 1000 * attempt)) // 1s, 2s
+      continue
+    }
+    throw new Error(`Resend error: ${msg}`)
+  }
+  return false
 }
 
 // ─── Nodemailer (fallback) ────────────────────────────────────────────────────
