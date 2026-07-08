@@ -1423,6 +1423,34 @@ function relativeTime(date: string | null) {
   return `${Math.floor(d / 30)}mo ago`
 }
 
+// Where a lead came from → a short label + color, so a fresh Facebook lead is
+// obvious next to a website or imported one (no tag-filtering needed).
+function sourceBadge(source: string | null | undefined): { label: string; bg: string; color: string } {
+  const s = (source || "").toUpperCase()
+  if (s.includes("FACEBOOK") || s === "FB") return { label: "Facebook", bg: "#E7F0FF", color: "#1877F2" }
+  if (s.includes("INSTAGRAM") || s === "IG") return { label: "Instagram", bg: "#FCE7F3", color: "#C2185B" }
+  if (s.includes("GOOGLE")) return { label: "Google", bg: "#FCE8E6", color: "#D93025" }
+  if (s.includes("IDX") || s.includes("WEBSITE") || s.includes("WEB") || s.includes("HOMES")) return { label: "Website", bg: "#E6F4EA", color: "#137333" }
+  if (s.includes("ZAPIER")) return { label: "Zapier", bg: "#FEEFE6", color: "#EA580C" }
+  if (s.includes("MANYCHAT")) return { label: "ManyChat", bg: "#E0F2FE", color: "#0369A1" }
+  if (s.includes("WHATSAPP")) return { label: "WhatsApp", bg: "#E6F4EA", color: "#128C7E" }
+  if (s.includes("SMS") || s.includes("TEXT")) return { label: "SMS", bg: "#EDE9FE", color: "#6D28D9" }
+  if (s.includes("IMPORT") || s.includes("CSV")) return { label: "Import", bg: "#F1F5F9", color: "#475569" }
+  if (s.includes("REFERRAL")) return { label: "Referral", bg: "#FEF3C7", color: "#B45309" }
+  if (!s || s === "MANUAL") return { label: "Manual", bg: "#F1F5F9", color: "#64748B" }
+  return { label: source!.charAt(0) + source!.slice(1).toLowerCase(), bg: "#F1F5F9", color: "#475569" }
+}
+
+// Compact arrival date: "Added today" / "Added Jul 8"; isNew = came in ≤ 2 days ago
+function addedInfo(date: string | null | undefined): { label: string; isNew: boolean } | null {
+  if (!date) return null
+  const d = Math.floor((Date.now() - new Date(date).getTime()) / 86400000)
+  const isNew = d <= 2
+  if (d === 0) return { label: "Added today", isNew }
+  if (d === 1) return { label: "Added yesterday", isNew }
+  return { label: `Added ${new Date(date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`, isNew }
+}
+
 export default function ContactsClient({ contacts, total, page, pageSize, tags, smartPlans = [], filters, activeTab, stageCounts, stages: initialStages, pipelineId }: ContactsClientProps & { smartPlans?: { id: string; name: string }[] }) {
   const router = useRouter()
   const { toast } = useToast()
@@ -2153,6 +2181,17 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
                           <span className="text-xs text-gray-400">{relativeTime(lastTouch)}</span>
                           {isBuyer && <span className="text-[10px] px-1.5 py-0 rounded-full bg-blue-100 text-blue-700 font-medium">Buyer</span>}
                           {isSeller && <span className="text-[10px] px-1.5 py-0 rounded-full bg-green-100 text-green-700 font-medium">Seller</span>}
+                          {(() => {
+                            const sb = sourceBadge(contact.source)
+                            const added = addedInfo(contact.createdAt)
+                            return (
+                              <>
+                                <span className="text-[10px] px-1.5 py-0 rounded-full font-medium" style={{ backgroundColor: sb.bg, color: sb.color }}>{sb.label}</span>
+                                {added && <span className="text-[10px] text-gray-400">· {added.label}</span>}
+                                {added?.isNew && <span className="text-[9px] font-bold px-1 py-0 rounded-full bg-green-100 text-green-700 uppercase tracking-wide">New</span>}
+                              </>
+                            )
+                          })()}
                           {contact.leadReferrals?.[0]?.partner && !["RETURNED"].includes(contact.leadReferrals[0].status) && (
                             <span className={cn(
                               "text-[10px] px-1.5 py-0 rounded-full font-medium",
@@ -2262,10 +2301,21 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
                           >
                             {contact.firstName} {contact.lastName}
                           </Link>
-                          <div className="flex gap-1 mt-0.5">
+                          <div className="flex gap-1 mt-0.5 items-center flex-wrap">
                             {isBuyer && <span className="text-[10px] px-1.5 py-0 rounded-full bg-blue-100 text-blue-700 font-medium">Buyer</span>}
                             {isSeller && <span className="text-[10px] px-1.5 py-0 rounded-full bg-green-100 text-green-700 font-medium">Seller</span>}
                             {!isBuyer && !isSeller && <span className="text-[10px] px-1.5 py-0 rounded-full bg-gray-100 text-gray-500 font-medium">{contact.status?.replace(/_/g, " ")}</span>}
+                            {(() => {
+                              const sb = sourceBadge(contact.source)
+                              const added = addedInfo(contact.createdAt)
+                              return (
+                                <>
+                                  <span className="text-[10px] px-1.5 py-0 rounded-full font-medium" style={{ backgroundColor: sb.bg, color: sb.color }}>{sb.label}</span>
+                                  {added && <span className="text-[10px] text-gray-400">· {added.label}</span>}
+                                  {added?.isNew && <span className="text-[9px] font-bold px-1 py-0 rounded-full bg-green-100 text-green-700 uppercase tracking-wide">New</span>}
+                                </>
+                              )
+                            })()}
                           </div>
                         </div>
                       </div>
