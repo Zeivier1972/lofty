@@ -35,6 +35,11 @@ export async function POST(req: Request) {
             phone: ph,
             source: "IDX_HOMES",
             status: "NEW_LEAD",
+            // Default search so this lead gets the hourly property alerts too
+            buyerLocation: "Miami, Homestead",
+            buyerBudgetMin: 400000,
+            buyerBudgetMax: 650000,
+            matchPrefsCompletedAt: new Date(),
           },
         })
       }
