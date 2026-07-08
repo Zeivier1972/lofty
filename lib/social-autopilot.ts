@@ -224,11 +224,28 @@ const FALLBACK_IMAGES = [
 
 async function getRecentlyUsedMediaUrls(): Promise<Set<string>> {
   const since = new Date(Date.now() - 30 * 86400000)
-  const posts = await prisma.socialPost.findMany({
-    where: { mediaUrl: { not: null }, publishedAt: { gte: since } },
-    select: { mediaUrl: true },
-  })
-  return new Set(posts.map(p => p.mediaUrl!).filter(Boolean))
+  const [posts, blogs] = await Promise.all([
+    prisma.socialPost.findMany({
+      // include SCHEDULED/queued posts too (publishedAt null) so a photo picked
+      // earlier in this same run isn't handed out again before it publishes
+      where: { mediaUrl: { not: null }, scheduledAt: { gte: since } },
+      select: { mediaUrl: true },
+    }),
+    prisma.blogPost.findMany({
+      where: { createdAt: { gte: since } },
+      select: { coverImage: true, content: true },
+    }),
+  ])
+  const set = new Set<string>()
+  for (const p of posts) if (p.mediaUrl) set.add(p.mediaUrl)
+  // Blog cover + every image embedded in the article HTML, so a blog and a
+  // social post never land on the same photo.
+  for (const b of blogs) {
+    if (b.coverImage) set.add(b.coverImage)
+    const urls = b.content?.match(/https?:\/\/[^\s"')]+?(?:\.(?:jpg|jpeg|png|webp)|res\.cloudinary\.com\/[^\s"')]+)/gi) || []
+    for (const u of urls) set.add(u)
+  }
+  return set
 }
 
 function pickUnusedFallback(usedUrls: Set<string>): string {
@@ -263,9 +280,12 @@ async function generateAndUploadImage(
 ): Promise<string | null> {
   const theme = research?.trendingTopic ?? DAILY_THEMES[Math.floor(Math.random() * DAILY_THEMES.length)]
 
-  // 1st priority: Pexels professional real estate photos — free, public CDN, Facebook-compatible
+  // 1st priority: Pexels professional real estate photos — free, public CDN, Facebook-compatible.
+  // Pass the recently-used set + a variety seed so each post gets a DIFFERENT photo
+  // (widens the query and skips any photo we've used in the last 30 days).
   try {
-    const pexelsUrl = await fetchPexelsPhoto(theme, "landscape")
+    const variety = getDayIndex() + usedUrls.size + Math.floor(Math.random() * 8)
+    const pexelsUrl = await fetchPexelsPhoto(theme, "landscape", usedUrls, variety)
     if (pexelsUrl && !usedUrls.has(pexelsUrl)) {
       console.log(`[social-autopilot] Using Pexels photo: ${pexelsUrl.slice(0, 80)}`)
       return pexelsUrl
@@ -729,20 +749,41 @@ Devuelve SOLO JSON válido con este formato exacto:
   }
 }
 
-async function generateSectionImage(prompt: string, folder = "lofty-blog"): Promise<string | null> {
-  const BLOG_FALLBACKS = [
-    "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1080&q=80",
-    "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1080&q=80",
-    "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1080&q=80",
-    "https://images.unsplash.com/photo-1613977257365-aaae5a9817ff?w=1080&q=80",
-    "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=1080&q=80",
-    "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=1080&q=80",
-    "https://images.unsplash.com/photo-1449844908441-8829872d2607?w=1080&q=80",
-  ]
+// Blog-only fallback pool — deliberately DISTINCT from the social FALLBACK_IMAGES
+// pool so a blog cover never matches a social post's fallback photo.
+const BLOG_FALLBACKS = [
+  "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=1080&q=80",
+  "https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?w=1080&q=80",
+  "https://images.unsplash.com/photo-1600585152220-90363fe7e115?w=1080&q=80",
+  "https://images.unsplash.com/photo-1600607688969-a5bfcd646154?w=1080&q=80",
+  "https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?w=1080&q=80",
+  "https://images.unsplash.com/photo-1600566752355-35792bedcfea?w=1080&q=80",
+  "https://images.unsplash.com/photo-1605146769289-440113cc3d00?w=1080&q=80",
+  "https://images.unsplash.com/photo-1600585153490-76fb20a32601?w=1080&q=80",
+  "https://images.unsplash.com/photo-1600585154526-990dced4db0d?w=1080&q=80",
+  "https://images.unsplash.com/photo-1512918728675-ed5a9ecdebfd?w=1080&q=80",
+]
+
+// Rotated so each DALL-E blog image is prompted differently → visually distinct
+const BLOG_PHOTO_ANGLES = [
+  "wide exterior twilight shot", "aerial drone view", "bright midday street view",
+  "poolside golden-hour angle", "lush garden approach", "modern interior wide shot",
+  "balcony skyline view", "curb-appeal front elevation",
+]
+
+async function generateSectionImage(prompt: string, folder = "lofty-blog", usedUrls?: Set<string>): Promise<string | null> {
+  const pickFallback = (): string => {
+    const unused = usedUrls ? BLOG_FALLBACKS.filter(u => !usedUrls.has(u)) : BLOG_FALLBACKS
+    const pool = unused.length ? unused : BLOG_FALLBACKS
+    const url = pool[Math.floor(Math.random() * pool.length)]
+    usedUrls?.add(url)
+    return url
+  }
   try {
+    const angle = BLOG_PHOTO_ANGLES[Math.floor(Math.random() * BLOG_PHOTO_ANGLES.length)]
     const response = await getOpenAI().images.generate({
       model: "dall-e-3",
-      prompt: `Professional Miami real estate photography. ${prompt}. Luxury properties, blue sky, palm trees, modern architecture. Photorealistic, bright daylight, no text or watermarks.`,
+      prompt: `Professional Miami real estate photography. ${prompt}. Perspective: ${angle}. Luxury properties, blue sky, palm trees, modern architecture. Photorealistic, bright daylight, no text or watermarks.`,
       n: 1,
       size: "1024x1024",
       response_format: "b64_json",
@@ -751,18 +792,18 @@ async function generateSectionImage(prompt: string, folder = "lofty-blog"): Prom
     const b64 = (response.data as any[])?.[0]?.b64_json
     if (!b64) {
       console.warn("[social-autopilot] DALL-E returned no b64_json, using fallback")
-      return BLOG_FALLBACKS[Math.floor(Math.random() * BLOG_FALLBACKS.length)]
+      return pickFallback()
     }
 
     const uploadResult = await cloudinary.uploader.upload(
       `data:image/png;base64,${b64}`,
       { folder }
     )
-
+    usedUrls?.add(uploadResult.secure_url)
     return uploadResult.secure_url
   } catch (err) {
     console.error("[social-autopilot] Section image generation failed:", err)
-    return BLOG_FALLBACKS[Math.floor(Math.random() * BLOG_FALLBACKS.length)]
+    return pickFallback()
   }
 }
 
@@ -773,15 +814,17 @@ async function publishBlogPost(dayOfWeek: number, research?: ResearchBrief): Pro
 
     const theme = research?.trendingTopic ?? DAILY_THEMES[Math.floor(Math.random() * DAILY_THEMES.length)]
 
-    // Generate cover + up to 2 section images in parallel (non-fatal if any fail)
+    // Load recently-used photos so blog images avoid repeating social posts (and
+    // each other). Cover generated first so it always differs from the sections.
+    const usedUrls = await getRecentlyUsedMediaUrls()
     const coverPrompt = `${theme}, luxurious Miami waterfront property, golden hour`
-    const [coverImage, sectionImg1, sectionImg2] = await Promise.all([
-      generateSectionImage(coverPrompt, "lofty-blog"),
+    const coverImage = await generateSectionImage(coverPrompt, "lofty-blog", usedUrls)
+    const [sectionImg1, sectionImg2] = await Promise.all([
       data.sectionImagePrompts?.[0]
-        ? generateSectionImage(data.sectionImagePrompts[0], "lofty-blog")
+        ? generateSectionImage(data.sectionImagePrompts[0], "lofty-blog", usedUrls)
         : Promise.resolve(null),
       data.sectionImagePrompts?.[1]
-        ? generateSectionImage(data.sectionImagePrompts[1], "lofty-blog")
+        ? generateSectionImage(data.sectionImagePrompts[1], "lofty-blog", usedUrls)
         : Promise.resolve(null),
     ])
 
@@ -846,11 +889,12 @@ export async function publishBlogPostOnly(): Promise<{ ok: boolean; title?: stri
     if (!data) return { ok: false, error: "Content generation returned null" }
 
     const theme = research?.trendingTopic ?? DAILY_THEMES[Math.floor(Math.random() * DAILY_THEMES.length)]
+    const usedUrls = await getRecentlyUsedMediaUrls()
     const coverPrompt = `${theme}, luxurious Miami waterfront property, golden hour`
-    const [coverImage, sectionImg1, sectionImg2] = await Promise.all([
-      generateSectionImage(coverPrompt, "lofty-blog"),
-      data.sectionImagePrompts?.[0] ? generateSectionImage(data.sectionImagePrompts[0], "lofty-blog") : Promise.resolve(null),
-      data.sectionImagePrompts?.[1] ? generateSectionImage(data.sectionImagePrompts[1], "lofty-blog") : Promise.resolve(null),
+    const coverImage = await generateSectionImage(coverPrompt, "lofty-blog", usedUrls)
+    const [sectionImg1, sectionImg2] = await Promise.all([
+      data.sectionImagePrompts?.[0] ? generateSectionImage(data.sectionImagePrompts[0], "lofty-blog", usedUrls) : Promise.resolve(null),
+      data.sectionImagePrompts?.[1] ? generateSectionImage(data.sectionImagePrompts[1], "lofty-blog", usedUrls) : Promise.resolve(null),
     ])
 
     let html = data.content
