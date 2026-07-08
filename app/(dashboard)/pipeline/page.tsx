@@ -21,7 +21,7 @@ export default async function PipelinePage() {
                   contact: {
                     select: {
                       id: true, firstName: true, lastName: true, phone: true, email: true,
-                      lastContacted: true,
+                      lastContacted: true, source: true, createdAt: true,
                       tags: { include: { tag: true } },
                     },
                   },
