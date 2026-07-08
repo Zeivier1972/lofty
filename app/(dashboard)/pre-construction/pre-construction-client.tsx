@@ -27,6 +27,7 @@ type Project = {
   estimatedROI?: string
   downPayment?: string
   units?: number
+  photos?: string[]
 }
 
 const STATUS_OPTIONS = [
@@ -35,6 +36,11 @@ const STATUS_OPTIONS = [
   { value: "under_construction", label: "Under Construction", color: "bg-amber-100 text-amber-700" },
   { value: "completed", label: "Completed", color: "bg-green-100 text-green-700" },
 ]
+
+// Commission-safe area label — never the street address
+function area(p: { neighborhood?: string; city?: string; zipCode?: string }): string {
+  return [p.neighborhood, p.city].filter(Boolean).join(", ") || p.zipCode || "Miami area"
+}
 
 const EMPTY_FORM: Partial<Project> = {
   name: "", developer: "", neighborhood: "", city: "Miami", zipCode: "",
@@ -192,6 +198,7 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
         deliveryDate: l.yearBuilt ? `${l.yearBuilt}` : undefined,
         status: "under_construction",
         description: l.description || undefined,
+        photos: l.image ? [l.image] : undefined,
       }
       const res = await fetch("/api/pre-construction", {
         method: "POST",
@@ -362,6 +369,20 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
               <div>
                 <label className="text-xs font-semibold text-gray-600 mb-1 block">Total Units</label>
                 <input type="number" value={form.units || ""} onChange={e => f("units", e.target.value)} placeholder="e.g. 80" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+              </div>
+              <div className="col-span-2">
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">Photo URL <span className="text-gray-400 font-normal">(shown to you and sent to leads)</span></label>
+                <div className="flex gap-3 items-start">
+                  <input
+                    value={form.photos?.[0] || ""}
+                    onChange={e => f("photos", e.target.value.trim() ? [e.target.value.trim()] : [])}
+                    placeholder="https://…/project-photo.jpg"
+                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                  {form.photos?.[0] && (
+                    <img src={form.photos[0]} alt="Project preview" className="w-16 h-16 rounded-lg object-cover border border-gray-200 flex-shrink-0" />
+                  )}
+                </div>
               </div>
               <div className="col-span-2">
                 <label className="text-xs font-semibold text-gray-600 mb-1 block">Project URL</label>
@@ -550,32 +571,39 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
               const isExpanded = expandedId === p.id
               return (
                 <div key={p.id} className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+                  {/* Hero photo — so you recognize the project at a glance */}
+                  <div className="relative h-40 bg-gray-100">
+                    {p.photos?.[0] ? (
+                      <img src={p.photos[0]} alt={area(p)} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200">
+                        <Building2 className="w-10 h-10 text-gray-300" />
+                      </div>
+                    )}
+                    <span className={cn("absolute top-2 left-2 text-xs font-semibold px-2 py-0.5 rounded-full shadow-sm", st.color)}>{st.label}</span>
+                    <div className="absolute top-2 right-2 flex gap-1">
+                      <button onClick={() => setForm({ ...p })} className="p-1.5 bg-white/90 text-gray-500 hover:text-emerald-600 rounded-lg shadow-sm transition-colors">
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => remove(p.id)} className="p-1.5 bg-white/90 text-gray-500 hover:text-red-500 rounded-lg shadow-sm transition-colors">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
                   <div className="p-5">
-                    <div className="flex items-start justify-between gap-2 mb-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-full", st.color)}>{st.label}</span>
-                        </div>
-                        <h3 className="font-bold text-gray-900 text-base leading-tight">{p.name}</h3>
-                        {p.developer && <p className="text-sm text-gray-500 mt-0.5">{p.developer}</p>}
-                      </div>
-                      <div className="flex gap-1 flex-shrink-0">
-                        <button onClick={() => setForm({ ...p })} className="p-1.5 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors">
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => remove(p.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
+                    {/* Area is the headline — how you identify which project, not the street address */}
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <MapPin className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                      <h3 className="font-bold text-gray-900 text-base leading-tight">{area(p)}</h3>
+                    </div>
+                    <div className="flex items-center gap-2 mb-3 text-xs text-gray-400">
+                      {p.developer && <span>{p.developer}</span>}
+                      {p.developer && p.name && <span className="text-gray-300">·</span>}
+                      {p.name && <span className="truncate" title={p.name}>{p.name}</span>}
                     </div>
 
                     <div className="space-y-1.5">
-                      {(p.neighborhood || p.city) && (
-                        <div className="flex items-center gap-1.5 text-xs text-gray-600">
-                          <MapPin className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-                          {[p.neighborhood, p.city].filter(Boolean).join(", ")}
-                        </div>
-                      )}
                       {(p.priceMin || p.priceMax) && (
                         <div className="flex items-center gap-1.5 text-xs text-gray-600">
                           <DollarSign className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
