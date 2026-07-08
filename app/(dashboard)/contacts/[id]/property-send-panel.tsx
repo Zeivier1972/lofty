@@ -64,6 +64,7 @@ export default function PropertySendPanel({
   // Search form
   const [keyword, setKeyword] = useState("")        // MLS# or address keyword
   const [location, setLocation] = useState(defaultLocation)
+  const [minPrice, setMinPrice] = useState("")
   const [maxPrice, setMaxPrice] = useState(defaultMaxPrice ? String(defaultMaxPrice) : "")
   const [beds, setBeds] = useState(defaultMinBeds ? String(defaultMinBeds) : "")
   // Multiple property types — start with the buyer's known preference (if any)
@@ -132,6 +133,7 @@ export default function PropertySendPanel({
       const qs = new URLSearchParams()
       if (keyword.trim()) qs.set("keyword", keyword.trim())
       if (location.trim()) qs.set("city", location.trim())
+      if (minPrice) qs.set("minPrice", minPrice)
       if (maxPrice) qs.set("maxPrice", maxPrice)
       if (beds) qs.set("minBeds", beds)
       if (propTypes.size) qs.set("type", Array.from(propTypes).join(","))
@@ -277,14 +279,26 @@ export default function PropertySendPanel({
               </div>
             </div>
 
-            {/* Row 3: price + beds */}
-            <div className="grid grid-cols-2 gap-2">
+            {/* Row 3: min price + max price + min beds */}
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="text-xs font-semibold text-gray-500 mb-1 block">Min Price</label>
+                <input
+                  type="number"
+                  value={minPrice}
+                  onChange={e => setMinPrice(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && search()}
+                  placeholder="300000"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
+                />
+              </div>
               <div>
                 <label className="text-xs font-semibold text-gray-500 mb-1 block">Max Price</label>
                 <input
                   type="number"
                   value={maxPrice}
                   onChange={e => setMaxPrice(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && search()}
                   placeholder="800000"
                   className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
                 />
@@ -295,6 +309,7 @@ export default function PropertySendPanel({
                   type="number"
                   value={beds}
                   onChange={e => setBeds(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && search()}
                   placeholder="2"
                   className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
                 />
