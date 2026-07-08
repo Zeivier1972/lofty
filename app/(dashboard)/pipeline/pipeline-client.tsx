@@ -300,7 +300,8 @@ function sourceBadge(source: string | null | undefined): { label: string; bg: st
   if (s.includes("FACEBOOK") || s === "FB") return { label: "Facebook", bg: "#E7F0FF", color: "#1877F2" }
   if (s.includes("INSTAGRAM") || s === "IG") return { label: "Instagram", bg: "#FCE7F3", color: "#C2185B" }
   if (s.includes("GOOGLE")) return { label: "Google", bg: "#FCE8E6", color: "#D93025" }
-  if (s.includes("IDX") || s.includes("WEBSITE") || s.includes("WEB") || s.includes("HOMES")) return { label: "Website", bg: "#E6F4EA", color: "#137333" }
+  if (s.includes("IDX") || s.includes("HOMES")) return { label: "Website", bg: "#E6F4EA", color: "#137333" }
+  if (s.includes("WEBSITE") || s === "WEB") return { label: "Import", bg: "#F1F5F9", color: "#475569" }
   if (s.includes("ZAPIER")) return { label: "Zapier", bg: "#FEEFE6", color: "#EA580C" }
   if (s.includes("MANYCHAT")) return { label: "ManyChat", bg: "#E0F2FE", color: "#0369A1" }
   if (s.includes("WHATSAPP")) return { label: "WhatsApp", bg: "#E6F4EA", color: "#128C7E" }
@@ -838,7 +839,9 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
                       const badge = sourceBadge(lead.contact.source)
                       const arrived = arrivalLabel(lead.contact.createdAt)
                       const daysSince = daysAgo(lead.contact.createdAt)
-                      const isNew = daysSince !== null && daysSince <= 2
+                      // Only mark NEW while the lead is still in the New Leads column —
+                      // once dragged to another stage it's been worked.
+                      const isNew = daysSince !== null && daysSince <= 2 && /new\s*lead/i.test(stage.name || "")
                       return (
                         <div className="flex items-center flex-wrap gap-1.5 mt-2">
                           <span className="text-xs px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: badge.bg, color: badge.color }}>

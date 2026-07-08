@@ -67,6 +67,16 @@ export default function PropertySendPanel({
   const [minPrice, setMinPrice] = useState("")
   const [maxPrice, setMaxPrice] = useState(defaultMaxPrice ? String(defaultMaxPrice) : "")
   const [beds, setBeds] = useState(defaultMinBeds ? String(defaultMinBeds) : "")
+  // Extra ("more") filters
+  const [maxBeds, setMaxBeds] = useState("")
+  const [minBaths, setMinBaths] = useState("")
+  const [minSqft, setMinSqft] = useState("")
+  const [maxSqft, setMaxSqft] = useState("")
+  const [minYear, setMinYear] = useState("")
+  const [maxHoa, setMaxHoa] = useState("")
+  const [pool, setPool] = useState(false)
+  const [waterfront, setWaterfront] = useState(false)
+  const [showMore, setShowMore] = useState(false)
   // Multiple property types — start with the buyer's known preference (if any)
   const [propTypes, setPropTypes] = useState<Set<string>>(
     defaultPropertyType && CRM_TO_BRIDGE[defaultPropertyType]
@@ -136,6 +146,14 @@ export default function PropertySendPanel({
       if (minPrice) qs.set("minPrice", minPrice)
       if (maxPrice) qs.set("maxPrice", maxPrice)
       if (beds) qs.set("minBeds", beds)
+      if (maxBeds) qs.set("maxBeds", maxBeds)
+      if (minBaths) qs.set("minBaths", minBaths)
+      if (minSqft) qs.set("minSqft", minSqft)
+      if (maxSqft) qs.set("maxSqft", maxSqft)
+      if (minYear) qs.set("minYear", minYear)
+      if (maxHoa) qs.set("maxHoa", maxHoa)
+      if (pool) qs.set("pool", "1")
+      if (waterfront) qs.set("waterfront", "1")
       if (propTypes.size) qs.set("type", Array.from(propTypes).join(","))
       qs.set("limit", "12")
       const res = await fetch(`/api/idx/search?${qs}`)
@@ -347,6 +365,61 @@ export default function PropertySendPanel({
                   : `Searching ${Array.from(propTypes).map(v => PROP_TYPE_OPTIONS.find(o => o.value === v)?.label).join(" + ")}`}
               </p>
             </div>
+
+            {/* More filters — expandable */}
+            <button
+              type="button"
+              onClick={() => setShowMore(m => !m)}
+              className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700"
+            >
+              {showMore ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              {showMore ? "Fewer filters" : "More filters"}
+            </button>
+
+            {showMore && (
+              <div className="space-y-3 rounded-lg border border-gray-100 bg-gray-50/60 p-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs font-semibold text-gray-500 mb-1 block">Max Beds</label>
+                    <input type="number" value={maxBeds} onChange={e => setMaxBeds(e.target.value)} onKeyDown={e => e.key === "Enter" && search()} placeholder="any" className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-500 mb-1 block">Min Baths</label>
+                    <input type="number" value={minBaths} onChange={e => setMinBaths(e.target.value)} onKeyDown={e => e.key === "Enter" && search()} placeholder="any" className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs font-semibold text-gray-500 mb-1 block">Min Sqft</label>
+                    <input type="number" value={minSqft} onChange={e => setMinSqft(e.target.value)} onKeyDown={e => e.key === "Enter" && search()} placeholder="1000" className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-500 mb-1 block">Max Sqft</label>
+                    <input type="number" value={maxSqft} onChange={e => setMaxSqft(e.target.value)} onKeyDown={e => e.key === "Enter" && search()} placeholder="any" className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs font-semibold text-gray-500 mb-1 block">Built After (year)</label>
+                    <input type="number" value={minYear} onChange={e => setMinYear(e.target.value)} onKeyDown={e => e.key === "Enter" && search()} placeholder="2000" className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-500 mb-1 block">Max HOA / mo</label>
+                    <input type="number" value={maxHoa} onChange={e => setMaxHoa(e.target.value)} onKeyDown={e => e.key === "Enter" && search()} placeholder="any" className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 pt-1">
+                  <label className="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer">
+                    <input type="checkbox" checked={pool} onChange={e => setPool(e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                    Pool
+                  </label>
+                  <label className="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer">
+                    <input type="checkbox" checked={waterfront} onChange={e => setWaterfront(e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                    Waterfront
+                  </label>
+                </div>
+              </div>
+            )}
 
             <button
               onClick={search}
