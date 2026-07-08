@@ -161,7 +161,9 @@ export async function POST(req: Request) {
       const sourceRaw   = (row.source || row.lead_source || "").toLowerCase().trim()
       // Lofty uses "facebook ads" — normalize to "facebook"
       const sourceNorm  = sourceRaw.replace(" ads", "").replace(" ad", "").replace(".", "")
-      const source      = SOURCE_MAP[sourceNorm] || SOURCE_MAP[sourceRaw] || (sourceRaw ? "OTHER" : undefined)
+      // Keep the CSV's real source when present; otherwise mark it as IMPORT so
+      // imported leads are identifiable (and show the "Import" badge in the CRM).
+      const source      = SOURCE_MAP[sourceNorm] || SOURCE_MAP[sourceRaw] || (sourceRaw ? "OTHER" : "IMPORT")
 
       // ── DNC / Consent ────────────────────────────────────────────────
       const dncRaw    = (row.phone_dnc_status || "").toLowerCase()
