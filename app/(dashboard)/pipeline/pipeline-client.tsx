@@ -473,6 +473,7 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
   const [bulkDeleting, setBulkDeleting] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [sourceFilter, setSourceFilter] = useState<string>("ALL")
+  const [fbNewOnly, setFbNewOnly] = useState(false)
   const [editLead, setEditLead] = useState<any>(null)
 
   // Distinct sources present across all leads → drives the "Source" filter chips
@@ -480,19 +481,27 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
     new Set(stages.flatMap((s: any) => s.leads.map((l: any) => sourceBadge(l.contact.source).label)) as string[])
   ).sort()
 
+  // The "New Leads" stage — where brand-new (unworked) leads land
+  const isNewLeadsStage = (s: any) => /new\s*lead/i.test(s?.name || "")
+
   const q = searchQuery.trim().toLowerCase()
-  const filteredStages = (q || sourceFilter !== "ALL")
-    ? stages.map((s: any) => ({
-        ...s,
-        leads: s.leads.filter((l: any) => {
-          const matchesSearch = !q ||
-            `${l.contact.firstName} ${l.contact.lastName}`.toLowerCase().includes(q) ||
-            (l.contact.email || "").toLowerCase().includes(q) ||
-            (l.contact.phone || "").includes(searchQuery)
-          const matchesSource = sourceFilter === "ALL" || sourceBadge(l.contact.source).label === sourceFilter
-          return matchesSearch && matchesSource
-        }),
-      }))
+  const filteredStages = (q || sourceFilter !== "ALL" || fbNewOnly)
+    ? stages
+        // "Facebook · New" shortcut → show only the New Leads column
+        .filter((s: any) => !fbNewOnly || isNewLeadsStage(s))
+        .map((s: any) => ({
+          ...s,
+          leads: s.leads.filter((l: any) => {
+            const src = sourceBadge(l.contact.source).label
+            const matchesSearch = !q ||
+              `${l.contact.firstName} ${l.contact.lastName}`.toLowerCase().includes(q) ||
+              (l.contact.email || "").toLowerCase().includes(q) ||
+              (l.contact.phone || "").includes(searchQuery)
+            const matchesSource = sourceFilter === "ALL" || src === sourceFilter
+            const matchesFbNew = !fbNewOnly || src === "Facebook"
+            return matchesSearch && matchesSource && matchesFbNew
+          }),
+        }))
     : stages
 
   const handleLeadUpdated = (updated: any) => {
@@ -675,20 +684,35 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
         </div>
       </div>
 
-      {/* Search bar */}
-      <div className="relative max-w-xs mb-3">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-        <input
-          value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
-          placeholder="Search leads…"
-          className="w-full border border-gray-200 rounded-xl pl-9 pr-8 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
-        />
-        {searchQuery && (
-          <button onClick={() => setSearchQuery("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-            <X className="w-3.5 h-3.5" />
-          </button>
-        )}
+      {/* Search bar + one-click Facebook-new shortcut */}
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
+        <div className="relative max-w-xs flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Search leads…"
+            className="w-full border border-gray-200 rounded-xl pl-9 pr-8 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+          />
+          {searchQuery && (
+            <button onClick={() => setSearchQuery("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+        <button
+          onClick={() => setFbNewOnly(v => !v)}
+          title="Show only new Facebook leads in the New Leads stage"
+          className={cn(
+            "flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-xl border transition-colors whitespace-nowrap",
+            fbNewOnly
+              ? "bg-[#1877F2] text-white border-[#1877F2]"
+              : "bg-white text-[#1877F2] border-[#1877F2]/30 hover:bg-[#E7F0FF]"
+          )}
+        >
+          🔵 New Facebook leads
+          {fbNewOnly && <X className="w-3.5 h-3.5" />}
+        </button>
       </div>
 
       {/* Source filter — show only leads from a given channel (e.g. Facebook) */}
@@ -745,7 +769,7 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
           <div
             key={stage.id}
             className={cn(
-              "flex-shrink-0 w-72 bg-gray-50 rounded-xl border border-gray-200 kanban-column transition-colors",
+              "flex-shrink-0 w-72 bg-gray-50 rounded-xl border border-gray-200 kanban-column transition-colors flex flex-col max-h-[calc(100vh-260px)]",
               dragOver === stage.id && "border-lofty-400 bg-lofty-50"
             )}
             onDragOver={(e) => !selectMode && handleDragOver(e, stage.id)}
@@ -753,7 +777,7 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
             onDragLeave={() => setDragOver(null)}
           >
             {/* Column header */}
-            <div className="p-3 border-b border-gray-200 flex items-center justify-between">
+            <div className="p-3 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
               <div className="flex items-center gap-2">
                 <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: stage.color }} />
                 <span className="text-sm font-semibold text-gray-800">{stage.name}</span>
@@ -773,8 +797,8 @@ export default function PipelineClient({ pipeline, allPipelines }: PipelineClien
               </div>
             </div>
 
-            {/* Lead cards */}
-            <div className="p-2 space-y-2 min-h-16">
+            {/* Lead cards — scroll within the column so you can reach every lead */}
+            <div className="p-2 space-y-2 min-h-16 flex-1 overflow-y-auto">
               {stage.leads.map((lead: any) => {
                 const isSelected = selectedLeads.has(lead.id)
                 return (
