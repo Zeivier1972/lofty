@@ -931,9 +931,14 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
 
                   {/* Activity filter */}
                   <div className="flex items-center gap-1 flex-wrap">
-                    {["All", "Notes", "Calls", "Emails", "Texts", "Tasks", "Appointments", "Portal"].map(f => (
-                      <button key={f} onClick={() => setActivityFilter(f)} className={cn("text-xs px-3 py-1.5 rounded-full border transition-colors", activityFilter === f ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-500 hover:bg-gray-50")}>
-                        {f}
+                    {["All", "Notes", "Calls", "Emails", "Texts", "Tasks", "Appointments", "Portal",
+                      ...(contact.leadReferrals?.length ? ["Referral"] : [])].map(f => (
+                      <button key={f} onClick={() => setActivityFilter(f)} className={cn(
+                        "text-xs px-3 py-1.5 rounded-full border transition-colors",
+                        activityFilter === f ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-500 hover:bg-gray-50",
+                        f === "Referral" && activityFilter !== f && "border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100",
+                      )}>
+                        {f === "Referral" ? "🤝 Referral" : f}
                       </button>
                     ))}
                   </div>
@@ -1064,12 +1069,60 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
                       )
                     })}
 
-                    {notes.length === 0 && contact.activities.length === 0 && contact.emails.length === 0 && smsMessages.length === 0 && !contact.dialerCalls?.length && activityFilter !== "Portal" && activityFilter !== "Tasks" && activityFilter !== "Appointments" && (
+                    {notes.length === 0 && contact.activities.length === 0 && contact.emails.length === 0 && smsMessages.length === 0 && !contact.dialerCalls?.length && activityFilter !== "Portal" && activityFilter !== "Tasks" && activityFilter !== "Appointments" && activityFilter !== "Referral" && (
                       <div className="text-center py-12">
                         <Activity className="w-10 h-10 text-gray-200 mx-auto mb-3" />
                         <p className="text-gray-400 text-sm">No activity yet — add a note or log a call</p>
                       </div>
                     )}
+
+                    {/* Referral: everything the partner realtor has logged on this lead */}
+                    {activityFilter === "Referral" && contact.leadReferrals?.map((ref: any) => {
+                      const STATUS_LABELS: Record<string, string> = {
+                        SENT: "Sent", CONTACTED: "Contacted", SHOWING: "Showing",
+                        UNDER_CONTRACT: "Under contract", CLOSED: "Closed", LOST: "Lost", RETURNED: "Returned",
+                      }
+                      return (
+                        <div key={ref.id} className="bg-white rounded-2xl border border-amber-100 shadow-sm p-5 space-y-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                                🤝 Shared with {ref.partner?.name}
+                                {ref.partner?.brokerage && <span className="text-xs font-normal text-gray-400">· {ref.partner.brokerage}</span>}
+                              </p>
+                              <p className="text-xs text-gray-400 mt-0.5">
+                                {[ref.partner?.phone, ref.partner?.email].filter(Boolean).join(" · ")}
+                              </p>
+                            </div>
+                            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 flex-shrink-0">
+                              {STATUS_LABELS[ref.status] || ref.status}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-400">
+                            Shared {formatRelativeTime(ref.sentAt)} · {ref.updates?.length || 0} update{(ref.updates?.length || 0) !== 1 ? "s" : ""} from the partner
+                          </p>
+                          <div className="space-y-2 border-t border-gray-100 pt-3">
+                            {(!ref.updates || ref.updates.length === 0) && (
+                              <p className="text-xs text-gray-400 italic py-1">The partner hasn't logged anything yet.</p>
+                            )}
+                            {ref.updates?.map((u: any) => (
+                              <div key={u.id} className="flex items-start gap-2.5">
+                                <div className="w-7 h-7 rounded-full bg-gray-50 flex items-center justify-center flex-shrink-0 text-sm">
+                                  {u.kind === "CALL" ? "📞" : u.kind === "STATUS" ? "🔄" : "📝"}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{u.body}</p>
+                                  <p className="text-xs text-gray-400 mt-0.5">
+                                    {u.author === "AGENT" ? "You" : ref.partner?.name} · {new Date(u.createdAt).toLocaleString()}
+                                  </p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <a href="/referrals" className="inline-block text-xs text-lofty-600 hover:underline">Manage in Lead Referrals →</a>
+                        </div>
+                      )
+                    })}
 
                     {/* Portal chat thread */}
                     {activityFilter === "Portal" && (

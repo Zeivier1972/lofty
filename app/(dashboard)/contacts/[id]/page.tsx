@@ -22,9 +22,11 @@ export default async function ContactDetailPage({ params }: { params: { id: stri
       propertySaves: { include: { property: true }, where: { isActive: true }, orderBy: { createdAt: "desc" } },
       assignedTo: { select: { id: true, name: true, email: true } },
       leadReferrals: {
-        include: { partner: { select: { id: true, name: true, brokerage: true } } },
+        include: {
+          partner: { select: { id: true, name: true, brokerage: true, phone: true, email: true } },
+          updates: { orderBy: { createdAt: "desc" } },
+        },
         orderBy: { sentAt: "desc" },
-        take: 1,
       },
     },
   })
