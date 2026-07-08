@@ -128,10 +128,11 @@ export async function GET(req: Request) {
     })
     let sent = 0
     const results: any[] = []
+    const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
     for (const c of contacts) {
       try {
         const r = await triggerMatchAlert(c.id)
-        if (r.sent) sent++
+        if (r.sent) { sent++; await sleep(600) }  // pace under Resend rate limit
         results.push({ name: c.firstName, email: c.email, sent: r.sent, reason: r.reason || null })
       } catch (e: any) {
         results.push({ name: c.firstName, email: c.email, sent: false, reason: e?.message })
