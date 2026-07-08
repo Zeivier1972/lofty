@@ -105,6 +105,23 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
   const [mlsMinYear, setMlsMinYear] = useState(2025)
   const [mlsKeyword, setMlsKeyword] = useState("")
   const [savingMlsId, setSavingMlsId] = useState<string | null>(null)
+  const [backfilling, setBackfilling] = useState(false)
+  const [backfillMsg, setBackfillMsg] = useState<string | null>(null)
+
+  async function backfillPhotos() {
+    setBackfilling(true)
+    setBackfillMsg(null)
+    try {
+      const res = await fetch("/api/pre-construction/backfill-photos", { method: "POST" })
+      const data = await res.json()
+      setBackfillMsg(data.message || (data.ok ? `Updated ${data.updated}` : "Failed"))
+      if (data.updated > 0) setTimeout(() => window.location.reload(), 1200)
+    } catch {
+      setBackfillMsg("Could not fetch photos — try again.")
+    } finally {
+      setBackfilling(false)
+    }
+  }
 
   const filtered = projects.filter(p =>
     `${p.name} ${p.developer} ${p.neighborhood} ${p.city}`.toLowerCase().includes(search.toLowerCase())
@@ -262,6 +279,15 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
               Sync ShowingNew
             </button>
             <button
+              onClick={backfillPhotos}
+              disabled={backfilling}
+              title="Find and attach MLS photos for projects that don't have one"
+              className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 text-sm font-medium disabled:opacity-40"
+            >
+              {backfilling ? <Loader2 className="w-4 h-4 animate-spin" /> : <Home className="w-4 h-4" />}
+              Fetch missing photos
+            </button>
+            <button
               onClick={() => setForm({ ...EMPTY_FORM })}
               className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium"
             >
@@ -269,6 +295,13 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
             </button>
           </div>
         </div>
+
+        {/* Photo backfill status */}
+        {backfillMsg && (
+          <div className="mt-3 flex items-center gap-2 text-xs px-3 py-2 rounded-lg bg-amber-50 text-amber-800">
+            <Home className="w-3.5 h-3.5 flex-shrink-0" /> {backfillMsg}
+          </div>
+        )}
 
         {/* ShowingNew sync status */}
         {(liveScrapped.length > 0 || syncResult) && (
