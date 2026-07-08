@@ -21,11 +21,12 @@ interface MlsListing {
   photo: string | null
 }
 
+// Selectable MLS subtypes — pick any combination (none = all types)
 const PROP_TYPE_OPTIONS = [
-  { value: "", label: "All Types" },
   { value: "Single Family Residence", label: "Single Family" },
   { value: "Townhouse", label: "Townhouse" },
   { value: "Condominium", label: "Condo" },
+  { value: "Multi Family", label: "Multi-Family" },
 ]
 
 // CRM buyerPropertyType enum → Bridge subtype
@@ -65,9 +66,20 @@ export default function PropertySendPanel({
   const [location, setLocation] = useState(defaultLocation)
   const [maxPrice, setMaxPrice] = useState(defaultMaxPrice ? String(defaultMaxPrice) : "")
   const [beds, setBeds] = useState(defaultMinBeds ? String(defaultMinBeds) : "")
-  const [propType, setPropType] = useState(
-    defaultPropertyType ? (CRM_TO_BRIDGE[defaultPropertyType] ?? "") : ""
+  // Multiple property types — start with the buyer's known preference (if any)
+  const [propTypes, setPropTypes] = useState<Set<string>>(
+    defaultPropertyType && CRM_TO_BRIDGE[defaultPropertyType]
+      ? new Set([CRM_TO_BRIDGE[defaultPropertyType]])
+      : new Set()
   )
+
+  function togglePropType(v: string) {
+    setPropTypes(prev => {
+      const next = new Set(Array.from(prev))
+      next.has(v) ? next.delete(v) : next.add(v)
+      return next
+    })
+  }
 
   // Results
   const [searching, setSearching] = useState(false)
@@ -122,7 +134,7 @@ export default function PropertySendPanel({
       if (location.trim()) qs.set("city", location.trim())
       if (maxPrice) qs.set("maxPrice", maxPrice)
       if (beds) qs.set("minBeds", beds)
-      if (propType) qs.set("type", propType)
+      if (propTypes.size) qs.set("type", Array.from(propTypes).join(","))
       qs.set("limit", "12")
       const res = await fetch(`/api/idx/search?${qs}`)
       const data = await res.json()
@@ -250,34 +262,22 @@ export default function PropertySendPanel({
               </div>
             </div>
 
-            {/* Row 2: city, price, beds + type */}
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-xs font-semibold text-gray-500 mb-1 block">City / Area / ZIP</label>
-                <div className="relative">
-                  <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
-                  <input
-                    value={location}
-                    onChange={e => setLocation(e.target.value)}
-                    onKeyDown={e => e.key === "Enter" && search()}
-                    placeholder="Miami, 33032, 33034…"
-                    className="w-full pl-7 pr-2 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-gray-500 mb-1 block">Property Type</label>
-                <select
-                  value={propType}
-                  onChange={e => setPropType(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
-                >
-                  {PROP_TYPE_OPTIONS.map(o => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
+            {/* Row 2: city / area / zip */}
+            <div>
+              <label className="text-xs font-semibold text-gray-500 mb-1 block">City / Area / ZIP</label>
+              <div className="relative">
+                <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
+                <input
+                  value={location}
+                  onChange={e => setLocation(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && search()}
+                  placeholder="Miami, 33032, 33034…"
+                  className="w-full pl-7 pr-2 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
+                />
               </div>
             </div>
+
+            {/* Row 3: price + beds */}
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="text-xs font-semibold text-gray-500 mb-1 block">Max Price</label>
@@ -299,6 +299,38 @@ export default function PropertySendPanel({
                   className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
                 />
               </div>
+            </div>
+
+            {/* Row 4: property type — pick one OR MORE (none = all types) */}
+            <div>
+              <label className="text-xs font-semibold text-gray-500 mb-1 block">
+                Property Type <span className="font-normal text-gray-400">· pick one or more</span>
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {PROP_TYPE_OPTIONS.map(o => {
+                  const active = propTypes.has(o.value)
+                  return (
+                    <button
+                      key={o.value}
+                      type="button"
+                      onClick={() => togglePropType(o.value)}
+                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                        active
+                          ? "bg-blue-600 text-white border-blue-600"
+                          : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+                      }`}
+                    >
+                      {active && <CheckCircle className="w-3 h-3" />}
+                      {o.label}
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="text-[11px] text-gray-400 mt-1">
+                {propTypes.size === 0
+                  ? "Showing all property types"
+                  : `Searching ${Array.from(propTypes).map(v => PROP_TYPE_OPTIONS.find(o => o.value === v)?.label).join(" + ")}`}
+              </p>
             </div>
 
             <button
