@@ -79,9 +79,15 @@ const PHOTO_QUERIES: Record<string, string> = {
   default:   "luxury real estate Miami Florida home",
 }
 
+// Modifiers rotated into the query so the same theme doesn't always hit the same
+// top results — dramatically widens the pool of distinct photos over time.
+const PHOTO_MODIFIERS = ["", "modern", "luxury", "aerial view", "twilight", "sunny bright", "curb appeal", "tropical landscaping"]
+
 export async function fetchPexelsPhoto(
   themeOrQuery: string,
-  orientation: "landscape" | "portrait" | "square" = "landscape"
+  orientation: "landscape" | "portrait" | "square" = "landscape",
+  excludeUrls?: Set<string>,
+  variety = 0,
 ): Promise<string | null> {
   const apiKey = process.env.PEXELS_API_KEY
   if (!apiKey) return null
@@ -99,20 +105,31 @@ export async function fetchPexelsPhoto(
   else if (/airbnb|vacacional|turista/.test(t))       key = "airbnb"
   else if (/firma|signing|llaves|keys|contrato/.test(t)) key = "signing"
 
-  const query = PHOTO_QUERIES[key] ?? PHOTO_QUERIES.default
+  const baseQuery = PHOTO_QUERIES[key] ?? PHOTO_QUERIES.default
+  // Rotate a modifier + result page by the variety seed so distinct posts pull
+  // from different slices of Pexels' catalog instead of the same top 8 photos.
+  const v = Math.abs(Math.floor(variety))
+  const mod = PHOTO_MODIFIERS[v % PHOTO_MODIFIERS.length]
+  const query = mod ? `${baseQuery} ${mod}` : baseQuery
+  const page = 1 + (v % 3)
 
   try {
     const res = await fetch(
-      `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=10&orientation=${orientation}`,
+      `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=80&page=${page}&orientation=${orientation}`,
       { headers: { Authorization: apiKey }, signal: AbortSignal.timeout(6000) }
     )
     if (!res.ok) return null
     const data = await res.json()
     const photos: any[] = data?.photos ?? []
     if (!photos.length) return null
-    const photo = photos[Math.floor(Math.random() * Math.min(photos.length, 8))]
-    // Return large2x (1080px wide) — good for both Facebook and Instagram
-    return photo.src?.large2x ?? photo.src?.large ?? photo.src?.original ?? null
+    // large2x (1080px wide) — good for both Facebook and Instagram
+    const urls = photos
+      .map(p => p.src?.large2x ?? p.src?.large ?? p.src?.original)
+      .filter(Boolean) as string[]
+    // Prefer a photo we haven't used recently; only reuse if every option is taken
+    const unused = excludeUrls ? urls.filter(u => !excludeUrls.has(u)) : urls
+    const pool = unused.length ? unused : urls
+    return pool[Math.floor(Math.random() * pool.length)] ?? null
   } catch {
     return null
   }
