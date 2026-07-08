@@ -106,10 +106,11 @@ export async function sendEmail(opts: EmailOptions): Promise<boolean> {
   }
 
   // Log the ACTUAL result — only "SENT" when a provider confirmed delivery.
+  // For failures, prepend the reason to the body so it's diagnosable.
   prisma.email.create({
     data: {
       subject: opts.subject,
-      body: opts.html.slice(0, 2000),
+      body: delivered ? opts.html.slice(0, 2000) : `[SEND FAILED: ${failReason || "unknown"}]\n\n${opts.html.slice(0, 1500)}`,
       fromAddress: opts.from || process.env.RESEND_FROM || "sofia@catherinegomezrealtor.com",
       toAddress: opts.to,
       direction: "OUTBOUND",

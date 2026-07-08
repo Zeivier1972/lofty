@@ -158,8 +158,8 @@ export async function triggerMatchAlert(contactId: string): Promise<{ sent: bool
     const agentName = aiConfig?.realtorName || "Catherine Gomez"
     const agentPhone = aiConfig?.realtorPhone || "305-283-0872"
 
-    // Send email
-    await sendEmail({
+    // Send email — only proceed to dedup/success if it ACTUALLY delivered.
+    const delivered = await sendEmail({
       to: contact.email,
       subject: `✨ Sofia found ${newMatches.length} home${newMatches.length > 1 ? "s" : ""} perfect for you`,
       html: buildAlertEmail({
@@ -171,6 +171,10 @@ export async function triggerMatchAlert(contactId: string): Promise<{ sent: bool
         searchUrl,
       }),
     })
+    if (!delivered) {
+      // Do NOT mark as sent — leave them eligible for retry next run.
+      return { sent: false, reason: "Email not delivered (provider rejected — check Resend domain verification)" }
+    }
 
     // Record sent listings as Activity records for dedup (avoids schema dependency on local propertyId)
     await prisma.activity.createMany({

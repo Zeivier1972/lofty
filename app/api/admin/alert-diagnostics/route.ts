@@ -48,10 +48,22 @@ export async function GET(req: Request) {
 
   // 5. Real email delivery outcome (after the SENT/FAILED fix)
   const since7 = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-  const [emailSent7d, emailFailed7d] = await Promise.all([
+  const [emailSent7d, emailFailed7d, recentFails] = await Promise.all([
     prisma.email.count({ where: { direction: "OUTBOUND", status: "SENT", createdAt: { gte: since7 } } }),
     prisma.email.count({ where: { direction: "OUTBOUND", status: "FAILED", createdAt: { gte: since7 } } }),
+    prisma.email.findMany({
+      where: { direction: "OUTBOUND", status: "FAILED", createdAt: { gte: since7 } },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+      select: { toAddress: true, body: true, createdAt: true },
+    }),
   ])
+  // Pull the "[SEND FAILED: reason]" prefix we store on failed rows
+  const failureReasons = recentFails.map(f => ({
+    to: f.toAddress,
+    reason: (f.body.match(/^\[SEND FAILED: ([^\]]+)\]/)?.[1]) || "unknown",
+    at: f.createdAt,
+  }))
 
   const diagnosis: string[] = []
   if (!canSendEmail) diagnosis.push("❌ No email provider is fully configured — set RESEND_API_KEY + RESEND_FROM (or SMTP_USER/SMTP_PASS) in Railway. Nothing can be delivered until this is fixed.")
@@ -72,6 +84,7 @@ export async function GET(req: Request) {
     lastAlertAt: lastAlert?.createdAt || null,
     alertsLast7Days: alertsLast7d,
     emailDelivery7Days: { sent: emailSent7d, failed: emailFailed7d },
+    recentFailureReasons: failureReasons,
     diagnosis,
   }
 
