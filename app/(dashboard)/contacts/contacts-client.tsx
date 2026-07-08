@@ -2007,6 +2007,32 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
           />
         </form>
 
+        {/* One-click shortcut: fresh Facebook leads still in New Leads */}
+        {(() => {
+          const newLeadsStage = stages.find(s => /new\s*lead/i.test(s.name))
+          if (!newLeadsStage) return null
+          const isActive = filters.source === "FACEBOOK" && activeTab === newLeadsStage.id
+          return (
+            <button
+              onClick={() => {
+                if (isActive) { router.push("/contacts"); return }
+                const params = buildParams({ source: "FACEBOOK", tab: newLeadsStage.id })
+                router.push(`/contacts?${params.toString()}`)
+              }}
+              title="Show only Facebook leads still in the New Leads stage"
+              className={cn(
+                "h-9 px-3 rounded-lg text-sm font-semibold border flex items-center gap-1.5 whitespace-nowrap transition-colors",
+                isActive
+                  ? "bg-[#1877F2] text-white border-[#1877F2]"
+                  : "bg-[#E7F0FF] text-[#1877F2] border-[#c8ddfb] hover:bg-[#d8e8fd]"
+              )}
+            >
+              🔵 New Facebook leads
+              {isActive && <X className="w-3.5 h-3.5" />}
+            </button>
+          )
+        })()}
+
         {/* Two-step filter: category → value */}
         <div className="flex gap-2 items-center">
           {/* Step 1: what to filter by */}
