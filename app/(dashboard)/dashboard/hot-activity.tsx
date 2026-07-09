@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { Flame, Heart, Eye, Home, X } from "lucide-react"
+import { Flame, Heart, Eye, Home, X, ChevronDown, ChevronUp, Loader2, Phone } from "lucide-react"
 
 const LS_CONTACTS = "dismissed_hot_contacts"
 const LS_PROPS = "dismissed_hot_properties"
 
 interface HotContact { id: string; name: string; phone: string | null; email: string | null; saves: number; views: number; total: number }
 interface HotProperty { id: string; address: string; price: number | null; saves: number; views: number; total: number }
+interface PropertyLead { id: string; name: string; phone: string | null; email: string | null; stage: string | null; views: number; saves: number; total: number }
 
 export default function HotActivity() {
   const [contacts, setContacts] = useState<HotContact[]>([])
@@ -16,6 +17,24 @@ export default function HotActivity() {
   const [dismissedContacts, setDismissedContacts] = useState<Set<string>>(new Set())
   const [dismissedProps, setDismissedProps] = useState<Set<string>>(new Set())
   const [loaded, setLoaded] = useState(false)
+  // Tap a property → show WHO is behind its views/saves
+  const [expandedProp, setExpandedProp] = useState<string | null>(null)
+  const [propLeads, setPropLeads] = useState<Record<string, PropertyLead[]>>({})
+  const [loadingLeads, setLoadingLeads] = useState<string | null>(null)
+
+  async function toggleProperty(id: string) {
+    if (expandedProp === id) { setExpandedProp(null); return }
+    setExpandedProp(id)
+    if (propLeads[id]) return
+    setLoadingLeads(id)
+    try {
+      const res = await fetch(`/api/dashboard/property-leads?propertyId=${id}`)
+      const d = await res.json()
+      if (d.ok) setPropLeads(prev => ({ ...prev, [id]: d.leads || [] }))
+    } catch {} finally {
+      setLoadingLeads(null)
+    }
+  }
 
   useEffect(() => {
     const dc = new Set<string>(JSON.parse(localStorage.getItem(LS_CONTACTS) || "[]"))
@@ -94,27 +113,72 @@ export default function HotActivity() {
           <p className="text-sm text-gray-400 py-4 text-center">Aún no hay propiedades con 3+ interacciones.</p>
         ) : (
           <ul className="divide-y divide-gray-100">
-            {visibleProperties.map(p => (
-              <li key={p.id} className="flex items-center gap-2 group py-2.5">
-                <div className="flex items-center justify-between flex-1 min-w-0">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-800 truncate">{p.address}</p>
-                    <p className="text-xs text-lofty-700 font-semibold">{p.price ? `$${Number(p.price).toLocaleString()}` : ""}</p>
-                  </div>
-                  <div className="flex items-center gap-3 text-xs text-gray-500 flex-shrink-0 ml-2">
-                    <span className="flex items-center gap-1"><Heart className="w-3.5 h-3.5 text-red-500" />{p.saves}</span>
-                    <span className="flex items-center gap-1"><Eye className="w-3.5 h-3.5" />{p.views}</span>
-                  </div>
+            {visibleProperties.map(p => {
+              const isExpanded = expandedProp === p.id
+              const leads = propLeads[p.id]
+              return (
+              <li key={p.id} className="group py-2.5">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => toggleProperty(p.id)}
+                    className="flex items-center justify-between flex-1 min-w-0 text-left -mx-2 px-2 py-1 rounded-lg hover:bg-gray-50 transition-colors"
+                    title="Ver qué leads están detrás de esta actividad"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-800 truncate">{p.address}</p>
+                      <p className="text-xs text-lofty-700 font-semibold">{p.price ? `$${Number(p.price).toLocaleString()}` : ""}</p>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-gray-500 flex-shrink-0 ml-2">
+                      <span className="flex items-center gap-1"><Heart className="w-3.5 h-3.5 text-red-500" />{p.saves}</span>
+                      <span className="flex items-center gap-1"><Eye className="w-3.5 h-3.5" />{p.views}</span>
+                      {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => dismissProperty(p.id)}
+                    className="p-1 rounded-full text-gray-200 hover:text-gray-500 hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"
+                    title="Mark as seen"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
                 </div>
-                <button
-                  onClick={() => dismissProperty(p.id)}
-                  className="p-1 rounded-full text-gray-200 hover:text-gray-500 hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"
-                  title="Mark as seen"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
+
+                {/* Who's behind the numbers */}
+                {isExpanded && (
+                  <div className="mt-2 ml-1 rounded-xl bg-gray-50 border border-gray-100 p-2.5">
+                    {loadingLeads === p.id ? (
+                      <p className="text-xs text-gray-400 flex items-center gap-1.5 py-1"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Buscando leads…</p>
+                    ) : !leads || leads.length === 0 ? (
+                      <p className="text-xs text-gray-400 py-1">Sin leads identificados en esta propiedad.</p>
+                    ) : (
+                      <ul className="space-y-1">
+                        {leads.map(l => (
+                          <li key={l.id}>
+                            <Link
+                              href={`/contacts/${l.id}`}
+                              className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-white transition-colors"
+                            >
+                              <div className="min-w-0">
+                                <p className="text-xs font-semibold text-gray-800 truncate">{l.name}</p>
+                                <p className="text-[11px] text-gray-400 truncate">
+                                  {[l.stage, l.phone].filter(Boolean).join(" · ") || l.email || "—"}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2 text-[11px] text-gray-500 flex-shrink-0">
+                                {l.saves > 0 && <span className="flex items-center gap-0.5"><Heart className="w-3 h-3 text-red-500" />{l.saves}</span>}
+                                <span className="flex items-center gap-0.5"><Eye className="w-3 h-3" />{l.views}</span>
+                                {l.phone && <Phone className="w-3 h-3 text-green-600" />}
+                              </div>
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
               </li>
-            ))}
+              )
+            })}
           </ul>
         )}
       </div>
