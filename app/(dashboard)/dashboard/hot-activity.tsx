@@ -2,13 +2,13 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { Flame, Heart, Eye, Home, X, ChevronDown, ChevronUp, Loader2, Phone } from "lucide-react"
+import { Flame, Heart, Eye, Home, X, ChevronDown, ChevronUp, Loader2, Phone, Globe } from "lucide-react"
 
 const LS_CONTACTS = "dismissed_hot_contacts"
 const LS_PROPS = "dismissed_hot_properties"
 
 interface HotContact { id: string; name: string; phone: string | null; email: string | null; saves: number; views: number; total: number }
-interface HotProperty { id: string; address: string; price: number | null; saves: number; views: number; total: number }
+interface HotProperty { id: string; address: string; price: number | null; saves: number; views: number; anonViews?: number; total: number }
 interface PropertyLead { id: string; name: string; phone: string | null; email: string | null; stage: string | null; views: number; saves: number; total: number }
 
 export default function HotActivity() {
@@ -108,7 +108,7 @@ export default function HotActivity() {
         <h3 className="flex items-center gap-2 font-bold text-gray-900 mb-1">
           <Home className="w-4 h-4 text-lofty-600" /> Propiedades populares
         </h3>
-        <p className="text-xs text-gray-400 mb-3">Guardadas o vistas 3+ veces</p>
+        <p className="text-xs text-gray-400 mb-3">❤️ guardadas · 👁 vistas de leads · 🌐 visitas web anónimas</p>
         {visibleProperties.length === 0 ? (
           <p className="text-sm text-gray-400 py-4 text-center">Aún no hay propiedades con 3+ interacciones.</p>
         ) : (
@@ -128,9 +128,12 @@ export default function HotActivity() {
                       <p className="text-sm font-medium text-gray-800 truncate">{p.address}</p>
                       <p className="text-xs text-lofty-700 font-semibold">{p.price ? `$${Number(p.price).toLocaleString()}` : ""}</p>
                     </div>
-                    <div className="flex items-center gap-3 text-xs text-gray-500 flex-shrink-0 ml-2">
-                      <span className="flex items-center gap-1"><Heart className="w-3.5 h-3.5 text-red-500" />{p.saves}</span>
-                      <span className="flex items-center gap-1"><Eye className="w-3.5 h-3.5" />{p.views}</span>
+                    <div className="flex items-center gap-2.5 text-xs text-gray-500 flex-shrink-0 ml-2">
+                      <span className="flex items-center gap-1" title="Guardada por leads"><Heart className="w-3.5 h-3.5 text-red-500" />{p.saves}</span>
+                      <span className="flex items-center gap-1" title="Vistas de leads identificados"><Eye className="w-3.5 h-3.5" />{p.views}</span>
+                      {(p.anonViews ?? 0) > 0 && (
+                        <span className="flex items-center gap-1 text-gray-400" title="Visitas web anónimas (aún no son leads)"><Globe className="w-3.5 h-3.5" />{p.anonViews}</span>
+                      )}
                       {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                     </div>
                   </button>
@@ -149,7 +152,11 @@ export default function HotActivity() {
                     {loadingLeads === p.id ? (
                       <p className="text-xs text-gray-400 flex items-center gap-1.5 py-1"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Buscando leads…</p>
                     ) : !leads || leads.length === 0 ? (
-                      <p className="text-xs text-gray-400 py-1">Sin leads identificados en esta propiedad.</p>
+                      <p className="text-xs text-gray-400 py-1">
+                        {(p.anonViews ?? 0) > 0
+                          ? `🌐 Las ${p.anonViews} vistas son de visitantes anónimos del sitio web — gente navegando tus listings que aún no se ha identificado como lead (formulario, portal o clic en un email de Sofía).`
+                          : "Sin leads identificados en esta propiedad."}
+                      </p>
                     ) : (
                       <ul className="space-y-1">
                         {leads.map(l => (
