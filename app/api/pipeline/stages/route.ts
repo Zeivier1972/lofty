@@ -27,3 +27,26 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: `Failed to create stage: ${e?.message?.slice(0, 200) || "unknown error"}` }, { status: 500 })
   }
 }
+
+// Reorder stages — body: { pipelineId, stageIds } where stageIds is the full
+// list in the desired order; each stage's order becomes its array index.
+export async function PATCH(req: Request) {
+  try {
+    const { pipelineId, stageIds } = await req.json()
+    if (!pipelineId || !Array.isArray(stageIds) || stageIds.length === 0) {
+      return NextResponse.json({ error: "pipelineId and stageIds required" }, { status: 400 })
+    }
+    // Only touch stages that actually belong to this pipeline
+    const owned = await prisma.pipelineStage.findMany({ where: { pipelineId }, select: { id: true } })
+    const ownedIds = new Set(owned.map((s: { id: string }) => s.id))
+    const updates = (stageIds as string[])
+      .filter(id => ownedIds.has(id))
+      .map((id, i) => prisma.pipelineStage.update({ where: { id }, data: { order: i } }))
+    if (updates.length === 0) return NextResponse.json({ error: "No matching stages" }, { status: 400 })
+    await prisma.$transaction(updates)
+    return NextResponse.json({ ok: true, reordered: updates.length })
+  } catch (e: any) {
+    console.error("Stage reorder error:", e)
+    return NextResponse.json({ error: `Failed to reorder stages: ${e?.message?.slice(0, 200) || "unknown error"}` }, { status: 500 })
+  }
+}

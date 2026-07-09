@@ -99,6 +99,27 @@ function PipelineSettingsModal({
     }
   }
 
+  // Move a stage up/down; persists the full order (order = array index)
+  async function moveStage(id: string, dir: -1 | 1) {
+    const idx = stages.findIndex(s => s.id === id)
+    const j = idx + dir
+    if (idx < 0 || j < 0 || j >= stages.length) return
+    const next = [...stages]
+    ;[next[idx], next[j]] = [next[j], next[idx]]
+    setStages(next)
+    try {
+      const res = await fetch("/api/pipeline/stages", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pipelineId, stageIds: next.map(s => s.id) }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error)
+    } catch (e: any) {
+      toast({ title: e.message || "Failed to reorder stages", variant: "destructive" })
+    }
+  }
+
   function handleSave() {
     onSaved(stages)
     onClose()
@@ -134,12 +155,25 @@ function PipelineSettingsModal({
             {stages.length === 0 && (
               <p className="text-sm text-gray-400 text-center py-4">No stages yet. Add one above.</p>
             )}
-            {stages.map(stage => (
-              <div key={stage.id} className="flex items-center gap-3 border border-gray-200 rounded-lg px-3 py-2.5 bg-white hover:bg-gray-50">
-                <div className="flex flex-col gap-0.5 cursor-grab text-gray-300">
-                  <div className="flex gap-0.5"><span className="w-1 h-1 bg-gray-300 rounded-full" /><span className="w-1 h-1 bg-gray-300 rounded-full" /></div>
-                  <div className="flex gap-0.5"><span className="w-1 h-1 bg-gray-300 rounded-full" /><span className="w-1 h-1 bg-gray-300 rounded-full" /></div>
-                  <div className="flex gap-0.5"><span className="w-1 h-1 bg-gray-300 rounded-full" /><span className="w-1 h-1 bg-gray-300 rounded-full" /></div>
+            {stages.map((stage, i) => (
+              <div key={stage.id} className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2.5 bg-white hover:bg-gray-50">
+                <div className="flex flex-col">
+                  <button
+                    onClick={() => moveStage(stage.id, -1)}
+                    disabled={i === 0}
+                    title="Move up"
+                    className="p-0.5 rounded text-gray-400 hover:text-lofty-600 hover:bg-lofty-50 disabled:opacity-25 disabled:hover:bg-transparent"
+                  >
+                    <ChevronUp className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => moveStage(stage.id, 1)}
+                    disabled={i === stages.length - 1}
+                    title="Move down"
+                    className="p-0.5 rounded text-gray-400 hover:text-lofty-600 hover:bg-lofty-50 disabled:opacity-25 disabled:hover:bg-transparent"
+                  >
+                    <ChevronDown className="w-4 h-4" />
+                  </button>
                 </div>
                 <span className="flex-1 text-sm font-medium text-gray-800">{stage.name}</span>
                 <button onClick={() => deleteStage(stage.id)} className="p-1 hover:bg-red-50 rounded text-gray-400 hover:text-red-500 transition-colors">

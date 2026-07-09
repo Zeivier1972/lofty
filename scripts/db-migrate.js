@@ -1071,6 +1071,145 @@ async function backfillPartnerTokens(db) {
   if (partners.length) console.log(`[db-migrate] backfilled ${partners.length} partner tokens`)
 }
 
+// ─── Warm → Hot smart plan ────────────────────────────────────────────────────
+// Auto-enrolls when a lead moves to the Warm stage (they replied/engaged).
+// Goal: convert engagement into a phone call / appointment (Hot). Design:
+//  - Automation starts on day 1 as the SAFETY NET — day 0 belongs to Catherine
+//    (handleLeadEngaged already creates her urgent call task).
+//  - MLS matches keep flowing via Sofia's hourly alerts; this plan uses
+//    pre-construction EXCLUSIVITY (details only by phone — commission-safe)
+//    plus financing help and social proof as the reasons to get on a call.
+//  - Any new reply from the lead auto-pauses the plan (live conversation wins).
+
+async function seedWarmToHotPlan(db) {
+  const exists = await db.smartPlan.findFirst({
+    where: { name: "Warm → Hot: Camino a la Llamada" },
+  })
+  if (exists) {
+    console.log("[db-migrate] Warm → Hot plan already exists, skipping")
+    return
+  }
+
+  const emailShell = (title, inner) => `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;">
+<div style="background:linear-gradient(135deg,#1E3A5F 0%,#2D5A8E 100%);padding:32px 30px;text-align:center;">
+  <h1 style="color:#D4AF37;margin:0;font-size:24px;font-weight:700;">Catherine Gomez Realtor</h1>
+  <p style="color:#fff;margin:6px 0 0;font-size:13px;opacity:0.85;">Miami &bull; Homestead &bull; South Florida</p>
+</div>
+<div style="padding:34px 30px;">
+  <h2 style="color:#1E3A5F;font-size:20px;margin:0 0 14px;">${title}</h2>
+  ${inner}
+</div>
+<div style="background:#1E3A5F;padding:20px 30px;text-align:center;">
+  <p style="color:#D4AF37;margin:0 0 4px;font-weight:700;">Catherine Gomez, Realtor</p>
+  <p style="color:#fff;margin:0;font-size:12px;opacity:0.85;">📞 {agent_phone} &bull; catherinegomezrealtor.com</p>
+</div>
+</div>`
+
+  const cta = (label) => `<div style="text-align:center;margin:26px 0;">
+    <a href="{calendly_url}" style="background:linear-gradient(135deg,#1E3A5F,#2D5A8E);color:#D4AF37;padding:14px 32px;border-radius:50px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block;">${label}</a>
+    <p style="color:#888;font-size:11px;margin:8px 0 0;">15 minutos &bull; Sin compromiso &bull; En español</p>
+  </div>`
+
+  await db.smartPlan.create({
+    data: {
+      name: "Warm → Hot: Camino a la Llamada",
+      description: "Para leads Warm (respondieron un mensaje) que aún no agendan: 14 días de toques diseñados para convertir la respuesta en una llamada/cita con Catherine. Se pausa solo si el lead vuelve a responder.",
+      trigger: "PIPELINE_STAGE:Warm",
+      isActive: true,
+      steps: {
+        create: [
+          {
+            order: 0,
+            type: "SMS",
+            delay: 1,
+            content: "Hola {first_name}! Soy Sofía 😊 Catherine apartó 2 espacios esta semana para hablar contigo 15 minutitos sobre lo que buscas. ¿Te viene mejor hoy en la tarde o mañana? También puedes elegir tu hora aquí: {calendly_url}",
+          },
+          {
+            order: 1,
+            type: "TASK",
+            delay: 2,
+            taskType: "CALL",
+            taskTitle: "☎️ Llamar a {first_name} — Warm sin cita (día 2)",
+            content: "Este lead respondió pero aún no agenda. Revisa la última conversación y llámalo personalmente. Ángulo sugerido: pregunta abierta sobre qué busca + ofrece pre-aprobación gratis con lender en español.",
+          },
+          {
+            order: 2,
+            type: "EMAIL",
+            delay: 3,
+            subject: "{first_name}, 15 minutos que te pueden ahorrar meses 🏠",
+            content: emailShell(
+              "3 cosas que resolvemos en una llamada de 15 minutos",
+              `<p style="color:#555;line-height:1.7;margin:0 0 14px;">Hola {first_name}, soy Catherine. Vi que estás explorando opciones — excelente. Una llamada corta nos ahorra semanas de mensajes:</p>
+              <div style="background:#F8FAFC;border-radius:8px;padding:16px;margin:16px 0;border:1px solid #E2E8F0;">
+                <p style="margin:0;color:#555;font-size:14px;line-height:2.1;">1️⃣ <strong>Tu número real:</strong> cuánto te alcanza HOY (con pre-aprobación gratis, en español)<br>2️⃣ <strong>Tu zona ideal:</strong> dónde rinde más tu presupuesto — Miami, Homestead o alrededores<br>3️⃣ <strong>Tu plan:</strong> los pasos exactos y cuánto tiempo toma</p>
+              </div>
+              <p style="color:#555;line-height:1.7;margin:0 0 6px;">Sin presión y sin compromiso — sales de la llamada con un plan claro, decidas lo que decidas.</p>
+              ${cta("📅 Elegir mi horario de 15 min")}`
+            ),
+          },
+          {
+            order: 3,
+            type: "SMS",
+            delay: 5,
+            content: "{first_name}, dato importante 💡 La pre-aprobación es GRATIS, no te compromete a nada, y te dice exactamente cuánto te presta el banco. Catherine te conecta con un lender en español en 1 día. ¿Te lo coordino? Responde SÍ o llámanos: {agent_phone}",
+          },
+          {
+            order: 4,
+            type: "EMAIL",
+            delay: 7,
+            subject: "🏗️ Proyectos nuevos con precio de lanzamiento — detalles solo por teléfono",
+            content: emailShell(
+              "Lo que no puedo poner por escrito 🤫",
+              `<p style="color:#555;line-height:1.7;margin:0 0 14px;">Hola {first_name}, además de las propiedades que Sofía te envía, tengo acceso a <strong>proyectos de pre-construcción</strong> en el área de Miami y Homestead con:</p>
+              <div style="background:#FEF3C7;border-left:4px solid #F59E0B;padding:14px 18px;margin:16px 0;border-radius:4px;">
+                <p style="margin:0;color:#78350F;font-size:14px;line-height:2;">✅ Precios de lanzamiento (suben con cada fase)<br>✅ Planes de pago durante la construcción<br>✅ Entrega 2026–2027 — ideal para vivir o invertir</p>
+              </div>
+              <p style="color:#555;line-height:1.7;margin:0 0 6px;">Los desarrolladores no me dejan publicar nombres ni precios por escrito — pero <strong>en una llamada te cuento todo</strong>: cuáles son, dónde están y los números reales.</p>
+              ${cta("🏗️ Quiero los detalles — agendar llamada")}`
+            ),
+          },
+          {
+            order: 5,
+            type: "TASK",
+            delay: 9,
+            taskType: "CALL",
+            taskTitle: "☎️ Llamar a {first_name} — Warm sin cita (día 9, segundo intento)",
+            content: "Segundo intento personal. Ángulo sugerido: menciona los proyectos de pre-construcción con precio de lanzamiento (el email del día 7) — pregúntale si lo vio y ofrécele los detalles por teléfono.",
+          },
+          {
+            order: 6,
+            type: "SMS",
+            delay: 10,
+            content: "Hola {first_name}! Catherine está armando las visitas del fin de semana 🏠🔑 ¿Te aparto un espacio el sábado o el domingo para ver opciones en tu zona? Responde SÁBADO o DOMINGO y quedas dentro. — Sofía",
+          },
+          {
+            order: 7,
+            type: "EMAIL",
+            delay: 12,
+            subject: "De \"solo estoy mirando\" a las llaves en la mano 🔑",
+            content: emailShell(
+              "La familia que casi no llama",
+              `<p style="color:#555;line-height:1.7;margin:0 0 14px;">{first_name}, te cuento una historia real. Una familia me escribió igual que tú — "solo estamos mirando". Casi no agendan la llamada.</p>
+              <p style="color:#555;line-height:1.7;margin:0 0 14px;">En esa llamada descubrimos que calificaban para <strong>asistencia de pago inicial</strong> que no sabían que existía. Tres meses después recibieron las llaves de su casa en Homestead — pagando de hipoteca casi lo mismo que pagaban de renta.</p>
+              <div style="background:#F0FFF4;border:1px solid #A7F3D0;border-radius:8px;padding:14px 18px;margin:16px 0;">
+                <p style="margin:0;color:#065F46;font-size:14px;line-height:1.8;"><strong>La diferencia no fue el dinero.</strong> Fue una llamada de 15 minutos donde vieron sus opciones reales con alguien que habla su idioma.</p>
+              </div>
+              ${cta("🔑 Quiero ver mis opciones reales")}`
+            ),
+          },
+          {
+            order: 8,
+            type: "SMS",
+            delay: 14,
+            content: "{first_name}, no quiero llenarte de mensajes 🙏 Dime tú: ¿sigues buscando casa y quieres que Catherine te llame, o prefieres que pausemos por ahora? Un \"LLÁMAME\" o un \"PAUSA\" me basta. — Sofía 😊",
+          },
+        ],
+      },
+    },
+  })
+  console.log("[db-migrate] Warm → Hot smart plan created (9 steps, 14 days)")
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -1083,6 +1222,7 @@ async function main() {
   await seedColombiaPlan(db).catch(e => console.warn("[db-migrate] Colombia plan skip:", e.message))
   await seedBookingUrl(db).catch(e => console.warn("[db-migrate] booking url skip:", e.message))
   await seedReIgniteDrip(db).catch(e => console.warn("[db-migrate] Re-Ignite drip skip:", e.message))
+  await seedWarmToHotPlan(db).catch(e => console.warn("[db-migrate] Warm→Hot plan skip:", e.message))
   await dedupPipelineLeads(db).catch(e => console.warn("[db-migrate] dedup pipeline leads skip:", e.message))
   await seedBrickellKeywords(db).catch(e => console.warn("[db-migrate] Brickell keywords skip:", e.message))
   await backfillPartnerTokens(db).catch(e => console.warn("[db-migrate] partner tokens skip:", e.message))

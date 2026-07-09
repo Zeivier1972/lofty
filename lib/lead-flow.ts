@@ -328,22 +328,24 @@ export async function handleLeadEngaged(contactId: string, channel: string, mess
   const currentStage = await getCurrentStage(contactId)
   const alreadyWarm = ["Warm", "Hot", "Appointment Set", "Showing"].includes(currentStage?.name ?? "")
 
-  if (!alreadyWarm) {
-    const warmStage = pipeline.stages.find(s => s.name === "Warm")
-    if (warmStage) await moveToStage(contactId, warmStage.id, "Warm")
-  }
-
   // Cancel pending Sofia retries
   await prisma.scheduledCall.updateMany({
     where: { contactId, status: "PENDING" },
     data: { status: "CANCELLED" },
   })
 
-  // Pause all active smart plan (drip) enrollments — lead is now engaged
+  // Pause all active smart plan (drip) enrollments BEFORE moving to Warm —
+  // moveToStage enrolls PIPELINE_STAGE:Warm plans, and pausing afterwards
+  // would race and could pause the just-created Warm enrollment.
   const paused = await prisma.smartPlanEnrollment.updateMany({
     where: { contactId, status: "ACTIVE" },
     data: { status: "PAUSED" },
   })
+
+  if (!alreadyWarm) {
+    const warmStage = pipeline.stages.find(s => s.name === "Warm")
+    if (warmStage) await moveToStage(contactId, warmStage.id, "Warm")
+  }
 
   const drippingNote = paused.count > 0
     ? ` Paused ${paused.count} active drip sequence(s).`
