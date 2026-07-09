@@ -26,6 +26,7 @@ export default async function ReportsPage() {
   let revenueByMonth: any[] = []
   let pipelineByStage: any[] = []
   let messagingVolume: MessagingVolume = null
+  let propertyAlerts: { today: number; last7: number; last30: number; eligible: number; failed7: number } | null = null
 
   try {
     const session = await auth()
@@ -111,6 +112,19 @@ export default async function ReportsPage() {
       emailMonthly: groupByMonth(allEmailDates),
       totals: { smsLast30, emailLast30, smsLast7, emailLast7, smsCost, emailCost },
     }
+
+    // Sofia's automatic property alerts — "today" uses the same ET day the
+    // alert cron's daily budget uses, so the numbers line up.
+    const todayStr = now.toLocaleDateString("en-CA", { timeZone: "America/New_York" })
+    const todayStart = new Date(`${todayStr}T00:00:00-05:00`)
+    const [alertsToday, alerts7, alerts30, eligibleBuyers, failedEmails7] = await Promise.all([
+      prisma.activity.count({ where: { type: "PROPERTY_ALERT_SENT", createdAt: { gte: todayStart } } }),
+      prisma.activity.count({ where: { type: "PROPERTY_ALERT_SENT", createdAt: { gte: days7ago } } }),
+      prisma.activity.count({ where: { type: "PROPERTY_ALERT_SENT", createdAt: { gte: days30ago } } }),
+      prisma.contact.count({ where: { matchPrefsCompletedAt: { not: null }, email: { not: null }, doNotEmail: false } }),
+      prisma.email.count({ where: { direction: "OUTBOUND", status: "FAILED", createdAt: { gte: days7ago } } }),
+    ])
+    propertyAlerts = { today: alertsToday, last7: alerts7, last30: alerts30, eligible: eligibleBuyers, failed7: failedEmails7 }
   } catch (e) {
     console.error("Messaging volume error:", e)
   }
@@ -124,6 +138,7 @@ export default async function ReportsPage() {
       revenueByMonth={revenueByMonth}
       pipelineByStage={JSON.parse(JSON.stringify(pipelineByStage))}
       messagingVolume={messagingVolume}
+      propertyAlerts={propertyAlerts}
     />
   )
 }

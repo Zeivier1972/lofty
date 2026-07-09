@@ -23,6 +23,14 @@ interface MessagingVolume {
   }
 }
 
+interface PropertyAlerts {
+  today: number
+  last7: number
+  last30: number
+  eligible: number
+  failed7: number
+}
+
 interface ReportsClientProps {
   contactsByMonth: { month: string; count: number }[]
   tasksByStatus: any[]
@@ -31,6 +39,7 @@ interface ReportsClientProps {
   revenueByMonth: { month: string; revenue: number }[]
   pipelineByStage: any[]
   messagingVolume?: MessagingVolume | null
+  propertyAlerts?: PropertyAlerts | null
 }
 
 const CHART_COLORS = ["#0e8fe9", "#10B981", "#8B5CF6", "#F59E0B", "#EF4444", "#6B7280"]
@@ -43,7 +52,7 @@ const TASK_STATUS_COLORS: Record<string, string> = {
 }
 
 export default function ReportsClient({
-  contactsByMonth, tasksByStatus, transactionsByStatus, topLeadSources, revenueByMonth, pipelineByStage, messagingVolume,
+  contactsByMonth, tasksByStatus, transactionsByStatus, topLeadSources, revenueByMonth, pipelineByStage, messagingVolume, propertyAlerts,
 }: ReportsClientProps) {
   const [velocity, setVelocity] = useState<any>(null)
 
@@ -276,6 +285,63 @@ export default function ReportsClient({
           </CardContent>
         </Card>
       </div>
+
+      {/* Alertas de Propiedades (Sofia) */}
+      {propertyAlerts && (
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Alertas de Propiedades</h2>
+            <p className="text-gray-500 text-sm mt-0.5">Emails automáticos de Sofia con propiedades que hacen match</p>
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {[
+              {
+                label: "Alertas enviadas hoy",
+                value: propertyAlerts.today,
+                sub: `${propertyAlerts.last7.toLocaleString()} en 7 días`,
+                icon: Mail,
+                color: "text-indigo-600 bg-indigo-50",
+              },
+              {
+                label: "Alertas (30 días)",
+                value: propertyAlerts.last30.toLocaleString(),
+                sub: "Sofia trabaja 24/7",
+                icon: TrendingUp,
+                color: "text-emerald-600 bg-emerald-50",
+              },
+              {
+                label: "Buyers con búsqueda activa",
+                value: propertyAlerts.eligible.toLocaleString(),
+                sub: "Reciben alertas en rotación",
+                icon: Users,
+                color: "text-blue-600 bg-blue-50",
+              },
+              {
+                label: "Emails fallidos (7 días)",
+                value: propertyAlerts.failed7,
+                sub: propertyAlerts.failed7 > 0 ? "Revisa /api/admin/alert-diagnostics" : "Todo saludable ✅",
+                icon: AlertTriangle,
+                color: propertyAlerts.failed7 > 0 ? "text-amber-600 bg-amber-50" : "text-green-600 bg-green-50",
+              },
+            ].map((card) => (
+              <Card key={card.label} className="border-0 shadow-sm">
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-sm text-gray-500">{card.label}</p>
+                      <p className="text-2xl font-bold text-gray-900 mt-1">{card.value}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{card.sub}</p>
+                    </div>
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${card.color.split(" ")[1]}`}>
+                      <card.icon className={`w-5 h-5 ${card.color.split(" ")[0]}`} />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Mensajes Enviados */}
       {messagingVolume && (
