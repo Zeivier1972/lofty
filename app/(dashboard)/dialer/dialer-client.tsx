@@ -6,7 +6,7 @@ import {
   Play, Pause, SkipForward, Plus, Trash2, Clock,
   CheckCircle2, XCircle, MessageSquare, Voicemail,
   BarChart3, Users, Target, TrendingUp,
-  ChevronDown, ChevronUp, Search, User, Zap,
+  ChevronDown, ChevronUp, Search, User, Zap, ExternalLink,
 } from "lucide-react"
 import { cn, formatPhone } from "@/lib/utils"
 import HelpPanel from "@/components/help-panel"
@@ -718,8 +718,27 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
                   </span>
                 </div>
                 <div className="flex-1">
-                  <h2 className="text-xl font-bold text-gray-900">
-                    {currentContact.firstName} {currentContact.lastName}
+                  <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                    {/* Opens in a NEW TAB so the dialer session (queue, position,
+                        call state) is never lost — browser Back was resetting it */}
+                    <a
+                      href={`/contacts/${currentContact.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hover:text-lofty-600 transition-colors"
+                      title="Abrir la ficha del lead en otra pestaña (el dialer sigue aquí)"
+                    >
+                      {currentContact.firstName} {currentContact.lastName}
+                    </a>
+                    <a
+                      href={`/contacts/${currentContact.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-1.5 rounded-lg text-gray-400 hover:text-lofty-600 hover:bg-lofty-50 transition-colors"
+                      title="Ver ficha completa (nueva pestaña)"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
                   </h2>
                   <div className="flex items-center gap-4 mt-1">
                     <span className="text-gray-600 flex items-center gap-1.5">
