@@ -37,7 +37,9 @@ const navGroups: NavGroup[] = [
     icon: Users,
     items: [
       { href: "/contacts", icon: Users, label: "Contacts" },
-      { href: "/pipeline", icon: GitBranch, label: "Pipeline" },
+      // Pipeline kanban removed from the menu — stage management lives in
+      // Contacts. The /pipeline route still works; restore this line to bring
+      // the board back: { href: "/pipeline", icon: GitBranch, label: "Pipeline" },
       { href: "/tasks", icon: CheckSquare, label: "Tasks" },
       { href: "/calendar", icon: Calendar, label: "Calendar" },
     ],

@@ -326,7 +326,7 @@ export default function DashboardClient({
           <CardHeader className="pb-2 flex-row items-center justify-between">
             <CardTitle className="text-base font-semibold">Pipeline Overview</CardTitle>
             <Button asChild variant="ghost" size="sm" className="text-lofty-600 h-8">
-              <Link href="/pipeline">View Pipeline</Link>
+              <Link href="/contacts">View Contacts</Link>
             </Button>
           </CardHeader>
           <CardContent>
