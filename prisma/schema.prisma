@@ -350,6 +350,7 @@ model SMSMessage {
   toNumber   String
   direction  String   @default("OUTBOUND")
   status     String   @default("SENT")
+  sid        String?  // Twilio message SID — lets delivery receipts update status
   contactId  String?
   userId     String?
   isRead     Boolean  @default(false)

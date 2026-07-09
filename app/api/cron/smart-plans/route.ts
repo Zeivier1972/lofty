@@ -34,6 +34,7 @@ export async function GET(req: Request) {
           phone: true,
           doNotEmail: true,
           doNotCall: true,
+          doNotText: true,
         },
       },
       plan: {
@@ -102,7 +103,8 @@ export async function GET(req: Request) {
           })
         }
       } else if (step.type === "SMS" && step.content) {
-        if (!contact.doNotCall && contact.phone) {
+        // doNotText (not doNotCall) is the correct gate for text messages
+        if (!contact.doNotText && contact.phone) {
           const toPhone = contact.phone.startsWith("+")
             ? contact.phone
             : `+1${contact.phone.replace(/\D/g, "").slice(-10)}`
@@ -127,7 +129,7 @@ export async function GET(req: Request) {
           })
         }
       } else if (step.type === "WHATSAPP" && step.content) {
-        if (!contact.doNotCall && contact.phone) {
+        if (!contact.doNotText && contact.phone) {
           const toPhone = contact.phone.startsWith("+")
             ? contact.phone
             : `+1${contact.phone.replace(/\D/g, "").slice(-10)}`

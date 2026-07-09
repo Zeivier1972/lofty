@@ -11,16 +11,43 @@ function getClient() {
 }
 
 export async function sendSMS(to: string, body: string, mediaUrls?: string[]): Promise<string | null> {
+  // Central do-not-text guard: if ANY contact with this number is flagged
+  // (replied STOP, or the number proved undeliverable), no code path can
+  // text it — every send costs money.
+  try {
+    const digits = (to || "").replace(/\D/g, "").slice(-10)
+    if (digits.length >= 7) {
+      const blocked = await prisma.contact.findFirst({
+        where: { doNotText: true, phone: { contains: digits } },
+        select: { id: true },
+      })
+      if (blocked) {
+        console.log(`[SMS BLOCKED — doNotText] ${to}: "${body.slice(0, 60)}"`)
+        prisma.sMSMessage.create({
+          data: {
+            direction: "OUTBOUND", body,
+            fromNumber: process.env.TWILIO_PHONE_NUMBER || "unknown",
+            toNumber: to, status: "BLOCKED", contactId: blocked.id,
+          },
+        }).catch(() => {})
+        return null
+      }
+    }
+  } catch { /* guard is best-effort — never break sending for everyone */ }
+
   const c = getClient()
   let sid: string
   if (!c) {
     console.log("[SMS MOCK] To:", to, "Body:", body, "Media:", mediaUrls)
     sid = "mock-sid"
   } else {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL
     const msg = await c.messages.create({
       body,
       from: process.env.TWILIO_PHONE_NUMBER!,
       to,
+      // Delivery receipts → mark failed sends + auto-flag dead numbers
+      ...(appUrl ? { statusCallback: `${appUrl}/api/twilio/sms-status` } : {}),
       ...(mediaUrls?.length ? { mediaUrl: mediaUrls } : {}),
     })
     sid = msg.sid
@@ -33,6 +60,7 @@ export async function sendSMS(to: string, body: string, mediaUrls?: string[]): P
       fromNumber: process.env.TWILIO_PHONE_NUMBER || "unknown",
       toNumber: to,
       status: "SENT",
+      sid,
     },
   }).catch(() => {})
   return sid

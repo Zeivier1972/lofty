@@ -33,16 +33,24 @@ import ReferButton from "./refer-button"
 function generateInsight(contact: any): string | null {
   const emails = contact.emails || []
   const activities = contact.activities || []
-  const emailActivities = activities.filter((a: any) => a.type === "EMAIL" || a.type === "EMAIL_SENT")
   const fullName = `${contact.firstName} ${contact.lastName}`
+  const zips = contact.buyerLocation ? `in ${contact.buyerLocation}` : ""
 
-  const openedEmails = emailActivities.length
-  if (openedEmails > 0) {
-    const timeAgo = emailActivities[0]?.createdAt
-      ? new Date(emailActivities[0].createdAt).toLocaleString()
-      : "recently"
-    const zips = contact.buyerLocation ? `in ${contact.buyerLocation}` : ""
-    return `Lead ${fullName} opened automated emails ${openedEmails > 1 ? `multiple times: ${emailActivities.slice(0, 3).map((a: any) => new Date(a.createdAt).toLocaleString()).join(", ")}` : `at ${timeAgo}`}. High engagement with listing alerts ${zips}. Suggested immediate outreach to qualify needs and offer showings.`
+  // REAL opens only — recorded by the tracking pixel (EMAIL_OPENED activity /
+  // openedAt on the email row). Never claim "opened" for merely-sent emails.
+  const openActivities = activities.filter((a: any) => a.type === "EMAIL_OPENED")
+  const openedRows = emails.filter((e: any) => e.openedAt)
+  const opens = openActivities.length || openedRows.length
+  if (opens > 0) {
+    const lastOpen = openActivities[0]?.createdAt || openedRows[0]?.openedAt
+    const timeAgo = lastOpen ? new Date(lastOpen).toLocaleString() : "recently"
+    return `Lead ${fullName} opened automated emails ${opens > 1 ? `${opens} times, last at ${timeAgo}` : `at ${timeAgo}`}. High engagement with listing alerts ${zips}. Suggested immediate outreach to qualify needs and offer showings.`
+  }
+
+  // Emails sent but no recorded opens yet — say so honestly
+  const sentActivities = activities.filter((a: any) => a.type === "EMAIL" || a.type === "EMAIL_SENT")
+  if (sentActivities.length >= 3) {
+    return `Lead ${fullName} has received ${sentActivities.length} automated emails ${zips} — no opens recorded yet. Consider a call or text to check the email is reaching them.`
   }
 
   if (contact.propertyInterests?.length > 0) {
@@ -64,6 +72,7 @@ const ACTIVITY_ICONS: Record<string, { icon: string; color: string }> = {
   SMS_SENT: { icon: "💬", color: "bg-green-100" },
   CALL: { icon: "📞", color: "bg-purple-100" },
   CALL_MADE: { icon: "📞", color: "bg-purple-100" },
+  EMAIL_OPENED: { icon: "📬", color: "bg-green-100" },
   TASK_COMPLETED: { icon: "✅", color: "bg-green-100" },
   NOTE_ADDED: { icon: "📝", color: "bg-yellow-100" },
   PROPERTY_VIEWED: { icon: "🏠", color: "bg-orange-100" },
