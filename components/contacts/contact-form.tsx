@@ -36,6 +36,9 @@ const schema = z.object({
   buyerLocation: z.string().optional(),
   sellerAddress: z.string().optional(),
   sellerEstimatedValue: z.coerce.number().optional(),
+  doNotText: z.boolean().optional(),
+  doNotCall: z.boolean().optional(),
+  doNotEmail: z.boolean().optional(),
 })
 
 type FormData = z.infer<typeof schema>
@@ -223,6 +226,37 @@ export default function ContactForm({ contact }: ContactFormProps) {
             <Label>Estimated Value</Label>
             <Input {...register("sellerEstimatedValue")} type="number" className="mt-1" placeholder="500000" />
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Communication Preferences — these flags are enforced system-wide:
+          Do Not Text blocks EVERY outbound SMS to this contact at the source */}
+      <Card className="border-0 shadow-sm">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Communication Preferences</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" {...register("doNotText")} className="mt-0.5 w-4 h-4 rounded border-gray-300 text-red-600 focus:ring-red-500" />
+            <span>
+              <span className="text-sm font-medium text-gray-800 block">🚫 Do Not Text</span>
+              <span className="text-xs text-gray-400">Blocks all SMS — Sofía, smart plans, and manual texts. Set automatically if they reply STOP/PARAR or their number can't receive messages.</span>
+            </span>
+          </label>
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" {...register("doNotCall")} className="mt-0.5 w-4 h-4 rounded border-gray-300 text-red-600 focus:ring-red-500" />
+            <span>
+              <span className="text-sm font-medium text-gray-800 block">📵 Do Not Call</span>
+              <span className="text-xs text-gray-400">Excluded from Sofía's auto-calls and the Power Dialer.</span>
+            </span>
+          </label>
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" {...register("doNotEmail")} className="mt-0.5 w-4 h-4 rounded border-gray-300 text-red-600 focus:ring-red-500" />
+            <span>
+              <span className="text-sm font-medium text-gray-800 block">📪 Do Not Email</span>
+              <span className="text-xs text-gray-400">Excluded from property alerts and email drips.</span>
+            </span>
+          </label>
         </CardContent>
       </Card>
 
