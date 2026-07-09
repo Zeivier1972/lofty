@@ -334,8 +334,8 @@ export async function POST(req: Request) {
       return new Response(`<Response></Response>`, { headers: { "Content-Type": "text/xml" } })
     }
 
-    const upper = body.trim().toUpperCase()
-    if (upper === "STOP" || upper === "UNSUBSCRIBE" || upper === "CANCELAR") {
+    const upper = body.trim().toUpperCase().replace(/[.!¡]/g, "")
+    if (["STOP", "UNSUBSCRIBE", "CANCELAR", "PARAR", "BAJA", "ALTO", "NO MAS", "NO MÁS"].includes(upper)) {
       await prisma.contact.update({ where: { id: contact.id }, data: { doNotText: true } })
       await prisma.sMSMessage.create({
         data: { body, fromNumber: phone, toNumber: to, direction: "INBOUND", status: "RECEIVED", contactId: contact.id },
@@ -427,44 +427,27 @@ export async function POST(req: Request) {
       break
     }
 
-    // Send reply on the same channel it came from
+    // Send reply on the same channel it came from.
+    // COST RULE: ONE outbound message per reply. Property info is folded into
+    // a single text (max 3 properties) with at most one photo — each extra
+    // SMS/MMS segment costs money, and bursts of 4-5 messages were adding up.
     const toNum = phone.startsWith("+") ? phone : `+1${digits.slice(-10)}`
+    const topCards = propertyCards.slice(0, 3)
+    const combined = topCards.length > 0
+      ? `${reply}\n\n${topCards.map(c => c.caption).join("\n\n")}`.slice(0, 1500)
+      : reply
+    const firstPhoto = topCards.find(c => c.imageUrl)?.imageUrl
+
     if (isWhatsApp) {
-      await sendWhatsApp(toNum, reply)
+      await sendWhatsApp(toNum, combined, firstPhoto)
       await prisma.whatsAppMessage.create({
-        data: { body: reply, fromNumber: to, toNumber: phone, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
+        data: { body: combined, fromNumber: to, toNumber: phone, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
       })
-      if (propertyCards.length > 0) {
-        // Each property as its own message: info + its photo together
-        for (const card of propertyCards) {
-          try {
-            await sendWhatsApp(toNum, card.caption, card.imageUrl)
-            await prisma.whatsAppMessage.create({
-              data: { body: card.caption, fromNumber: to, toNumber: phone, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
-            })
-          } catch { /* non-fatal */ }
-        }
-      } else {
-        for (const imgUrl of collectedImages.slice(0, 3)) {
-          try { await sendWhatsApp(toNum, "", imgUrl) } catch { /* non-fatal */ }
-        }
-      }
     } else {
-      await sendSMS(toNum, reply)
+      await sendSMS(toNum, combined, firstPhoto ? [firstPhoto] : undefined)
       await prisma.sMSMessage.create({
-        data: { body: reply, fromNumber: to, toNumber: phone, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
+        data: { body: combined, fromNumber: to, toNumber: phone, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
       })
-      if (propertyCards.length > 0) {
-        // One MMS per property: its info as the text + its photo attached
-        for (const card of propertyCards) {
-          try {
-            await sendSMS(toNum, card.caption, card.imageUrl ? [card.imageUrl] : undefined)
-            await prisma.sMSMessage.create({
-              data: { body: card.caption, fromNumber: to, toNumber: phone, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
-            })
-          } catch { /* non-fatal */ }
-        }
-      }
     }
 
     const channel = isWhatsApp ? "WhatsApp" : "SMS"

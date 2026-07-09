@@ -139,6 +139,8 @@ const STMTS = [
   // PipelineStage.rotPercent lives only in the retro-edited init migration —
   // make sure DBs created before it have the column (stage create/read safety)
   `ALTER TABLE "PipelineStage" ADD COLUMN IF NOT EXISTS "rotPercent" DOUBLE PRECISION`,
+  // Twilio message SID — lets delivery receipts update the message status
+  `ALTER TABLE "SMSMessage" ADD COLUMN IF NOT EXISTS "sid" TEXT`,
 ]
 
 // ─── Email templates ─────────────────────────────────────────────────────────

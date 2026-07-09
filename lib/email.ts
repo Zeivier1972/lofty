@@ -99,6 +99,27 @@ function withReplyTo(opts: EmailOptions): EmailOptions {
 
 export async function sendEmail(opts: EmailOptions): Promise<boolean> {
   opts = withReplyTo(opts)
+
+  // Create the log row FIRST so a real open-tracking pixel can be embedded,
+  // tied to this exact email. When the recipient opens it, /api/email/open/:id
+  // stamps openedAt — so "opened" in the CRM means ACTUALLY opened.
+  let rowId: string | null = null
+  try {
+    const row = await prisma.email.create({
+      data: {
+        subject: opts.subject,
+        body: opts.html.slice(0, 2000),
+        fromAddress: opts.from || process.env.RESEND_FROM || "sofia@catherinegomezrealtor.com",
+        toAddress: opts.to,
+        direction: "OUTBOUND",
+        status: "SENDING",
+      },
+    })
+    rowId = row.id
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
+    opts = { ...opts, html: `${opts.html}<img src="${appUrl}/api/email/open/${rowId}" width="1" height="1" style="display:none" alt="" />` }
+  } catch { /* logging must never block sending */ }
+
   // Track the true outcome so the CRM log reflects reality, not just attempts.
   let delivered = false
   let failReason: string | null = null
@@ -119,17 +140,28 @@ export async function sendEmail(opts: EmailOptions): Promise<boolean> {
 
   // Log the ACTUAL result — only "SENT" when a provider confirmed delivery.
   // For failures, prepend the reason to the body so it's diagnosable.
-  prisma.email.create({
-    data: {
-      subject: opts.subject,
-      body: delivered ? opts.html.slice(0, 2000) : `[SEND FAILED: ${failReason || "unknown"}]\n\n${opts.html.slice(0, 1500)}`,
-      fromAddress: opts.from || process.env.RESEND_FROM || "sofia@catherinegomezrealtor.com",
-      toAddress: opts.to,
-      direction: "OUTBOUND",
-      status: delivered ? "SENT" : "FAILED",
-      sentAt: delivered ? new Date() : null,
-    },
-  }).catch(() => {})
+  if (rowId) {
+    prisma.email.update({
+      where: { id: rowId },
+      data: {
+        status: delivered ? "SENT" : "FAILED",
+        sentAt: delivered ? new Date() : null,
+        ...(delivered ? {} : { body: `[SEND FAILED: ${failReason || "unknown"}]\n\n${opts.html.slice(0, 1500)}` }),
+      },
+    }).catch(() => {})
+  } else {
+    prisma.email.create({
+      data: {
+        subject: opts.subject,
+        body: delivered ? opts.html.slice(0, 2000) : `[SEND FAILED: ${failReason || "unknown"}]\n\n${opts.html.slice(0, 1500)}`,
+        fromAddress: opts.from || process.env.RESEND_FROM || "sofia@catherinegomezrealtor.com",
+        toAddress: opts.to,
+        direction: "OUTBOUND",
+        status: delivered ? "SENT" : "FAILED",
+        sentAt: delivered ? new Date() : null,
+      },
+    }).catch(() => {})
+  }
 
   return delivered
 }
