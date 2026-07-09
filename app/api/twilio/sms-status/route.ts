@@ -43,21 +43,15 @@ export async function POST(req: Request) {
             where: { id: { in: contacts.map(c => c.id) } },
             data: { doNotText: true },
           })
+          // Log on the contact's timeline only — NO bell notification per number.
+          // (A drip batch can surface dozens of dead numbers at once and flooding
+          // the bell buries the notifications that actually need action.)
           for (const c of contacts) {
             prisma.activity.create({
               data: {
                 type: "NOTE_ADDED",
                 title: "🚫 SMS desactivado automáticamente",
                 description: `El número no puede recibir mensajes (Twilio error ${errorCode} — línea fija, inválido o bloqueado). No se enviarán más textos; usa email o llamada.`,
-                contactId: c.id,
-              },
-            }).catch(() => {})
-            prisma.aINotification.create({
-              data: {
-                type: "FOLLOW_UP",
-                title: `🚫 ${c.firstName} ${c.lastName || ""} no recibe SMS`,
-                body: `Su número falló con error permanente ${errorCode} (línea fija/ inválido). Textos desactivados para no gastar — contáctalo por email o llamada.`,
-                priority: "LOW",
                 contactId: c.id,
               },
             }).catch(() => {})
