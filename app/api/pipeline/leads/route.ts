@@ -45,6 +45,12 @@ export async function POST(req: Request) {
       },
     })
 
+    // Manually assigning a stage = the agent handled it → clear its notifications
+    await prisma.aINotification.updateMany({
+      where: { contactId, isRead: false },
+      data: { isRead: true },
+    }).catch(() => {})
+
     return NextResponse.json(lead)
   } catch (e) {
     console.error("Pipeline lead upsert error:", e)

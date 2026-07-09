@@ -33,6 +33,13 @@ export default async function ContactDetailPage({ params }: { params: { id: stri
 
   if (!contact) notFound()
 
+  // Opening a lead = implicit acknowledgment: clear their unread notifications
+  // so the bell badge reflects only leads Catherine hasn't looked at yet.
+  await prisma.aINotification.updateMany({
+    where: { contactId: params.id, isRead: false },
+    data: { isRead: true },
+  }).catch(() => {})
+
   // Properties Sofia sent via match-alert emails
   const rawAlerts = await prisma.propertyAlertSent.findMany({
     where: { contactId: params.id },

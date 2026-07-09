@@ -25,6 +25,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           userId: session?.user?.id,
         },
       })
+      // Manually moving a lead = the agent handled it → clear its notifications
+      await prisma.aINotification.updateMany({
+        where: { contactId: lead.contactId, isRead: false },
+        data: { isRead: true },
+      }).catch(() => {})
     }
 
     return NextResponse.json(lead)
