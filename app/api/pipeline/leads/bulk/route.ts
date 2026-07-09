@@ -27,6 +27,12 @@ export async function PATCH(req: Request) {
       })),
     })
 
+    // Bulk-moving leads = the agent handled them → clear their notifications
+    await prisma.aINotification.updateMany({
+      where: { contactId: { in: leads.map((l: { contactId: string }) => l.contactId) }, isRead: false },
+      data: { isRead: true },
+    }).catch(() => {})
+
     return NextResponse.json({ updated: ids.length })
   } catch (e) {
     console.error("Bulk move error:", e)
