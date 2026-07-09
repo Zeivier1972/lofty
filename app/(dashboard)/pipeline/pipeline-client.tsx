@@ -98,13 +98,13 @@ function ManageStages({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pipelineId, name: newName.trim() }),
       })
-      if (!res.ok) throw new Error()
-      const stage = await res.json()
-      setStages(prev => [...prev, { ...stage, leads: [] }])
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || `Server error (${res.status})`)
+      setStages(prev => [...prev, { ...data, leads: [] }])
       setNewName("")
       toast({ title: "Stage added" })
-    } catch {
-      toast({ title: "Failed to add stage", variant: "destructive" })
+    } catch (e: any) {
+      toast({ title: e.message || "Failed to add stage", variant: "destructive" })
     } finally { setAdding(false) }
   }
 

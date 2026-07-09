@@ -136,6 +136,9 @@ const STMTS = [
   `ALTER TABLE "WhatsAppMessage" ALTER COLUMN "isRead" SET DEFAULT false`,
   `ALTER TABLE "FacebookMessage" ADD COLUMN IF NOT EXISTS "isRead" BOOLEAN NOT NULL DEFAULT true`,
   `ALTER TABLE "FacebookMessage" ALTER COLUMN "isRead" SET DEFAULT false`,
+  // PipelineStage.rotPercent lives only in the retro-edited init migration —
+  // make sure DBs created before it have the column (stage create/read safety)
+  `ALTER TABLE "PipelineStage" ADD COLUMN IF NOT EXISTS "rotPercent" DOUBLE PRECISION`,
 ]
 
 // ─── Email templates ─────────────────────────────────────────────────────────
