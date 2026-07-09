@@ -9,7 +9,7 @@ import {
   Plus, Trash2, Edit, Database, CheckCircle, ExternalLink,
   X, Key, MessageSquare, Mail, Calendar, FileSignature, Home,
   Check, Clock, Copy, Link, Upload, Phone, Voicemail, FileText,
-  Send, FlaskConical,
+  Send, FlaskConical, ChevronUp, ChevronDown,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -1102,6 +1102,29 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
     }
   }
 
+  // Move a stage up/down and persist the new order for the whole pipeline
+  const moveStage = async (pipelineId: string, stageId: string, dir: -1 | 1) => {
+    const p = pipelines.find(x => x.id === pipelineId)
+    if (!p) return
+    const idx = p.stages.findIndex((s: any) => s.id === stageId)
+    const j = idx + dir
+    if (idx < 0 || j < 0 || j >= p.stages.length) return
+    const next = [...p.stages]
+    ;[next[idx], next[j]] = [next[j], next[idx]]
+    setPipelines(ps => ps.map(x => x.id === pipelineId ? { ...x, stages: next } : x))
+    try {
+      const res = await fetch("/api/pipeline/stages", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pipelineId, stageIds: next.map((s: any) => s.id) }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error)
+    } catch (e: any) {
+      toast({ title: e.message || "Error reordering stages", variant: "destructive" })
+    }
+  }
+
   const deleteStage = async (stageId: string, pipelineId: string) => {
     if (!confirm("Delete this stage? Leads in this stage will be unassigned.")) return
     try {
@@ -1393,7 +1416,25 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
                           <>
                             <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: stage.color }} />
                             <span className="text-sm flex-1">{stage.name}</span>
-                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {/* Always visible (hover-only buttons are unusable on phones) */}
+                            <div className="flex gap-1">
+                              {(() => {
+                                const i = pipeline.stages.findIndex((s: any) => s.id === stage.id)
+                                return (
+                                  <>
+                                    <Button variant="ghost" size="icon" className="w-7 h-7" disabled={i === 0}
+                                      title="Move up"
+                                      onClick={() => moveStage(pipeline.id, stage.id, -1)}>
+                                      <ChevronUp className="w-4 h-4 text-gray-500" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" className="w-7 h-7" disabled={i === pipeline.stages.length - 1}
+                                      title="Move down"
+                                      onClick={() => moveStage(pipeline.id, stage.id, 1)}>
+                                      <ChevronDown className="w-4 h-4 text-gray-500" />
+                                    </Button>
+                                  </>
+                                )
+                              })()}
                               <Button variant="ghost" size="icon" className="w-7 h-7"
                                 onClick={() => { setEditingStage(stage.id); setEditStageName(stage.name); setEditStageColor(stage.color) }}>
                                 <Edit className="w-3.5 h-3.5 text-gray-500" />
