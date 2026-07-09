@@ -17,3 +17,20 @@ command = "curl -sf -X POST ${NEXT_PUBLIC_APP_URL}/api/cron/match-alerts -H \"x-
 name = "daily-system-check"
 schedule = "0 8 * * *"
 command = "curl -sf \"${NEXT_PUBLIC_APP_URL}/api/cron/system-check\" -H \"x-cron-secret: ${CRON_SECRET}\" || true"
+
+# Smart Plan engine — sends due drip steps (email/SMS/WhatsApp/tasks) hourly.
+# The executor route existed but NOTHING called it, so enrolled plans never ran.
+# NOTE: the route is GET-only and expects Authorization: Bearer.
+[[crons]]
+name = "smart-plans-engine"
+schedule = "30 * * * *"
+command = "curl -sf \"${NEXT_PUBLIC_APP_URL}/api/cron/smart-plans\" -H \"Authorization: Bearer ${CRON_SECRET}\" || true"
+
+# Warm→Hot rollout pacing — daily at 14:00 UTC (~9-10 AM ET): expires stale
+# call tasks (3 days), releases the next batch of QUEUED Warm enrollments only
+# if Catherine's open task queue is below the cap, and builds her daily call
+# digest. Pace/cap via WARM_RELEASE_PER_DAY (30) and WARM_TASK_CAP (40).
+[[crons]]
+name = "warm-plan-release"
+schedule = "0 14 * * *"
+command = "curl -sf -X POST ${NEXT_PUBLIC_APP_URL}/api/cron/warm-plan-release -H \"x-cron-secret: ${CRON_SECRET}\" || true"
