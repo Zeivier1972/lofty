@@ -97,9 +97,12 @@ export async function triggerMatchAlert(contactId: string): Promise<{ sent: bool
     const zipTokens = locTokens.filter((l: string) => ZIP_RE.test(l))
     const cityTokens = locTokens.filter((l: string) => !ZIP_RE.test(l))
 
-    const propSubType = prefs.buyerPropertyType
-      ? PROP_TYPE_MAP[prefs.buyerPropertyType]
-      : undefined
+    // buyerPropertyType can hold MULTIPLE comma-separated types
+    // (e.g. "SINGLE_FAMILY,TOWNHOUSE") — map each to its MLS subtype
+    const propSubTypes = (prefs.buyerPropertyType || "")
+      .split(",")
+      .map(t => PROP_TYPE_MAP[t.trim()])
+      .filter(Boolean)
 
     // Query live Bridge MLS with buyer's criteria
     const mlsListings = await searchIdxListings({
@@ -109,7 +112,7 @@ export async function triggerMatchAlert(contactId: string): Promise<{ sent: bool
       maxPrice: prefs.buyerBudgetMax || undefined,
       minBeds: prefs.buyerBedroomsMin || undefined,
       minBaths: prefs.buyerBathroomsMin || undefined,
-      propertySubType: propSubType,
+      propertySubTypes: propSubTypes.length > 0 ? propSubTypes : undefined,
       limit: 40,
     })
 

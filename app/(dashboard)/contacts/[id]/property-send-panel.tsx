@@ -77,11 +77,15 @@ export default function PropertySendPanel({
   const [pool, setPool] = useState(false)
   const [waterfront, setWaterfront] = useState(false)
   const [showMore, setShowMore] = useState(false)
-  // Multiple property types — start with the buyer's known preference (if any)
+  // Multiple property types — start with the buyer's known preference(s).
+  // buyerPropertyType may hold several comma-separated types.
   const [propTypes, setPropTypes] = useState<Set<string>>(
-    defaultPropertyType && CRM_TO_BRIDGE[defaultPropertyType]
-      ? new Set([CRM_TO_BRIDGE[defaultPropertyType]])
-      : new Set()
+    new Set(
+      (defaultPropertyType || "")
+        .split(",")
+        .map(t => CRM_TO_BRIDGE[t.trim()])
+        .filter(Boolean)
+    )
   )
 
   function togglePropType(v: string) {

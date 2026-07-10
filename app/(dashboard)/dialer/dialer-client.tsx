@@ -66,15 +66,23 @@ interface Props {
   initialContact?: Contact | null
 }
 
-function mapPropertyType(type?: string | null): string {
-  switch (type) {
-    case "SINGLE_FAMILY": return "Casa"
-    case "CONDO": return "Condo"
-    case "TOWNHOUSE": return "Townhouse"
-    case "MULTI_FAMILY": return "Casa"
-    case "LAND": return "Terreno"
-    default: return ""
-  }
+// Property types: display label ↔ CRM enum. buyerPropertyType stores one or
+// MORE comma-separated enums (e.g. "SINGLE_FAMILY,TOWNHOUSE").
+const TYPE_ENUM_TO_LABEL: Record<string, string> = {
+  SINGLE_FAMILY: "Casa", CONDO: "Condo", TOWNHOUSE: "Townhouse",
+  MULTI_FAMILY: "Multi-Family", LAND: "Terreno",
+}
+const TYPE_LABEL_TO_ENUM: Record<string, string> = {
+  "Casa": "SINGLE_FAMILY", "Condo": "CONDO", "Townhouse": "TOWNHOUSE",
+  "Multi-Family": "MULTI_FAMILY", "Terreno": "LAND",
+}
+const TYPE_LABELS = Object.keys(TYPE_LABEL_TO_ENUM)
+
+function mapPropertyTypes(type?: string | null): string[] {
+  return (type || "")
+    .split(",")
+    .map(t => TYPE_ENUM_TO_LABEL[t.trim()])
+    .filter(Boolean)
 }
 
 function mapTimeline(months?: number | null): string {
@@ -84,6 +92,10 @@ function mapTimeline(months?: number | null): string {
   if (months <= 6) return "3-6 meses"
   if (months <= 12) return "6-12 meses"
   return "1+ año"
+}
+
+const TIMELINE_TO_MONTHS: Record<string, number> = {
+  "Lo antes posible": 1, "1-3 meses": 3, "3-6 meses": 6, "6-12 meses": 12, "1+ año": 24,
 }
 
 // Active referral → the lead is being serviced by a partner realtor
@@ -122,7 +134,7 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
   const [deviceError, setDeviceError] = useState<string | null>(null)
   const [disposition, setDisposition] = useState("")
   const [noteFields, setNoteFields] = useState({
-    propertyType: "",
+    propertyTypes: [] as string[],
     area: "",
     beds: "",
     baths: "",
@@ -133,6 +145,12 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
     actions: [] as string[],
     extraNotes: "",
   })
+  const [savedMsg, setSavedMsg] = useState<string | null>(null)
+  // Refs so late-typed notes survive: what was typed, for which call/contact —
+  // flushed to the DB before the queue advances or when Save is tapped.
+  const noteFieldsRef = useRef(noteFields)
+  const lastCallIdRef = useRef<string | null>(null)
+  const lastContactIdRef = useRef<string | null>(null)
   const [sessionRunning, setSessionRunning] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [callError, setCallError] = useState<string | null>(null)
@@ -199,8 +217,9 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
   useEffect(() => {
     const contact = queue[currentCallIndex]
     if (!contact) return
+    lastContactIdRef.current = contact.id
     setNoteFields({
-      propertyType: mapPropertyType(contact.buyerPropertyType),
+      propertyTypes: mapPropertyTypes(contact.buyerPropertyType),
       area: contact.buyerLocation || "",
       beds: contact.buyerBedroomsMin ? `${contact.buyerBedroomsMin}+` : "",
       baths: contact.buyerBathroomsMin ? `${contact.buyerBathroomsMin}+` : "",
@@ -213,6 +232,71 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
     })
   }, [currentCallIndex, queue])
 
+  // Keep a live mirror for the flush-on-advance logic
+  useEffect(() => { noteFieldsRef.current = noteFields }, [noteFields])
+
+  // Persist what's on screen: notes → the call record, buyer criteria → the
+  // CONTACT (two-way sync with the contact page). Safe to call repeatedly.
+  async function saveLeadData(showFeedback = false) {
+    const fields = noteFieldsRef.current
+    const contactId = lastContactIdRef.current
+    const callId = activeCallId || lastCallIdRef.current
+
+    // 1. Notes onto the dialer call (even after hang-up)
+    if (callId) {
+      fetch("/api/dialer/call", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ callId, notes: buildNotesString(fields) || undefined }),
+      }).catch(() => {})
+    }
+
+    // 2. Buyer criteria onto the contact — same fields the contact page uses
+    if (contactId) {
+      const hasPrefs = fields.propertyTypes.length > 0 || fields.area || fields.beds || fields.budgetMax || fields.budgetMin
+      const body: Record<string, any> = {
+        buyerPropertyType: fields.propertyTypes.map(l => TYPE_LABEL_TO_ENUM[l]).filter(Boolean).join(",") || null,
+        buyerLocation: fields.area.trim() || null,
+        buyerBedroomsMin: parseInt(fields.beds) || null,
+        buyerBathroomsMin: parseInt(fields.baths) || null,
+        buyerBudgetMin: fields.budgetMin ? Number(fields.budgetMin) : null,
+        buyerBudgetMax: fields.budgetMax ? Number(fields.budgetMax) : null,
+        buyerTimelineMonths: TIMELINE_TO_MONTHS[fields.timeline] || null,
+        buyerPurpose: fields.purpose || null,
+        ...(hasPrefs ? { matchPrefsCompletedAt: new Date().toISOString() } : {}),
+      }
+      try {
+        const res = await fetch(`/api/contacts/${contactId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        })
+        if (!res.ok) throw new Error()
+        // Mirror into the local queue so re-prefill shows what was saved
+        setQueue(prev => prev.map(c => c.id === contactId ? {
+          ...c,
+          buyerPropertyType: body.buyerPropertyType,
+          buyerLocation: body.buyerLocation,
+          buyerBedroomsMin: body.buyerBedroomsMin,
+          buyerBathroomsMin: body.buyerBathroomsMin,
+          buyerBudgetMin: body.buyerBudgetMin,
+          buyerBudgetMax: body.buyerBudgetMax,
+          buyerTimelineMonths: body.buyerTimelineMonths,
+          buyerPurpose: body.buyerPurpose,
+        } : c))
+        if (showFeedback) {
+          setSavedMsg("✅ Notas y preferencias guardadas en el contacto")
+          setTimeout(() => setSavedMsg(null), 3000)
+        }
+      } catch {
+        if (showFeedback) {
+          setSavedMsg("⚠️ No se pudo guardar — intenta de nuevo")
+          setTimeout(() => setSavedMsg(null), 4000)
+        }
+      }
+    }
+  }
+
   function clearCountdown() {
     if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null }
     setCountdown(null)
@@ -220,7 +304,7 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
 
   function buildNotesString(fields: typeof noteFields): string {
     const lines: string[] = []
-    if (fields.propertyType) lines.push(`Tipo: ${fields.propertyType}`)
+    if (fields.propertyTypes.length > 0) lines.push(`Tipo: ${fields.propertyTypes.join(", ")}`)
     if (fields.area) lines.push(`Área: ${fields.area}`)
     const roomParts = []
     if (fields.beds) roomParts.push(`${fields.beds} cuartos`)
@@ -257,6 +341,8 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
         clearInterval(countdownRef.current!)
         countdownRef.current = null
         setCountdown(null)
+        // Flush notes typed during the countdown before prefill overwrites them
+        saveLeadData(false)
         setCurrentCallIndex(nextIdx)
         setCallStatus("idle")
         setAutoDialContact(contact)
@@ -348,7 +434,7 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
     setCallStatus("calling")
     setCallError(null)
     setDisposition("")
-    setNoteFields({ propertyType: "", area: "", beds: "", baths: "", budgetMin: "", budgetMax: "", timeline: "", purpose: "", actions: [], extraNotes: "" })
+    setNoteFields({ propertyTypes: [], area: "", beds: "", baths: "", budgetMin: "", budgetMax: "", timeline: "", purpose: "", actions: [], extraNotes: "" })
 
     let session = activeSession
     if (!session) { session = await createSession() }
@@ -422,6 +508,11 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
       }),
     })
 
+    // Remember this call so notes typed AFTER hang-up can still be saved,
+    // and sync the buyer criteria to the contact right away.
+    lastCallIdRef.current = activeCallId
+    saveLeadData(false)
+
     // refresh active session stats
     const res = await fetch("/api/dialer/sessions")
     const updated: DialerSession[] = await res.json()
@@ -442,6 +533,8 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
   }
 
   async function nextCall() {
+    // Flush any notes typed after hang-up before the prefill overwrites them
+    saveLeadData(false)
     const next = currentCallIndex + 1
     if (next >= queue.length) {
       setSessionRunning(false)
@@ -868,28 +961,41 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
               <div>
                 <label className="text-sm font-semibold text-gray-700 mb-2 block">Lead Notes</label>
                 <div className="space-y-2">
-                  {/* Property type + area */}
-                  <div className="flex gap-2">
-                    <select
-                      value={noteFields.propertyType}
-                      onChange={e => setNoteFields(f => ({ ...f, propertyType: e.target.value }))}
-                      className="flex-1 text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-lofty-500 bg-white"
-                    >
-                      <option value="">Tipo de propiedad...</option>
-                      <option>Casa</option>
-                      <option>Apartamento</option>
-                      <option>Townhouse</option>
-                      <option>Condo</option>
-                      <option>Terreno</option>
-                    </select>
-                    <input
-                      type="text"
-                      placeholder="Área / Zona..."
-                      value={noteFields.area}
-                      onChange={e => setNoteFields(f => ({ ...f, area: e.target.value }))}
-                      className="flex-1 text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-lofty-500"
-                    />
+                  {/* Property types — pick one or MORE (synced to the contact) */}
+                  <div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {TYPE_LABELS.map(label => {
+                        const active = noteFields.propertyTypes.includes(label)
+                        return (
+                          <button
+                            key={label}
+                            type="button"
+                            onClick={() => setNoteFields(f => ({
+                              ...f,
+                              propertyTypes: active
+                                ? f.propertyTypes.filter(t => t !== label)
+                                : [...f.propertyTypes, label],
+                            }))}
+                            className={cn(
+                              "text-xs px-2 py-1 rounded-full border transition-colors",
+                              active
+                                ? "bg-lofty-600 text-white border-lofty-600 font-semibold"
+                                : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+                            )}
+                          >
+                            {label}
+                          </button>
+                        )
+                      })}
+                    </div>
                   </div>
+                  <input
+                    type="text"
+                    placeholder="Área / Zona (ej: Miami, Homestead, 33032)..."
+                    value={noteFields.area}
+                    onChange={e => setNoteFields(f => ({ ...f, area: e.target.value }))}
+                    className="w-full text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-lofty-500"
+                  />
                   {/* Beds + baths + timeline */}
                   <div className="flex gap-2">
                     <select
@@ -987,6 +1093,20 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
                     rows={2}
                     className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-lofty-500 resize-none"
                   />
+                  {/* Save now — also auto-saves on hang-up and when advancing */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => saveLeadData(true)}
+                      className="flex items-center gap-1.5 px-3 py-2 bg-lofty-600 text-white text-xs font-semibold rounded-lg hover:bg-lofty-700 transition-colors"
+                    >
+                      💾 Guardar notas y preferencias
+                    </button>
+                    {savedMsg && <span className="text-xs text-gray-600">{savedMsg}</span>}
+                  </div>
+                  <p className="text-[11px] text-gray-400">
+                    Las preferencias se guardan en la ficha del lead (mismos campos que en Contacts) y activan sus alertas de propiedades.
+                  </p>
                 </div>
               </div>
               {callStatus === "ended" && (
