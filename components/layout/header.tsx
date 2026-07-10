@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import { useRouter } from "next/navigation"
 import { signOut } from "next-auth/react"
 import {
   Bell, Search, LogOut, Settings, User, ChevronDown, CheckCheck,
@@ -66,6 +67,20 @@ function groupByType(notifications: any[]) {
 
 export default function Header({ user, onMenuClick }: HeaderProps) {
   const [searchQuery, setSearchQuery] = useState("")
+  const router = useRouter()
+
+  // Global search: Enter → contacts search (name/email/phone). Queries that
+  // start with a digit look like an address or MLS# → Properties search.
+  const runGlobalSearch = () => {
+    const q = searchQuery.trim()
+    if (!q) return
+    const dest = /^\d/.test(q)
+      ? `/properties?search=${encodeURIComponent(q)}`
+      : `/contacts?search=${encodeURIComponent(q)}`
+    setSearchQuery("")
+    setSearchOpen(false)
+    router.push(dest)
+  }
   const [searchOpen, setSearchOpen] = useState(false)
   const [notifications, setNotifications] = useState<any[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
@@ -150,7 +165,7 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
             <div className="flex items-center gap-2 flex-1 md:hidden">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <Input autoFocus placeholder="Search..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-9 bg-gray-50 border-gray-200 h-9 text-sm" />
+                <Input autoFocus placeholder="Search..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} onKeyDown={e => e.key === "Enter" && runGlobalSearch()} className="pl-9 bg-gray-50 border-gray-200 h-9 text-sm" />
               </div>
               <button onClick={() => setSearchOpen(false)} className="p-2 text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
             </div>
@@ -161,7 +176,7 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
               </button>
               <div className="relative w-72 hidden md:block">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <Input placeholder="Search contacts, properties..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-9 bg-gray-50 border-gray-200 h-9 text-sm" />
+                <Input placeholder="Search contacts, properties..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} onKeyDown={e => e.key === "Enter" && runGlobalSearch()} className="pl-9 bg-gray-50 border-gray-200 h-9 text-sm" />
               </div>
             </>
           )}

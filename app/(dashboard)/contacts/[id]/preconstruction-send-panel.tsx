@@ -15,6 +15,19 @@ interface Project {
   deliveryDate?: string
   description?: string
   photos?: string[]
+  mlsId?: string        // shown to the AGENT only — never sent to leads
+  propertyType?: string
+}
+
+// Normalize MLS subtypes to short labels for the filter chips
+function typeLabel(t?: string): string {
+  const s = (t || "").toLowerCase()
+  if (s.includes("single")) return "Single Family"
+  if (s.includes("condo")) return "Condo"
+  if (s.includes("town")) return "Townhouse"
+  if (s.includes("multi")) return "Multi-Family"
+  if (s.includes("villa")) return "Villa"
+  return t || ""
 }
 
 function area(p: Project) {
@@ -39,6 +52,18 @@ export default function PreconstructionSendPanel({ contactId, contactEmail, cont
   const [note, setNote] = useState("")
   const [sending, setSending] = useState<"email" | "sms" | null>(null)
   const [sentMsg, setSentMsg] = useState<string | null>(null)
+  // Filters — like the website search: by city and property type
+  const [cityFilter, setCityFilter] = useState("ALL")
+  const [typeFilter, setTypeFilter] = useState("ALL")
+
+  const cities = Array.from(new Set(projects.map(p => (p.city || "").trim()).filter(Boolean))).sort()
+  const types = Array.from(new Set(projects.map(p => typeLabel(p.propertyType)).filter(Boolean))).sort()
+
+  const visibleProjects = projects.filter(p => {
+    const cityOk = cityFilter === "ALL" || (p.city || "").trim() === cityFilter
+    const typeOk = typeFilter === "ALL" || typeLabel(p.propertyType) === typeFilter
+    return cityOk && typeOk
+  })
 
   useEffect(() => {
     if (!open || loaded) return
@@ -102,8 +127,51 @@ export default function PreconstructionSendPanel({ contactId, contactEmail, cont
             </p>
           ) : (
             <>
+              {/* City + property type filters (agent-side, like the website search) */}
+              {(cities.length > 1 || types.length > 0) && (
+                <div className="flex flex-wrap items-center gap-2">
+                  {cities.length > 1 && (
+                    <select
+                      value={cityFilter}
+                      onChange={e => setCityFilter(e.target.value)}
+                      className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    >
+                      <option value="ALL">Todas las ciudades</option>
+                      {cities.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  )}
+                  {types.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      <button
+                        onClick={() => setTypeFilter("ALL")}
+                        className={cn("text-xs px-2 py-1 rounded-full border",
+                          typeFilter === "ALL" ? "bg-amber-500 text-white border-amber-500" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50")}
+                      >
+                        Todos
+                      </button>
+                      {types.map(t => (
+                        <button
+                          key={t}
+                          onClick={() => setTypeFilter(typeFilter === t ? "ALL" : t)}
+                          className={cn("text-xs px-2 py-1 rounded-full border",
+                            typeFilter === t ? "bg-amber-500 text-white border-amber-500" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50")}
+                        >
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {visibleProjects.length !== projects.length && (
+                    <span className="text-[11px] text-gray-400">{visibleProjects.length} de {projects.length}</span>
+                  )}
+                </div>
+              )}
+
               <div className="space-y-2 max-h-80 overflow-y-auto">
-                {projects.map(p => {
+                {visibleProjects.length === 0 && (
+                  <p className="text-sm text-gray-400 text-center py-4">Sin proyectos con esos filtros.</p>
+                )}
+                {visibleProjects.map(p => {
                   const isSel = selected.has(p.id)
                   return (
                     <button
@@ -124,6 +192,13 @@ export default function PreconstructionSendPanel({ contactId, contactEmail, cont
                         <p className="text-xs text-gray-500">
                           {[priceRange(p), p.bedrooms ? `${p.bedrooms} bd` : "", p.deliveryDate].filter(Boolean).join(" · ")}
                         </p>
+                        {(p.propertyType || p.mlsId) && (
+                          <p className="text-[11px] text-gray-400 truncate">
+                            {typeLabel(p.propertyType)}
+                            {p.propertyType && p.mlsId ? " · " : ""}
+                            {p.mlsId && <span className="font-mono" title="Solo para ti — nunca se envía al lead">MLS# {p.mlsId}</span>}
+                          </p>
+                        )}
                       </div>
                     </button>
                   )
