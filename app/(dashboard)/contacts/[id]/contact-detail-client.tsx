@@ -673,7 +673,9 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
                       onClick={async () => {
                         if (!confirm(`Delete ${fullName}? This cannot be undone.`)) return
                         await fetch(`/api/contacts/${contact.id}`, { method: "DELETE" })
-                        router.push("/contacts")
+                        let returnUrl: string | null = null
+                        try { returnUrl = sessionStorage.getItem("contactsReturnUrl") } catch {}
+                        router.push(returnUrl || "/contacts")
                       }}
                     >
                       <Trash2 className="w-4 h-4" /> Delete contact
