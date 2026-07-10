@@ -15,27 +15,36 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/components/ui/use-toast"
 import { CONTACT_STATUSES, LEAD_SOURCES } from "@/lib/utils"
 
+// Only firstName is truly required. Everything else must tolerate empty AND
+// null — imported leads routinely have no last name and null fields, and a
+// strict schema silently blocked saving when the agent only edited a phone.
+const optionalStr = z.string().optional().nullable()
+const optionalNum = z.preprocess(
+  v => (v === "" || v === null || v === undefined ? undefined : Number(v)),
+  z.number().optional()
+)
+
 const schema = z.object({
   firstName: z.string().min(1, "First name required"),
-  lastName: z.string().min(1, "Last name required"),
-  email: z.string().email().optional().or(z.literal("")),
-  phone: z.string().optional(),
-  phone2: z.string().optional(),
-  address: z.string().optional(),
-  city: z.string().optional(),
-  state: z.string().optional(),
-  zip: z.string().optional(),
-  source: z.string().optional(),
+  lastName: optionalStr,
+  email: z.string().email("Invalid email").optional().or(z.literal("")).nullable(),
+  phone: optionalStr,
+  phone2: optionalStr,
+  address: optionalStr,
+  city: optionalStr,
+  state: optionalStr,
+  zip: optionalStr,
+  source: optionalStr,
   status: z.string().default("LEAD"),
-  company: z.string().optional(),
-  jobTitle: z.string().optional(),
-  spouse: z.string().optional(),
-  buyerBudgetMin: z.coerce.number().optional(),
-  buyerBudgetMax: z.coerce.number().optional(),
-  buyerBedroomsMin: z.coerce.number().optional(),
-  buyerLocation: z.string().optional(),
-  sellerAddress: z.string().optional(),
-  sellerEstimatedValue: z.coerce.number().optional(),
+  company: optionalStr,
+  jobTitle: optionalStr,
+  spouse: optionalStr,
+  buyerBudgetMin: optionalNum,
+  buyerBudgetMax: optionalNum,
+  buyerBedroomsMin: optionalNum,
+  buyerLocation: optionalStr,
+  sellerAddress: optionalStr,
+  sellerEstimatedValue: optionalNum,
   doNotText: z.boolean().optional(),
   doNotCall: z.boolean().optional(),
   doNotEmail: z.boolean().optional(),
@@ -51,6 +60,12 @@ export default function ContactForm({ contact }: ContactFormProps) {
   const router = useRouter()
   const { toast } = useToast()
 
+  // DB nulls fail zod's .optional() (it only accepts undefined) — sanitize so
+  // untouched empty fields can never block saving the field you DID edit.
+  const cleanDefaults = contact
+    ? Object.fromEntries(Object.entries(contact).map(([k, v]) => [k, v === null ? undefined : v]))
+    : { status: "LEAD" }
+
   const {
     register,
     handleSubmit,
@@ -59,7 +74,7 @@ export default function ContactForm({ contact }: ContactFormProps) {
     formState: { errors, isSubmitting },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: contact || { status: "LEAD" },
+    defaultValues: cleanDefaults as any,
   })
 
   const onSubmit = async (data: FormData) => {
@@ -69,7 +84,8 @@ export default function ContactForm({ contact }: ContactFormProps) {
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        // lastName is a required column in the DB — store empty string, not null
+        body: JSON.stringify({ ...data, lastName: data.lastName || "" }),
       })
       if (!res.ok) throw new Error()
       const result = await res.json()
@@ -80,6 +96,10 @@ export default function ContactForm({ contact }: ContactFormProps) {
       toast({ title: "Something went wrong", variant: "destructive" })
     }
   }
+
+  // Surface the FIRST validation problem next to the Save button — a blocked
+  // save must never be silent (it looked like "the form just doesn't save").
+  const firstError = Object.values(errors)[0]?.message as string | undefined
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
@@ -95,9 +115,8 @@ export default function ContactForm({ contact }: ContactFormProps) {
             {errors.firstName && <p className="text-red-500 text-xs mt-1">{errors.firstName.message}</p>}
           </div>
           <div>
-            <Label>Last Name *</Label>
+            <Label>Last Name</Label>
             <Input {...register("lastName")} className="mt-1" />
-            {errors.lastName && <p className="text-red-500 text-xs mt-1">{errors.lastName.message}</p>}
           </div>
           <div>
             <Label>Email</Label>
@@ -260,7 +279,10 @@ export default function ContactForm({ contact }: ContactFormProps) {
         </CardContent>
       </Card>
 
-      <div className="flex gap-3 justify-end">
+      <div className="flex gap-3 justify-end items-center">
+        {firstError && (
+          <p className="text-red-600 text-sm mr-auto">⚠️ {firstError}</p>
+        )}
         <Button type="button" variant="outline" onClick={() => router.back()}>Cancel</Button>
         <Button type="submit" disabled={isSubmitting} className="bg-lofty-600 hover:bg-lofty-700">
           {isSubmitting ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving...</> : contact ? "Update Contact" : "Create Contact"}
