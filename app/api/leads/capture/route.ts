@@ -6,6 +6,7 @@ import { scoreContact } from "@/lib/scoring"
 import { triggerOutboundCall } from "@/lib/vapi"
 import { sendCapiEvent } from "@/lib/facebook"
 import { triggerMatchAlert } from "@/lib/trigger-match-alert"
+import { toE164 } from "@/lib/sms"
 
 // Public endpoint — no auth required
 export async function POST(req: Request) {
@@ -106,7 +107,7 @@ export async function POST(req: Request) {
 
     // Trigger AI outbound call if phone provided (30s delay so DB commits first)
     if (phone) {
-      const toPhone = phone.startsWith("+") ? phone : `+1${phone.replace(/\D/g, "").slice(-10)}`
+      const toPhone = toE164(phone)
       setTimeout(() => {
         triggerOutboundCall({
           toPhone,

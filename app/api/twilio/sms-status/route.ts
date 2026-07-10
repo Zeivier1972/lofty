@@ -10,10 +10,13 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 
-// Twilio error codes that mean "this number will never receive SMS"
-// 21211 invalid number · 21610 unsubscribed · 21614 not SMS-capable
-// 30003 unreachable · 30004 blocked · 30005 unknown number · 30006 landline
-const PERMANENT_ERRORS = new Set(["21211", "21610", "21614", "30003", "30004", "30005", "30006"])
+// Twilio error codes that mean "this number will NEVER receive SMS":
+// 21211 invalid number · 21610 unsubscribed (STOP) · 21614 not SMS-capable
+// 30005 number doesn't exist · 30006 landline/unreachable carrier
+// DELIBERATELY EXCLUDED (can be temporary — do not auto-flag):
+// 30003 "handset unreachable" = often just a phone that's switched off
+// 30004 "blocked" = can be carrier content filtering, not a dead number
+const PERMANENT_ERRORS = new Set(["21211", "21610", "21614", "30005", "30006"])
 
 export async function POST(req: Request) {
   try {

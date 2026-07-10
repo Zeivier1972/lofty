@@ -9,7 +9,7 @@
  */
 
 import { prisma } from "@/lib/prisma"
-import { sendSMS } from "@/lib/sms"
+import { sendSMS, toE164 } from "@/lib/sms"
 import { sendEmail } from "@/lib/email"
 
 const CONTACTED_STAGES = ["Contacted 1", "Contacted 2", "Contacted 3", "Contacted 4"]
@@ -126,7 +126,7 @@ async function sendOutreachMessages(contact: any, stageName: string, config: any
   `
 
   if (phone) {
-    const toPhone = phone.startsWith("+") ? phone : `+1${phone.replace(/\D/g, "").slice(-10)}`
+    const toPhone = toE164(phone)
     sendSMS(toPhone, smsBody)
       .then(() => {
         prisma.activity.create({

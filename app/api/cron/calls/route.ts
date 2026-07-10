@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { triggerOutboundCall } from "@/lib/vapi"
+import { toE164 } from "@/lib/sms"
 
 function isBusinessHours(): boolean {
   const now = new Date()
@@ -76,7 +77,7 @@ export async function GET(req: Request) {
       continue
     }
 
-    const toPhone = phone.startsWith("+") ? phone : `+1${phone.replace(/\D/g, "").slice(-10)}`
+    const toPhone = toE164(phone)
 
     const callId = await triggerOutboundCall({
       toPhone,
