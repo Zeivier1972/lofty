@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma"
 import { scoreContact } from "@/lib/scoring"
 import { triggerOutboundCall } from "@/lib/vapi"
 import { sendEmail } from "@/lib/email"
-import { sendSMS, sendWhatsApp, sendWhatsAppTemplate } from "@/lib/sms"
+import { sendSMS, sendWhatsApp, sendWhatsAppTemplate, toE164 } from "@/lib/sms"
 import { sendCapiEvent } from "@/lib/facebook"
 
 export interface LeadData {
@@ -96,7 +96,7 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
       firstName,
       lastName: lastName || "",
       email: email || undefined,
-      phone: phone ? (phone.startsWith("+") ? phone : `+1${phoneDigits}`) : undefined,
+      phone: phone ? toE164(phone) : undefined,
       source,
       status: "LEAD",
       smsTCPAConsent: !!smsConsent,
@@ -198,7 +198,7 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
     }
     if (cfg?.realtorPhone && phone) {
       sendSMS(
-        cfg.realtorPhone.startsWith("+") ? cfg.realtorPhone : `+1${cfg.realtorPhone.replace(/\D/g, "")}`,
+        toE164(cfg.realtorPhone),
         `🆕 Nuevo lead (${source}): ${firstName} ${lastName || ""} ${phone ? `· ${phone}` : ""} ${campaign ? `· ${campaign}` : ""}`.trim()
       ).catch(() => {})
     }

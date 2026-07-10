@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { sendEmail } from "@/lib/email"
-import { sendSMS, sendWhatsApp } from "@/lib/sms"
+import { sendSMS, sendWhatsApp, toE164 } from "@/lib/sms"
 
 // GET /api/cron/smart-plans
 // Called by Railway cron every hour.
@@ -105,9 +105,7 @@ export async function GET(req: Request) {
       } else if (step.type === "SMS" && step.content) {
         // doNotText (not doNotCall) is the correct gate for text messages
         if (!contact.doNotText && contact.phone) {
-          const toPhone = contact.phone.startsWith("+")
-            ? contact.phone
-            : `+1${contact.phone.replace(/\D/g, "").slice(-10)}`
+          const toPhone = toE164(contact.phone)
           await sendSMS(toPhone, fill(step.content))
           await prisma.sMSMessage.create({
             data: {
@@ -130,9 +128,7 @@ export async function GET(req: Request) {
         }
       } else if (step.type === "WHATSAPP" && step.content) {
         if (!contact.doNotText && contact.phone) {
-          const toPhone = contact.phone.startsWith("+")
-            ? contact.phone
-            : `+1${contact.phone.replace(/\D/g, "").slice(-10)}`
+          const toPhone = toE164(contact.phone)
           const filledContent = fill(step.content)
 
           // Only use free-form WhatsApp if contact sent an inbound message in the last 24h

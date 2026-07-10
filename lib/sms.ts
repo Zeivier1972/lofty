@@ -1,6 +1,26 @@
 import twilio from "twilio"
 import { prisma } from "@/lib/prisma"
 
+// Normalize any stored phone to E.164 WITHOUT assuming it's a US number.
+// The old pattern (`+1` + last 10 digits) silently converted international
+// numbers into wrong US numbers — e.g. Colombian "573208932534" became
+// +1 (320) 893-2534, a Minnesota number. Rules:
+//   "+..."                    → already E.164, keep
+//   10 digits                 → US/Canada national → +1XXXXXXXXXX
+//   11 digits starting with 1 → US with country code → +1XXXXXXXXXX
+//   11+ digits otherwise      → international WITH country code → +digits
+export function toE164(phone: string | null | undefined): string {
+  const raw = (phone || "").trim()
+  if (!raw) return ""
+  if (raw.startsWith("+")) return `+${raw.slice(1).replace(/\D/g, "")}`
+  const digits = raw.replace(/\D/g, "")
+  if (!digits) return ""
+  if (digits.length === 10) return `+1${digits}`
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`
+  if (digits.length >= 11) return `+${digits}`
+  return `+1${digits}`
+}
+
 let client: twilio.Twilio | null = null
 
 function getClient() {
@@ -11,6 +31,7 @@ function getClient() {
 }
 
 export async function sendSMS(to: string, body: string, mediaUrls?: string[]): Promise<string | null> {
+  to = toE164(to) || to
   // Central do-not-text guard: if ANY contact with this number is flagged
   // (replied STOP, or the number proved undeliverable), no code path can
   // text it — every send costs money.
@@ -85,7 +106,7 @@ export async function initiateCall(to: string, callbackUrl: string): Promise<str
 
 export async function sendWhatsApp(to: string, body: string, mediaUrl?: string): Promise<string | null> {
   const c = getClient()
-  const toNumber = to.startsWith("whatsapp:") ? to : `whatsapp:${to}`
+  const toNumber = to.startsWith("whatsapp:") ? to : `whatsapp:${toE164(to) || to}`
   // Use dedicated WhatsApp number if configured, otherwise fall back to SMS number
   const fromNumber = `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER || process.env.TWILIO_PHONE_NUMBER}`
   if (!c) {
@@ -107,7 +128,7 @@ export async function sendWhatsAppTemplate(
   variables: Record<string, string>
 ): Promise<string | null> {
   const c = getClient()
-  const toNumber = to.startsWith("whatsapp:") ? to : `whatsapp:${to}`
+  const toNumber = to.startsWith("whatsapp:") ? to : `whatsapp:${toE164(to) || to}`
   const fromNumber = `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER || process.env.TWILIO_PHONE_NUMBER}`
   if (!c) {
     console.log("[WHATSAPP TEMPLATE MOCK] To:", toNumber, "SID:", contentSid, "Vars:", variables)

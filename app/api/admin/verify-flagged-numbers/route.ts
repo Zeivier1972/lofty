@@ -20,6 +20,7 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth"
 import twilio from "twilio"
+import { toE164 } from "@/lib/sms"
 
 const FLAG_NOTE = "SMS desactivado automáticamente"
 const RESTORE_TYPES = new Set(["mobile", "nonFixedVoip"])
@@ -94,7 +95,7 @@ export async function GET(req: Request) {
 
   for (const c of eligible.slice(0, 300)) {
     const digits = (c.phone || "").replace(/\D/g, "")
-    const e164 = c.phone!.startsWith("+") ? c.phone! : `+1${digits.slice(-10)}`
+    const e164 = toE164(c.phone)
     let lineType = "unknown"
     try {
       const res: any = await client.lookups.v2.phoneNumbers(e164).fetch({ fields: "line_type_intelligence" } as any)

@@ -8,7 +8,7 @@
 
 import Anthropic from "@anthropic-ai/sdk"
 import { prisma } from "@/lib/prisma"
-import { sendSMS } from "@/lib/sms"
+import { sendSMS, toE164 } from "@/lib/sms"
 import { sendEmail } from "@/lib/email"
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -87,7 +87,7 @@ export async function deliverLeadMagnet(
   // ── SMS ───────────────────────────────────────────────────────────────────
   if (sms && contact.phone) {
     try {
-      const phone = contact.phone.startsWith("+") ? contact.phone : `+1${contact.phone.replace(/\D/g, "")}`
+      const phone = toE164(contact.phone)
       await sendSMS(phone, message)
       delivered.push("SMS")
     } catch (e) {

@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { sendSMS } from "@/lib/sms"
+import { sendSMS, toE164 } from "@/lib/sms"
 import { sendEmail, wrapEmail } from "@/lib/email"
 import { auth } from "@/lib/auth"
 
@@ -96,9 +96,7 @@ export async function POST(
         `\nInterested? Call or text me! — ${agentName}`,
       ].filter(Boolean)
 
-      const toPhone = contact.phone.startsWith("+")
-        ? contact.phone
-        : `+1${contact.phone.replace(/\D/g, "").slice(-10)}`
+      const toPhone = toE164(contact.phone)
       await sendSMS(toPhone, lines.join("\n"), photoUrl ? [photoUrl] : undefined)
     }
 

@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import { prisma } from "@/lib/prisma"
-import { sendSMS, sendWhatsApp } from "@/lib/sms"
+import { sendSMS, sendWhatsApp, toE164 } from "@/lib/sms"
 import { searchIdxListings, fetchPrimaryPhotos } from "@/lib/bridge"
 import Anthropic from "@anthropic-ai/sdk"
 
@@ -431,7 +431,7 @@ export async function POST(req: Request) {
     // COST RULE: ONE outbound message per reply. Property info is folded into
     // a single text (max 3 properties) with at most one photo — each extra
     // SMS/MMS segment costs money, and bursts of 4-5 messages were adding up.
-    const toNum = phone.startsWith("+") ? phone : `+1${digits.slice(-10)}`
+    const toNum = toE164(phone)
     const topCards = propertyCards.slice(0, 3)
     const combined = topCards.length > 0
       ? `${reply}\n\n${topCards.map(c => c.caption).join("\n\n")}`.slice(0, 1500)

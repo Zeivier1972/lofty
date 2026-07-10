@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth"
-import { sendSMS, sendWhatsApp, sendWhatsAppTemplate } from "@/lib/sms"
+import { sendSMS, sendWhatsApp, sendWhatsAppTemplate, toE164 } from "@/lib/sms"
 import { sendFacebookMessage } from "@/lib/facebook"
 
 export async function POST(req: Request, { params }: { params: { contactId: string } }) {
@@ -54,7 +54,7 @@ export async function POST(req: Request, { params }: { params: { contactId: stri
   // ── Require phone for SMS / WhatsApp ─────────────────────────────────────────
   if (!contact.phone) return NextResponse.json({ error: "Contact has no phone number" }, { status: 400 })
 
-  const toNumber = contact.phone.startsWith("+") ? contact.phone : `+1${contact.phone.replace(/\D/g, "")}`
+  const toNumber = toE164(contact.phone)
   const fromNumber = process.env.TWILIO_PHONE_NUMBER || ""
   const waFromNumber = process.env.TWILIO_WHATSAPP_NUMBER || fromNumber
 
