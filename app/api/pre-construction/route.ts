@@ -26,6 +26,8 @@ type Project = {
   downPayment?: string
   units?: number
   photos?: string[]
+  mlsId?: string        // agent-facing only — never sent to leads
+  propertyType?: string // e.g. Single Family Residence, Condominium, Townhouse
 }
 
 async function getProjects(): Promise<Project[]> {
@@ -55,7 +57,7 @@ export async function POST(req: Request) {
   const body = await req.json()
   const { id, name, developer, neighborhood, city, zipCode, priceMin, priceMax, bedrooms,
     deliveryDate, status, description, url, investmentHighlights, estimatedROI, downPayment, units,
-    photos, imageUrl } = body
+    photos, imageUrl, mlsId, propertyType } = body
 
   if (!name?.trim()) return NextResponse.json({ error: "name required" }, { status: 400 })
 
@@ -88,6 +90,8 @@ export async function POST(req: Request) {
     downPayment: downPayment?.trim() || undefined,
     units: units ? Number(units) : undefined,
     photos: resolvedPhotos && resolvedPhotos.length ? resolvedPhotos : undefined,
+    mlsId: mlsId?.trim() || (existing >= 0 ? projects[existing].mlsId : undefined),
+    propertyType: propertyType?.trim() || (existing >= 0 ? projects[existing].propertyType : undefined),
   }
 
   if (existing >= 0) projects[existing] = project

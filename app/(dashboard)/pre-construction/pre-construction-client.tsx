@@ -28,6 +28,8 @@ type Project = {
   downPayment?: string
   units?: number
   photos?: string[]
+  mlsId?: string
+  propertyType?: string
 }
 
 const STATUS_OPTIONS = [
@@ -216,6 +218,8 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
         status: "under_construction",
         description: l.description || undefined,
         photos: l.image ? [l.image] : undefined,
+        mlsId: l.mlsId || undefined,
+        propertyType: l.propertySubType || undefined,
       }
       const res = await fetch("/api/pre-construction", {
         method: "POST",
@@ -630,10 +634,12 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
                       <MapPin className="w-4 h-4 text-emerald-500 flex-shrink-0" />
                       <h3 className="font-bold text-gray-900 text-base leading-tight">{area(p)}</h3>
                     </div>
-                    <div className="flex items-center gap-2 mb-3 text-xs text-gray-400">
+                    <div className="flex items-center gap-2 mb-3 text-xs text-gray-400 flex-wrap">
                       {p.developer && <span>{p.developer}</span>}
                       {p.developer && p.name && <span className="text-gray-300">·</span>}
                       {p.name && <span className="truncate" title={p.name}>{p.name}</span>}
+                      {p.propertyType && <span className="px-1.5 py-0 rounded-full bg-gray-100 text-gray-600 font-medium">{p.propertyType}</span>}
+                      {p.mlsId && <span className="font-mono text-gray-500" title="MLS# — para buscar la propiedad en el MLS">MLS# {p.mlsId}</span>}
                     </div>
 
                     <div className="space-y-1.5">
