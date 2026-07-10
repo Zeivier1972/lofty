@@ -90,7 +90,17 @@ export default function ContactForm({ contact }: ContactFormProps) {
       if (!res.ok) throw new Error()
       const result = await res.json()
       toast({ title: contact ? "Contact updated" : "Contact created" })
-      router.push(`/contacts/${result.id}`)
+      if (contact) {
+        // Editing: return to the exact list view they were working in
+        // (stage tab, filters, page — saved by the contacts list). New tabs
+        // (e.g. opened from the dialer) have no saved view → contact page.
+        let returnUrl: string | null = null
+        try { returnUrl = sessionStorage.getItem("contactsReturnUrl") } catch {}
+        router.push(returnUrl || `/contacts/${result.id}`)
+      } else {
+        // Creating: open the new contact
+        router.push(`/contacts/${result.id}`)
+      }
       router.refresh()
     } catch {
       toast({ title: "Something went wrong", variant: "destructive" })

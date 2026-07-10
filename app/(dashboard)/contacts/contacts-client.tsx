@@ -1567,6 +1567,13 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
     try { sessionStorage.setItem("contacts_selection", JSON.stringify(Array.from(selected))) } catch {}
   }, [selected])
 
+  // Remember EXACTLY which list view is open (stage tab, filters, page) so
+  // that saving an edit or deleting a contact returns here — not to the
+  // unfiltered list, which forced re-navigating the pipeline every time.
+  useEffect(() => {
+    try { sessionStorage.setItem("contactsReturnUrl", `/contacts${window.location.search}`) } catch {}
+  }, [filters, activeTab, page])
+
   const toggleSelect = (id: string) => {
     setSelected(prev => {
       const next = new Set(prev)
