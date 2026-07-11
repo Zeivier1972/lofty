@@ -114,6 +114,26 @@ async function sendOutreachMessages(contact: any, stageName: string, config: any
   const calendly = config?.calendlyUrl || `${process.env.NEXT_PUBLIC_APP_URL}/book`
   const phone = contact.phone
 
+  // Anti-spam: if this lead already got an automated text OR email in the last
+  // ~20h, skip this whole outreach. Stops the burst when a lead advances
+  // through several Contacted stages quickly (multiple no-answer calls).
+  const gapH = Number(process.env.OUTREACH_MIN_GAP_HOURS || 20)
+  const since = new Date(Date.now() - gapH * 3600 * 1000)
+  const [recentSMS, recentEmail] = await Promise.all([
+    prisma.sMSMessage.findFirst({
+      where: { contactId: contact.id, direction: "OUTBOUND", createdAt: { gte: since }, status: { notIn: ["FAILED", "UNDELIVERED", "BLOCKED"] } },
+      select: { id: true },
+    }).catch(() => null),
+    prisma.email.findFirst({
+      where: { contactId: contact.id, direction: "OUTBOUND", createdAt: { gte: since }, status: "SENT" },
+      select: { id: true },
+    }).catch(() => null),
+  ])
+  if (recentSMS || recentEmail) {
+    console.log(`[lead-flow] Skipping outreach to ${contact.id} — already contacted within ${gapH}h`)
+    return
+  }
+
   const smsBody = `Hola ${name}! Intentamos contactarte porque mostraste interés en ${campaign}. Catherine Gomez está lista para ayudarte a encontrar tu hogar ideal. ¿Tienes un momento? Llámanos al ${config?.realtorPhone || "305-283-0872"} o agenda aquí: ${calendly}`
 
   const emailHtml = `
@@ -127,8 +147,9 @@ async function sendOutreachMessages(contact: any, stageName: string, config: any
 
   if (phone) {
     const toPhone = toE164(phone)
-    sendSMS(toPhone, smsBody)
-      .then(() => {
+    sendSMS(toPhone, smsBody, undefined, { automated: true, contactId: contact.id })
+      .then((sid) => {
+        if (!sid) return // throttled or blocked — nothing sent, don't log a send
         prisma.activity.create({
           data: { type: "SMS", title: "Sofía sent outreach SMS", description: smsBody.slice(0, 200), contactId: contact.id },
         }).catch(() => {})
