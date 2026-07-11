@@ -531,13 +531,19 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: newAptTitle.trim(), startTime: newAptStart, endTime: newAptEnd, contactId: contact.id }),
       })
-      const apt = await res.json()
-      if (apt.id) {
+      const apt = await res.json().catch(() => ({}))
+      if (res.ok && apt.id) {
         setAppointments(prev => [...prev, apt])
         setNewAptTitle("")
         setNewAptStart("")
         setNewAptEnd("")
+        toast({ title: "📅 Cita agendada", description: "Cliente notificado por email/SMS y agregada a tu calendario." })
+      } else {
+        // Never fail silently — say exactly why (e.g. end before start)
+        toast({ title: apt.error || `No se pudo agendar (error ${res.status})`, variant: "destructive" })
       }
+    } catch {
+      toast({ title: "No se pudo agendar la cita — revisa tu conexión", variant: "destructive" })
     } finally {
       setAddingApt(false)
     }
