@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth"
+import { triggerStageOutreach } from "@/lib/lead-flow"
 
 // Upsert a contact's pipeline stage assignment
 export async function POST(req: Request) {
@@ -50,6 +51,12 @@ export async function POST(req: Request) {
       where: { contactId, isRead: false },
       data: { isRead: true },
     }).catch(() => {})
+
+    // Moving INTO a Contacted stage sends the outreach text+email once
+    // (cooldown-protected). No-op for other stages.
+    if (existing?.stageId !== stageId) {
+      await triggerStageOutreach(contactId, lead.stage.name)
+    }
 
     return NextResponse.json(lead)
   } catch (e) {

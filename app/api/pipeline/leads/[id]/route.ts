@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth"
+import { triggerStageOutreach } from "@/lib/lead-flow"
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   try {
@@ -30,6 +31,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         where: { contactId: lead.contactId, isRead: false },
         data: { isRead: true },
       }).catch(() => {})
+
+      // Moving INTO a Contacted stage sends the outreach text+email once
+      await triggerStageOutreach(lead.contactId, lead.stage.name)
     }
 
     return NextResponse.json(lead)

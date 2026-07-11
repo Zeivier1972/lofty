@@ -1,7 +1,9 @@
 export const dynamic = "force-dynamic"
+export const maxDuration = 300 // large moves also fire per-lead outreach
 
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { triggerStageOutreach } from "@/lib/lead-flow"
 
 // PATCH: move multiple leads to a stage
 // body: { ids: string[], stageId: string }
@@ -105,6 +107,18 @@ export async function POST(req: Request) {
           contactId,
         })),
       })
+    }
+
+    // Send the outreach text+email once to each lead moved INTO a Contacted
+    // stage (per-contact cooldown prevents doubles; no-op for other stages).
+    // Paced in small chunks so a large move doesn't hammer the providers.
+    if (changedContactIds.length > 0) {
+      const CHUNK = 10
+      for (let i = 0; i < changedContactIds.length; i += CHUNK) {
+        await Promise.allSettled(
+          changedContactIds.slice(i, i + CHUNK).map(cid => triggerStageOutreach(cid, stage.name))
+        )
+      }
     }
 
     const moved = toMove.length
