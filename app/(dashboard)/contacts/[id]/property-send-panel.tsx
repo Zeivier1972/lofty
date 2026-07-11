@@ -62,6 +62,7 @@ export default function PropertySendPanel({
   const [open, setOpen] = useState(false)
 
   // Search form
+  const [mode, setMode] = useState<"sale" | "rent">("sale") // Buy vs Rent (MLS For-Sale vs Lease)
   const [keyword, setKeyword] = useState("")        // MLS# or address keyword
   const [location, setLocation] = useState(defaultLocation)
   const [minPrice, setMinPrice] = useState("")
@@ -145,6 +146,7 @@ export default function PropertySendPanel({
     setBatchSent(false)
     try {
       const qs = new URLSearchParams()
+      if (mode === "rent") qs.set("mode", "rent")
       if (keyword.trim()) qs.set("keyword", keyword.trim())
       if (location.trim()) qs.set("city", location.trim())
       if (minPrice) qs.set("minPrice", minPrice)
@@ -271,6 +273,22 @@ export default function PropertySendPanel({
         <div className="border-t border-gray-100">
           {/* Search form */}
           <div className="px-5 pt-4 pb-3 space-y-3">
+            {/* Buy vs Rent — rentals list at rental prices (e.g. $2,700/mo) */}
+            <div className="inline-flex rounded-lg border border-gray-200 p-0.5 bg-gray-50">
+              {([["sale", "🏠 En venta"], ["rent", "🔑 En renta"]] as const).map(([m, label]) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setMode(m)}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                    mode === m ? "bg-blue-600 text-white shadow-sm" : "text-gray-600 hover:text-gray-900"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
             {/* Row 1: keyword (MLS# or address) */}
             <div>
               <label className="text-xs font-semibold text-gray-500 mb-1 block">MLS# or Address</label>
@@ -304,24 +322,24 @@ export default function PropertySendPanel({
             {/* Row 3: min price + max price + min beds */}
             <div className="grid grid-cols-3 gap-2">
               <div>
-                <label className="text-xs font-semibold text-gray-500 mb-1 block">Min Price</label>
+                <label className="text-xs font-semibold text-gray-500 mb-1 block">{mode === "rent" ? "Renta mín" : "Min Price"}</label>
                 <input
                   type="number"
                   value={minPrice}
                   onChange={e => setMinPrice(e.target.value)}
                   onKeyDown={e => e.key === "Enter" && search()}
-                  placeholder="300000"
+                  placeholder={mode === "rent" ? "1500" : "300000"}
                   className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
                 />
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-500 mb-1 block">Max Price</label>
+                <label className="text-xs font-semibold text-gray-500 mb-1 block">{mode === "rent" ? "Renta máx/mes" : "Max Price"}</label>
                 <input
                   type="number"
                   value={maxPrice}
                   onChange={e => setMaxPrice(e.target.value)}
                   onKeyDown={e => e.key === "Enter" && search()}
-                  placeholder="800000"
+                  placeholder={mode === "rent" ? "3000" : "800000"}
                   className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
                 />
               </div>
