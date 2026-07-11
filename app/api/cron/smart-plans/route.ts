@@ -106,25 +106,27 @@ export async function GET(req: Request) {
         // doNotText (not doNotCall) is the correct gate for text messages
         if (!contact.doNotText && contact.phone) {
           const toPhone = toE164(contact.phone)
-          await sendSMS(toPhone, fill(step.content))
-          await prisma.sMSMessage.create({
-            data: {
-              body: fill(step.content),
-              fromNumber: process.env.TWILIO_PHONE_NUMBER || "",
-              toNumber: toPhone,
-              direction: "OUTBOUND",
-              status: "SENT",
-              contactId: contact.id,
-            },
-          })
-          await prisma.activity.create({
-            data: {
-              type: "SMS",
-              title: `Smart Plan SMS`,
-              description: fill(step.content).slice(0, 120),
-              contactId: contact.id,
-            },
-          })
+          const sid = await sendSMS(toPhone, fill(step.content), undefined, { automated: true, contactId: contact.id })
+          if (sid) {
+            await prisma.sMSMessage.create({
+              data: {
+                body: fill(step.content),
+                fromNumber: process.env.TWILIO_PHONE_NUMBER || "",
+                toNumber: toPhone,
+                direction: "OUTBOUND",
+                status: "SENT",
+                contactId: contact.id,
+              },
+            })
+            await prisma.activity.create({
+              data: {
+                type: "SMS",
+                title: `Smart Plan SMS`,
+                description: fill(step.content).slice(0, 120),
+                contactId: contact.id,
+              },
+            })
+          }
         }
       } else if (step.type === "WHATSAPP" && step.content) {
         if (!contact.doNotText && contact.phone) {

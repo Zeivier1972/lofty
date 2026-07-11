@@ -30,16 +30,27 @@ function getClient() {
   return client
 }
 
-export async function sendSMS(to: string, body: string, mediaUrls?: string[]): Promise<string | null> {
+// opts.automated = an automated/system SMS (drip, call-outreach, welcome).
+// These obey a per-contact cooldown: at most ONE automated text per contact
+// per SMS_MIN_GAP_HOURS (default 20h) — so a lead can't be blasted with a
+// stack of texts when their stage advances several times or crons overlap.
+// Manual sends (agent-initiated) never pass automated, so they're never held.
+export async function sendSMS(
+  to: string,
+  body: string,
+  mediaUrls?: string[],
+  opts?: { automated?: boolean; contactId?: string; minGapHours?: number },
+): Promise<string | null> {
   to = toE164(to) || to
+  const digits10 = (to || "").replace(/\D/g, "").slice(-10)
+
   // Central do-not-text guard: if ANY contact with this number is flagged
   // (replied STOP, or the number proved undeliverable), no code path can
   // text it — every send costs money.
   try {
-    const digits = (to || "").replace(/\D/g, "").slice(-10)
-    if (digits.length >= 7) {
+    if (digits10.length >= 7) {
       const blocked = await prisma.contact.findFirst({
-        where: { doNotText: true, phone: { contains: digits } },
+        where: { doNotText: true, phone: { contains: digits10 } },
         select: { id: true },
       })
       if (blocked) {
@@ -55,6 +66,30 @@ export async function sendSMS(to: string, body: string, mediaUrls?: string[]): P
       }
     }
   } catch { /* guard is best-effort — never break sending for everyone */ }
+
+  // Per-contact automated cooldown — one automated text per ~day, max.
+  if (opts?.automated) {
+    try {
+      const gapH = opts.minGapHours ?? Number(process.env.SMS_MIN_GAP_HOURS || 20)
+      const since = new Date(Date.now() - gapH * 3600 * 1000)
+      const recent = await prisma.sMSMessage.findFirst({
+        where: {
+          direction: "OUTBOUND",
+          createdAt: { gte: since },
+          status: { notIn: ["FAILED", "UNDELIVERED", "BLOCKED"] }, // only real sends count
+          OR: [
+            ...(opts.contactId ? [{ contactId: opts.contactId }] : []),
+            ...(digits10.length >= 7 ? [{ toNumber: { contains: digits10 } }] : []),
+          ],
+        },
+        select: { id: true },
+      })
+      if (recent) {
+        console.log(`[SMS THROTTLED] ${to}: already texted within ${gapH}h — skipping automated send`)
+        return null
+      }
+    } catch { /* if the check fails, fall through and send */ }
+  }
 
   const c = getClient()
   let sid: string
