@@ -160,7 +160,7 @@ async function sendOutreachMessages(contact: any, stageName: string, config: any
       .catch(() => {})
   }
 
-  if (contact.email) {
+  if (contact.email && !contact.doNotEmail) {
     const subject = `Intentamos contactarte sobre ${campaign}`
     sendEmail({ to: contact.email, subject, html: emailHtml, text: smsBody })
       .then(() => {
@@ -180,6 +180,23 @@ async function sendOutreachMessages(contact: any, stageName: string, config: any
         }).catch(() => {})
       })
       .catch(() => {})
+  }
+}
+
+// Manually moving a lead INTO a Contacted 1-4 stage (single or bulk) should
+// fire the outreach text+email ONCE — same message the call flow sends. The
+// per-contact cooldown inside sendOutreachMessages prevents doubles. No-op for
+// any non-Contacted stage (New Leads, Warm, Hot, Drip, Closed, etc.), so
+// reorganizing across those stages never messages anyone.
+export async function triggerStageOutreach(contactId: string, stageName: string): Promise<void> {
+  if (!CONTACTED_STAGES.includes(stageName)) return
+  try {
+    const contact = await prisma.contact.findUnique({ where: { id: contactId } })
+    if (!contact) return
+    const config = await prisma.aIConfig.findFirst().catch(() => null)
+    await sendOutreachMessages(contact, stageName, config)
+  } catch (e) {
+    console.error("[triggerStageOutreach]", (e as Error).message)
   }
 }
 
