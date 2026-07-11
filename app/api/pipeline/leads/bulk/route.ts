@@ -55,8 +55,12 @@ export async function DELETE(req: Request) {
   }
 }
 
-// POST: add multiple contacts to a stage
+// POST: move/add multiple contacts to a stage by CONTACT id.
 // body: { contactIds: string[], stageId: string }
+// Contacts already in this pipeline are MOVED to the stage (their existing lead
+// is updated); contacts not yet in it are added. This is what "Move to Stage"
+// on the Contacts list needs — the old version skipped anyone already staged,
+// so moving between stages silently did nothing.
 export async function POST(req: Request) {
   try {
     const { contactIds, stageId } = await req.json()
@@ -67,30 +71,51 @@ export async function POST(req: Request) {
     const stage = await prisma.pipelineStage.findUnique({ where: { id: stageId } })
     if (!stage) return NextResponse.json({ error: "Stage not found" }, { status: 404 })
 
-    // Upsert: skip contacts already in this pipeline
+    // Which of these contacts already have a lead in THIS pipeline?
     const existing = await prisma.pipelineLead.findMany({
       where: { contactId: { in: contactIds }, stage: { pipelineId: stage.pipelineId } },
-      select: { contactId: true },
+      select: { id: true, contactId: true, stageId: true },
     })
-    const existingIds = new Set(existing.map(e => e.contactId))
-    const newIds = contactIds.filter((id: string) => !existingIds.has(id))
+    const existingByContact = new Map(existing.map(e => [e.contactId, e]))
 
+    // Move the ones already in the pipeline whose stage differs
+    const toMove = existing.filter(e => e.stageId !== stageId)
+    if (toMove.length > 0) {
+      await prisma.pipelineLead.updateMany({
+        where: { id: { in: toMove.map(e => e.id) } },
+        data: { stageId },
+      })
+    }
+
+    // Create leads for contacts not yet in this pipeline
+    const newIds = (contactIds as string[]).filter(id => !existingByContact.has(id))
     if (newIds.length > 0) {
       await prisma.pipelineLead.createMany({
-        data: newIds.map((contactId: string) => ({ contactId, stageId })),
+        data: newIds.map(contactId => ({ contactId, stageId })),
       })
+    }
+
+    // One activity per contact that actually changed
+    const changedContactIds = [...toMove.map(e => e.contactId), ...newIds]
+    if (changedContactIds.length > 0) {
       await prisma.activity.createMany({
-        data: newIds.map((contactId: string) => ({
+        data: changedContactIds.map(contactId => ({
           type: "PIPELINE_MOVED",
-          title: `Added to ${stage.name}`,
+          title: `Movido a ${stage.name}`,
           contactId,
         })),
       })
     }
 
-    return NextResponse.json({ added: newIds.length, skipped: existingIds.size })
+    const moved = toMove.length
+    const added = newIds.length
+    const unchanged = existing.length - moved
+    return NextResponse.json({
+      moved, added, unchanged,
+      total: moved + added,
+    })
   } catch (e) {
-    console.error("Bulk add error:", e)
-    return NextResponse.json({ error: "Failed to add leads" }, { status: 500 })
+    console.error("Bulk move error:", e)
+    return NextResponse.json({ error: "Failed to move leads" }, { status: 500 })
   }
 }

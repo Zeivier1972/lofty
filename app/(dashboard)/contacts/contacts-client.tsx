@@ -1618,21 +1618,31 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
   }
 
   const bulkMoveToStage = async (stageId: string, stageName: string) => {
-    if (!selected.size) return
+    if (!selected.size && !globalSelectAll) return
     setBulkMoving(true)
     try {
+      let contactIds = Array.from(selected)
+      // "Select all" across the whole filtered set → fetch every matching id
+      if (globalSelectAll) {
+        const idsRes = await fetch(`/api/contacts/ids?${buildParams()}`)
+        const idsData = await idsRes.json()
+        if (!idsRes.ok) throw new Error(idsData.error)
+        contactIds = idsData.ids
+      }
       const res = await fetch("/api/pipeline/leads/bulk", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contactIds: Array.from(selected), stageId }),
+        body: JSON.stringify({ contactIds, stageId }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
-      toast({ title: `${data.added} contact${data.added !== 1 ? "s" : ""} moved to ${stageName}` })
+      const n = data.total ?? ((data.moved || 0) + (data.added || 0))
+      toast({ title: `${n} lead${n !== 1 ? "s" : ""} movido${n !== 1 ? "s" : ""} a ${stageName}` })
       setSelected(new Set())
+      setGlobalSelectAll(false)
       router.refresh()
-    } catch {
-      toast({ title: "Failed to move contacts", variant: "destructive" })
+    } catch (e: any) {
+      toast({ title: e.message || "No se pudo mover los contactos", variant: "destructive" })
     } finally { setBulkMoving(false) }
   }
 
