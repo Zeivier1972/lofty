@@ -73,16 +73,25 @@ export async function POST(
         ].filter(Boolean).join(" · ")
         const location = [l.city, l.state].filter(Boolean).join(", ")
 
+        // Link the whole card to the listing's detail page (all photos + info)
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || ""
+        const detailUrl = l.listingKey ? `${appUrl}/homes/${encodeURIComponent(l.listingKey)}` : ""
+        const open = detailUrl ? `<a href="${detailUrl}" style="text-decoration:none;color:inherit;display:block" target="_blank">` : "<div>"
+        const close = detailUrl ? "</a>" : "</div>"
+
         return `
           <div style="margin-bottom:20px;border:1px solid #E5E7EB;border-radius:12px;overflow:hidden">
-            ${l.photoUrl ? `<img src="${l.photoUrl}" alt="Property ${i + 1}" style="width:100%;height:180px;object-fit:cover;display:block"/>` : ""}
-            <div style="padding:16px">
-              ${l.price ? `<p style="font-size:20px;font-weight:bold;color:#059669;margin:0 0 4px">${priceLabel(l.price)}</p>` : ""}
-              ${l.address ? `<p style="font-weight:600;color:#111827;margin:0 0 2px">${l.address}</p>` : ""}
-              ${location ? `<p style="color:#6B7280;font-size:13px;margin:0 0 6px">${location}</p>` : ""}
-              ${specs ? `<p style="color:#6B7280;font-size:13px;margin:0 0 4px">${specs}</p>` : ""}
-              ${l.listingId ? `<p style="color:#9CA3AF;font-size:11px;margin:0">MLS# ${l.listingId}</p>` : ""}
-            </div>
+            ${open}
+              ${l.photoUrl ? `<img src="${l.photoUrl}" alt="Property ${i + 1}" style="width:100%;height:180px;object-fit:cover;display:block"/>` : ""}
+              <div style="padding:16px">
+                ${l.price ? `<p style="font-size:20px;font-weight:bold;color:#059669;margin:0 0 4px">${priceLabel(l.price)}</p>` : ""}
+                ${l.address ? `<p style="font-weight:600;color:#111827;margin:0 0 2px">${l.address}</p>` : ""}
+                ${location ? `<p style="color:#6B7280;font-size:13px;margin:0 0 6px">${location}</p>` : ""}
+                ${specs ? `<p style="color:#6B7280;font-size:13px;margin:0 0 4px">${specs}</p>` : ""}
+                ${l.listingId ? `<p style="color:#9CA3AF;font-size:11px;margin:0 0 10px">MLS# ${l.listingId}</p>` : ""}
+                ${detailUrl ? `<span style="display:inline-block;background:#0e1f3d;color:#fff;padding:9px 16px;border-radius:8px;font-size:13px;font-weight:600">Ver más fotos e info →</span>` : ""}
+              </div>
+            ${close}
           </div>
         `
       }).join("")
@@ -123,6 +132,7 @@ export async function POST(
             [l.city, l.state].filter(Boolean).join(", "),
             [l.beds ? `${l.beds}bd` : "", l.baths ? `${l.baths}ba` : ""].filter(Boolean).join("/"),
             l.listingId ? `MLS# ${l.listingId}` : "",
+            l.listingKey ? `${process.env.NEXT_PUBLIC_APP_URL || ""}/homes/${encodeURIComponent(l.listingKey)}` : "",
           ].filter(Boolean)
           return `${i + 1}. ${parts.join(" — ")}`
         }),
