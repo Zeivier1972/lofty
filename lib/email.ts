@@ -100,6 +100,24 @@ function withReplyTo(opts: EmailOptions): EmailOptions {
 export async function sendEmail(opts: EmailOptions): Promise<boolean> {
   opts = withReplyTo(opts)
 
+  // Central do-not-email guard: if a CONTACT with this address is flagged
+  // (hard bounce / complaint / manual), never email it again — stops wasting
+  // sends on addresses that don't exist. Agent/notification addresses have no
+  // matching contact, so they're never blocked.
+  try {
+    const addr = (opts.to || "").trim().toLowerCase()
+    if (addr) {
+      const blocked = await prisma.contact.findFirst({
+        where: { email: { equals: addr, mode: "insensitive" }, doNotEmail: true },
+        select: { id: true },
+      })
+      if (blocked) {
+        console.log(`[EMAIL BLOCKED — doNotEmail] ${addr}: "${opts.subject.slice(0, 60)}"`)
+        return false
+      }
+    }
+  } catch { /* guard is best-effort — never break sending for everyone */ }
+
   // Create the log row FIRST so a real open-tracking pixel can be embedded,
   // tied to this exact email. When the recipient opens it, /api/email/open/:id
   // stamps openedAt — so "opened" in the CRM means ACTUALLY opened.
