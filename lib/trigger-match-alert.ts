@@ -16,6 +16,17 @@ const PROP_TYPE_MAP: Record<string, string> = {
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
 
+interface AlertProperty {
+  photo: string | null
+  price: number | null
+  address: string
+  city: string | null
+  beds: number | null
+  baths: number | null
+  sqft: number | null
+  url: string
+}
+
 function buildAlertEmail(opts: {
   firstName: string
   count: number
@@ -23,11 +34,42 @@ function buildAlertEmail(opts: {
   agentName: string
   agentPhone: string
   searchUrl: string
+  properties: AlertProperty[]
 }): string {
-  const { firstName, count: n, criteriaSummary, agentName, agentPhone, searchUrl } = opts
+  const { firstName, count: n, criteriaSummary, agentName, agentPhone, searchUrl, properties } = opts
   const criteriaLine = criteriaSummary
     ? `<p style="color:#6b7280;font-size:13px;margin:0 0 20px">Based on your search: <em>${criteriaSummary}</em></p>`
     : ""
+
+  const priceStr = (p: number | null) =>
+    p == null ? "" : (p >= 1_000_000 ? `$${(p / 1_000_000).toFixed(p % 1_000_000 === 0 ? 0 : 1)}M` : `$${p.toLocaleString()}`)
+
+  // Inline property cards — photo + price + specs + a link to the full listing.
+  // This is what makes the email convert: the client sees the homes, not just a count.
+  const cards = properties.map(pr => {
+    const specs = [
+      pr.beds != null ? `${pr.beds} bd` : "",
+      pr.baths != null ? `${pr.baths} ba` : "",
+      pr.sqft != null ? `${pr.sqft.toLocaleString()} sqft` : "",
+    ].filter(Boolean).join(" · ")
+    const loc = [pr.city].filter(Boolean).join(", ")
+    return `
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 16px;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden">
+        <tr><td>
+          <a href="${pr.url}" target="_blank" style="text-decoration:none;color:inherit">
+            ${pr.photo ? `<img src="${pr.photo}" alt="Property" width="580" style="width:100%;max-width:580px;height:200px;object-fit:cover;display:block"/>` : ""}
+            <div style="padding:16px">
+              ${pr.price != null ? `<p style="font-size:22px;font-weight:800;color:#059669;margin:0 0 4px">${priceStr(pr.price)}</p>` : ""}
+              <p style="font-weight:700;color:#111827;font-size:15px;margin:0 0 2px">${pr.address}</p>
+              ${loc ? `<p style="color:#6b7280;font-size:13px;margin:0 0 6px">${loc}</p>` : ""}
+              ${specs ? `<p style="color:#6b7280;font-size:13px;margin:0 0 10px">${specs}</p>` : ""}
+              <span style="display:inline-block;background:#0e1f3d;color:#fff;padding:9px 18px;border-radius:8px;font-size:13px;font-weight:700">Ver fotos y detalles →</span>
+            </div>
+          </a>
+        </td></tr>
+      </table>`
+  }).join("")
+
   return `<!DOCTYPE html>
 <html lang="es"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
 <body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif">
@@ -41,16 +83,16 @@ function buildAlertEmail(opts: {
     </h1>
     <p style="color:#8fa3c4;font-size:14px;margin:0">New listings perfect for you just arrived 🏡</p>
   </td></tr>
-  <tr><td style="background:white;padding:28px">
+  <tr><td style="background:white;padding:24px 20px">
     <p style="color:#374151;font-size:15px;margin:0 0 12px">Hi <strong>${firstName}</strong>!</p>
     <p style="color:#374151;font-size:14px;margin:0 0 16px">
-      I'm Sofía, ${agentName}'s AI assistant. I found <strong>${n} new listing${n > 1 ? "s" : ""}</strong> that
-      match${n === 1 ? "es" : ""} your search criteria — don't miss out, the best homes go fast!
+      I'm Sofía, ${agentName}'s AI assistant. Here are the newest listings that match your search — tap any home to see all the photos and details:
     </p>
     ${criteriaLine}
-    <div style="text-align:center;margin:0 0 24px">
+    ${cards}
+    <div style="text-align:center;margin:8px 0 24px">
       <a href="${searchUrl}" style="display:inline-block;background:#0e1f3d;color:white;padding:13px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">
-        Ver las propiedades →
+        Ver todas mis propiedades →
       </a>
     </div>
     <div style="border-top:1px solid #f3f4f6;padding-top:20px;text-align:center">
@@ -172,6 +214,16 @@ export async function triggerMatchAlert(contactId: string): Promise<{ sent: bool
         agentName,
         agentPhone,
         searchUrl,
+        properties: newMatches.map((l: any) => ({
+          photo: photoMap[l.ListingKey] || null,
+          price: l.ListPrice ?? null,
+          address: buildDisplayAddress(l),
+          city: l.City ?? null,
+          beds: l.BedroomsTotal ?? null,
+          baths: l.BathroomsTotalDecimal ?? null,
+          sqft: l.LivingArea ?? null,
+          url: `${APP_URL}/homes/${encodeURIComponent(l.ListingKey)}`,
+        })),
       }),
     })
     if (!delivered) {
