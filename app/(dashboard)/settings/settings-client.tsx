@@ -898,6 +898,32 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
   const [newTagName, setNewTagName] = useState("")
   const [newTagColor, setNewTagColor] = useState("#3B82F6")
 
+  // Automated-SMS kill switch (budget control)
+  const [smsPaused, setSmsPaused] = useState(false)
+  const [smsPauseLoading, setSmsPauseLoading] = useState(true)
+  useEffect(() => {
+    fetch("/api/settings/sms-pause")
+      .then(r => r.json())
+      .then(d => setSmsPaused(!!d.paused))
+      .catch(() => {})
+      .finally(() => setSmsPauseLoading(false))
+  }, [])
+  const toggleSmsPause = async (next: boolean) => {
+    setSmsPaused(next)
+    try {
+      const res = await fetch("/api/settings/sms-pause", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paused: next }),
+      })
+      if (!res.ok) throw new Error()
+      toast({ title: next ? "⏸️ Textos automáticos PAUSADOS" : "▶️ Textos automáticos reactivados" })
+    } catch {
+      setSmsPaused(!next)
+      toast({ title: "No se pudo cambiar — intenta de nuevo", variant: "destructive" })
+    }
+  }
+
   // Pipelines
   const [pipelines, setPipelines] = useState(initialPipelines)
   const [editingStage, setEditingStage] = useState<string | null>(null)
@@ -1320,6 +1346,27 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
 
           {/* Notifications */}
           <TabsContent value="notifications">
+            {/* Budget kill switch — pause all of Sofía's automated texting */}
+            <Card className={cn("border-0 shadow-sm mb-4 border-l-4", smsPaused ? "border-l-red-500 bg-red-50" : "border-l-emerald-500")}>
+              <CardContent className="p-5 flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                    {smsPaused ? "⏸️ Textos automáticos PAUSADOS" : "📱 Textos automáticos activos"}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1 max-w-xl">
+                    Pausa <strong>todos los textos automáticos de Sofía</strong> (bienvenidas, seguimientos, drips, alertas y textos por cambio de etapa) para controlar el gasto.
+                    Tus <strong>textos manuales</strong> y las respuestas a mensajes entrantes NO se ven afectados. Actívalo de nuevo cuando quieras.
+                  </p>
+                  {smsPaused && <p className="text-xs text-red-600 font-semibold mt-1.5">⚠️ Sofía no está enviando textos automáticos ahora mismo.</p>}
+                </div>
+                <div className="flex-shrink-0">
+                  {smsPauseLoading
+                    ? <Loader2 className="w-5 h-5 animate-spin text-gray-300" />
+                    : <Switch checked={smsPaused} onCheckedChange={toggleSmsPause} />}
+                </div>
+              </CardContent>
+            </Card>
+
             <Card className="border-0 shadow-sm">
               <CardHeader><CardTitle className="text-base">Notification Preferences</CardTitle></CardHeader>
               <CardContent className="space-y-4">
