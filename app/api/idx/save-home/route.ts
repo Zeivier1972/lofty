@@ -146,7 +146,7 @@ export async function POST(req: Request) {
         const bookUrl = `${appUrl}/book`
         const sofiaMsg = `¡Hola ${contact.firstName}! 🏠 Soy Sofía, asistente de Catherine Gomez Realtor. Vi que guardaste ${address}. ¿Te gustaría agendar una visita o que te muestre opciones similares? Agenda aquí: ${bookUrl} — o respóndeme por aquí. 😊`
         if (contact.phone && !contact.doNotText) {
-          sendSMS(contact.phone, sofiaMsg).catch(() => {})
+          sendSMS(contact.phone, sofiaMsg, undefined, { automated: true, contactId: contact.id }).catch(() => {})
         } else if (contact.email && !contact.doNotEmail) {
           sendEmail({
             to: contact.email,

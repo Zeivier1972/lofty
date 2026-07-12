@@ -251,7 +251,7 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
           .catch(e => {
             console.error("[INGEST] WhatsApp template failed, falling back to SMS:", e)
             const smsBody = `Hola ${firstName}! Soy Sofía de Catherine Gomez Realtor 🏠 Vi que estás interesado en inversiones en Miami. ¿Hablamos? Agenda: ${bookingUrl} · Tel: ${realtorPhone}`
-            sendSMS(toPhone, smsBody)
+            sendSMS(toPhone, smsBody, undefined, { automated: true, contactId: contact.id })
               .then(() => {
                 prisma.activity.create({
                   data: { type: "SMS", title: "Sofía sent investor welcome via SMS (WhatsApp fallback)", description: smsBody.slice(0, 200), contactId: contact.id },
@@ -263,7 +263,7 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
         // No template configured — SMS avoids guaranteed 63016 error on cold outbound WhatsApp
         console.log("[INGEST] No TWILIO_WA_INVESTOR_TEMPLATE_SID — sending SMS to investor")
         const smsBody = `Hola ${firstName}! Soy Sofía de Catherine Gomez Realtor 🏠 Especialistas en inversiones en Miami. ¿Hablamos? Agenda: ${bookingUrl} · Tel: ${realtorPhone}`
-        sendSMS(toPhone, smsBody)
+        sendSMS(toPhone, smsBody, undefined, { automated: true, contactId: contact.id })
           .then(() => {
             prisma.activity.create({
               data: { type: "SMS", title: "Sofía sent investor welcome via SMS (no WhatsApp template)", description: smsBody.slice(0, 200), contactId: contact.id },
@@ -277,7 +277,7 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
         ? "pre-construcción y programas para primeros compradores"
         : propertyType ? `propiedades tipo ${propertyType.toLowerCase().replace("_", " ")} en Miami` : "propiedades en Miami"
       const smsBody = `Hola ${firstName}! Soy Sofía, asistente de Catherine Gomez Realtor 🏠 Vi que estás interesado en ${interest}. ¿Tienes un momentito para hablar? Agenda aquí: ${bookingUrl} · Tel: ${realtorPhone}`
-      sendSMS(toPhone, smsBody)
+      sendSMS(toPhone, smsBody, undefined, { automated: true, contactId: contact.id })
         .then(() => {
           console.log(`[INGEST] SMS sent to ${toPhone}`)
           prisma.activity.create({

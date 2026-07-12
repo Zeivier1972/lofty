@@ -67,6 +67,18 @@ export async function sendSMS(
     }
   } catch { /* guard is best-effort — never break sending for everyone */ }
 
+  // Global kill switch: when the agent pauses automated texting (Settings →
+  // to control cost/budget), no automated SMS goes out. Manual sends unaffected.
+  if (opts?.automated) {
+    try {
+      const paused = await prisma.setting.findUnique({ where: { key: "sms_paused" }, select: { value: true } })
+      if (paused?.value === "true") {
+        console.log(`[SMS PAUSED — global kill switch] ${to}: automated send skipped`)
+        return null
+      }
+    } catch { /* if the check fails, fall through and send */ }
+  }
+
   // Per-contact automated cooldown — one automated text per ~day, max.
   if (opts?.automated) {
     try {
