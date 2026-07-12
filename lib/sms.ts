@@ -30,6 +30,45 @@ function getClient() {
   return client
 }
 
+// Twilio send-error codes that are PERMANENT — the number will never receive
+// an SMS, so we flag the contact doNotText and never retry. Retrying only
+// burns money and hurts the account's messaging reputation. See Twilio docs:
+//   21211 invalid 'To' number         21610 recipient unsubscribed (STOP)
+//   21612 unreachable carrier route   21614 not a valid mobile number
+//   21408 permission/geo not enabled  21265 'To' is a short code
+//   21266 To == From                  21268 premium/900 number
+//   30003 unreachable (device off)    30005 unknown/nonexistent number
+//   30006 landline / unreachable carrier
+// 30003/30004 are usually transient, but by the time they surface at
+// send-time (rare) they've already been retried by Twilio — still cheap to
+// keep them retryable, so we treat them as soft below.
+const PERMANENT_SEND_ERRORS = new Set([
+  21211, 21610, 21612, 21614, 21408, 21265, 21266, 21268, 30005, 30006,
+])
+
+// Flag every contact holding this number as do-not-text and drop a timeline
+// note, so no future code path (drip, alert, stage outreach) texts it again.
+async function flagNumberUndeliverable(digits10: string, reason: string) {
+  if (digits10.length < 7) return
+  try {
+    const contacts = await prisma.contact.findMany({
+      where: { doNotText: false, phone: { contains: digits10 } },
+      select: { id: true },
+    })
+    for (const ct of contacts) {
+      await prisma.contact.update({ where: { id: ct.id }, data: { doNotText: true } }).catch(() => {})
+      await prisma.activity.create({
+        data: {
+          type: "NOTE_ADDED",
+          title: "📵 Texting apagado para este número",
+          description: `El número no puede recibir SMS (${reason}). No se le enviarán más textos automáticos.`,
+          contactId: ct.id,
+        },
+      }).catch(() => {})
+    }
+  } catch { /* best-effort */ }
+}
+
 // opts.automated = an automated/system SMS (drip, call-outreach, welcome).
 // These obey a per-contact cooldown: at most ONE automated text per contact
 // per SMS_MIN_GAP_HOURS (default 20h) — so a lead can't be blasted with a
@@ -42,7 +81,21 @@ export async function sendSMS(
   opts?: { automated?: boolean; contactId?: string; minGapHours?: number },
 ): Promise<string | null> {
   to = toE164(to) || to
-  const digits10 = (to || "").replace(/\D/g, "").slice(-10)
+  const allDigits = (to || "").replace(/\D/g, "")
+  const digits10 = allDigits.slice(-10)
+
+  // Pre-send sanity check on the number itself — reject before we ever hit
+  // Twilio (avoids the 21211 "invalid To" and short-code/premium errors that
+  // dominate the error report, each of which still costs an API round-trip).
+  //   < 10 digits              → not a real phone number (typo / partial)
+  //   5–6 digit short codes    → can't send P2P long-code SMS to a short code
+  if (!to || allDigits.length < 10) {
+    console.log(`[SMS SKIPPED — invalid number] "${to}": too few digits, not sending`)
+    if (opts?.contactId) {
+      await flagNumberUndeliverable(digits10, "número inválido")
+    }
+    return null
+  }
 
   // Central do-not-text guard: if ANY contact with this number is flagged
   // (replied STOP, or the number proved undeliverable), no code path can
@@ -110,15 +163,34 @@ export async function sendSMS(
     sid = "mock-sid"
   } else {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL
-    const msg = await c.messages.create({
-      body,
-      from: process.env.TWILIO_PHONE_NUMBER!,
-      to,
-      // Delivery receipts → mark failed sends + auto-flag dead numbers
-      ...(appUrl ? { statusCallback: `${appUrl}/api/twilio/sms-status` } : {}),
-      ...(mediaUrls?.length ? { mediaUrl: mediaUrls } : {}),
-    })
-    sid = msg.sid
+    try {
+      const msg = await c.messages.create({
+        body,
+        from: process.env.TWILIO_PHONE_NUMBER!,
+        to,
+        // Delivery receipts → mark failed sends + auto-flag dead numbers
+        ...(appUrl ? { statusCallback: `${appUrl}/api/twilio/sms-status` } : {}),
+        ...(mediaUrls?.length ? { mediaUrl: mediaUrls } : {}),
+      })
+      sid = msg.sid
+    } catch (err: any) {
+      // Twilio rejected the send synchronously. On a PERMANENT error the number
+      // will never work → flag doNotText so we never spend on it again. On a
+      // transient error just log FAILED and let the caller move on.
+      const code = Number(err?.code) || 0
+      const permanent = PERMANENT_SEND_ERRORS.has(code)
+      console.log(`[SMS FAILED] ${to}: code=${code} ${permanent ? "(permanent → doNotText)" : "(transient)"} — ${err?.message || err}`)
+      prisma.sMSMessage.create({
+        data: {
+          direction: "OUTBOUND", body,
+          fromNumber: process.env.TWILIO_PHONE_NUMBER || "unknown",
+          toNumber: to, status: permanent ? "FAILED" : "UNDELIVERED",
+          ...(opts?.contactId ? { contactId: opts.contactId } : {}),
+        },
+      }).catch(() => {})
+      if (permanent) await flagNumberUndeliverable(digits10, `error ${code}`)
+      return null
+    }
   }
   // Fire-and-forget DB log (don't await, don't fail the send)
   prisma.sMSMessage.create({
@@ -129,6 +201,7 @@ export async function sendSMS(
       toNumber: to,
       status: "SENT",
       sid,
+      ...(opts?.contactId ? { contactId: opts.contactId } : {}),
     },
   }).catch(() => {})
   return sid
