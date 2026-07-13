@@ -21,6 +21,49 @@ export function toE164(phone: string | null | undefined): string {
   return `+1${digits}`
 }
 
+// GSM-7 basic + extension charset. Any character OUTSIDE this set forces the
+// entire SMS into UCS-2 encoding, where each segment holds only 67 chars
+// instead of 153 — so one emoji or one "á" can quadruple the cost of a text.
+// Keeping automated bodies GSM-7 + short = a single cheap segment.
+const GSM7 = new Set(
+  ("@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?¡" +
+   "ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà" +
+   "^{}\\[~]|€").split("")
+)
+
+// Near-equivalent replacements for the common Spanish/typographic characters
+// that are NOT in GSM-7 (acute vowels, middle dot, dashes, curly quotes,
+// arrows). Dropping accents in an SMS is normal and keeps it one segment.
+const TRANSLIT: Record<string, string> = {
+  "á": "a", "í": "i", "ó": "o", "ú": "u",
+  "Á": "A", "Í": "I", "Ó": "O", "Ú": "U",
+  "·": " - ", "•": "-", "…": "...", "—": "-", "–": "-",
+  "‘": "'", "’": "'", "“": '"', "”": '"',
+  "→": "", "←": "", "º": "o", "ª": "a",
+}
+
+// Make an automated SMS body cheap: strip emoji/pictographs, transliterate the
+// non-GSM-7 characters we can, and drop anything still outside GSM-7 so the
+// message stays in the 153-char/segment encoding instead of UCS-2's 67.
+// Built via new RegExp (not a literal) so the \u{...} + 'u' flag doesn't trip
+// the TS compile target check; Node's runtime supports it fine.
+const EMOJI_RE = new RegExp(
+  "[\\u{1F000}-\\u{1FAFF}\\u{2600}-\\u{27BF}\\u{2190}-\\u{21FF}\\u{2B00}-\\u{2BFF}\\u{FE00}-\\u{FE0F}\\u{200D}\\u{20E3}]",
+  "gu",
+)
+
+export function sanitizeSmsBody(input: string): string {
+  if (!input) return input
+  // 1. Remove emoji, dingbats, arrows, variation selectors, keycaps.
+  let s = input.replace(EMOJI_RE, "")
+  // 2. Transliterate known non-GSM-7 chars, then hard-drop any that remain.
+  s = Array.from(s)
+    .map(ch => (ch in TRANSLIT ? TRANSLIT[ch] : GSM7.has(ch) ? ch : ""))
+    .join("")
+  // 3. Tidy up whitespace left behind by removed characters.
+  return s.replace(/[ \t]{2,}/g, " ").replace(/ +([.,!?])/g, "$1").trim()
+}
+
 let client: twilio.Twilio | null = null
 
 function getClient() {
@@ -106,6 +149,11 @@ export async function sendSMS(
   to = toE164(to) || to
   const allDigits = (to || "").replace(/\D/g, "")
   const digits10 = allDigits.slice(-10)
+
+  // Keep automated texts to a single cheap GSM-7 segment: strip emoji + the
+  // accents/symbols that force expensive UCS-2 encoding. Manual agent texts
+  // are left exactly as typed (low volume, the agent's own wording).
+  if (opts?.automated) body = sanitizeSmsBody(body)
 
   // Pre-send sanity check on the number itself — reject before we ever hit
   // Twilio (avoids the 21211 "invalid To" and short-code/premium errors that

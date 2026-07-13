@@ -144,7 +144,7 @@ export async function POST(req: Request) {
       const activeSaves = await prisma.propertySave.count({ where: { contactId: contact.id, isActive: true } }).catch(() => 2)
       if (activeSaves <= 1) {
         const bookUrl = `${appUrl}/book`
-        const sofiaMsg = `¡Hola ${contact.firstName}! 🏠 Soy Sofía, asistente de Catherine Gomez Realtor. Vi que guardaste ${address}. ¿Te gustaría agendar una visita o que te muestre opciones similares? Agenda aquí: ${bookUrl} — o respóndeme por aquí. 😊`
+        const sofiaMsg = `Hola ${contact.firstName}, soy Sofia de Catherine Gomez Realtor. Vi la propiedad que guardaste, quieres agendar una visita? Agenda: ${bookUrl}`
         if (contact.phone && !contact.doNotText) {
           sendSMS(contact.phone, sofiaMsg, undefined, { automated: true, contactId: contact.id }).catch(() => {})
         } else if (contact.email && !contact.doNotEmail) {
