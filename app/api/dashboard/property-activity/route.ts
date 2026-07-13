@@ -54,10 +54,10 @@ export async function GET() {
     return { id, saves: c.saves, views: c.views, anonViews: anon, score: (c.saves + c.views) * 10 + anon }
   })
   const hotP = scored.filter(p => p.saves + p.views + p.anonViews >= 3).sort((a, b) => b.score - a.score).slice(0, 15)
-  const props = hotP.length ? await prisma.property.findMany({ where: { id: { in: hotP.map(p => p.id) } }, select: { id: true, address: true, city: true, price: true } }) : []
+  const props = hotP.length ? await prisma.property.findMany({ where: { id: { in: hotP.map(p => p.id) } }, select: { id: true, address: true, city: true, price: true, mlsId: true } }) : []
   const hotProperties = hotP.map(h => {
     const p = props.find((x: { id: string }) => x.id === h.id)
-    return { id: h.id, address: p ? `${p.address}, ${p.city}` : "Propiedad", price: p?.price ?? null, saves: h.saves, views: h.views, anonViews: h.anonViews, total: h.saves + h.views }
+    return { id: h.id, mlsId: p?.mlsId ?? null, address: p ? `${p.address}, ${p.city}` : "Propiedad", price: p?.price ?? null, saves: h.saves, views: h.views, anonViews: h.anonViews, total: h.saves + h.views }
   })
 
   return NextResponse.json({ ok: true, hotContacts, hotProperties })
