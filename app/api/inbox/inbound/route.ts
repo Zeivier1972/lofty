@@ -359,6 +359,25 @@ export async function POST(req: Request) {
       })
     }
 
+    // Ring the Bell so Catherine sees the reply even when she isn't watching the
+    // timeline. Unread by default → lights the bell badge; it clears when she
+    // opens the contact (see contacts/[id]/page.tsx). Best-effort, non-fatal.
+    {
+      const who = contact.firstName && contact.firstName !== "Lead"
+        ? `${contact.firstName} ${contact.lastName || ""}`.trim()
+        : (contact.phone || phone)
+      const channelLabel = isWhatsApp ? "WhatsApp" : "texto"
+      prisma.aINotification.create({
+        data: {
+          type: "LEAD_REPLY",
+          title: `💬 ${who} te escribió`,
+          body: `Por ${channelLabel}: "${body.slice(0, 160)}"`,
+          priority: "HIGH",
+          contactId: contact.id,
+        },
+      }).catch(() => {})
+    }
+
     // Build contact context for Claude
     const isNew = contact.firstName === "Lead"
     const name = isNew ? "Cliente nuevo" : `${contact.firstName} ${contact.lastName}`.trim()
