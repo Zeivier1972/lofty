@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import { prisma } from "@/lib/prisma"
-import { sendSMS, sendWhatsApp, toE164 } from "@/lib/sms"
+import { sendSMS, sendWhatsApp, toE164, sanitizeSmsBody } from "@/lib/sms"
 import { searchIdxListings, fetchPrimaryPhotos } from "@/lib/bridge"
 import Anthropic from "@anthropic-ai/sdk"
 
@@ -237,6 +237,8 @@ async function runTool(name: string, input: any, contactId: string): Promise<{te
         const specs = [l.BedroomsTotal ? `${l.BedroomsTotal} cuartos` : "", l.BathroomsTotalDecimal ? `${l.BathroomsTotalDecimal} baños` : "", l.LivingArea ? `${Number(l.LivingArea).toLocaleString()} sqft` : ""].filter(Boolean).join(" | ")
         if (specs) parts.push(`🏠 ${specs}`)
         if (l.ListingId) parts.push(`🔑 MLS# ${l.ListingId}`)
+        // Tap-through to the public IDX detail page (all photos + full info).
+        if (l.ListingKey) parts.push(`👉 Ver fotos y detalles: ${appUrl}/homes/${encodeURIComponent(l.ListingKey)}`)
         const img = photoMap[l.ListingKey]
         return { caption: parts.join("\n"), imageUrl: (typeof img === "string" && img.startsWith("http")) ? img : undefined }
       })
@@ -458,14 +460,19 @@ export async function POST(req: Request) {
     const firstPhoto = topCards.find(c => c.imageUrl)?.imageUrl
 
     if (isWhatsApp) {
+      // WhatsApp isn't billed per segment and shows images inline for free, so
+      // keep the hero photo + emojis here.
       await sendWhatsApp(toNum, combined, firstPhoto)
       await prisma.whatsAppMessage.create({
         data: { body: combined, fromNumber: to, toNumber: phone, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
       })
     } else {
-      await sendSMS(toNum, combined, firstPhoto ? [firstPhoto] : undefined)
+      // SMS: link-only (no MMS) + GSM-7 sanitized so the whole reply stays a
+      // single cheap segment. The per-property link opens the full photo gallery.
+      const cheap = sanitizeSmsBody(combined)
+      await sendSMS(toNum, cheap)
       await prisma.sMSMessage.create({
-        data: { body: combined, fromNumber: to, toNumber: phone, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
+        data: { body: cheap, fromNumber: to, toNumber: phone, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
       })
     }
 
