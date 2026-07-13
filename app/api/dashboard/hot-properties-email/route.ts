@@ -5,13 +5,18 @@ import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { sendEmail } from "@/lib/email"
 
-// "HOT properties in the market" blast.
-//   GET  → { ok, recipientCount }   — how many engaged buyers would receive it
-//   POST { propertyIds } → sends the email to those buyers, returns { ok, sent }
+// "HOT properties in the market" blast to a chosen audience.
+//   GET  → { ok, tags, plans, recipientCount }   (recipientCount for the audience in the query)
+//   POST { propertyIds, audience, tagId, planId } → sends, returns { ok, sent }
 //
-// Audience = ENGAGED buyers only: contacts with 3+ saves/views (the same
-// "Compradores calientes" signal shown on the dashboard) who are emailable.
-// Deliberately NOT a blast to the whole list — keeps cost down and reply rate up.
+// Audience options:
+//   engaged (default) — contacts with 3+ saves/views (highest intent, cheapest)
+//   all               — every emailable contact
+//   tag               — contacts carrying tagId
+//   plan              — contacts enrolled in smart plan planId
+// Every audience is always narrowed to emailable contacts (has email, not doNotEmail).
+
+type Audience = "engaged" | "all" | "tag" | "plan"
 
 async function engagedBuyerIds(): Promise<string[]> {
   const [savesByContact, viewsByContact] = await Promise.all([
@@ -27,28 +32,64 @@ async function engagedBuyerIds(): Promise<string[]> {
   return Array.from(map.entries()).filter(([, n]) => n >= 3).map(([id]) => id)
 }
 
-async function emailableRecipients() {
+async function recipientWhere(audience: Audience, tagId?: string, planId?: string): Promise<any | null> {
+  const base: any = { email: { not: null }, doNotEmail: false }
+  if (audience === "all") return base
+  if (audience === "tag") {
+    if (!tagId) return null
+    return { ...base, tags: { some: { tagId } } }
+  }
+  if (audience === "plan") {
+    if (!planId) return null
+    return { ...base, enrollments: { some: { planId } } }
+  }
+  // engaged (default)
   const ids = await engagedBuyerIds()
-  if (!ids.length) return []
-  return prisma.contact.findMany({
-    where: { id: { in: ids }, email: { not: null }, doNotEmail: false },
-    select: { id: true, firstName: true, email: true },
-  })
+  if (!ids.length) return { ...base, id: { in: ["__none__"] } }
+  return { ...base, id: { in: ids } }
 }
 
-export async function GET() {
+async function recipientsFor(audience: Audience, tagId?: string, planId?: string) {
+  const where = await recipientWhere(audience, tagId, planId)
+  if (!where) return []
+  return prisma.contact.findMany({ where, select: { id: true, firstName: true, email: true } })
+}
+
+export async function GET(req: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  const recipients = await emailableRecipients()
-  return NextResponse.json({ ok: true, recipientCount: recipients.length })
+
+  const { searchParams } = new URL(req.url)
+  const audience = (searchParams.get("audience") as Audience) || "engaged"
+  const tagId = searchParams.get("tagId") || undefined
+  const planId = searchParams.get("planId") || undefined
+
+  const where = await recipientWhere(audience, tagId, planId)
+  const recipientCount = where ? await prisma.contact.count({ where }) : 0
+
+  // Audience-picker options (tags + smart plans that actually have contacts)
+  const [tags, plans] = await Promise.all([
+    prisma.tag.findMany({ select: { id: true, name: true, _count: { select: { contacts: true } } }, orderBy: { name: "asc" } }).catch(() => []),
+    prisma.smartPlan.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }).catch(() => []),
+  ])
+
+  return NextResponse.json({
+    ok: true,
+    recipientCount,
+    tags: (tags as any[]).map(t => ({ id: t.id, name: t.name, count: t._count?.contacts ?? 0 })),
+    plans: (plans as any[]).map(p => ({ id: p.id, name: p.name })),
+  })
 }
 
 export async function POST(req: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const { propertyIds } = await req.json().catch(() => ({ propertyIds: [] }))
-  const ids: string[] = Array.isArray(propertyIds) ? propertyIds.filter(Boolean) : []
+  const body = await req.json().catch(() => ({}))
+  const ids: string[] = Array.isArray(body.propertyIds) ? body.propertyIds.filter(Boolean) : []
+  const audience: Audience = (["engaged", "all", "tag", "plan"].includes(body.audience) ? body.audience : "engaged")
+  const tagId: string | undefined = body.tagId || undefined
+  const planId: string | undefined = body.planId || undefined
   if (!ids.length) return NextResponse.json({ error: "No hay propiedades seleccionadas" }, { status: 400 })
 
   const properties = await prisma.property.findMany({
@@ -57,8 +98,8 @@ export async function POST(req: Request) {
   })
   if (!properties.length) return NextResponse.json({ error: "No se encontraron esas propiedades" }, { status: 400 })
 
-  const recipients = await emailableRecipients()
-  if (!recipients.length) return NextResponse.json({ ok: true, sent: 0, reason: "No hay compradores interesados con email disponible." })
+  const recipients = await recipientsFor(audience, tagId, planId)
+  if (!recipients.length) return NextResponse.json({ ok: true, sent: 0, reason: "No hay destinatarios con email para ese público." })
 
   const cfg = await prisma.aIConfig.findFirst({ select: { realtorName: true, realtorPhone: true } }).catch(() => null)
   const agentName = cfg?.realtorName || "Catherine Gomez"
