@@ -16,7 +16,7 @@ import { sendEmail } from "@/lib/email"
 //   plan              — contacts enrolled in smart plan planId
 // Every audience is always narrowed to emailable contacts (has email, not doNotEmail).
 
-type Audience = "engaged" | "all" | "tag" | "plan"
+type Audience = "engaged" | "all" | "tag" | "plan" | "stage"
 
 async function engagedBuyerIds(): Promise<string[]> {
   const [savesByContact, viewsByContact] = await Promise.all([
@@ -32,7 +32,7 @@ async function engagedBuyerIds(): Promise<string[]> {
   return Array.from(map.entries()).filter(([, n]) => n >= 3).map(([id]) => id)
 }
 
-async function recipientWhere(audience: Audience, tagId?: string, planId?: string): Promise<any | null> {
+async function recipientWhere(audience: Audience, tagId?: string, planId?: string, stageId?: string): Promise<any | null> {
   const base: any = { email: { not: null }, doNotEmail: false }
   if (audience === "all") return base
   if (audience === "tag") {
@@ -43,14 +43,18 @@ async function recipientWhere(audience: Audience, tagId?: string, planId?: strin
     if (!planId) return null
     return { ...base, enrollments: { some: { planId } } }
   }
+  if (audience === "stage") {
+    if (!stageId) return null
+    return { ...base, pipelineLeads: { some: { stageId } } }
+  }
   // engaged (default)
   const ids = await engagedBuyerIds()
   if (!ids.length) return { ...base, id: { in: ["__none__"] } }
   return { ...base, id: { in: ids } }
 }
 
-async function recipientsFor(audience: Audience, tagId?: string, planId?: string) {
-  const where = await recipientWhere(audience, tagId, planId)
+async function recipientsFor(audience: Audience, tagId?: string, planId?: string, stageId?: string) {
+  const where = await recipientWhere(audience, tagId, planId, stageId)
   if (!where) return []
   return prisma.contact.findMany({ where, select: { id: true, firstName: true, email: true } })
 }
@@ -63,14 +67,19 @@ export async function GET(req: Request) {
   const audience = (searchParams.get("audience") as Audience) || "engaged"
   const tagId = searchParams.get("tagId") || undefined
   const planId = searchParams.get("planId") || undefined
+  const stageId = searchParams.get("stageId") || undefined
 
-  const where = await recipientWhere(audience, tagId, planId)
+  const where = await recipientWhere(audience, tagId, planId, stageId)
   const recipientCount = where ? await prisma.contact.count({ where }) : 0
 
-  // Audience-picker options (tags + smart plans that actually have contacts)
-  const [tags, plans] = await Promise.all([
+  // Audience-picker options (tags + smart plans + pipeline stages)
+  const [tags, plans, stages] = await Promise.all([
     prisma.tag.findMany({ select: { id: true, name: true, _count: { select: { contacts: true } } }, orderBy: { name: "asc" } }).catch(() => []),
     prisma.smartPlan.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }).catch(() => []),
+    prisma.pipelineStage.findMany({
+      select: { id: true, name: true, order: true, pipeline: { select: { name: true } }, _count: { select: { leads: true } } },
+      orderBy: [{ pipeline: { name: "asc" } }, { order: "asc" }],
+    }).catch(() => []),
   ])
 
   return NextResponse.json({
@@ -78,6 +87,7 @@ export async function GET(req: Request) {
     recipientCount,
     tags: (tags as any[]).map(t => ({ id: t.id, name: t.name, count: t._count?.contacts ?? 0 })),
     plans: (plans as any[]).map(p => ({ id: p.id, name: p.name })),
+    stages: (stages as any[]).map(s => ({ id: s.id, name: s.name, pipeline: s.pipeline?.name || "", count: s._count?.leads ?? 0 })),
   })
 }
 
@@ -87,9 +97,11 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => ({}))
   const ids: string[] = Array.isArray(body.propertyIds) ? body.propertyIds.filter(Boolean) : []
-  const audience: Audience = (["engaged", "all", "tag", "plan"].includes(body.audience) ? body.audience : "engaged")
+  const audience: Audience = (["engaged", "all", "tag", "plan", "stage"].includes(body.audience) ? body.audience : "engaged")
   const tagId: string | undefined = body.tagId || undefined
   const planId: string | undefined = body.planId || undefined
+  const stageId: string | undefined = body.stageId || undefined
+  const preview: boolean = body.preview === true
   if (!ids.length) return NextResponse.json({ error: "No hay propiedades seleccionadas" }, { status: 400 })
 
   const properties = await prisma.property.findMany({
@@ -97,9 +109,6 @@ export async function POST(req: Request) {
     select: { id: true, mlsId: true, address: true, city: true, price: true, bedrooms: true, bathrooms: true, sqft: true, images: true },
   })
   if (!properties.length) return NextResponse.json({ error: "No se encontraron esas propiedades" }, { status: 400 })
-
-  const recipients = await recipientsFor(audience, tagId, planId)
-  if (!recipients.length) return NextResponse.json({ ok: true, sent: 0, reason: "No hay destinatarios con email para ese público." })
 
   const cfg = await prisma.aIConfig.findFirst({ select: { realtorName: true, realtorPhone: true } }).catch(() => null)
   const agentName = cfg?.realtorName || "Catherine Gomez"
@@ -167,6 +176,12 @@ export async function POST(req: Request) {
 </td></tr>
 </table>
 </body></html>`
+
+  // Preview mode: return the rendered email without sending to anyone.
+  if (preview) return NextResponse.json({ ok: true, html: buildHtml("Cliente") })
+
+  const recipients = await recipientsFor(audience, tagId, planId, stageId)
+  if (!recipients.length) return NextResponse.json({ ok: true, sent: 0, reason: "No hay destinatarios con email para ese público." })
 
   let sent = 0
   for (const r of recipients) {
