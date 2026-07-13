@@ -250,7 +250,7 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
           })
           .catch(e => {
             console.error("[INGEST] WhatsApp template failed, falling back to SMS:", e)
-            const smsBody = `Hola ${firstName}! Soy Sofía de Catherine Gomez Realtor 🏠 Vi que estás interesado en inversiones en Miami. ¿Hablamos? Agenda: ${bookingUrl} · Tel: ${realtorPhone}`
+            const smsBody = `Hola ${firstName}, soy Sofia de Catherine Gomez Realtor. Inversiones en Miami: hablamos? Agenda: ${bookingUrl}`
             sendSMS(toPhone, smsBody, undefined, { automated: true, contactId: contact.id })
               .then(() => {
                 prisma.activity.create({
@@ -262,7 +262,7 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
       } else {
         // No template configured — SMS avoids guaranteed 63016 error on cold outbound WhatsApp
         console.log("[INGEST] No TWILIO_WA_INVESTOR_TEMPLATE_SID — sending SMS to investor")
-        const smsBody = `Hola ${firstName}! Soy Sofía de Catherine Gomez Realtor 🏠 Especialistas en inversiones en Miami. ¿Hablamos? Agenda: ${bookingUrl} · Tel: ${realtorPhone}`
+        const smsBody = `Hola ${firstName}, soy Sofia de Catherine Gomez Realtor, especialistas en inversiones en Miami. Hablamos? Agenda: ${bookingUrl}`
         sendSMS(toPhone, smsBody, undefined, { automated: true, contactId: contact.id })
           .then(() => {
             prisma.activity.create({
@@ -274,9 +274,9 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
     } else {
       // Regular leads → SMS
       const interest = propertyType === "PRE_CONSTRUCTION" || (campaign || "").toLowerCase().includes("pre")
-        ? "pre-construcción y programas para primeros compradores"
-        : propertyType ? `propiedades tipo ${propertyType.toLowerCase().replace("_", " ")} en Miami` : "propiedades en Miami"
-      const smsBody = `Hola ${firstName}! Soy Sofía, asistente de Catherine Gomez Realtor 🏠 Vi que estás interesado en ${interest}. ¿Tienes un momentito para hablar? Agenda aquí: ${bookingUrl} · Tel: ${realtorPhone}`
+        ? "preconstruccion"
+        : propertyType ? `${propertyType.toLowerCase().replace("_", " ")} en Miami` : "propiedades en Miami"
+      const smsBody = `Hola ${firstName}, soy Sofia de Catherine Gomez Realtor. Vi tu interes en ${interest}. Hablamos? Agenda: ${bookingUrl}`
       sendSMS(toPhone, smsBody, undefined, { automated: true, contactId: contact.id })
         .then(() => {
           console.log(`[INGEST] SMS sent to ${toPhone}`)
