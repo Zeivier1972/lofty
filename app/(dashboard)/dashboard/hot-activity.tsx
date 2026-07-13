@@ -28,11 +28,15 @@ export default function HotActivity() {
   const [hotRecipientCount, setHotRecipientCount] = useState<number | null>(null)
   const [hotSending, setHotSending] = useState(false)
   const [hotSent, setHotSent] = useState<number | null>(null)
-  const [hotAudience, setHotAudience] = useState<"engaged" | "all" | "tag" | "plan">("engaged")
+  const [hotAudience, setHotAudience] = useState<"engaged" | "all" | "tag" | "plan" | "stage">("engaged")
   const [hotTags, setHotTags] = useState<{ id: string; name: string; count: number }[]>([])
   const [hotPlans, setHotPlans] = useState<{ id: string; name: string }[]>([])
+  const [hotStages, setHotStages] = useState<{ id: string; name: string; pipeline: string; count: number }[]>([])
   const [hotTagId, setHotTagId] = useState("")
   const [hotPlanId, setHotPlanId] = useState("")
+  const [hotStageId, setHotStageId] = useState("")
+  const [hotPreviewHtml, setHotPreviewHtml] = useState<string | null>(null)
+  const [hotPreviewLoading, setHotPreviewLoading] = useState(false)
 
   async function toggleProperty(id: string) {
     if (expandedProp === id) { setExpandedProp(null); return }
@@ -61,13 +65,14 @@ export default function HotActivity() {
       .finally(() => setLoaded(true))
   }, [])
 
-  async function refreshHotCount(audience: string, tagId: string, planId: string) {
+  async function refreshHotCount(audience: string, tagId: string, planId: string, stageId: string) {
     setHotRecipientCount(null)
-    // A tag/plan audience with nothing chosen yet has no count to fetch.
-    if ((audience === "tag" && !tagId) || (audience === "plan" && !planId)) return
+    // A tag/plan/stage audience with nothing chosen yet has no count to fetch.
+    if ((audience === "tag" && !tagId) || (audience === "plan" && !planId) || (audience === "stage" && !stageId)) return
     const qs = new URLSearchParams({ audience })
     if (audience === "tag") qs.set("tagId", tagId)
     if (audience === "plan") qs.set("planId", planId)
+    if (audience === "stage") qs.set("stageId", stageId)
     try {
       const res = await fetch(`/api/dashboard/hot-properties-email?${qs.toString()}`)
       const d = await res.json()
@@ -75,6 +80,7 @@ export default function HotActivity() {
         setHotRecipientCount(d.recipientCount ?? 0)
         if (Array.isArray(d.tags)) setHotTags(d.tags)
         if (Array.isArray(d.plans)) setHotPlans(d.plans)
+        if (Array.isArray(d.stages)) setHotStages(d.stages)
       }
     } catch { setHotRecipientCount(0) }
   }
@@ -85,7 +91,24 @@ export default function HotActivity() {
     setHotAudience("engaged")
     setHotTagId("")
     setHotPlanId("")
-    await refreshHotCount("engaged", "", "")
+    setHotStageId("")
+    setHotPreviewHtml(null)
+    await refreshHotCount("engaged", "", "", "")
+  }
+
+  async function previewHotEmail() {
+    setHotPreviewLoading(true)
+    try {
+      const res = await fetch("/api/dashboard/hot-properties-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ propertyIds: visibleProperties.map(p => p.id), preview: true }),
+      })
+      const d = await res.json()
+      setHotPreviewHtml(d.ok ? (d.html || "") : "")
+    } catch { setHotPreviewHtml("") } finally {
+      setHotPreviewLoading(false)
+    }
   }
 
   async function sendHotEmail() {
@@ -94,7 +117,7 @@ export default function HotActivity() {
       const res = await fetch("/api/dashboard/hot-properties-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ propertyIds: visibleProperties.map(p => p.id), audience: hotAudience, tagId: hotTagId, planId: hotPlanId }),
+        body: JSON.stringify({ propertyIds: visibleProperties.map(p => p.id), audience: hotAudience, tagId: hotTagId, planId: hotPlanId, stageId: hotStageId }),
       })
       const d = await res.json()
       setHotSent(d.ok ? (d.sent ?? 0) : 0)
@@ -281,7 +304,7 @@ export default function HotActivity() {
       {/* "Email as HOT properties" confirm dialog */}
       {hotEmailOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !hotSending && setHotEmailOpen(false)}>
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             {hotSent === null ? (
               <>
                 <h3 className="flex items-center gap-2 font-bold text-gray-900 text-lg mb-2">
@@ -295,18 +318,19 @@ export default function HotActivity() {
                 <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Enviar a</label>
                 <select
                   value={hotAudience}
-                  onChange={e => { const a = e.target.value as typeof hotAudience; setHotAudience(a); refreshHotCount(a, hotTagId, hotPlanId) }}
+                  onChange={e => { const a = e.target.value as typeof hotAudience; setHotAudience(a); refreshHotCount(a, hotTagId, hotPlanId, hotStageId) }}
                   className="w-full border rounded-lg px-3 py-2 text-sm mb-2"
                 >
                   <option value="engaged">Compradores interesados (3+ vistas/guardados)</option>
                   <option value="all">Todos los leads</option>
                   <option value="tag">Por etiqueta…</option>
                   <option value="plan">Por smart plan…</option>
+                  <option value="stage">Por etapa del pipeline…</option>
                 </select>
                 {hotAudience === "tag" && (
                   <select
                     value={hotTagId}
-                    onChange={e => { setHotTagId(e.target.value); refreshHotCount("tag", e.target.value, "") }}
+                    onChange={e => { setHotTagId(e.target.value); refreshHotCount("tag", e.target.value, "", "") }}
                     className="w-full border rounded-lg px-3 py-2 text-sm mb-2"
                   >
                     <option value="">Elige una etiqueta…</option>
@@ -316,11 +340,21 @@ export default function HotActivity() {
                 {hotAudience === "plan" && (
                   <select
                     value={hotPlanId}
-                    onChange={e => { setHotPlanId(e.target.value); refreshHotCount("plan", "", e.target.value) }}
+                    onChange={e => { setHotPlanId(e.target.value); refreshHotCount("plan", "", e.target.value, "") }}
                     className="w-full border rounded-lg px-3 py-2 text-sm mb-2"
                   >
                     <option value="">Elige un smart plan…</option>
                     {hotPlans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                )}
+                {hotAudience === "stage" && (
+                  <select
+                    value={hotStageId}
+                    onChange={e => { setHotStageId(e.target.value); refreshHotCount("stage", "", "", e.target.value) }}
+                    className="w-full border rounded-lg px-3 py-2 text-sm mb-2"
+                  >
+                    <option value="">Elige una etapa…</option>
+                    {hotStages.map(s => <option key={s.id} value={s.id}>{s.pipeline ? `${s.pipeline} · ` : ""}{s.name} ({s.count})</option>)}
                   </select>
                 )}
 
@@ -329,21 +363,42 @@ export default function HotActivity() {
                     ? "Elige una etiqueta para ver los destinatarios."
                     : (hotAudience === "plan" && !hotPlanId)
                       ? "Elige un smart plan para ver los destinatarios."
-                      : hotRecipientCount === null
+                      : (hotAudience === "stage" && !hotStageId)
+                        ? "Elige una etapa para ver los destinatarios."
+                        : hotRecipientCount === null
                         ? <span className="flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Calculando destinatarios…</span>
                         : hotRecipientCount === 0
                           ? "No hay destinatarios con email para ese público. Nadie recibirá el correo."
                           : <>Se enviará a <strong>{hotRecipientCount}</strong> destinatario{hotRecipientCount === 1 ? "" : "s"} con email.</>}
                 </div>
-                <div className="flex items-center justify-end gap-2">
-                  <button onClick={() => setHotEmailOpen(false)} disabled={hotSending} className="text-sm font-medium text-gray-600 px-4 py-2 rounded-lg hover:bg-gray-100">Cancelar</button>
+                {/* Email preview */}
+                {hotPreviewHtml !== null && (
+                  <div className="mb-4 border border-gray-200 rounded-xl overflow-hidden">
+                    <div className="flex items-center justify-between bg-gray-50 px-3 py-1.5 border-b border-gray-200">
+                      <span className="text-xs font-semibold text-gray-500">Vista previa del email</span>
+                      <button onClick={() => setHotPreviewHtml(null)} className="text-gray-400 hover:text-gray-700" title="Cerrar vista previa"><X className="w-3.5 h-3.5" /></button>
+                    </div>
+                    <iframe title="Vista previa" srcDoc={hotPreviewHtml} className="w-full h-72 bg-white" />
+                  </div>
+                )}
+                <div className="flex items-center justify-between gap-2">
                   <button
-                    onClick={sendHotEmail}
-                    disabled={hotSending || hotRecipientCount === null || hotRecipientCount === 0}
-                    className="text-sm font-semibold text-white bg-orange-500 hover:bg-orange-600 disabled:opacity-50 px-4 py-2 rounded-lg flex items-center gap-2"
+                    onClick={previewHotEmail}
+                    disabled={hotPreviewLoading}
+                    className="text-sm font-medium text-lofty-700 px-3 py-2 rounded-lg hover:bg-gray-100 flex items-center gap-1.5 disabled:opacity-50"
                   >
-                    {hotSending ? <><Loader2 className="w-4 h-4 animate-spin" /> Enviando…</> : <>Enviar ahora</>}
+                    {hotPreviewLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />} Vista previa
                   </button>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setHotEmailOpen(false)} disabled={hotSending} className="text-sm font-medium text-gray-600 px-4 py-2 rounded-lg hover:bg-gray-100">Cancelar</button>
+                    <button
+                      onClick={sendHotEmail}
+                      disabled={hotSending || hotRecipientCount === null || hotRecipientCount === 0}
+                      className="text-sm font-semibold text-white bg-orange-500 hover:bg-orange-600 disabled:opacity-50 px-4 py-2 rounded-lg flex items-center gap-2"
+                    >
+                      {hotSending ? <><Loader2 className="w-4 h-4 animate-spin" /> Enviando…</> : <>Enviar ahora</>}
+                    </button>
+                  </div>
                 </div>
               </>
             ) : (
