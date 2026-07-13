@@ -28,6 +28,11 @@ export default function HotActivity() {
   const [hotRecipientCount, setHotRecipientCount] = useState<number | null>(null)
   const [hotSending, setHotSending] = useState(false)
   const [hotSent, setHotSent] = useState<number | null>(null)
+  const [hotAudience, setHotAudience] = useState<"engaged" | "all" | "tag" | "plan">("engaged")
+  const [hotTags, setHotTags] = useState<{ id: string; name: string; count: number }[]>([])
+  const [hotPlans, setHotPlans] = useState<{ id: string; name: string }[]>([])
+  const [hotTagId, setHotTagId] = useState("")
+  const [hotPlanId, setHotPlanId] = useState("")
 
   async function toggleProperty(id: string) {
     if (expandedProp === id) { setExpandedProp(null); return }
@@ -56,15 +61,31 @@ export default function HotActivity() {
       .finally(() => setLoaded(true))
   }, [])
 
+  async function refreshHotCount(audience: string, tagId: string, planId: string) {
+    setHotRecipientCount(null)
+    // A tag/plan audience with nothing chosen yet has no count to fetch.
+    if ((audience === "tag" && !tagId) || (audience === "plan" && !planId)) return
+    const qs = new URLSearchParams({ audience })
+    if (audience === "tag") qs.set("tagId", tagId)
+    if (audience === "plan") qs.set("planId", planId)
+    try {
+      const res = await fetch(`/api/dashboard/hot-properties-email?${qs.toString()}`)
+      const d = await res.json()
+      if (d.ok) {
+        setHotRecipientCount(d.recipientCount ?? 0)
+        if (Array.isArray(d.tags)) setHotTags(d.tags)
+        if (Array.isArray(d.plans)) setHotPlans(d.plans)
+      }
+    } catch { setHotRecipientCount(0) }
+  }
+
   async function openHotEmail() {
     setHotEmailOpen(true)
     setHotSent(null)
-    setHotRecipientCount(null)
-    try {
-      const res = await fetch("/api/dashboard/hot-properties-email")
-      const d = await res.json()
-      if (d.ok) setHotRecipientCount(d.recipientCount ?? 0)
-    } catch { setHotRecipientCount(0) }
+    setHotAudience("engaged")
+    setHotTagId("")
+    setHotPlanId("")
+    await refreshHotCount("engaged", "", "")
   }
 
   async function sendHotEmail() {
@@ -73,7 +94,7 @@ export default function HotActivity() {
       const res = await fetch("/api/dashboard/hot-properties-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ propertyIds: visibleProperties.map(p => p.id) }),
+        body: JSON.stringify({ propertyIds: visibleProperties.map(p => p.id), audience: hotAudience, tagId: hotTagId, planId: hotPlanId }),
       })
       const d = await res.json()
       setHotSent(d.ok ? (d.sent ?? 0) : 0)
@@ -267,14 +288,52 @@ export default function HotActivity() {
                   <Mail className="w-5 h-5 text-orange-500" /> Enviar propiedades HOT 🔥
                 </h3>
                 <p className="text-sm text-gray-600 mb-4">
-                  Se enviará un email con las <strong>{visibleProperties.length}</strong> propiedad{visibleProperties.length === 1 ? "" : "es"} popular{visibleProperties.length === 1 ? "" : "es"} de esta lista, presentadas como <strong>“HOT en el mercado”</strong>, a tus <strong>compradores interesados</strong> (los que han guardado o visto 3+ propiedades y tienen email).
+                  Se enviará un email con las <strong>{visibleProperties.length}</strong> propiedad{visibleProperties.length === 1 ? "" : "es"} popular{visibleProperties.length === 1 ? "" : "es"} de esta lista, presentadas como <strong>“HOT en el mercado”</strong>.
                 </p>
-                <div className="rounded-xl bg-orange-50 border border-orange-100 p-3 text-sm text-orange-800 mb-5">
-                  {hotRecipientCount === null
-                    ? <span className="flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Calculando destinatarios…</span>
-                    : hotRecipientCount === 0
-                      ? "Ahora mismo no hay compradores interesados con email disponible. Nadie recibirá el correo."
-                      : <>Se enviará a <strong>{hotRecipientCount}</strong> comprador{hotRecipientCount === 1 ? "" : "es"} interesado{hotRecipientCount === 1 ? "" : "s"}.</>}
+
+                {/* Audience picker */}
+                <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Enviar a</label>
+                <select
+                  value={hotAudience}
+                  onChange={e => { const a = e.target.value as typeof hotAudience; setHotAudience(a); refreshHotCount(a, hotTagId, hotPlanId) }}
+                  className="w-full border rounded-lg px-3 py-2 text-sm mb-2"
+                >
+                  <option value="engaged">Compradores interesados (3+ vistas/guardados)</option>
+                  <option value="all">Todos los leads</option>
+                  <option value="tag">Por etiqueta…</option>
+                  <option value="plan">Por smart plan…</option>
+                </select>
+                {hotAudience === "tag" && (
+                  <select
+                    value={hotTagId}
+                    onChange={e => { setHotTagId(e.target.value); refreshHotCount("tag", e.target.value, "") }}
+                    className="w-full border rounded-lg px-3 py-2 text-sm mb-2"
+                  >
+                    <option value="">Elige una etiqueta…</option>
+                    {hotTags.map(t => <option key={t.id} value={t.id}>{t.name} ({t.count})</option>)}
+                  </select>
+                )}
+                {hotAudience === "plan" && (
+                  <select
+                    value={hotPlanId}
+                    onChange={e => { setHotPlanId(e.target.value); refreshHotCount("plan", "", e.target.value) }}
+                    className="w-full border rounded-lg px-3 py-2 text-sm mb-2"
+                  >
+                    <option value="">Elige un smart plan…</option>
+                    {hotPlans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                )}
+
+                <div className="rounded-xl bg-orange-50 border border-orange-100 p-3 text-sm text-orange-800 mb-5 mt-1">
+                  {(hotAudience === "tag" && !hotTagId)
+                    ? "Elige una etiqueta para ver los destinatarios."
+                    : (hotAudience === "plan" && !hotPlanId)
+                      ? "Elige un smart plan para ver los destinatarios."
+                      : hotRecipientCount === null
+                        ? <span className="flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Calculando destinatarios…</span>
+                        : hotRecipientCount === 0
+                          ? "No hay destinatarios con email para ese público. Nadie recibirá el correo."
+                          : <>Se enviará a <strong>{hotRecipientCount}</strong> destinatario{hotRecipientCount === 1 ? "" : "s"} con email.</>}
                 </div>
                 <div className="flex items-center justify-end gap-2">
                   <button onClick={() => setHotEmailOpen(false)} disabled={hotSending} className="text-sm font-medium text-gray-600 px-4 py-2 rounded-lg hover:bg-gray-100">Cancelar</button>
