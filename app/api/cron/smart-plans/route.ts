@@ -151,10 +151,10 @@ export async function GET(req: Request) {
               channel = "WHATSAPP"
             } catch (waErr: any) {
               console.warn("[smart-plans] WhatsApp failed despite open session, falling back to SMS:", waErr?.message)
-              await sendSMS(toPhone, filledContent).catch(e => console.error("[smart-plans] SMS also failed:", e))
+              await sendSMS(toPhone, filledContent, undefined, { automated: true, contactId: contact.id }).catch(e => console.error("[smart-plans] SMS also failed:", e))
             }
           } else {
-            await sendSMS(toPhone, filledContent).catch(e => console.error("[smart-plans] SMS failed:", e))
+            await sendSMS(toPhone, filledContent, undefined, { automated: true, contactId: contact.id }).catch(e => console.error("[smart-plans] SMS failed:", e))
           }
 
           await prisma.activity.create({

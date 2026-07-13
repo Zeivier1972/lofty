@@ -898,13 +898,24 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
   const [newTagName, setNewTagName] = useState("")
   const [newTagColor, setNewTagColor] = useState("#3B82F6")
 
-  // Automated-SMS kill switch (budget control)
+  // Automated-SMS kill switch + monthly budget cap (cost control)
   const [smsPaused, setSmsPaused] = useState(false)
   const [smsPauseLoading, setSmsPauseLoading] = useState(true)
+  const [smsCap, setSmsCap] = useState<number>(100)
+  const [smsCapInput, setSmsCapInput] = useState<string>("100")
+  const [smsSpent, setSmsSpent] = useState<number>(0)
+  const [smsSent, setSmsSent] = useState<number>(0)
+  const [smsCapReached, setSmsCapReached] = useState(false)
   useEffect(() => {
     fetch("/api/settings/sms-pause")
       .then(r => r.json())
-      .then(d => setSmsPaused(!!d.paused))
+      .then(d => {
+        setSmsPaused(!!d.paused)
+        if (typeof d.monthlyCap === "number") { setSmsCap(d.monthlyCap); setSmsCapInput(String(d.monthlyCap)) }
+        if (typeof d.spentThisMonth === "number") setSmsSpent(d.spentThisMonth)
+        if (typeof d.sentThisMonth === "number") setSmsSent(d.sentThisMonth)
+        setSmsCapReached(!!d.capReached)
+      })
       .catch(() => {})
       .finally(() => setSmsPauseLoading(false))
   }, [])
@@ -921,6 +932,21 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
     } catch {
       setSmsPaused(!next)
       toast({ title: "No se pudo cambiar — intenta de nuevo", variant: "destructive" })
+    }
+  }
+  const saveSmsCap = async () => {
+    const cap = Math.max(0, Number(smsCapInput) || 0)
+    setSmsCap(cap)
+    try {
+      const res = await fetch("/api/settings/sms-pause", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ monthlyCap: cap }),
+      })
+      if (!res.ok) throw new Error()
+      toast({ title: cap > 0 ? `💰 Tope mensual guardado: $${cap}` : "Tope mensual desactivado" })
+    } catch {
+      toast({ title: "No se pudo guardar el tope — intenta de nuevo", variant: "destructive" })
     }
   }
 
@@ -1363,6 +1389,34 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
                   {smsPauseLoading
                     ? <Loader2 className="w-5 h-5 animate-spin text-gray-300" />
                     : <Switch checked={smsPaused} onCheckedChange={toggleSmsPause} />}
+                </div>
+              </CardContent>
+              {/* Hard monthly budget cap — auto-pauses automated texts when the
+                  month's estimated spend hits the tope. Self-resets each month. */}
+              <CardContent className="px-5 pb-5 pt-0 border-t border-gray-100">
+                <div className="pt-4">
+                  <p className="text-sm font-bold text-gray-900 flex items-center gap-2">💰 Tope de gasto mensual en textos</p>
+                  <p className="text-xs text-gray-500 mt-1 max-w-xl">
+                    Cuando el gasto estimado del mes llega a este tope, Sofía <strong>deja de enviar textos automáticos</strong> por sí sola hasta el mes siguiente. Pon <strong>0</strong> para no tener tope.
+                  </p>
+                  <div className="flex items-center gap-2 mt-3">
+                    <span className="text-gray-500 text-sm">$</span>
+                    <input
+                      type="number" min={0} step={10}
+                      value={smsCapInput}
+                      onChange={e => setSmsCapInput(e.target.value)}
+                      className="w-28 border rounded-md px-3 py-1.5 text-sm"
+                    />
+                    <span className="text-gray-500 text-sm">/ mes</span>
+                    <Button size="sm" variant="outline" onClick={saveSmsCap} disabled={Number(smsCapInput) === smsCap}>Guardar tope</Button>
+                  </div>
+                  <p className="text-xs mt-2.5">
+                    <span className={cn("font-semibold", smsCapReached ? "text-red-600" : "text-gray-600")}>
+                      Este mes: ~${smsSpent.toFixed(2)} estimado · {smsSent.toLocaleString()} textos enviados
+                    </span>
+                    {smsCap > 0 && <span className="text-gray-400"> · tope ${smsCap}</span>}
+                  </p>
+                  {smsCapReached && <p className="text-xs text-red-600 font-semibold mt-1">⚠️ Tope alcanzado — los textos automáticos están en pausa hasta el próximo mes.</p>}
                 </div>
               </CardContent>
             </Card>

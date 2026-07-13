@@ -69,6 +69,29 @@ async function flagNumberUndeliverable(digits10: string, reason: string) {
   } catch { /* best-effort */ }
 }
 
+// Hard monthly budget guardrail for AUTOMATED texting. When this calendar
+// month's estimated SMS spend reaches the cap, all further automated texts are
+// held until the next month (the count resets on its own — no manual step).
+// Manual agent texts are never capped. Configure the cap in Settings, or via
+// env; the per-message estimate is intentionally a bit conservative so we stop
+// before overshooting the real Twilio bill.
+const SMS_EST_COST_PER_MSG = Number(process.env.SMS_EST_COST_PER_MSG || 0.03)
+const SMS_MONTHLY_CAP_DEFAULT = Number(process.env.SMS_MONTHLY_CAP_USD || 100)
+
+export async function smsSpendThisMonth(): Promise<{ count: number; spent: number; cap: number; over: boolean }> {
+  const capRow = await prisma.setting.findUnique({ where: { key: "sms_monthly_cap_usd" } }).catch(() => null)
+  const cap = capRow?.value != null && capRow.value !== "" ? Number(capRow.value) : SMS_MONTHLY_CAP_DEFAULT
+  const now = new Date()
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+  const count = await prisma.sMSMessage.count({
+    where: { direction: "OUTBOUND", createdAt: { gte: monthStart }, status: { not: "BLOCKED" } },
+  }).catch(() => 0)
+  const spent = count * SMS_EST_COST_PER_MSG
+  // cap <= 0 means "no cap"
+  const over = cap > 0 && spent >= cap
+  return { count, spent, cap, over }
+}
+
 // opts.automated = an automated/system SMS (drip, call-outreach, welcome).
 // These obey a per-contact cooldown: at most ONE automated text per contact
 // per SMS_MIN_GAP_HOURS (default 20h) — so a lead can't be blasted with a
@@ -127,6 +150,35 @@ export async function sendSMS(
       const paused = await prisma.setting.findUnique({ where: { key: "sms_paused" }, select: { value: true } })
       if (paused?.value === "true") {
         console.log(`[SMS PAUSED — global kill switch] ${to}: automated send skipped`)
+        return null
+      }
+    } catch { /* if the check fails, fall through and send */ }
+  }
+
+  // Hard monthly budget cap: once this month's estimated automated spend hits
+  // the cap, hold all further automated texts. Self-resets next month.
+  if (opts?.automated) {
+    try {
+      const { over, spent, cap } = await smsSpendThisMonth()
+      if (over) {
+        console.log(`[SMS BUDGET CAP] month est $${spent.toFixed(2)} ≥ $${cap} — holding automated send to ${to}`)
+        // Notify the agent once per month that the cap was reached.
+        const now = new Date()
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+        const already = await prisma.aINotification.findFirst({
+          where: { type: "SMS_BUDGET_CAP", createdAt: { gte: monthStart } },
+          select: { id: true },
+        }).catch(() => null)
+        if (!already) {
+          prisma.aINotification.create({
+            data: {
+              type: "SMS_BUDGET_CAP",
+              title: "💸 Límite mensual de textos alcanzado",
+              body: `Los textos automáticos se pausaron: el gasto estimado del mes (~$${spent.toFixed(0)}) llegó al tope de $${cap}. Se reanudan solos el mes que viene, o sube el tope en Configuración.`,
+              priority: "HIGH",
+            },
+          }).catch(() => {})
+        }
         return null
       }
     } catch { /* if the check fails, fall through and send */ }
