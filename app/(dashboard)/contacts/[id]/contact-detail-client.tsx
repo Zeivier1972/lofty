@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, type ChangeEvent } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
@@ -306,6 +306,42 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
   const [activeTab, setActiveTab] = useState<TabId>("overview")
   const [showMobileSidebar, setShowMobileSidebar] = useState(false)
   const [noteType, setNoteType] = useState("Note")
+
+  // @mention partners in notes → they get pinged about the note
+  const [mentionPartners, setMentionPartners] = useState<{ id: string; name: string }[]>([])
+  const [mentionOpen, setMentionOpen] = useState(false)
+  const [mentionResults, setMentionResults] = useState<{ id: string; name: string }[]>([])
+  const [mentionRange, setMentionRange] = useState<{ start: number; end: number }>({ start: 0, end: 0 })
+  useEffect(() => {
+    fetch("/api/referral-partners")
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setMentionPartners(d.filter((p: any) => p.isActive).map((p: any) => ({ id: p.id, name: p.name }))) })
+      .catch(() => {})
+  }, [])
+
+  const handleNoteChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value
+    setNewNote(value)
+    const caret = e.target.selectionStart ?? value.length
+    const m = value.slice(0, caret).match(/@([A-Za-zÀ-ÿ0-9._-]*)$/)
+    if (m && mentionPartners.length) {
+      const q = m[1].toLowerCase()
+      const results = mentionPartners.filter(p => p.name.toLowerCase().includes(q)).slice(0, 6)
+      setMentionResults(results)
+      setMentionRange({ start: caret - m[0].length, end: caret })
+      setMentionOpen(results.length > 0)
+    } else {
+      setMentionOpen(false)
+    }
+  }
+
+  const insertMention = (name: string) => {
+    const first = name.trim().split(/\s+/)[0]
+    const before = newNote.slice(0, mentionRange.start)
+    const after = newNote.slice(mentionRange.end)
+    setNewNote(`${before}@${first} ${after}`)
+    setMentionOpen(false)
+  }
   const [updatingStage, setUpdatingStage] = useState(false)
   const [currentPipeline, setCurrentPipeline] = useState(contact.pipelineLeads?.[0])
   const [sofiaLoading, setSofiaLoading] = useState(false)
@@ -931,13 +967,34 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
                         <option>Appointment</option>
                       </select>
                     </div>
-                    <Textarea
-                      placeholder={`Add a ${noteType.toLowerCase()}...`}
-                      value={newNote}
-                      onChange={e => setNewNote(e.target.value)}
-                      rows={2}
-                      className="resize-none border-0 p-0 focus-visible:ring-0 text-sm placeholder-gray-300"
-                    />
+                    <div className="relative">
+                      <Textarea
+                        placeholder={`Add a ${noteType.toLowerCase()}...  (escribe @ para avisar a un socio)`}
+                        value={newNote}
+                        onChange={handleNoteChange}
+                        rows={2}
+                        className="resize-none border-0 p-0 focus-visible:ring-0 text-sm placeholder-gray-300"
+                      />
+                      {mentionOpen && (
+                        <div className="absolute z-20 left-0 mt-1 w-64 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+                          <p className="text-[11px] font-semibold text-gray-400 px-3 pt-2 pb-1 uppercase">Avisar a un socio</p>
+                          {mentionResults.map(p => (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onMouseDown={e => { e.preventDefault(); insertMention(p.name) }}
+                              className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                            >
+                              <span className="w-6 h-6 rounded-full bg-lofty-100 text-lofty-700 text-xs font-bold flex items-center justify-center">{p.name.charAt(0).toUpperCase()}</span>
+                              {p.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {newNote.includes("@") && (
+                      <p className="text-[11px] text-gray-400 mt-1">Los socios que menciones con @ recibirán un email/texto con esta nota.</p>
+                    )}
                     <div className="flex justify-end mt-2">
                       <Button onClick={addNote} disabled={isAddingNote || !newNote.trim()} size="sm"
                         className="bg-lofty-600 hover:bg-lofty-700 gap-1.5">
