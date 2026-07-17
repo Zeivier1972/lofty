@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 import { prisma } from "@/lib/prisma"
 import { PrintButton } from "./print-button"
 import { fetchPexelsPhoto } from "@/lib/pexels-video"
+import { searchIdxListings, fetchPrimaryPhotos } from "@/lib/bridge"
 
 export const revalidate = 0
 
@@ -12,10 +13,6 @@ const HERO_FALLBACKS = [
   "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=900&q=80&auto=format&fit=crop", // luxury home pool
   "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=900&q=80&auto=format&fit=crop", // Miami condo towers
 ]
-function firstImage(images: string | null): string | null {
-  if (!images) return null
-  try { const a = JSON.parse(images); return Array.isArray(a) && typeof a[0] === "string" ? a[0] : null } catch { return null }
-}
 const priceStr = (p: number | null) =>
   p == null ? "" : (p >= 1_000_000 ? `$${(p / 1_000_000).toFixed(p % 1_000_000 === 0 ? 0 : 1)}M` : `$${p.toLocaleString()}`)
 
@@ -83,16 +80,23 @@ export default async function GuidePage({ params }: { params: { keyword: string 
   const pexels = await fetchPexelsPhoto(`${magnet.title} ${slug}`).catch(() => null)
   const heroImage = pexels || HERO_FALLBACKS[Math.abs(slug.length) % HERO_FALLBACKS.length]
 
-  // A few live listings with photos → real property images + links to the site.
-  const rawProps = await prisma.property.findMany({
-    where: { status: "ACTIVE", images: { not: null } },
-    orderBy: { createdAt: "desc" },
-    take: 6,
-    select: { id: true, mlsId: true, address: true, city: true, price: true, bedrooms: true, bathrooms: true, sqft: true, images: true },
-  }).catch(() => [])
-  const properties = rawProps
-    .map(p => ({ ...p, photo: firstImage(p.images) }))
-    .filter(p => p.photo)
+  // A few LIVE MLS listings with real photos (same source as the property
+  // texts/emails), so this stays populated + fresh regardless of the local cache.
+  const listings = await searchIdxListings({ cities: ["Miami"], limit: 8 }).catch(() => [] as any[])
+  const photoMap = listings.length
+    ? await fetchPrimaryPhotos(listings.map((l: any) => l.ListingKey).filter(Boolean)).catch(() => ({} as Record<string, string>))
+    : {}
+  const properties = (listings as any[])
+    .map((l: any) => ({
+      key: l.ListingKey as string,
+      photo: photoMap[l.ListingKey],
+      price: (l.ListPrice ?? null) as number | null,
+      city: (l.City || "Miami") as string,
+      beds: l.BedroomsTotal ?? null,
+      baths: l.BathroomsTotalDecimal ?? null,
+      sqft: l.LivingArea ?? null,
+    }))
+    .filter(p => p.key && p.photo)
     .slice(0, 3)
 
   return (
@@ -123,18 +127,18 @@ export default async function GuidePage({ params }: { params: { keyword: string 
             <div className="guide-prop-grid">
               {properties.map(p => {
                 const specs = [
-                  p.bedrooms != null ? `${p.bedrooms} hab` : "",
-                  p.bathrooms != null ? `${p.bathrooms} baños` : "",
-                  p.sqft != null ? `${p.sqft.toLocaleString()} sqft` : "",
+                  p.beds != null ? `${p.beds} hab` : "",
+                  p.baths != null ? `${p.baths} baños` : "",
+                  p.sqft != null ? `${Number(p.sqft).toLocaleString()} sqft` : "",
                 ].filter(Boolean).join(" · ")
-                const href = p.mlsId ? `${appUrl}/homes/${encodeURIComponent(p.mlsId)}` : `${appUrl}/homes`
+                const href = `${appUrl}/homes/${encodeURIComponent(p.key)}`
                 return (
-                  <a key={p.id} href={href} target="_blank" rel="noopener noreferrer" className="guide-prop-card">
+                  <a key={p.key} href={href} target="_blank" rel="noopener noreferrer" className="guide-prop-card">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={p.photo as string} alt={p.address} />
+                    <img src={p.photo as string} alt={p.city} />
                     <div className="guide-prop-info">
                       {p.price != null && <p className="guide-prop-price">{priceStr(p.price)}</p>}
-                      <p className="guide-prop-addr">{p.city}</p>
+                      <p className="guide-prop-addr">{p.city}, FL</p>
                       {specs && <p className="guide-prop-specs">{specs}</p>}
                     </div>
                   </a>
