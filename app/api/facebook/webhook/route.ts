@@ -38,6 +38,47 @@ const INTENT_TAG_COLORS: Record<string, string> = {
   explorando: "#94A3B8",
 }
 
+const normKw = (s: string) => s.toLowerCase()
+  .replace(/[áä]/g, "a").replace(/[éë]/g, "e").replace(/[íï]/g, "i")
+  .replace(/[óö]/g, "o").replace(/[úü]/g, "u").replace(/ñ/g, "n")
+
+// Match an incoming message to an active campaign / lead-magnet trigger keyword.
+// Returns the canonical campaign keyword (so we deliver the right PDF).
+async function matchTriggerKeyword(text: string): Promise<string | null> {
+  const t = normKw(text)
+  try {
+    const campaigns = await prisma.facebookBotCampaign.findMany({ where: { isActive: true }, select: { keyword: true, keywords: true } })
+    for (const c of campaigns) {
+      const kws = (c.keywords ? c.keywords.split(",") : []).map((k: string) => k.trim()).filter(Boolean)
+      kws.push(c.keyword)
+      if (kws.some((kw: string) => kw && t.includes(normKw(kw)))) return c.keyword
+    }
+  } catch { /* ignore */ }
+  const lm = await detectKeyword(text).catch(() => null)
+  return lm && lm !== "LISTO" ? lm : null
+}
+
+// Deliver the PDF/guide for a keyword over Messenger/Instagram DM. Returns true
+// if something was sent. Aligned to the keyword — no generic property dump.
+async function deliverKeywordPdfDM(psid: string, keyword: string): Promise<boolean> {
+  try {
+    const magnet = await prisma.leadMagnet.findUnique({ where: { keyword } }).catch(() => null)
+    if (magnet?.guideUrl) {
+      await sendFacebookMessage(psid, `📚 Aquí está tu guía "${magnet.title}":\n${magnet.guideUrl}\n\n¿Tienes alguna pregunta sobre esto? Escríbeme aquí 😊`)
+      return true
+    }
+    const campaign = await prisma.facebookBotCampaign.findUnique({ where: { keyword } }).catch(() => null)
+    if (campaign?.pdfUrl) {
+      const brochureUrl = `${process.env.NEXT_PUBLIC_APP_URL || ""}/brochure/${keyword}`
+      await sendFacebookMessage(psid, `📄 ${campaign.pdfName || "Documento exclusivo"}:\n${brochureUrl}\n\n¿Tienes alguna pregunta? Escríbeme aquí 😊`)
+      return true
+    }
+  } catch (e) {
+    console.error("[FB bot] deliverKeywordPdfDM failed:", e)
+  }
+  return false
+}
+
 // GET — Meta webhook verification
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
@@ -288,6 +329,24 @@ export async function POST(req: Request) {
         if (convo.state === "OPTED_OUT") continue
 
         if (convo.state === "COMPLETE") {
+          // Keyword re-trigger: a SHORT message that is a campaign/lead-magnet
+          // keyword delivers THAT PDF (aligned with the keyword) instead of a
+          // generic AI reply + property dump. Longer questions still go to the
+          // AI. This is the designed behavior: keyword → its PDF.
+          const shortMsg = text.trim().split(/\s+/).length <= 4 && text.trim().length <= 40
+          if (shortMsg) {
+            const reKw = await matchTriggerKeyword(text)
+            if (reKw) {
+              const sent = await deliverKeywordPdfDM(psid, reKw)
+              if (sent) {
+                if (reKw !== convo.campaignKeyword) {
+                  await prisma.facebookBotConversation.update({ where: { psid }, data: { campaignKeyword: reKw } }).catch(() => {})
+                }
+                continue
+              }
+            }
+          }
+
           const result = await generateSocialAIReply(text, {
             firstName: convo.firstName,
             intent: convo.intent,
