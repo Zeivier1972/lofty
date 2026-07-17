@@ -17,9 +17,12 @@ function slugify(keyword: string): string {
 
 export async function generateGuideFromScript(
   script: string,
-  { overwrite = false }: { overwrite?: boolean } = {}
+  { overwrite = false, keyword: keywordOverride }: { overwrite?: boolean; keyword?: string } = {}
 ): Promise<{ keyword: string; title: string; guideUrl: string; skipped?: boolean } | null> {
-  const keyword = extractKeyword(script)
+  // Explicit keyword (external-content flow) wins; otherwise pull it from the
+  // script's "Comenta KEYWORD" CTA.
+  const cleaned = keywordOverride?.trim().toUpperCase().replace(/[^A-ZÁÉÍÓÚÜÑ0-9]/g, "")
+  const keyword = cleaned || extractKeyword(script)
   if (!keyword) return null
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
