@@ -951,6 +951,8 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
   const [extPdfUrl, setExtPdfUrl] = useState<string | null>(null)
   const [extKeyword, setExtKeyword] = useState("")
   const [extPdfConflict, setExtPdfConflict] = useState<string | null>(null)
+  const [extBlogSaving, setExtBlogSaving] = useState(false)
+  const [extBlogUrl, setExtBlogUrl] = useState<string | null>(null)
   const [publishing, setPublishing] = useState(false)
   const [publishResult, setPublishResult] = useState<"idle" | "success" | "error">("idle")
   const [publishError, setPublishError] = useState("")
@@ -1184,6 +1186,27 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
       toast({ title: "Error generando SEO/AIO", description: e.message, variant: "destructive" })
     } finally {
       setExtLoading(false)
+    }
+  }
+
+  const saveAioToBlog = async () => {
+    if (!extResult?.aio) { toast({ title: "Genera SEO + AIO primero", variant: "destructive" }); return }
+    setExtBlogSaving(true)
+    setExtBlogUrl(null)
+    try {
+      const res = await fetch("/api/content/aio-to-blog", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: extResult.title, keyword: extResult.keyword, secondaryKeywords: extResult.secondaryKeywords, aio: extResult.aio }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.ok) throw new Error(data.error || "Error")
+      setExtBlogUrl(data.url)
+      toast({ title: "Publicado en el blog ✅", description: "Ya es una página FAQ pública para SEO/AIO." })
+    } catch (e: any) {
+      toast({ title: "Error publicando en el blog", description: e.message, variant: "destructive" })
+    } finally {
+      setExtBlogSaving(false)
     }
   }
 
@@ -1568,8 +1591,23 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
 
             {extResult.aio && (extResult.aio.question || extResult.aio.answer) && (
               <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-4">
-                <p className="text-xs font-bold text-indigo-700 uppercase mb-1">AIO · Optimización para motores de IA</p>
-                <p className="text-[11px] text-gray-500 mb-2">Así es como ChatGPT, Perplexity y Google AI pueden citar tu contenido.</p>
+                <div className="flex items-start justify-between gap-2 mb-1">
+                  <p className="text-xs font-bold text-indigo-700 uppercase">AIO · Optimización para motores de IA</p>
+                  <button
+                    onClick={saveAioToBlog}
+                    disabled={extBlogSaving}
+                    className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg px-2.5 py-1.5 transition-colors disabled:opacity-60"
+                    title="Publica esto como una página FAQ en tu blog para que Google AI y ChatGPT te citen"
+                  >
+                    {extBlogSaving ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Publicando…</> : <><Globe className="w-3.5 h-3.5" /> Guardar en el blog</>}
+                  </button>
+                </div>
+                <p className="text-[11px] text-gray-500 mb-2">Así es como ChatGPT, Perplexity y Google AI pueden citar tu contenido. Publícalo como página FAQ en tu blog con un clic.</p>
+                {extBlogUrl && (
+                  <a href={extBlogUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs text-indigo-700 font-semibold hover:underline mb-2">
+                    <ExternalLink className="w-3.5 h-3.5" /> Ver la página publicada
+                  </a>
+                )}
                 <div className="space-y-2 text-sm">
                   {extResult.aio.question && <div><span className="text-gray-400 text-xs">Pregunta que responde</span><p className="font-semibold text-gray-800">{extResult.aio.question}</p></div>}
                   {extResult.aio.answer && <div><span className="text-gray-400 text-xs">Respuesta directa</span><p className="text-gray-700">{extResult.aio.answer}</p></div>}
