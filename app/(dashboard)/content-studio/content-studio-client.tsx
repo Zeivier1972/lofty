@@ -949,6 +949,8 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
   const [extResult, setExtResult] = useState<any | null>(null)
   const [extPdfLoading, setExtPdfLoading] = useState(false)
   const [extPdfUrl, setExtPdfUrl] = useState<string | null>(null)
+  const [extKeyword, setExtKeyword] = useState("")
+  const [extPdfConflict, setExtPdfConflict] = useState<string | null>(null)
   const [publishing, setPublishing] = useState(false)
   const [publishResult, setPublishResult] = useState<"idle" | "success" | "error">("idle")
   const [publishError, setPublishError] = useState("")
@@ -1185,20 +1187,27 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
     }
   }
 
-  const generateExtPdf = async () => {
+  const generateExtPdf = async (overwrite = false) => {
     if (!extContent.trim()) { toast({ title: "Pega el contenido primero", variant: "destructive" }); return }
+    if (!extKeyword.trim()) { toast({ title: "Escribe una palabra clave (trigger) para el PDF", variant: "destructive" }); return }
     setExtPdfLoading(true)
-    setExtPdfUrl(null)
+    if (!overwrite) { setExtPdfUrl(null); setExtPdfConflict(null) }
     try {
       const res = await fetch("/api/ai/generate-guide", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ script: extContent }),
+        body: JSON.stringify({ script: extContent, keyword: extKeyword, overwrite }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
+      // Keyword already had a PDF and we didn't overwrite → ask before clobbering.
+      if (data.skipped && !overwrite) {
+        setExtPdfConflict(data.keyword)
+        return
+      }
+      setExtPdfConflict(null)
       setExtPdfUrl(data.guideUrl)
-      toast({ title: `PDF creado para "${data.keyword}" ✅`, description: data.title })
+      toast({ title: `PDF listo para "${data.keyword}" ✅`, description: "Ya aparece en Campañas para Instagram y Facebook." })
     } catch (e: any) {
       toast({ title: "Error creando PDF", description: e.message, variant: "destructive" })
     } finally {
@@ -1479,28 +1488,56 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
           ))}
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={generateExtSeoAio}
-            disabled={extLoading || !extContent.trim()}
-            className="flex-1 min-w-[200px] flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl text-sm font-semibold hover:from-purple-700 hover:to-indigo-700 transition-all disabled:opacity-60"
-          >
-            {extLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Generando SEO + AIO…</> : <><Sparkles className="w-4 h-4" /> Generar SEO + AIO para {extPlatform}</>}
-          </button>
-          <button
-            onClick={generateExtPdf}
-            disabled={extPdfLoading || !extContent.trim()}
-            className="flex items-center justify-center gap-2 py-2.5 px-4 bg-white border border-purple-300 text-purple-700 rounded-xl text-sm font-semibold hover:bg-purple-50 transition-colors disabled:opacity-60"
-          >
-            {extPdfLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Creando PDF…</> : <>📄 Crear PDF con keyword</>}
-          </button>
-        </div>
+        <button
+          onClick={generateExtSeoAio}
+          disabled={extLoading || !extContent.trim()}
+          className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl text-sm font-semibold hover:from-purple-700 hover:to-indigo-700 transition-all disabled:opacity-60 mb-4"
+        >
+          {extLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Generando SEO + AIO…</> : <><Sparkles className="w-4 h-4" /> Generar SEO + AIO para {extPlatform}</>}
+        </button>
 
-        {extPdfUrl && (
-          <a href={extPdfUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 mt-3 text-sm text-purple-700 font-semibold hover:underline">
-            <Download className="w-4 h-4" /> Descargar PDF
-          </a>
-        )}
+        {/* PDF with its own trigger keyword */}
+        <div className="rounded-xl border border-gray-200 p-3">
+          <p className="text-xs font-semibold text-gray-600 mb-1">PDF descargable + trigger de Instagram/Facebook</p>
+          <p className="text-[11px] text-gray-400 mb-2">Escribe la palabra clave (trigger). Cuando alguien la comente en tus posts, el bot enviará este PDF. Usa una palabra <strong>nueva</strong> — si repites una ya usada, reemplazará ese PDF.</p>
+          <div className="flex flex-wrap gap-2 items-center">
+            <input
+              value={extKeyword}
+              onChange={e => { setExtKeyword(e.target.value.toUpperCase()); setExtPdfConflict(null) }}
+              placeholder="Ej: DSCR, LLC, EXTRANJERO…"
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase w-48 focus:outline-none focus:ring-1 focus:ring-purple-400"
+            />
+            <button
+              onClick={() => generateExtPdf(false)}
+              disabled={extPdfLoading || !extContent.trim() || !extKeyword.trim()}
+              className="flex items-center justify-center gap-2 py-2 px-4 bg-white border border-purple-300 text-purple-700 rounded-lg text-sm font-semibold hover:bg-purple-50 transition-colors disabled:opacity-60"
+            >
+              {extPdfLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Creando PDF…</> : <>📄 Crear PDF con keyword</>}
+            </button>
+          </div>
+
+          {extPdfConflict && (
+            <div className="mt-2 rounded-lg bg-amber-50 border border-amber-200 p-2.5 text-xs text-amber-800">
+              Ya existe un PDF con la palabra <strong>“{extPdfConflict}”</strong>. Puedes usar otra palabra clave arriba, o reemplazar el PDF anterior con este contenido nuevo.
+              <button
+                onClick={() => generateExtPdf(true)}
+                disabled={extPdfLoading}
+                className="ml-2 font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded-md px-2 py-1 disabled:opacity-60"
+              >
+                Reemplazar
+              </button>
+            </div>
+          )}
+
+          {extPdfUrl && (
+            <div className="mt-2 flex flex-col gap-1">
+              <a href={extPdfUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm text-purple-700 font-semibold hover:underline">
+                <Download className="w-4 h-4" /> Ver / descargar PDF
+              </a>
+              <p className="text-[11px] text-emerald-600">✓ Guardado en Campañas — trigger “{extKeyword}” activo para Instagram y Facebook.</p>
+            </div>
+          )}
+        </div>
 
         {extResult && (
           <div className="mt-4 space-y-4">
