@@ -942,6 +942,13 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
   const [postPlatform, setPostPlatform] = useState("INSTAGRAM")
   const [postCaption, setPostCaption] = useState("")
   const [generatingCaption, setGeneratingCaption] = useState(false)
+  // External content → SEO + AIO + PDF
+  const [extContent, setExtContent] = useState("")
+  const [extPlatform, setExtPlatform] = useState("INSTAGRAM")
+  const [extLoading, setExtLoading] = useState(false)
+  const [extResult, setExtResult] = useState<any | null>(null)
+  const [extPdfLoading, setExtPdfLoading] = useState(false)
+  const [extPdfUrl, setExtPdfUrl] = useState<string | null>(null)
   const [publishing, setPublishing] = useState(false)
   const [publishResult, setPublishResult] = useState<"idle" | "success" | "error">("idle")
   const [publishError, setPublishError] = useState("")
@@ -1153,6 +1160,49 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
       toast({ title: "Error creando guía", description: e.message, variant: "destructive" })
     } finally {
       setGeneratingGuide(false)
+    }
+  }
+
+  const generateExtSeoAio = async () => {
+    if (!extContent.trim()) { toast({ title: "Pega el contenido primero", variant: "destructive" }); return }
+    setExtLoading(true)
+    setExtResult(null)
+    setExtPdfUrl(null)
+    try {
+      const res = await fetch("/api/content/seo-aio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: extContent, platform: extPlatform }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.ok) throw new Error(data.error || "Error")
+      setExtResult(data)
+      toast({ title: `SEO + AIO generado ✨`, description: data.keyword ? `Keyword: ${data.keyword}` : undefined })
+    } catch (e: any) {
+      toast({ title: "Error generando SEO/AIO", description: e.message, variant: "destructive" })
+    } finally {
+      setExtLoading(false)
+    }
+  }
+
+  const generateExtPdf = async () => {
+    if (!extContent.trim()) { toast({ title: "Pega el contenido primero", variant: "destructive" }); return }
+    setExtPdfLoading(true)
+    setExtPdfUrl(null)
+    try {
+      const res = await fetch("/api/ai/generate-guide", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ script: extContent }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setExtPdfUrl(data.guideUrl)
+      toast({ title: `PDF creado para "${data.keyword}" ✅`, description: data.title })
+    } catch (e: any) {
+      toast({ title: "Error creando PDF", description: e.message, variant: "destructive" })
+    } finally {
+      setExtPdfLoading(false)
     }
   }
 
@@ -1396,6 +1446,109 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
                 {s.label}
               </div>
             ))}
+          </div>
+        )}
+      </div>
+
+      {/* External content → SEO + AIO + PDF */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+        <div className="flex items-center gap-2 mb-1">
+          <Sparkles className="w-4 h-4 text-purple-600" />
+          <h2 className="text-base font-semibold text-gray-800">Contenido externo → SEO + AIO + PDF</h2>
+        </div>
+        <p className="text-xs text-gray-400 mb-3">¿Tienes una idea o un texto de otra IA (ChatGPT, etc.)? Pégalo aquí y genero el SEO + AIO listo para publicar en redes, y el PDF con su keyword.</p>
+
+        <textarea
+          value={extContent}
+          onChange={e => setExtContent(e.target.value)}
+          rows={5}
+          placeholder="Pega aquí el contenido, idea o borrador generado por otra IA…"
+          className="w-full border border-gray-200 rounded-xl p-3 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-purple-400 mb-3"
+        />
+
+        <p className="text-xs font-semibold text-gray-600 mb-2">Plataforma</p>
+        <div className="flex flex-wrap gap-2 mb-3">
+          {[{ id: "INSTAGRAM", label: "Instagram" }, { id: "FACEBOOK", label: "Facebook" }, { id: "YOUTUBE", label: "YouTube" }, { id: "TIKTOK", label: "TikTok" }, { id: "LINKEDIN", label: "LinkedIn" }].map(p => (
+            <button
+              key={p.id}
+              onClick={() => setExtPlatform(p.id)}
+              className={cn("px-3 py-1.5 rounded-lg text-xs font-medium border transition-all", extPlatform === p.id ? "bg-purple-600 text-white border-purple-600" : "border-gray-200 text-gray-600 hover:bg-gray-50")}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={generateExtSeoAio}
+            disabled={extLoading || !extContent.trim()}
+            className="flex-1 min-w-[200px] flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl text-sm font-semibold hover:from-purple-700 hover:to-indigo-700 transition-all disabled:opacity-60"
+          >
+            {extLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Generando SEO + AIO…</> : <><Sparkles className="w-4 h-4" /> Generar SEO + AIO para {extPlatform}</>}
+          </button>
+          <button
+            onClick={generateExtPdf}
+            disabled={extPdfLoading || !extContent.trim()}
+            className="flex items-center justify-center gap-2 py-2.5 px-4 bg-white border border-purple-300 text-purple-700 rounded-xl text-sm font-semibold hover:bg-purple-50 transition-colors disabled:opacity-60"
+          >
+            {extPdfLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Creando PDF…</> : <>📄 Crear PDF con keyword</>}
+          </button>
+        </div>
+
+        {extPdfUrl && (
+          <a href={extPdfUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 mt-3 text-sm text-purple-700 font-semibold hover:underline">
+            <Download className="w-4 h-4" /> Descargar PDF
+          </a>
+        )}
+
+        {extResult && (
+          <div className="mt-4 space-y-4">
+            <div className="rounded-xl border border-gray-200 p-4">
+              <p className="text-xs font-bold text-purple-700 uppercase mb-2">SEO</p>
+              <div className="space-y-2 text-sm">
+                <div><span className="text-gray-400 text-xs">Keyword principal</span><p className="font-semibold text-gray-800">{extResult.keyword}</p></div>
+                {extResult.secondaryKeywords?.length > 0 && <div><span className="text-gray-400 text-xs">Keywords secundarias</span><p className="text-gray-700">{extResult.secondaryKeywords.join(", ")}</p></div>}
+                {extResult.title && <div><span className="text-gray-400 text-xs">Título SEO</span><p className="text-gray-800">{extResult.title}</p></div>}
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-400 text-xs">Texto para {extResult.platform}</span>
+                    <button onClick={() => { navigator.clipboard?.writeText(extResult.caption || ""); toast({ title: "Copiado" }) }} className="text-xs text-purple-600 hover:underline">Copiar</button>
+                  </div>
+                  <p className="text-gray-700 whitespace-pre-wrap bg-gray-50 rounded-lg p-2 mt-1">{extResult.caption}</p>
+                </div>
+                {extResult.hashtags?.length > 0 && (
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-400 text-xs">Hashtags</span>
+                      <button onClick={() => { navigator.clipboard?.writeText(extResult.hashtags.join(" ")); toast({ title: "Copiado" }) }} className="text-xs text-purple-600 hover:underline">Copiar</button>
+                    </div>
+                    <p className="text-purple-700 text-xs">{extResult.hashtags.join(" ")}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {extResult.aio && (extResult.aio.question || extResult.aio.answer) && (
+              <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-4">
+                <p className="text-xs font-bold text-indigo-700 uppercase mb-1">AIO · Optimización para motores de IA</p>
+                <p className="text-[11px] text-gray-500 mb-2">Así es como ChatGPT, Perplexity y Google AI pueden citar tu contenido.</p>
+                <div className="space-y-2 text-sm">
+                  {extResult.aio.question && <div><span className="text-gray-400 text-xs">Pregunta que responde</span><p className="font-semibold text-gray-800">{extResult.aio.question}</p></div>}
+                  {extResult.aio.answer && <div><span className="text-gray-400 text-xs">Respuesta directa</span><p className="text-gray-700">{extResult.aio.answer}</p></div>}
+                  {extResult.aio.faqs?.length > 0 && (
+                    <div>
+                      <span className="text-gray-400 text-xs">FAQs</span>
+                      <ul className="mt-1 space-y-1.5">
+                        {extResult.aio.faqs.map((f: any, i: number) => (
+                          <li key={i} className="text-gray-700"><span className="font-semibold">{f.q}</span><br />{f.a}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
