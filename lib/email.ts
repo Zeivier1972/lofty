@@ -83,6 +83,40 @@ async function sendViaNodemailer(opts: EmailOptions): Promise<boolean> {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
+// Plaintext alternative from HTML. Gmail/Outlook favor multipart (html + text)
+// and push html-only mail toward the Promotions/Spam tab — so we always include
+// a text part when the caller didn't provide one.
+function htmlToText(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<\/(p|div|h[1-6]|li|tr)>/gi, "\n")
+    .replace(/<br\s*\/?>(?!\n)/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/\n[ \t]*\n[ \t]*\n+/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim()
+    .slice(0, 6000)
+}
+
+// Add the deliverability headers Gmail/Yahoo require on bulk mail: a working
+// one-click List-Unsubscribe. Missing this is a top reason mail lands in
+// Promotions/Spam. Only added when we can build the unsubscribe URL.
+function withDeliverabilityHeaders(opts: EmailOptions): EmailOptions {
+  const next: EmailOptions = { ...opts }
+  if (!next.text && next.html) next.text = htmlToText(next.html)
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
+  const unsubUrl = `${appUrl}/api/email/unsubscribe?e=${encodeURIComponent(opts.to)}`
+  next.headers = {
+    "List-Unsubscribe": `<${unsubUrl}>`,
+    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    ...(opts.headers || {}),
+  }
+  return next
+}
+
 // If an inbound domain is configured, automatically set Reply-To so replies
 // come back through Resend's inbound webhook instead of Catherine's inbox.
 function withReplyTo(opts: EmailOptions): EmailOptions {
@@ -99,6 +133,7 @@ function withReplyTo(opts: EmailOptions): EmailOptions {
 
 export async function sendEmail(opts: EmailOptions): Promise<boolean> {
   opts = withReplyTo(opts)
+  opts = withDeliverabilityHeaders(opts)
 
   // Central do-not-email guard: if a CONTACT with this address is flagged
   // (hard bounce / complaint / manual), never email it again — stops wasting
