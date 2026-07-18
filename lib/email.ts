@@ -10,6 +10,11 @@ interface EmailOptions {
   from?: string
   replyTo?: string | string[]
   headers?: Record<string, string>
+  // transactional = a personal 1:1 message (welcome, saved-property nudge,
+  // appointment, direct reply). We drop the bulk List-Unsubscribe marker on
+  // these so Gmail keeps them in Primary instead of the Promotions tab. Leave
+  // false/undefined for marketing blasts (alerts, HOT properties).
+  transactional?: boolean
 }
 
 // ─── Resend (primary) ─────────────────────────────────────────────────────────
@@ -106,13 +111,19 @@ function htmlToText(html: string): string {
 // Promotions/Spam. Only added when we can build the unsubscribe URL.
 function withDeliverabilityHeaders(opts: EmailOptions): EmailOptions {
   const next: EmailOptions = { ...opts }
+  // A plaintext part helps every email (multipart lands better than html-only).
   if (!next.text && next.html) next.text = htmlToText(next.html)
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
-  const unsubUrl = `${appUrl}/api/email/unsubscribe?e=${encodeURIComponent(opts.to)}`
-  next.headers = {
-    "List-Unsubscribe": `<${unsubUrl}>`,
-    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-    ...(opts.headers || {}),
+  // Bulk List-Unsubscribe keeps marketing mail out of Spam, but it's ALSO a
+  // "this is bulk" signal that pushes Gmail toward the Promotions tab. Personal
+  // 1:1 (transactional) mail doesn't need it and lands in Primary without it.
+  if (!opts.transactional) {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
+    const unsubUrl = `${appUrl}/api/email/unsubscribe?e=${encodeURIComponent(opts.to)}`
+    next.headers = {
+      "List-Unsubscribe": `<${unsubUrl}>`,
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      ...(opts.headers || {}),
+    }
   }
   return next
 }

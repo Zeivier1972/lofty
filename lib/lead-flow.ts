@@ -345,6 +345,7 @@ export async function notifyAgentOfLeadReply(
     if (agentEmail) {
       await sendEmail({
         to: agentEmail,
+        transactional: true,
         subject: `💬 ${name} respondió por ${channel}`,
         html: `<p><strong>${name}</strong> respondió a Sofía por ${channel}:</p>
                <blockquote style="border-left:3px solid #c9a84c;padding-left:12px;color:#374151">${snippet}</blockquote>

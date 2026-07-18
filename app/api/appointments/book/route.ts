@@ -113,6 +113,7 @@ export async function POST(req: Request) {
 
       sendEmail({
         to: cfg.realtorEmail,
+        transactional: true,
         subject: `📅 Nueva cita: ${firstName} ${lastName} — ${formattedDateCath} ${time}`,
         html: `<p>Hola ${cfg.realtorName || "Catherine"},</p><p>Tienes una nueva cita agendada en línea:</p><ul>${lines.map(l => `<li>${l}</li>`).join("")}</ul><p><a href="${appUrl}/contacts/${contact.id}">Ver contacto en el CRM →</a></p>`,
         text: `Nueva cita:\n${lines.join("\n")}\n\nVer CRM: ${appUrl}/contacts/${contact.id}`,
@@ -139,6 +140,7 @@ export async function POST(req: Request) {
       try {
         await sendEmail({
           to: email,
+          transactional: true,
           subject: `✅ Cita Confirmada con Catherine / Your Appointment is Confirmed`,
           html: `
 <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">

@@ -80,6 +80,7 @@ export async function POST(req: Request) {
         if (full?.email && !full.doNotEmail) {
           sendEmail({
             to: full.email,
+            transactional: true,
             subject: `📅 Cita confirmada: ${title} — ${agentName}`,
             html: `<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto">
               <div style="background:linear-gradient(135deg,#0a1628,#1a2f50);border-radius:14px 14px 0 0;padding:26px;text-align:center">

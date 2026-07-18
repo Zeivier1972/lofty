@@ -124,6 +124,7 @@ export async function POST(req: Request) {
       if (cfg?.realtorEmail) {
         sendEmail({
           to: cfg.realtorEmail,
+          transactional: true,
           subject: `💜 ${who} guardó una propiedad`,
           html: `<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto">
             <h2 style="color:#0e1f3d">Sofia: nuevo interés de un lead</h2>
@@ -150,6 +151,7 @@ export async function POST(req: Request) {
         } else if (contact.email && !contact.doNotEmail) {
           sendEmail({
             to: contact.email,
+            transactional: true,
             subject: `Sobre la propiedad que guardaste 🏠`,
             html: `<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto">
               <p>¡Hola ${contact.firstName}! 👋</p>
