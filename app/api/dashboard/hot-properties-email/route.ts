@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { sendEmail, proxiedImage } from "@/lib/email"
+import { sendEmail, proxiedImage, emailClickUrl } from "@/lib/email"
 
 // "HOT properties in the market" blast to a chosen audience.
 //   GET  → { ok, tags, plans, recipientCount }   (recipientCount for the audience in the query)
@@ -122,8 +122,10 @@ export async function POST(req: Request) {
     try { const arr = JSON.parse(images); return Array.isArray(arr) && typeof arr[0] === "string" ? arr[0] : "" } catch { return "" }
   }
 
-  const cards = properties.map(p => {
-    const url = p.mlsId ? `${appUrl}/homes/${encodeURIComponent(p.mlsId)}` : `${appUrl}/homes`
+  // Built per recipient so each property link is click-tracked to that lead.
+  const cardsFor = (contactId: string) => properties.map(p => {
+    const base = p.mlsId ? `${appUrl}/homes/${encodeURIComponent(p.mlsId)}` : `${appUrl}/homes`
+    const url = emailClickUrl(contactId, base, p.address)
     const photo = firstImage(p.images)
     const specs = [
       p.bedrooms != null ? `${p.bedrooms} bd` : "",
@@ -147,7 +149,7 @@ export async function POST(req: Request) {
       </table>`
   }).join("")
 
-  const buildHtml = (firstName: string) => `<!DOCTYPE html>
+  const buildHtml = (firstName: string, contactId: string) => `<!DOCTYPE html>
 <html lang="es"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
 <body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px 12px">
@@ -163,9 +165,9 @@ export async function POST(req: Request) {
     <p style="color:#374151;font-size:14px;margin:0 0 16px">
       Soy Sofía, la asistente de ${agentName}. Estas son de las propiedades más populares del mercado en este momento — toca cualquiera para ver todas las fotos y detalles:
     </p>
-    ${cards}
+    ${cardsFor(contactId)}
     <div style="text-align:center;margin:8px 0 24px">
-      <a href="${appUrl}/homes" style="display:inline-block;background:#0e1f3d;color:white;padding:13px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Ver todo el inventario →</a>
+      <a href="${emailClickUrl(contactId, `${appUrl}/homes`, "Ver todo el inventario")}" style="display:inline-block;background:#0e1f3d;color:white;padding:13px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Ver todo el inventario →</a>
     </div>
     <div style="border-top:1px solid #f3f4f6;padding-top:20px;text-align:center">
       <p style="color:#374151;font-size:14px;margin:0 0 4px"><strong>${agentName}</strong></p>
@@ -178,7 +180,7 @@ export async function POST(req: Request) {
 </body></html>`
 
   // Preview mode: return the rendered email without sending to anyone.
-  if (preview) return NextResponse.json({ ok: true, html: buildHtml("Cliente") })
+  if (preview) return NextResponse.json({ ok: true, html: buildHtml("Cliente", "") })
 
   const recipients = await recipientsFor(audience, tagId, planId, stageId)
   if (!recipients.length) return NextResponse.json({ ok: true, sent: 0, reason: "No hay destinatarios con email para ese público." })
@@ -189,7 +191,7 @@ export async function POST(req: Request) {
     const ok = await sendEmail({
       to: r.email,
       subject: "🔥 Propiedades HOT en el mercado de Miami",
-      html: buildHtml(r.firstName || ""),
+      html: buildHtml(r.firstName || "", r.id),
     }).catch(() => false)
     if (ok) {
       sent++
