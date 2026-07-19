@@ -53,7 +53,7 @@ export default async function DashboardPage() {
           contact: { select: { id: true, firstName: true, lastName: true } },
         },
         orderBy: { createdAt: "desc" },
-        take: 10,
+        take: 30,
       }),
       // Only lead values are needed for the pipeline chart — not full contact records
       prisma.pipelineStage.findMany({
