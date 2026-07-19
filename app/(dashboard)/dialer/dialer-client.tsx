@@ -457,7 +457,15 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
       const data = await res.json()
       setActiveCallId(data.callId || null)
 
-      // Place the call through the browser softphone
+      // Place the call through the browser softphone.
+      // First, make absolutely sure no PRIOR call is still holding the Device —
+      // after a voicemail drop or a fast "next" the previous leg can linger, and
+      // Twilio rejects a second active connection ("can't make the next call").
+      try { activeBrowserCallRef.current?.disconnect() } catch { /* noop */ }
+      try { deviceRef.current.disconnectAll?.() } catch { /* noop */ }
+      activeBrowserCallRef.current = null
+      await new Promise(r => setTimeout(r, 400)) // let the SDK release the old leg
+
       const digits = contact.phone.replace(/\D/g, "")
       const e164 = digits.length === 10 ? `+1${digits}` : `+${digits}`
       const call = await deviceRef.current.connect({ params: { To: e164 } })
