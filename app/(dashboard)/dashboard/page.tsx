@@ -75,7 +75,9 @@ export default async function DashboardPage() {
         orderBy: { createdAt: "desc" },
         take: 5,
       }),
-      prisma.activity.count({ where: { type: "PROPERTY_ALERT_SENT", createdAt: { gte: todayStart } } }),
+      // Count actual alert EMAILS (one Email row per email), not per-listing
+      // activities — those over-count ~5x since each email carries several homes.
+      prisma.email.count({ where: { direction: "OUTBOUND", status: "SENT", createdAt: { gte: todayStart }, subject: { contains: "Sofia found" } } }),
       prisma.contact.count({ where: { createdAt: { gte: todayStart }, isArchived: false } }),
       prisma.portalMessage.count({ where: { isRead: false, fromClient: true } }),
     ])
