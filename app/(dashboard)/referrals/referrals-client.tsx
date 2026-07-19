@@ -91,6 +91,17 @@ export default function ReferralsClient({ partners: initialPartners, referrals: 
     router.refresh()
   }
 
+  async function unassign(referralId: string, leadName: string, partnerName: string) {
+    if (!confirm(`¿Quitar a ${leadName} de ${partnerName}? El socio dejará de ver este lead en su portal.`)) return
+    setReferrals(prev => prev.filter(r => r.id !== referralId))
+    await fetch("/api/referrals", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: referralId }),
+    })
+    router.refresh()
+  }
+
   async function updateStatus(referralId: string, status: string) {
     setReferrals(prev => prev.map(r => r.id === referralId ? { ...r, status } : r))
     await fetch(`/api/referrals/${referralId}`, {
@@ -265,6 +276,7 @@ export default function ReferralsClient({ partners: initialPartners, referrals: 
                   <th className="px-5 py-2.5 font-semibold">Status</th>
                   <th className="px-5 py-2.5 font-semibold">Sent</th>
                   <th className="px-5 py-2.5 font-semibold">Partner activity</th>
+                  <th className="px-5 py-2.5 font-semibold text-right">Quitar</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -310,10 +322,19 @@ export default function ReferralsClient({ partners: initialPartners, referrals: 
                         <p className="text-xs text-gray-300 italic">No activity yet</p>
                       )}
                     </td>
+                    <td className="px-5 py-3 text-right">
+                      <button
+                        onClick={() => unassign(r.id, `${r.contact.firstName} ${r.contact.lastName || ""}`.trim(), r.partner.name)}
+                        title="Desasignar este lead del socio (lo recuperas)"
+                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
                   </tr>
                   {isExpanded && r.updates.length > 0 && (
                     <tr className="bg-gray-50/70">
-                      <td colSpan={5} className="px-5 py-3">
+                      <td colSpan={6} className="px-5 py-3">
                         <ul className="space-y-1.5">
                           {r.updates.map(u => (
                             <li key={u.id} className="text-xs text-gray-600 flex items-start gap-2">
