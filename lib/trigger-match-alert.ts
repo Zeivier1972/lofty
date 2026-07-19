@@ -3,7 +3,7 @@
 
 import { prisma } from "@/lib/prisma"
 import { searchIdxListings, fetchPrimaryPhotos, buildDisplayAddress } from "@/lib/bridge"
-import { sendEmail, proxiedImage } from "@/lib/email"
+import { sendEmail, proxiedImage, emailClickUrl } from "@/lib/email"
 import Anthropic from "@anthropic-ai/sdk"
 
 // Map CRM buyerPropertyType enum → Bridge MLS PropertySubType string
@@ -222,7 +222,7 @@ export async function triggerMatchAlert(contactId: string): Promise<{ sent: bool
           beds: l.BedroomsTotal ?? null,
           baths: l.BathroomsTotalDecimal ?? null,
           sqft: l.LivingArea ?? null,
-          url: `${APP_URL}/homes/${encodeURIComponent(l.ListingKey)}`,
+          url: emailClickUrl(contactId, `${APP_URL}/homes/${encodeURIComponent(l.ListingKey)}`, buildDisplayAddress(l)),
         })),
       }),
     })

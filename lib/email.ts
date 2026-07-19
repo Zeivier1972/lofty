@@ -99,6 +99,17 @@ export function proxiedImage(url: string | null | undefined): string {
   return `${appUrl}/api/img?u=${encodeURIComponent(url)}`
 }
 
+// Wrap a link so a click is logged to the lead's timeline before redirecting to
+// the real page. Turns "opened" into "clicked property X" — a high-intent
+// signal. Falls back to the plain URL when we don't know the contact.
+export function emailClickUrl(contactId: string | null | undefined, targetUrl: string, label?: string): string {
+  if (!contactId) return targetUrl
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
+  const p = new URLSearchParams({ c: contactId, u: targetUrl })
+  if (label) p.set("a", label.slice(0, 80))
+  return `${appUrl}/api/email/click?${p.toString()}`
+}
+
 // Plaintext alternative from HTML. Gmail/Outlook favor multipart (html + text)
 // and push html-only mail toward the Promotions/Spam tab — so we always include
 // a text part when the caller didn't provide one.
