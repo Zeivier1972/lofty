@@ -130,6 +130,8 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
   // Browser softphone (Twilio Voice SDK) — audio runs through the browser mic/speakers
   const deviceRef = useRef<any>(null)
   const activeBrowserCallRef = useRef<any>(null)
+  // Fail-safe: if a call never connects (no answer / TwiML error), un-stick the UI.
+  const connectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const [deviceReady, setDeviceReady] = useState(false)
   const [deviceError, setDeviceError] = useState<string | null>(null)
   const [disposition, setDisposition] = useState("")
@@ -460,13 +462,33 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
       const e164 = digits.length === 10 ? `+1${digits}` : `+${digits}`
       const call = await deviceRef.current.connect({ params: { To: e164 } })
       activeBrowserCallRef.current = call
-      call.on("accept", () => { setCallStatus("connected"); startTimer() })
+
+      // Fail-safe: if nothing happens within 45s (never answered / TwiML wrong),
+      // tear it down and reset so the UI never freezes on "Dialing…".
+      if (connectTimeoutRef.current) clearTimeout(connectTimeoutRef.current)
+      connectTimeoutRef.current = setTimeout(() => {
+        setCallStatus(prev => {
+          if (prev === "calling") {
+            try { activeBrowserCallRef.current?.disconnect() } catch { /* noop */ }
+            activeBrowserCallRef.current = null
+            stopTimer()
+            setCallError("La llamada no se conectó (sin respuesta o error de configuración). Intenta de nuevo.")
+            return "idle"
+          }
+          return prev
+        })
+      }, 45000)
+      const clearConnectTimeout = () => { if (connectTimeoutRef.current) { clearTimeout(connectTimeoutRef.current); connectTimeoutRef.current = null } }
+
+      call.on("accept", () => { clearConnectTimeout(); setCallStatus("connected"); startTimer() })
       call.on("disconnect", () => {
+        clearConnectTimeout()
         activeBrowserCallRef.current = null
         stopTimer()
       })
-      call.on("cancel", () => { activeBrowserCallRef.current = null; stopTimer() })
+      call.on("cancel", () => { clearConnectTimeout(); activeBrowserCallRef.current = null; stopTimer() })
       call.on("error", (e: any) => {
+        clearConnectTimeout()
         activeBrowserCallRef.current = null
         stopTimer()
         setCallError(e?.message || "Call error")

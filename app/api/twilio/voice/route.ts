@@ -19,10 +19,17 @@ export async function POST(req: Request) {
 
     const digits  = to.replace(/\D/g, "")
     const e164    = digits.length === 10 ? `+1${digits}` : `+${digits}`
-    const callerId = process.env.TWILIO_PHONE_NUMBER!
+    const callerId = process.env.TWILIO_CALLER_ID || process.env.TWILIO_PHONE_NUMBER!
+    const appUrl   = process.env.NEXT_PUBLIC_APP_URL || ""
 
     const twiml = new twilio.twiml.VoiceResponse()
-    const dial  = twiml.dial({ callerId })
+    // answerOnBridge → the browser hears ringing and the call only counts as
+    // connected once the lead actually answers (accurate status, no dead air).
+    const dial  = twiml.dial({
+      callerId,
+      answerOnBridge: true,
+      ...(appUrl ? { record: "record-from-answer" as const, recordingStatusCallback: `${appUrl}/api/dialer/recording` } : {}),
+    })
     dial.number(e164)
 
     return new Response(twiml.toString(), { headers: { "Content-Type": "text/xml" } })
