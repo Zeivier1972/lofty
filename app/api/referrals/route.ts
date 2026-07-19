@@ -32,6 +32,39 @@ export async function GET(req: Request) {
   return NextResponse.json(referrals)
 }
 
+// DELETE — unassign a lead from a partner (removes the referral). Accepts a
+// single { id } or a bulk { ids: [...] }. Cascades to the partner's updates.
+export async function DELETE(req: Request) {
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  const body = await req.json().catch(() => ({}))
+  const ids: string[] = Array.isArray(body.ids) && body.ids.length
+    ? Array.from(new Set(body.ids.filter(Boolean)))
+    : body.id ? [body.id] : []
+  if (!ids.length) return NextResponse.json({ error: "id o ids requerido" }, { status: 400 })
+
+  const referrals = await prisma.leadReferral.findMany({
+    where: { id: { in: ids } },
+    include: { partner: { select: { name: true, brokerage: true } } },
+  })
+  if (!referrals.length) return NextResponse.json({ error: "No se encontraron esas asignaciones" }, { status: 404 })
+
+  await prisma.leadReferral.deleteMany({ where: { id: { in: referrals.map(r => r.id) } } })
+
+  // Log on each lead's timeline that it was taken back.
+  await prisma.activity.createMany({
+    data: referrals.map(r => ({
+      contactId: r.contactId,
+      userId: session.user?.id,
+      type: "LEAD_REFERRED",
+      title: `Lead desasignado de ${r.partner?.name || "socio"}${r.partner?.brokerage ? ` (${r.partner.brokerage})` : ""}`,
+    })),
+  }).catch(() => {})
+
+  return NextResponse.json({ ok: true, removed: referrals.length })
+}
+
 function buildReferralEmail(opts: {
   partnerName: string
   contact: any
