@@ -88,6 +88,17 @@ async function sendViaNodemailer(opts: EmailOptions): Promise<boolean> {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
+// Route an external image (MLS/CDN photo) through our own domain so it loads in
+// email clients. Gmail's image proxy is blocked by many MLS photo CDNs, so
+// hot-linked photos break; served from our verified domain they display and
+// don't hurt the spam score. Our own-domain URLs are passed through unchanged.
+export function proxiedImage(url: string | null | undefined): string {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
+  if (!url || typeof url !== "string") return `${appUrl}/api/img?u=`
+  if (url.startsWith(appUrl) || url.startsWith("/")) return url
+  return `${appUrl}/api/img?u=${encodeURIComponent(url)}`
+}
+
 // Plaintext alternative from HTML. Gmail/Outlook favor multipart (html + text)
 // and push html-only mail toward the Promotions/Spam tab — so we always include
 // a text part when the caller didn't provide one.

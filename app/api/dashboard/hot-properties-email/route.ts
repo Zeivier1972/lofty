@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { sendEmail } from "@/lib/email"
+import { sendEmail, proxiedImage } from "@/lib/email"
 
 // "HOT properties in the market" blast to a chosen audience.
 //   GET  → { ok, tags, plans, recipientCount }   (recipientCount for the audience in the query)
@@ -134,7 +134,7 @@ export async function POST(req: Request) {
       <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 16px;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden">
         <tr><td>
           <a href="${url}" target="_blank" style="text-decoration:none;color:inherit">
-            ${photo ? `<img src="${photo}" alt="Property" width="580" style="width:100%;max-width:580px;height:200px;object-fit:cover;display:block"/>` : ""}
+            ${photo ? `<img src="${proxiedImage(photo)}" alt="Propiedad" width="580" style="width:100%;max-width:580px;height:200px;object-fit:cover;display:block"/>` : ""}
             <div style="padding:16px">
               ${p.price != null ? `<p style="font-size:22px;font-weight:800;color:#059669;margin:0 0 4px">${priceStr(p.price)}</p>` : ""}
               <p style="font-weight:700;color:#111827;font-size:15px;margin:0 0 2px">${p.address}</p>

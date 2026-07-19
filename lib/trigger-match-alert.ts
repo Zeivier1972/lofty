@@ -3,7 +3,7 @@
 
 import { prisma } from "@/lib/prisma"
 import { searchIdxListings, fetchPrimaryPhotos, buildDisplayAddress } from "@/lib/bridge"
-import { sendEmail } from "@/lib/email"
+import { sendEmail, proxiedImage } from "@/lib/email"
 import Anthropic from "@anthropic-ai/sdk"
 
 // Map CRM buyerPropertyType enum → Bridge MLS PropertySubType string
@@ -57,7 +57,7 @@ function buildAlertEmail(opts: {
       <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 16px;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden">
         <tr><td>
           <a href="${pr.url}" target="_blank" style="text-decoration:none;color:inherit">
-            ${pr.photo ? `<img src="${pr.photo}" alt="Property" width="580" style="width:100%;max-width:580px;height:200px;object-fit:cover;display:block"/>` : ""}
+            <img src="${proxiedImage(pr.photo)}" alt="Propiedad" width="580" style="width:100%;max-width:580px;height:200px;object-fit:cover;display:block"/>
             <div style="padding:16px">
               ${pr.price != null ? `<p style="font-size:22px;font-weight:800;color:#059669;margin:0 0 4px">${priceStr(pr.price)}</p>` : ""}
               <p style="font-weight:700;color:#111827;font-size:15px;margin:0 0 2px">${pr.address}</p>
