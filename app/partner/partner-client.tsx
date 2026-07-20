@@ -6,6 +6,7 @@ import { Handshake, Phone, Mail, MapPin, DollarSign, BedDouble, Clock, LogOut, L
 import { cn, formatPhone } from "@/lib/utils"
 
 interface Update { id: string; author: string; kind: string; body: string; createdAt: string }
+interface HistoryItem { id: string; ts: string; icon: string; who: string; text: string }
 interface CrmStage { id: string; name: string }
 
 interface Referral {
@@ -20,6 +21,7 @@ interface Referral {
     pipelineLeads?: { stage: { id: string; name: string } | null }[]
   }
   updates: Update[]
+  history: HistoryItem[]
 }
 
 const STATUS_META: Record<string, { label: string; color: string }> = {
@@ -57,12 +59,21 @@ export default function PartnerClient({ partnerName, agentName, agentPhone, refe
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Update failed")
       const newStage = payload.crmStageId ? crmStages.find(st => st.id === payload.crmStageId) : null
+      // Optimistically add what the partner just did to the shared history feed.
+      const now = new Date().toISOString()
+      const added: HistoryItem[] = []
+      if (payload.note?.trim()) {
+        added.push({ id: `tmp-${now}-n`, ts: now, icon: payload.kind === "CALL" ? "📞" : "📝", who: partnerName, text: payload.note.trim() })
+      }
+      if (payload.status) added.push({ id: `tmp-${now}-s`, ts: now, icon: "🔄", who: partnerName, text: `Estado → ${STATUS_META[payload.status]?.label || payload.status}` })
+      if (newStage) added.push({ id: `tmp-${now}-c`, ts: now, icon: "🔄", who: partnerName, text: `Etapa CRM → ${newStage.name}` })
       setReferrals(prev => prev.map(r => {
         if (r.id !== referralId) return r
         return {
           ...r,
           status: payload.status || r.status,
           updates: [...(data.updates || []), ...r.updates],
+          history: [...added, ...(r.history || [])],
           contact: newStage
             ? { ...r.contact, pipelineLeads: [{ stage: { id: newStage.id, name: newStage.name } }] }
             : r.contact,
@@ -240,20 +251,19 @@ export default function PartnerClient({ partnerName, agentName, agentPhone, refe
                     </div>
                   </div>
 
-                  {/* History */}
-                  {r.updates.length > 0 && (
+                  {/* Full shared history — the agent's notes + all lead activity
+                      (emails opened, calls, texts, saves) + your own notes. */}
+                  {(r.history?.length || 0) > 0 && (
                     <div>
-                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">History</p>
-                      <ul className="space-y-2 max-h-56 overflow-y-auto">
-                        {r.updates.map(u => (
-                          <li key={u.id} className="flex items-start gap-2 text-sm">
-                            <span className="mt-0.5 flex-shrink-0">
-                              {u.kind === "CALL" ? "📞" : u.kind === "STATUS" ? "🔄" : "📝"}
-                            </span>
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Historial completo del lead</p>
+                      <ul className="space-y-2 max-h-72 overflow-y-auto">
+                        {r.history.map(h => (
+                          <li key={h.id} className="flex items-start gap-2 text-sm">
+                            <span className="mt-0.5 flex-shrink-0">{h.icon}</span>
                             <div className="min-w-0">
-                              <p className="text-gray-700">{u.body}</p>
+                              <p className="text-gray-700 whitespace-pre-wrap break-words">{h.text}</p>
                               <p className="text-[11px] text-gray-400">
-                                {u.author === "AGENT" ? agentName : "You"} · {new Date(u.createdAt).toLocaleString()}
+                                {h.who ? `${h.who} · ` : ""}{new Date(h.ts).toLocaleString()}
                               </p>
                             </div>
                           </li>
