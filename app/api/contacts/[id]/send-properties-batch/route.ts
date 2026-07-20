@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { sendSMS, toE164 } from "@/lib/sms"
-import { sendEmail, wrapEmail } from "@/lib/email"
+import { sendEmail, wrapEmail, proxiedImage } from "@/lib/email"
 import { auth } from "@/lib/auth"
 import { partnerOwnsContact } from "@/lib/partner-auth"
 
@@ -34,10 +34,11 @@ export async function POST(
     const session = await auth()
     if (!session && !(await partnerOwnsContact(params.id))) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 })
 
-    const { listings, method, note } = await req.json() as {
+    const { listings, method, note, preview } = await req.json() as {
       listings: ListingPayload[]
       method: "email" | "sms"
       note?: string
+      preview?: boolean
     }
 
     if (!method || !["email", "sms"].includes(method)) {
@@ -83,7 +84,7 @@ export async function POST(
         return `
           <div style="margin-bottom:20px;border:1px solid #E5E7EB;border-radius:12px;overflow:hidden">
             ${open}
-              ${l.photoUrl ? `<img src="${l.photoUrl}" alt="Property ${i + 1}" style="width:100%;height:180px;object-fit:cover;display:block"/>` : ""}
+              ${l.photoUrl ? `<img src="${proxiedImage(l.photoUrl)}" alt="Property ${i + 1}" style="width:100%;height:180px;object-fit:cover;display:block"/>` : ""}
               <div style="padding:16px">
                 ${l.price ? `<p style="font-size:20px;font-weight:bold;color:#059669;margin:0 0 4px">${priceLabel(l.price)}</p>` : ""}
                 ${l.address ? `<p style="font-weight:600;color:#111827;margin:0 0 2px">${l.address}</p>` : ""}
@@ -111,6 +112,9 @@ export async function POST(
         </a>
         <p style="color:#6B7280;font-size:14px;margin:0">📞 ${agentPhone}</p>
       `, { agentName, agentPhone, agentEmail })
+
+      // Preview mode: return the rendered email without sending to anyone.
+      if (preview) return NextResponse.json({ ok: true, html })
 
       await sendEmail({
         to: contact.email,
