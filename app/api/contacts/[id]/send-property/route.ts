@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { sendSMS, toE164 } from "@/lib/sms"
-import { sendEmail, wrapEmail } from "@/lib/email"
+import { sendEmail, wrapEmail, proxiedImage } from "@/lib/email"
 import { auth } from "@/lib/auth"
 import { partnerOwnsContact } from "@/lib/partner-auth"
 
@@ -60,8 +60,8 @@ export async function POST(
         <p style="color:#374151;margin:0 0 16px">I found a property I think you'll love — take a look:</p>
 
         ${photoUrl ? (detailUrl
-          ? `<a href="${detailUrl}" target="_blank"><img src="${photoUrl}" alt="Property" style="width:100%;max-height:280px;object-fit:cover;border-radius:12px;margin:0 0 16px;display:block"/></a>`
-          : `<img src="${photoUrl}" alt="Property" style="width:100%;max-height:280px;object-fit:cover;border-radius:12px;margin:0 0 16px;display:block"/>`) : ""}
+          ? `<a href="${detailUrl}" target="_blank"><img src="${proxiedImage(photoUrl)}" alt="Property" style="width:100%;max-height:280px;object-fit:cover;border-radius:12px;margin:0 0 16px;display:block"/></a>`
+          : `<img src="${proxiedImage(photoUrl)}" alt="Property" style="width:100%;max-height:280px;object-fit:cover;border-radius:12px;margin:0 0 16px;display:block"/>`) : ""}
 
         <div style="background:#F9FAFB;border-radius:12px;padding:20px;margin:0 0 16px;border:1px solid #E5E7EB">
           ${priceLabel ? `<p style="font-size:26px;font-weight:bold;color:#059669;margin:0 0 6px">${priceLabel}</p>` : ""}

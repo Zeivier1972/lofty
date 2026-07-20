@@ -41,7 +41,12 @@ function LeadTools({ contact }: { contact: any }) {
   const [mode, setMode] = useState<"sale" | "rent">("sale")
   const [results, setResults] = useState<any[]>([])
   const [searching, setSearching] = useState(false)
-  const [sent, setSent] = useState<Record<string, string>>({})
+  const [selected, setSelected] = useState<Record<string, any>>({})
+  const [sendMsg, setSendMsg] = useState("")
+  const [sendingBatch, setSendingBatch] = useState(false)
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const selectedList = Object.values(selected)
 
   async function runSearch() {
     setSearching(true); setResults([])
@@ -58,20 +63,50 @@ function LeadTools({ contact }: { contact: any }) {
     } catch { setResults([]) } finally { setSearching(false) }
   }
 
-  async function sendListing(l: any, method: "email" | "sms") {
-    setSent(s => ({ ...s, [l.listingKey]: "sending" }))
+  function toggleSelect(l: any) {
+    setSelected(s => {
+      const next = { ...s }
+      if (next[l.listingKey]) delete next[l.listingKey]
+      else next[l.listingKey] = l
+      return next
+    })
+    setSendMsg("")
+  }
+
+  function batchBody(method: "email" | "sms", preview = false) {
+    return JSON.stringify({
+      method, preview,
+      listings: selectedList.map((l: any) => ({
+        address: l.address, city: l.city, state: l.state, price: l.price,
+        beds: l.beds, baths: l.baths, sqft: l.sqft, photoUrl: l.photo,
+        listingId: l.listingId, listingKey: l.listingKey,
+      })),
+    })
+  }
+
+  async function previewBatch() {
+    if (!selectedList.length) { setSendMsg("Selecciona al menos una propiedad"); return }
+    setPreviewLoading(true); setPreviewHtml(null)
     try {
-      const res = await fetch(`/api/contacts/${contact.id}/send-property`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          address: l.address, city: l.city, state: l.state, price: l.price,
-          beds: l.beds, baths: l.baths, sqft: l.sqft, photoUrl: l.photo,
-          listingId: l.listingId, listingKey: l.listingKey, method,
-        }),
+      const res = await fetch(`/api/contacts/${contact.id}/send-properties-batch`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: batchBody("email", true),
       })
       const d = await res.json()
-      setSent(s => ({ ...s, [l.listingKey]: d.ok ? `✓ Enviado por ${method === "email" ? "email" : "SMS"}` : (d.error || "Error") }))
-    } catch { setSent(s => ({ ...s, [l.listingKey]: "Error" })) }
+      setPreviewHtml(d.ok ? (d.html || "") : "")
+    } catch { setPreviewHtml("") } finally { setPreviewLoading(false) }
+  }
+
+  async function sendBatch(method: "email" | "sms") {
+    if (!selectedList.length) { setSendMsg("Selecciona al menos una propiedad"); return }
+    setSendingBatch(true); setSendMsg("Enviando…")
+    try {
+      const res = await fetch(`/api/contacts/${contact.id}/send-properties-batch`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: batchBody(method),
+      })
+      const d = await res.json()
+      if (d.ok) { setSendMsg(`✓ ${selectedList.length} enviada(s) por ${method === "email" ? "email" : "SMS"}`); setSelected({}); setPreviewHtml(null) }
+      else setSendMsg(d.error || "Error")
+    } catch { setSendMsg("Error") } finally { setSendingBatch(false) }
   }
 
   // ── Pre-construction ──
@@ -153,25 +188,53 @@ function LeadTools({ contact }: { contact: any }) {
             </button>
           </div>
           {results.length > 0 && (
-            <div className="space-y-2 max-h-96 overflow-y-auto">
-              {results.map(l => (
-                <div key={l.listingKey} className="flex gap-3 border border-gray-200 rounded-lg p-2 bg-white">
-                  {l.photo && <img src={l.photo} alt="" className="w-20 h-16 object-cover rounded-md flex-shrink-0" />}
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-bold text-emerald-600">{priceStr(l.price)}</p>
-                    <p className="text-xs text-gray-700 truncate">{l.address}</p>
-                    <p className="text-[11px] text-gray-400">{[l.beds && `${l.beds} hab`, l.baths && `${l.baths} ba`, l.sqft && `${Number(l.sqft).toLocaleString()} sqft`].filter(Boolean).join(" · ")}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <button onClick={() => sendListing(l, "email")} className="text-[11px] font-semibold text-lofty-700 hover:underline">📧 Email</button>
-                      <button onClick={() => sendListing(l, "sms")} className="text-[11px] font-semibold text-lofty-700 hover:underline">💬 SMS</button>
-                      {sent[l.listingKey] && <span className="text-[11px] text-emerald-600">{sent[l.listingKey] === "sending" ? "…" : sent[l.listingKey]}</span>}
-                    </div>
-                  </div>
+            <>
+              {/* Bulk action bar — select several and send them together */}
+              <div className="flex flex-wrap items-center gap-2 sticky top-0 bg-gray-50/60 py-1">
+                <span className="text-xs text-gray-500">{selectedList.length} seleccionada(s)</span>
+                <button onClick={previewBatch} disabled={!selectedList.length || previewLoading} className="text-xs font-semibold text-gray-700 border border-gray-300 rounded-lg px-2.5 py-1 disabled:opacity-40 flex items-center gap-1">
+                  {previewLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : "👁"} Vista previa
+                </button>
+                <button onClick={() => sendBatch("email")} disabled={!selectedList.length || sendingBatch} className="text-xs font-semibold text-white bg-lofty-600 rounded-lg px-2.5 py-1 disabled:opacity-40">📧 Enviar email</button>
+                <button onClick={() => sendBatch("sms")} disabled={!selectedList.length || sendingBatch} className="text-xs font-semibold text-white bg-lofty-600 rounded-lg px-2.5 py-1 disabled:opacity-40">💬 Enviar SMS</button>
+                {sendMsg && <span className="text-xs text-emerald-600">{sendMsg}</span>}
+              </div>
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {results.map(l => {
+                  const isSel = !!selected[l.listingKey]
+                  return (
+                    <label key={l.listingKey} className={cn("flex gap-3 border rounded-lg p-2 bg-white cursor-pointer", isSel ? "border-lofty-400 ring-1 ring-lofty-200" : "border-gray-200")}>
+                      <input type="checkbox" checked={isSel} onChange={() => toggleSelect(l)} className="mt-1 flex-shrink-0" />
+                      {l.photo && <img src={l.photo} alt="" className="w-20 h-16 object-cover rounded-md flex-shrink-0" />}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-bold text-emerald-600">{priceStr(l.price)}</p>
+                        <p className="text-xs text-gray-700 truncate">{l.address}</p>
+                        <p className="text-[11px] text-gray-400">{[l.beds && `${l.beds} hab`, l.baths && `${l.baths} ba`, l.sqft && `${Number(l.sqft).toLocaleString()} sqft`].filter(Boolean).join(" · ")}</p>
+                      </div>
+                    </label>
+                  )
+                })}
+              </div>
+            </>
+          )}
+          {!searching && results.length === 0 && <p className="text-xs text-gray-400">Busca propiedades del MLS, selecciona varias y envíalas juntas al lead.</p>}
+
+          {/* Email preview modal */}
+          {previewHtml !== null && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setPreviewHtml(null)}>
+              <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[85vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between px-4 py-2 border-b">
+                  <span className="text-sm font-semibold text-gray-700">Vista previa del email</span>
+                  <button onClick={() => setPreviewHtml(null)} className="text-gray-400 hover:text-gray-700 text-lg leading-none">×</button>
                 </div>
-              ))}
+                <iframe title="preview" srcDoc={previewHtml} className="w-full flex-1 min-h-[400px] bg-white" />
+                <div className="flex justify-end gap-2 px-4 py-2 border-t">
+                  <button onClick={() => setPreviewHtml(null)} className="text-sm text-gray-600 px-3 py-1.5">Cerrar</button>
+                  <button onClick={() => sendBatch("email")} disabled={sendingBatch} className="text-sm font-semibold text-white bg-lofty-600 rounded-lg px-4 py-1.5 disabled:opacity-50">Enviar email</button>
+                </div>
+              </div>
             </div>
           )}
-          {!searching && results.length === 0 && <p className="text-xs text-gray-400">Busca propiedades del MLS y envíaselas al lead con un clic.</p>}
         </div>
       )}
 
@@ -184,15 +247,21 @@ function LeadTools({ contact }: { contact: any }) {
           ) : (
             <>
               <div className="space-y-1 max-h-64 overflow-y-auto">
-                {projects.map(p => (
-                  <label key={p.id} className="flex items-center gap-2 text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white cursor-pointer">
-                    <input type="checkbox" checked={sel.includes(p.id)} onChange={e => setSel(s => e.target.checked ? [...s, p.id] : s.filter(x => x !== p.id))} />
-                    <span className="min-w-0">
-                      <span className="font-semibold text-gray-800">{p.name}</span>
-                      <span className="text-[11px] text-gray-400"> · {[p.city, p.priceMin ? `desde $${Number(p.priceMin).toLocaleString()}` : ""].filter(Boolean).join(" · ")}</span>
-                    </span>
-                  </label>
-                ))}
+                {projects.map(p => {
+                  const img = Array.isArray(p.photos) && p.photos[0] ? p.photos[0] : null
+                  return (
+                    <label key={p.id} className="flex items-center gap-2.5 text-sm border border-gray-200 rounded-lg p-2 bg-white cursor-pointer">
+                      <input type="checkbox" checked={sel.includes(p.id)} onChange={e => setSel(s => e.target.checked ? [...s, p.id] : s.filter(x => x !== p.id))} className="flex-shrink-0" />
+                      {img
+                        ? <img src={img} alt="" className="w-16 h-12 object-cover rounded-md flex-shrink-0" />
+                        : <span className="w-16 h-12 rounded-md bg-gray-100 flex items-center justify-center flex-shrink-0"><Building2 className="w-5 h-5 text-gray-300" /></span>}
+                      <span className="min-w-0">
+                        <span className="font-semibold text-gray-800 block truncate">{p.name}</span>
+                        <span className="text-[11px] text-gray-400">{[p.city, p.priceMin ? `desde $${Number(p.priceMin).toLocaleString()}` : ""].filter(Boolean).join(" · ")}</span>
+                      </span>
+                    </label>
+                  )
+                })}
               </div>
               <div className="flex items-center gap-2">
                 <button onClick={() => sendPrecon("email")} className="text-[11px] font-semibold text-lofty-700 hover:underline">📧 Enviar por email</button>
