@@ -2,8 +2,210 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { Handshake, Phone, Mail, MapPin, DollarSign, BedDouble, Clock, LogOut, Loader2, StickyNote, PhoneCall, ChevronDown, ChevronUp } from "lucide-react"
+import { Handshake, Phone, Mail, MapPin, DollarSign, BedDouble, Clock, LogOut, Loader2, StickyNote, PhoneCall, ChevronDown, ChevronUp, Search, Building2, SlidersHorizontal } from "lucide-react"
 import { cn, formatPhone } from "@/lib/utils"
+
+const PROP_TYPES = [
+  { value: "Single Family Residence", label: "Casa" },
+  { value: "Condominium", label: "Condo" },
+  { value: "Townhouse", label: "Townhouse" },
+  { value: "Multi Family", label: "Multi-Family" },
+]
+
+// Property tools for one referred lead: edit buyer prefs, search the IDX/MLS and
+// send homes, and send pre-construction — the same actions the agent has in the CRM.
+function LeadTools({ contact }: { contact: any }) {
+  const [tab, setTab] = useState<"prefs" | "search" | "precon">("search")
+
+  // ── Buyer preferences ──
+  const [loc, setLoc] = useState(contact.buyerLocation || "")
+  const [bmax, setBmax] = useState(contact.buyerBudgetMax != null ? String(contact.buyerBudgetMax) : "")
+  const [beds, setBeds] = useState(contact.buyerBedroomsMin != null ? String(contact.buyerBedroomsMin) : "")
+  const [ptype, setPtype] = useState(contact.buyerPropertyType || "")
+  const [savingPrefs, setSavingPrefs] = useState(false)
+  const [prefsMsg, setPrefsMsg] = useState("")
+
+  async function savePrefs() {
+    setSavingPrefs(true); setPrefsMsg("")
+    try {
+      const res = await fetch("/api/partner/prefs", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contactId: contact.id, buyerLocation: loc, buyerBudgetMax: bmax, buyerBedroomsMin: beds, buyerPropertyType: ptype }),
+      })
+      if (!res.ok) throw new Error()
+      setPrefsMsg("✓ Preferencias guardadas")
+    } catch { setPrefsMsg("No se pudo guardar") } finally { setSavingPrefs(false) }
+  }
+
+  // ── IDX search + send ──
+  const [mode, setMode] = useState<"sale" | "rent">("sale")
+  const [results, setResults] = useState<any[]>([])
+  const [searching, setSearching] = useState(false)
+  const [sent, setSent] = useState<Record<string, string>>({})
+
+  async function runSearch() {
+    setSearching(true); setResults([])
+    try {
+      const qs = new URLSearchParams()
+      if (loc) qs.set("city", loc)
+      if (bmax) qs.set("maxPrice", bmax)
+      if (beds) qs.set("beds", beds)
+      if (ptype) qs.set("type", ptype)
+      qs.set("mode", mode); qs.set("limit", "12")
+      const res = await fetch(`/api/idx/search?${qs.toString()}`)
+      const d = await res.json()
+      setResults(Array.isArray(d.results) ? d.results : (Array.isArray(d.listings) ? d.listings : []))
+    } catch { setResults([]) } finally { setSearching(false) }
+  }
+
+  async function sendListing(l: any, method: "email" | "sms") {
+    setSent(s => ({ ...s, [l.listingKey]: "sending" }))
+    try {
+      const res = await fetch(`/api/contacts/${contact.id}/send-property`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          address: l.address, city: l.city, state: l.state, price: l.price,
+          beds: l.beds, baths: l.baths, sqft: l.sqft, photoUrl: l.photo,
+          listingId: l.listingId, listingKey: l.listingKey, method,
+        }),
+      })
+      const d = await res.json()
+      setSent(s => ({ ...s, [l.listingKey]: d.ok ? `✓ Enviado por ${method === "email" ? "email" : "SMS"}` : (d.error || "Error") }))
+    } catch { setSent(s => ({ ...s, [l.listingKey]: "Error" })) }
+  }
+
+  // ── Pre-construction ──
+  const [projects, setProjects] = useState<any[] | null>(null)
+  const [sel, setSel] = useState<string[]>([])
+  const [preconMsg, setPreconMsg] = useState("")
+  const [loadingProjects, setLoadingProjects] = useState(false)
+
+  async function loadProjects() {
+    setLoadingProjects(true)
+    try {
+      const res = await fetch("/api/pre-construction")
+      const d = await res.json()
+      setProjects(Array.isArray(d) ? d : [])
+    } catch { setProjects([]) } finally { setLoadingProjects(false) }
+  }
+
+  async function sendPrecon(method: "email" | "sms") {
+    if (!sel.length) { setPreconMsg("Elige al menos un proyecto"); return }
+    setPreconMsg("Enviando…")
+    try {
+      const res = await fetch(`/api/contacts/${contact.id}/send-preconstruction`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectIds: sel, method }),
+      })
+      const d = await res.json()
+      setPreconMsg(d.ok ? `✓ Enviado por ${method === "email" ? "email" : "SMS"}` : (d.error || "Error"))
+    } catch { setPreconMsg("Error") }
+  }
+
+  const priceStr = (p: number | null) => p == null ? "" : `$${Number(p).toLocaleString()}`
+
+  return (
+    <div className="border border-gray-200 rounded-xl p-3 bg-gray-50/60">
+      <div className="flex gap-1.5 mb-3">
+        {[
+          { id: "search", label: "Buscar y enviar", icon: Search },
+          { id: "precon", label: "Preconstrucción", icon: Building2, onClick: () => { if (!projects) loadProjects() } },
+          { id: "prefs", label: "Preferencias", icon: SlidersHorizontal },
+        ].map(t => (
+          <button key={t.id} onClick={() => { setTab(t.id as any); t.onClick?.() }}
+            className={cn("flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border", tab === t.id ? "bg-lofty-600 text-white border-lofty-600" : "bg-white text-gray-600 border-gray-200")}>
+            <t.icon className="w-3.5 h-3.5" /> {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "prefs" && (
+        <div className="space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <input value={loc} onChange={e => setLoc(e.target.value)} placeholder="Ciudad / ZIP (ej: Doral, 33172)" className="border rounded-lg px-2.5 py-1.5 text-sm" />
+            <input value={bmax} onChange={e => setBmax(e.target.value.replace(/[^\d]/g, ""))} placeholder="Presupuesto máx" className="border rounded-lg px-2.5 py-1.5 text-sm" />
+            <input value={beds} onChange={e => setBeds(e.target.value.replace(/[^\d]/g, ""))} placeholder="Cuartos mín" className="border rounded-lg px-2.5 py-1.5 text-sm" />
+            <select value={ptype} onChange={e => setPtype(e.target.value)} className="border rounded-lg px-2.5 py-1.5 text-sm">
+              <option value="">Cualquier tipo</option>
+              {PROP_TYPES.map(pt => <option key={pt.value} value={pt.value}>{pt.label}</option>)}
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={savePrefs} disabled={savingPrefs} className="px-3 py-1.5 bg-lofty-600 text-white rounded-lg text-xs font-semibold disabled:opacity-50">
+              {savingPrefs ? "Guardando…" : "Guardar preferencias"}
+            </button>
+            {prefsMsg && <span className="text-xs text-emerald-600">{prefsMsg}</span>}
+          </div>
+        </div>
+      )}
+
+      {tab === "search" && (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex rounded-lg overflow-hidden border border-gray-200">
+              <button onClick={() => setMode("sale")} className={cn("px-3 py-1.5 text-xs font-semibold", mode === "sale" ? "bg-lofty-600 text-white" : "bg-white text-gray-600")}>En venta</button>
+              <button onClick={() => setMode("rent")} className={cn("px-3 py-1.5 text-xs font-semibold", mode === "rent" ? "bg-lofty-600 text-white" : "bg-white text-gray-600")}>En renta</button>
+            </div>
+            <input value={loc} onChange={e => setLoc(e.target.value)} placeholder="Ciudad / ZIP" className="border rounded-lg px-2.5 py-1.5 text-sm flex-1 min-w-[120px]" />
+            <input value={bmax} onChange={e => setBmax(e.target.value.replace(/[^\d]/g, ""))} placeholder="Precio máx" className="border rounded-lg px-2.5 py-1.5 text-sm w-28" />
+            <button onClick={runSearch} disabled={searching} className="px-3 py-1.5 bg-lofty-600 text-white rounded-lg text-xs font-semibold disabled:opacity-50 flex items-center gap-1.5">
+              {searching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />} Buscar
+            </button>
+          </div>
+          {results.length > 0 && (
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {results.map(l => (
+                <div key={l.listingKey} className="flex gap-3 border border-gray-200 rounded-lg p-2 bg-white">
+                  {l.photo && <img src={l.photo} alt="" className="w-20 h-16 object-cover rounded-md flex-shrink-0" />}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-emerald-600">{priceStr(l.price)}</p>
+                    <p className="text-xs text-gray-700 truncate">{l.address}</p>
+                    <p className="text-[11px] text-gray-400">{[l.beds && `${l.beds} hab`, l.baths && `${l.baths} ba`, l.sqft && `${Number(l.sqft).toLocaleString()} sqft`].filter(Boolean).join(" · ")}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <button onClick={() => sendListing(l, "email")} className="text-[11px] font-semibold text-lofty-700 hover:underline">📧 Email</button>
+                      <button onClick={() => sendListing(l, "sms")} className="text-[11px] font-semibold text-lofty-700 hover:underline">💬 SMS</button>
+                      {sent[l.listingKey] && <span className="text-[11px] text-emerald-600">{sent[l.listingKey] === "sending" ? "…" : sent[l.listingKey]}</span>}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {!searching && results.length === 0 && <p className="text-xs text-gray-400">Busca propiedades del MLS y envíaselas al lead con un clic.</p>}
+        </div>
+      )}
+
+      {tab === "precon" && (
+        <div className="space-y-2">
+          {loadingProjects || projects === null ? (
+            <p className="text-xs text-gray-400 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Cargando proyectos…</p>
+          ) : projects.length === 0 ? (
+            <p className="text-xs text-gray-400">No hay proyectos de preconstrucción disponibles.</p>
+          ) : (
+            <>
+              <div className="space-y-1 max-h-64 overflow-y-auto">
+                {projects.map(p => (
+                  <label key={p.id} className="flex items-center gap-2 text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white cursor-pointer">
+                    <input type="checkbox" checked={sel.includes(p.id)} onChange={e => setSel(s => e.target.checked ? [...s, p.id] : s.filter(x => x !== p.id))} />
+                    <span className="min-w-0">
+                      <span className="font-semibold text-gray-800">{p.name}</span>
+                      <span className="text-[11px] text-gray-400"> · {[p.city, p.priceMin ? `desde $${Number(p.priceMin).toLocaleString()}` : ""].filter(Boolean).join(" · ")}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => sendPrecon("email")} className="text-[11px] font-semibold text-lofty-700 hover:underline">📧 Enviar por email</button>
+                <button onClick={() => sendPrecon("sms")} className="text-[11px] font-semibold text-lofty-700 hover:underline">💬 Enviar por SMS</button>
+                {preconMsg && <span className="text-[11px] text-emerald-600">{preconMsg}</span>}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 interface Update { id: string; author: string; kind: string; body: string; createdAt: string }
 interface HistoryItem { id: string; ts: string; icon: string; who: string; text: string }
@@ -249,6 +451,13 @@ export default function PartnerClient({ partnerName, agentName, agentPhone, refe
                         <PhoneCall className="w-3.5 h-3.5" /> Log as call
                       </button>
                     </div>
+                  </div>
+
+                  {/* Property tools — same as the CRM: search IDX, send homes,
+                      send pre-construction, edit buyer preferences. */}
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Herramientas de propiedades</p>
+                    <LeadTools contact={r.contact} />
                   </div>
 
                   {/* Full shared history — the agent's notes + all lead activity
