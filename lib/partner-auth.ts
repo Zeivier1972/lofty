@@ -39,6 +39,18 @@ export async function getPartner() {
   return prisma.referralPartner.findUnique({ where: { id: session.partnerId } })
 }
 
+// True when the CURRENT partner session has a referral for this contact — used
+// to let a partner use the CRM's property tools on their own referred leads.
+export async function partnerOwnsContact(contactId: string): Promise<boolean> {
+  const session = await getPartnerSession()
+  if (!session || !contactId) return false
+  const ref = await prisma.leadReferral.findFirst({
+    where: { partnerId: session.partnerId, contactId },
+    select: { id: true },
+  })
+  return !!ref
+}
+
 export function partnerCookieOptions() {
   return {
     name: COOKIE,

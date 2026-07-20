@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { sendSMS, toE164 } from "@/lib/sms"
 import { sendEmail, wrapEmail } from "@/lib/email"
 import { auth } from "@/lib/auth"
+import { partnerOwnsContact } from "@/lib/partner-auth"
 
 function priceLabel(price: number | null) {
   if (!price) return ""
@@ -31,7 +32,7 @@ export async function POST(
 ) {
   try {
     const session = await auth()
-    if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 })
+    if (!session && !(await partnerOwnsContact(params.id))) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 })
 
     const { listings, method, note } = await req.json() as {
       listings: ListingPayload[]
@@ -56,7 +57,7 @@ export async function POST(
       select: { realtorName: true, realtorEmail: true, realtorPhone: true },
     }).catch(() => null)
 
-    const agentName = agentConfig?.realtorName || session.user?.name || "Your Agent"
+    const agentName = agentConfig?.realtorName || session?.user?.name || "Your Agent"
     const agentPhone = agentConfig?.realtorPhone || process.env.TWILIO_PHONE_NUMBER || ""
     const agentEmail = agentConfig?.realtorEmail || process.env.REALTOR_EMAIL || ""
 

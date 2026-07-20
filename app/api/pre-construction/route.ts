@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
+import { getPartnerSession } from "@/lib/partner-auth"
 import { prisma } from "@/lib/prisma"
 import { randomUUID } from "crypto"
 
@@ -46,8 +47,13 @@ async function saveProjects(projects: Project[]) {
 
 export async function GET() {
   const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  return NextResponse.json(await getProjects())
+  // Referral partners may also read the project list so they can send it to
+  // their leads — but strip the agent-only MLS reference.
+  const partner = session ? null : await getPartnerSession()
+  if (!session && !partner) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const projects = await getProjects()
+  if (partner) return NextResponse.json(projects.map(({ mlsId, ...p }) => p))
+  return NextResponse.json(projects)
 }
 
 export async function POST(req: Request) {

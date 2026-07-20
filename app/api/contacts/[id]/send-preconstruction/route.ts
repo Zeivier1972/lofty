@@ -10,6 +10,7 @@ import { prisma } from "@/lib/prisma"
 import { sendSMS } from "@/lib/sms"
 import { sendEmail, wrapEmail } from "@/lib/email"
 import { auth } from "@/lib/auth"
+import { partnerOwnsContact } from "@/lib/partner-auth"
 
 const SETTING_KEY = "preconstruction_projects"
 
@@ -46,7 +47,7 @@ function priceRange(p: Project): string {
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   try {
     const session = await auth()
-    if (!session) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 })
+    if (!session && !(await partnerOwnsContact(params.id))) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 })
 
     const { projectIds, method, note } = await req.json()
     if (!method || !["email", "sms"].includes(method)) {
@@ -71,7 +72,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const projects = allProjects.filter(p => projectIds.includes(p.id))
     if (projects.length === 0) return NextResponse.json({ ok: false, error: "No matching projects" }, { status: 404 })
 
-    const agentName = cfg?.realtorName || session.user?.name || "Catherine Gomez"
+    const agentName = cfg?.realtorName || session?.user?.name || "Catherine Gomez"
     const agentPhone = cfg?.realtorPhone || process.env.TWILIO_PHONE_NUMBER || ""
     const bookUrl = cfg?.calendlyUrl || ""
 
@@ -128,7 +129,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     await prisma.activity.create({
       data: {
         contactId: contact.id,
-        userId: session.user?.id,
+        userId: session?.user?.id,
         type: method === "email" ? "EMAIL_SENT" : "SMS_SENT",
         title: `Sent ${projects.length} pre-construction ${projects.length === 1 ? "project" : "projects"} via ${method}`,
       },
