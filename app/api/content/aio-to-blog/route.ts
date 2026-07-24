@@ -3,6 +3,16 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth"
+import { fetchPexelsPhoto } from "@/lib/pexels-video"
+
+// Curated Miami real-estate covers when Pexels has no key/result — so a blog
+// post is never published without an image.
+const COVER_FALLBACKS = [
+  "https://images.unsplash.com/photo-1533106497176-45ae19e68ba2?auto=format&fit=crop&w=1000&q=80",
+  "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=1000&q=80",
+  "https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=1000&q=80",
+  "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?auto=format&fit=crop&w=1000&q=80",
+]
 
 // Publish an AIO (Answer Engine Optimization) result as a blog / FAQ page on the
 // public site. A clean question → answer → FAQ structure is exactly what Google
@@ -53,12 +63,17 @@ export async function POST(req: Request) {
     const tags = Array.isArray(secondaryKeywords) ? secondaryKeywords.slice(0, 8) : []
     if (keyword) tags.unshift(String(keyword))
 
+    // Topic-relevant cover image so the post looks clean (never image-less).
+    const pexels = await fetchPexelsPhoto(`${keyword || ""} ${postTitle}`).catch(() => null)
+    const coverImage = pexels || COVER_FALLBACKS[Math.abs(slug.length) % COVER_FALLBACKS.length]
+
     await prisma.blogPost.create({
       data: {
         title: postTitle,
         slug,
         excerpt: (aio.answer ? String(aio.answer) : "").slice(0, 200) || null,
         content,
+        coverImage,
         tags: JSON.stringify(tags),
         published: true,
         publishedAt: new Date(),
