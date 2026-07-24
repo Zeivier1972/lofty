@@ -28,6 +28,7 @@ const { values } = parseArgs({
     config:  { type: "string", short: "c" },
     output:  { type: "string", short: "o" },
     concurrency: { type: "string", default: "4" },
+    timeout: { type: "string" },
   },
   allowPositionals: true,
 })
@@ -127,6 +128,10 @@ await renderMedia({
   outputLocation: outputPath,
   inputProps: composition.defaultProps,
   concurrency: parseInt(values.concurrency ?? "4", 10),
+  // Pexels B-roll clips can be slow to download; give them 2 min instead of the
+  // 28s default so a slow clip doesn't kill the whole render. Override with
+  // --timeout <ms>.
+  timeoutInMilliseconds: parseInt(values.timeout ?? "120000", 10),
   onProgress: ({ progress }) => {
     const pct = Math.round(progress * 100)
     if (pct !== lastPercent && pct % 5 === 0) {
