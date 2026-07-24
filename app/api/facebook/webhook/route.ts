@@ -280,33 +280,14 @@ export async function POST(req: Request) {
       }
     }
 
-    // ── Instagram DMs (keyword-triggered lead magnet delivery) ───────────────
-    for (const event of entry.messaging || []) {
-      if (!event.message || event.message.is_echo) continue
-      if (entry.id?.startsWith("17") || event.sender?.id?.startsWith("IGID")) {
-        // Instagram messaging event — check for lead magnet keyword
-        const igsid: string = event.sender?.id ?? ""
-        const igText: string = event.message?.text ?? ""
-        if (igsid && igText) {
-          const igKeyword = await detectKeyword(igText).catch(() => null)
-          if (igKeyword) {
-            const igContact = await prisma.contact.findFirst({ where: { instagramIgsid: igsid } })
-            deliverLeadMagnet(igKeyword, {
-              id: igContact?.id,
-              firstName: igContact?.firstName || "Hola",
-              phone: igContact?.phone,
-              email: igContact?.email,
-              instagramIgsid: igsid,
-            }, { sms: false, email: !!igContact?.email, fbDm: false, igDm: true }).catch(e =>
-              console.error("[FB webhook] IG lead magnet delivery failed:", e)
-            )
-          }
-        }
-        continue
-      }
-    }
+    // Instagram DMs are handled by the SAME state machine below as Messenger
+    // (the messaging loop processes IG events too). We used to short-circuit IG
+    // here and fire the PDF immediately WITHOUT capturing the lead's info — that
+    // undercut the whole funnel (goal: keyword → capture name/email/phone →
+    // deliver PDF → AI → properties → schedule). Removed so IG uses the full
+    // capture flow like Facebook.
 
-    // ── Messenger DMs ─────────────────────────────────────────────────────────
+    // ── Messenger + Instagram DMs ─────────────────────────────────────────────
     for (const event of entry.messaging || []) {
       if (!event.message || event.message.is_echo) continue
 
