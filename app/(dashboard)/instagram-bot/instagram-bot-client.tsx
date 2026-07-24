@@ -25,6 +25,27 @@ export default function InstagramBotClient() {
   const [uploadingPdf, setUploadingPdf] = useState(false)
   const [conversations, setConversations] = useState<any[]>([])
   const [resettingConvo, setResettingConvo] = useState<string | null>(null)
+  const [handles, setHandles] = useState<{ fbPageId: string; igHandle: string }>({ fbPageId: "", igHandle: "" })
+  const [copiedKw, setCopiedKw] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch("/api/social/handles").then(r => r.json()).then(d => setHandles({ fbPageId: d.fbPageId || "", igHandle: d.igHandle || "" })).catch(() => {})
+  }, [])
+
+  // One-tap deep link that opens the DM with the keyword pre-typed.
+  function oneTapLink(keyword: string): string | null {
+    const kw = encodeURIComponent(keyword.toUpperCase())
+    if (handles.igHandle) return `https://ig.me/m/${handles.igHandle}?text=${kw}`
+    if (handles.fbPageId) return `https://m.me/${handles.fbPageId}?text=${kw}`
+    return null
+  }
+  function copyOneTap(keyword: string) {
+    const link = oneTapLink(keyword)
+    if (!link) return
+    navigator.clipboard?.writeText(link)
+    setCopiedKw(keyword)
+    setTimeout(() => setCopiedKw(null), 2000)
+  }
 
   useEffect(() => {
     Promise.all([
@@ -296,6 +317,15 @@ export default function InstagramBotClient() {
                   <a href={c.pdfUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-purple-600 hover:underline mt-1">
                     <Link2 className="w-3 h-3" />{c.pdfName || "Ver PDF"}
                   </a>
+                )}
+                {oneTapLink(c.keyword) && (
+                  <button
+                    onClick={() => copyOneTap(c.keyword)}
+                    className="flex items-center gap-1 text-xs text-blue-600 hover:underline mt-1"
+                    title="Copia un link que abre el DM con la palabra ya escrita — pégalo en tus posts o bio"
+                  >
+                    <Link2 className="w-3 h-3" />{copiedKw === c.keyword ? "¡Link copiado!" : "Copiar link de un toque"}
+                  </button>
                 )}
                 <p className="text-xs text-gray-300 mt-1">{c.leads} leads</p>
               </div>
