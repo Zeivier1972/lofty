@@ -19,6 +19,7 @@ const PERMANENT = [
   "invalid", "no existe", "does not exist", "no such", "mailbox unavailable",
   "recipient rejected", "user unknown", "address rejected", "not found",
   "550", "5.1.1", "unable to lookup", "domain not found",
+  "bounced", "dead", // hard bounces from the Resend webhook
 ]
 // Reason fragments that are TRANSIENT — never block on these
 const TRANSIENT = ["rate", "429", "timeout", "timed out", "temporarily", "too many", "no email provider"]
