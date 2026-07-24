@@ -906,6 +906,26 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
   const [smsSpent, setSmsSpent] = useState<number>(0)
   const [smsSent, setSmsSent] = useState<number>(0)
   const [smsCapReached, setSmsCapReached] = useState(false)
+  // Clean bounced/failed emails
+  const [cleaningEmails, setCleaningEmails] = useState(false)
+  const [cleanResult, setCleanResult] = useState<string | null>(null)
+  const cleanBouncedEmails = async () => {
+    setCleaningEmails(true)
+    setCleanResult(null)
+    try {
+      const res = await fetch("/api/admin/backfill-failed-emails?apply=1")
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.error || "Error")
+      const n = d.contactsFlaggedDoNotEmail ?? 0
+      setCleanResult(`✓ ${n} contacto${n === 1 ? "" : "s"} con correo rebotado marcado${n === 1 ? "" : "s"} — no se les enviará más email.`)
+      toast({ title: "Correos rebotados limpiados", description: `${n} contactos marcados como no-email.` })
+    } catch (e: any) {
+      setCleanResult("No se pudo completar. Intenta de nuevo.")
+      toast({ title: "Error limpiando correos", description: e.message, variant: "destructive" })
+    } finally {
+      setCleaningEmails(false)
+    }
+  }
   useEffect(() => {
     fetch("/api/settings/sms-pause")
       .then(r => r.json())
@@ -1417,6 +1437,22 @@ export default function SettingsClient({ user, tags: initialTags, pipelines: ini
                     {smsCap > 0 && <span className="text-gray-400"> · tope ${smsCap}</span>}
                   </p>
                   {smsCapReached && <p className="text-xs text-red-600 font-semibold mt-1">⚠️ Tope alcanzado — los textos automáticos están en pausa hasta el próximo mes.</p>}
+                </div>
+              </CardContent>
+
+              {/* Clean bounced/failed emails out of the system */}
+              <CardContent className="px-5 pb-5 pt-0 border-t border-gray-100">
+                <div className="pt-4">
+                  <p className="text-sm font-bold text-gray-900 flex items-center gap-2">📪 Limpiar correos rebotados</p>
+                  <p className="text-xs text-gray-500 mt-1 max-w-xl">
+                    Marca <strong>no enviar email</strong> a todos los contactos cuyo correo <strong>rebotó o falló de forma permanente</strong> (dirección inválida o inexistente). Dejan de recibir emails; les puedes llamar o textear. Las fallas temporales (límites, tiempos de espera) no se tocan.
+                  </p>
+                  <div className="flex items-center gap-3 mt-3">
+                    <Button size="sm" variant="outline" onClick={cleanBouncedEmails} disabled={cleaningEmails}>
+                      {cleaningEmails ? <><Loader2 className="w-4 h-4 animate-spin mr-1.5" /> Limpiando…</> : "Limpiar correos rebotados"}
+                    </Button>
+                    {cleanResult && <span className="text-xs text-emerald-600 font-semibold">{cleanResult}</span>}
+                  </div>
                 </div>
               </CardContent>
             </Card>
