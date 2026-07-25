@@ -464,22 +464,33 @@ export default function DashboardClient({
             <CardTitle className="text-base font-semibold">Recent Activity</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {recentActivities.map((activity) => (
-              <div key={activity.id} className="flex items-start gap-3">
-                <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0 text-base">
-                  {ACTIVITY_ICONS[activity.type] || "📌"}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-gray-900 leading-snug">{activity.title}</p>
-                  {activity.contact && (
-                    <p className="text-xs text-lofty-600">
-                      {activity.contact.firstName} {activity.contact.lastName}
-                    </p>
-                  )}
-                  <p className="text-xs text-gray-400">{formatRelativeTime(activity.createdAt)}</p>
-                </div>
-              </div>
-            ))}
+            {recentActivities.map((activity) => {
+              const row = (
+                <>
+                  <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0 text-base">
+                    {ACTIVITY_ICONS[activity.type] || "📌"}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-gray-900 leading-snug">{activity.title}</p>
+                    {activity.contact && (
+                      <p className="text-xs text-lofty-600 font-medium">
+                        {activity.contact.firstName} {activity.contact.lastName} →
+                      </p>
+                    )}
+                    <p className="text-xs text-gray-400">{formatRelativeTime(activity.createdAt)}</p>
+                  </div>
+                </>
+              )
+              // Clickable → open the lead when the activity has a contact.
+              return activity.contact ? (
+                <Link key={activity.id} href={`/contacts/${activity.contact.id}`}
+                  className="flex items-start gap-3 -mx-2 px-2 py-1 rounded-lg hover:bg-gray-50 transition-colors">
+                  {row}
+                </Link>
+              ) : (
+                <div key={activity.id} className="flex items-start gap-3">{row}</div>
+              )
+            })}
           </CardContent>
         </Card>
       </div>
