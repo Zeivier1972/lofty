@@ -249,6 +249,19 @@ export async function POST(req: Request) {
           // If person already has a conversation, reply contextually but don't restart
           if (existing) {
             if (existing.state === "OPTED_OUT") continue
+            // Already-completed lead commented a KEYWORD → re-send that PDF (not
+            // just a generic "we have your info" nudge). Their info is captured,
+            // so they get the guide straight away.
+            const reKw = matchedCampaign?.keyword || fbCampaignKeyword
+            if (existing.state === "COMPLETE" && reKw) {
+              const magnet = await prisma.leadMagnet.findUnique({ where: { keyword: reKw } }).catch(() => null)
+              const campaign = matchedCampaign || await prisma.facebookBotCampaign.findUnique({ where: { keyword: reKw } }).catch(() => null)
+              const url = magnet?.guideUrl || (campaign?.pdfUrl ? `${process.env.NEXT_PUBLIC_APP_URL || ""}/brochure/${reKw}` : null)
+              if (url) {
+                await privateReplyToComment(commentId, `📚 Aquí está tu guía "${magnet?.title || campaign?.pdfName || reKw}": ${url}\n\n¿Tienes alguna pregunta? Escríbeme por aquí 😊`)
+                continue
+              }
+            }
             const nudge = existing.state === "COMPLETE"
               ? "¡Hola! Ya tenemos tu información 😊 Si tienes preguntas, escríbeme aquí por DM y con gusto te ayudo."
               : "¡Hola! Ya te escribí por mensaje privado 📩 Revisa tu bandeja de mensajes para continuar."
