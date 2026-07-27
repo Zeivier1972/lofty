@@ -43,6 +43,7 @@ interface Props {
   messages: { id: string; body: string; direction: string; createdAt: string }[]
   emails: { id: string; subject: string; createdAt: string }[]
   notes: { id: string; author: string; content: string; createdAt: string }[]
+  history?: { id: string; ts: string; icon: string; who: string; text: string }[]
 }
 
 function calcMonthlyPayment(price: number, downPct: number, rate: number) {
@@ -53,7 +54,7 @@ function calcMonthlyPayment(price: number, downPct: number, rate: number) {
   return (principal * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1)
 }
 
-export default function LenderLeadClient({ shareId, loStatus, contact, messages, emails, notes: initialNotes }: Props) {
+export default function LenderLeadClient({ shareId, loStatus, contact, messages, emails, notes: initialNotes, history = [] }: Props) {
   const [status, setStatus] = useState(loStatus)
   const [savingStatus, setSavingStatus] = useState(false)
   const [notes, setNotes] = useState(initialNotes)
@@ -320,6 +321,24 @@ export default function LenderLeadClient({ shareId, loStatus, contact, messages,
           </div>
         )}
       </div>
+
+      {/* Notes & activity from Catherine — shared both ways */}
+      {history.length > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
+          <h2 className="text-sm font-semibold text-gray-900 mb-3">Notas y actividad de Catherine</h2>
+          <ul className="space-y-2 max-h-72 overflow-y-auto">
+            {history.map(h => (
+              <li key={h.id} className="flex items-start gap-2 text-sm">
+                <span className="mt-0.5 flex-shrink-0">{h.icon}</span>
+                <div className="min-w-0">
+                  <p className="text-gray-700 whitespace-pre-wrap break-words">{h.text}</p>
+                  <p className="text-[10px] text-gray-400">{h.who ? `${h.who} · ` : ""}{new Date(h.ts).toLocaleString("es-US")}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Conversation history */}
       <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">

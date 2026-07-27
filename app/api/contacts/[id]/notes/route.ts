@@ -15,42 +15,52 @@ async function notifyMentionedPartners(content: string, contactId: string, menti
     const tokens = Array.from(new Set((content.match(/@([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9._-]*)/g) || []).map(m => m.slice(1).toLowerCase())))
     if (!tokens.length) return
 
-    const partners = await prisma.referralPartner.findMany({
-      where: { isActive: true },
-      select: { id: true, name: true, email: true, phone: true, token: true },
-    })
-    const matched = partners.filter(p => {
-      const full = p.name.toLowerCase().trim()
+    const nameMatches = (name: string) => {
+      const full = (name || "").toLowerCase().trim()
       const first = full.split(/\s+/)[0]
       const compact = full.replace(/\s+/g, "")
       return tokens.some(t => t === first || t === full || t === compact || (t.length >= 3 && full.startsWith(t)))
-    })
-    if (!matched.length) return
+    }
+
+    const [partners, loanOfficers] = await Promise.all([
+      prisma.referralPartner.findMany({ where: { isActive: true }, select: { id: true, name: true, email: true, phone: true, token: true } }),
+      prisma.loanOfficer.findMany({ where: { isActive: true }, select: { id: true, name: true, email: true } }).catch(() => []),
+    ])
+    const matchedPartners = partners.filter(p => nameMatches(p.name))
+    const matchedLOs = (loanOfficers as any[]).filter(lo => nameMatches(lo.name))
+    if (!matchedPartners.length && !matchedLOs.length) return
 
     const contact = await prisma.contact.findUnique({ where: { id: contactId }, select: { firstName: true, lastName: true } })
     const leadName = contact ? `${contact.firstName} ${contact.lastName || ""}`.trim() : "un lead"
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
     const snippet = content.slice(0, 400)
 
-    for (const p of matched) {
-      const portal = p.token ? `${appUrl}/partner/login?token=${p.token}` : null
-      if (p.email) {
-        sendEmail({
-          to: p.email,
-          subject: `Nota sobre ${leadName}`,
-          html: `<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto">
-            <p><strong>${mentionedBy}</strong> te mencionó en una nota sobre <strong>${leadName}</strong>:</p>
-            <blockquote style="border-left:3px solid #c9a84c;padding-left:12px;color:#374151;white-space:pre-wrap">${snippet.replace(/</g, "&lt;")}</blockquote>
-            ${portal ? `<p><a href="${portal}" style="background:#0e1f3d;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">Ver el lead →</a></p>` : ""}
-          </div>`,
-        }).catch(() => {})
-      }
-      if (p.phone) {
-        sendSMS(p.phone, `Nota sobre ${leadName} de ${mentionedBy}: "${content.slice(0, 200)}"${portal ? ` Ver: ${portal}` : ""}`).catch(() => {})
-      }
-      prisma.activity.create({
-        data: { type: "NOTE_ADDED", title: `Notificado a ${p.name} sobre esta nota`, description: snippet.slice(0, 120), contactId },
+    const notifyEmail = (email: string | null, portal: string | null) => {
+      if (!email) return
+      sendEmail({
+        to: email,
+        subject: `Nota sobre ${leadName}`,
+        transactional: true,
+        html: `<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto">
+          <p><strong>${mentionedBy}</strong> te mencionó en una nota sobre <strong>${leadName}</strong>:</p>
+          <blockquote style="border-left:3px solid #c9a84c;padding-left:12px;color:#374151;white-space:pre-wrap">${snippet.replace(/</g, "&lt;")}</blockquote>
+          ${portal ? `<p><a href="${portal}" style="background:#0e1f3d;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">Ver el lead →</a></p>` : ""}
+        </div>`,
       }).catch(() => {})
+    }
+
+    // Referral partners (realtors): email + SMS + portal magic link.
+    for (const p of matchedPartners) {
+      const portal = p.token ? `${appUrl}/partner/login?token=${p.token}` : null
+      notifyEmail(p.email, portal)
+      if (p.phone) sendSMS(p.phone, `Nota sobre ${leadName} de ${mentionedBy}: "${content.slice(0, 200)}"${portal ? ` Ver: ${portal}` : ""}`).catch(() => {})
+      prisma.activity.create({ data: { type: "NOTE_ADDED", title: `Notificado a ${p.name} sobre esta nota`, description: snippet.slice(0, 120), contactId } }).catch(() => {})
+    }
+
+    // Loan officers: email + link to their portal (they log in with their own creds).
+    for (const lo of matchedLOs) {
+      notifyEmail(lo.email, `${appUrl}/lender`)
+      prisma.activity.create({ data: { type: "NOTE_ADDED", title: `Notificado al loan officer ${lo.name} sobre esta nota`, description: snippet.slice(0, 120), contactId } }).catch(() => {})
     }
   } catch (e) {
     console.error("[note-mentions]", e)

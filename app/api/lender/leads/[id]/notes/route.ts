@@ -14,7 +14,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const share = await prisma.leadShare.findUnique({ where: { id: params.id } })
   const canAccess = share && share.loanOfficerId === partner.id &&
-    (share.status === "PAID" || (share.status === "ACTIVE" && partner.subscriptionStatus === "active"))
+    (share.status === "PAID" || share.status === "ACTIVE")
   if (!canAccess) return NextResponse.json({ error: "Lead no encontrado" }, { status: 404 })
 
   const note = await prisma.leadShareNote.create({
