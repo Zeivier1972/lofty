@@ -34,3 +34,12 @@ command = "curl -sf \"${NEXT_PUBLIC_APP_URL}/api/cron/smart-plans\" -H \"Authori
 name = "warm-plan-release"
 schedule = "0 14 * * *"
 command = "curl -sf -X POST ${NEXT_PUBLIC_APP_URL}/api/cron/warm-plan-release -H \"x-cron-secret: ${CRON_SECRET}\" || true"
+
+# Sofía follows up with hot buyers (3+ saves/views) once daily — one short nudge
+# that offers more homes + drives to a call/appointment with Catherine. Cost-
+# controlled (once per lead / 3 days, capped per run, SMS via the automated path
+# so the monthly cap + kill switch apply). 16:00 UTC ≈ noon ET.
+[[crons]]
+name = "hot-buyer-followup"
+schedule = "0 16 * * *"
+command = "curl -sf \"${NEXT_PUBLIC_APP_URL}/api/cron/hot-buyer-followup\" -H \"x-cron-secret: ${CRON_SECRET}\" || true"
