@@ -29,8 +29,9 @@ export default async function LenderDashboardPage() {
   })
 
   const leads = shares.map(s => {
-    // Legacy per-lead paid shares are always accessible; new ACTIVE shares need subscription
-    const unlocked = s.status === "PAID" || isSubscribed
+    // Assigned leads (ACTIVE) and paid leads (PAID) are accessible to the
+    // assigned loan officer — no subscription required (simple assignment model).
+    const unlocked = s.status === "PAID" || s.status === "ACTIVE" || isSubscribed
     return {
       id: s.id,
       status: s.status,

@@ -25,11 +25,11 @@ export default async function LenderLeadPage({ params }: { params: { id: string 
 
   const canAccess = share &&
     share.loanOfficerId === partner.id &&
-    (share.status === "PAID" || (share.status === "ACTIVE" && partner.subscriptionStatus === "active"))
+    (share.status === "PAID" || share.status === "ACTIVE")
 
   if (!canAccess) redirect("/lender")
 
-  const [smsMessages, emails] = await Promise.all([
+  const [smsMessages, emails, crmNotes, crmActivities] = await Promise.all([
     prisma.sMSMessage.findMany({
       where: { contactId: share.contact.id },
       orderBy: { createdAt: "asc" },
@@ -41,7 +41,25 @@ export default async function LenderLeadPage({ params }: { params: { id: string 
       take: 20,
       select: { id: true, subject: true, toAddress: true, fromAddress: true, createdAt: true },
     }),
+    // Catherine's notes on this lead — so the LO sees them (shared, both ways).
+    prisma.note.findMany({
+      where: { contactId: share.contact.id },
+      orderBy: { createdAt: "desc" }, take: 25,
+      select: { id: true, content: true, createdAt: true, author: { select: { name: true } } },
+    }).catch(() => []),
+    prisma.activity.findMany({
+      where: { contactId: share.contact.id },
+      orderBy: { createdAt: "desc" }, take: 40,
+      select: { id: true, type: true, title: true, description: true, createdAt: true },
+    }).catch(() => []),
   ])
+
+  // Merged history the LO can see: Catherine's notes + lead activity.
+  const iconFor = (t: string) => /EMAIL/i.test(t) ? "📬" : /CALL/i.test(t) ? "📞" : /SMS|TEXT|WHATSAPP/i.test(t) ? "💬" : /SAVE|PROPERTY/i.test(t) ? "💜" : /NOTE/i.test(t) ? "📝" : "•"
+  const history = [
+    ...(crmNotes as any[]).map(n => ({ id: `n-${n.id}`, ts: n.createdAt.toISOString(), icon: "📝", who: n.author?.name || "Catherine", text: n.content })),
+    ...(crmActivities as any[]).filter(a => !(a.type === "NOTE_ADDED" && !a.description)).map(a => ({ id: `a-${a.id}`, ts: a.createdAt.toISOString(), icon: iconFor(a.type), who: "", text: [a.title, a.description].filter(Boolean).join(" — ") })),
+  ].sort((x, y) => (x.ts < y.ts ? 1 : -1)).slice(0, 60)
 
   return (
     <LenderLeadClient
@@ -77,6 +95,7 @@ export default async function LenderLeadPage({ params }: { params: { id: string 
         content: n.content,
         createdAt: n.createdAt.toISOString(),
       }))}
+      history={history}
     />
   )
 }
