@@ -147,9 +147,20 @@ export default function HotActivity() {
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {/* Hot buyers */}
       <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
-        <h3 className="flex items-center gap-2 font-bold text-gray-900 mb-1">
-          <Flame className="w-4 h-4 text-orange-500" /> Compradores calientes
-        </h3>
+        <div className="flex items-center justify-between gap-2 mb-1">
+          <h3 className="flex items-center gap-2 font-bold text-gray-900">
+            <Flame className="w-4 h-4 text-orange-500" /> Compradores calientes
+          </h3>
+          {visibleContacts.length > 0 && (
+            <Link
+              href={`/dialer?queue=${visibleContacts.map(c => c.id).join(",")}`}
+              className="flex items-center gap-1.5 text-xs font-semibold text-white bg-green-600 hover:bg-green-700 rounded-lg px-2.5 py-1.5 transition-colors flex-shrink-0"
+              title="Cargar a todos estos leads en el marcador para llamarlos en fila (sin teléfono → email)"
+            >
+              <Phone className="w-3.5 h-3.5" /> Llamar a todos ({visibleContacts.length})
+            </Link>
+          )}
+        </div>
         <p className="text-xs text-gray-400 mb-3">Leads que guardaron o vieron 3+ propiedades</p>
         {visibleContacts.length === 0 ? (
           <p className="text-sm text-gray-400 py-4 text-center">Aún no hay leads con 3+ interacciones.</p>

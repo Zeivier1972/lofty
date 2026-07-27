@@ -4,11 +4,12 @@ import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth"
 import DialerClient from "./dialer-client"
 
-export default async function DialerPage({ searchParams }: { searchParams?: { contactId?: string } }) {
+export default async function DialerPage({ searchParams }: { searchParams?: { contactId?: string; queue?: string } }) {
   let contacts: any[] = []
   let sessions: any[] = []
   let pipelineStages: any[] = []
   let initialContact: any = null
+  let initialQueue: any[] = []
 
   try {
     const session = await auth()
@@ -83,6 +84,26 @@ export default async function DialerPage({ searchParams }: { searchParams?: { co
         },
       })
     }
+
+    // Deep link: /dialer?queue=id1,id2,... pre-loads a whole list (e.g. the hot
+    // buyers) into the call queue. Includes leads WITHOUT a phone so the agent
+    // can email them instead of calling.
+    if (searchParams?.queue) {
+      const ids = searchParams.queue.split(",").map(s => s.trim()).filter(Boolean).slice(0, 100)
+      if (ids.length) {
+        const rows = await prisma.contact.findMany({
+          where: { id: { in: ids } },
+          select: {
+            id: true, firstName: true, lastName: true, phone: true, phone2: true, email: true, status: true, leadScore: true,
+            buyerPropertyType: true, buyerLocation: true, buyerBedroomsMin: true, buyerBathroomsMin: true,
+            buyerBudgetMin: true, buyerBudgetMax: true, buyerTimelineMonths: true, buyerPurpose: true,
+            leadReferrals: { select: { status: true, partner: { select: { name: true } } }, orderBy: { sentAt: "desc" }, take: 1 },
+          },
+        })
+        // Preserve the order the caller passed them in.
+        initialQueue = ids.map(id => rows.find(r => r.id === id)).filter(Boolean)
+      }
+    }
   } catch (e) {
     console.error("Dialer page error:", e)
   }
@@ -93,6 +114,7 @@ export default async function DialerPage({ searchParams }: { searchParams?: { co
       sessions={JSON.parse(JSON.stringify(sessions))}
       pipelineStages={JSON.parse(JSON.stringify(pipelineStages))}
       initialContact={initialContact ? JSON.parse(JSON.stringify(initialContact)) : null}
+      initialQueue={JSON.parse(JSON.stringify(initialQueue))}
     />
   )
 }

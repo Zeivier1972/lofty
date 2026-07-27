@@ -6,7 +6,7 @@ import {
   Play, Pause, SkipForward, Plus, Trash2, Clock,
   CheckCircle2, XCircle, MessageSquare, Voicemail,
   BarChart3, Users, Target, TrendingUp,
-  ChevronDown, ChevronUp, Search, User, Zap, ExternalLink,
+  ChevronDown, ChevronUp, Search, User, Zap, ExternalLink, Mail, Loader2,
 } from "lucide-react"
 import { cn, formatPhone } from "@/lib/utils"
 import HelpPanel from "@/components/help-panel"
@@ -17,6 +17,7 @@ interface Contact {
   lastName: string
   phone: string | null
   phone2: string | null
+  email?: string | null
   status: string
   leadScore: number
   buyerPropertyType?: string | null
@@ -64,6 +65,7 @@ interface Props {
   sessions: DialerSession[]
   pipelineStages: PipelineStage[]
   initialContact?: Contact | null
+  initialQueue?: Contact[]
 }
 
 // Property types: display label ↔ CRM enum. buyerPropertyType stores one or
@@ -116,10 +118,15 @@ const DISPOSITIONS = [
   { value: "APPOINTMENT", label: "Appointment Set", icon: CheckCircle2, color: "text-emerald-600" },
 ]
 
-export default function DialerClient({ contacts, sessions: initialSessions, pipelineStages, initialContact }: Props) {
+export default function DialerClient({ contacts, sessions: initialSessions, pipelineStages, initialContact, initialQueue }: Props) {
   const [sessions, setSessions] = useState<DialerSession[]>(initialSessions)
   const [activeSession, setActiveSession] = useState<DialerSession | null>(initialSessions[0] || null)
-  const [queue, setQueue] = useState<Contact[]>(initialContact?.phone ? [initialContact] : [])
+  // Seed from a passed-in list (e.g. hot buyers via ?queue=), else a single deep-linked contact.
+  const [queue, setQueue] = useState<Contact[]>(
+    initialQueue?.length ? initialQueue : (initialContact?.phone ? [initialContact] : [])
+  )
+  const [emailingLead, setEmailingLead] = useState(false)
+  const [emailedNote, setEmailedNote] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [currentCallIndex, setCurrentCallIndex] = useState(0)
   const [callStatus, setCallStatus] = useState<"idle" | "calling" | "connected" | "ended">("idle")
@@ -379,6 +386,21 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
     setSessions(prev => [newSession, ...prev])
     setActiveSession(newSession)
     return newSession
+  }
+
+  // For a queued lead with no phone: send a follow-up email instead of calling.
+  async function emailCurrentLead() {
+    const c = queue[currentCallIndex]
+    if (!c?.email) { setEmailedNote("Este lead no tiene email tampoco."); return }
+    setEmailingLead(true); setEmailedNote(null)
+    try {
+      const res = await fetch("/api/dialer/email", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contactId: c.id }),
+      })
+      const d = await res.json()
+      setEmailedNote(d.ok ? "✓ Email de seguimiento enviado" : (d.error || "No se pudo enviar"))
+    } catch { setEmailedNote("Error al enviar") } finally { setEmailingLead(false) }
   }
 
   function addToQueue(contact: Contact) {
@@ -889,8 +911,25 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
                 </div>
 
                 {/* Call controls */}
-                <div className="flex items-center gap-3">
-                  {callStatus === "idle" || callStatus === "ended" ? (
+                <div className="flex items-center gap-3 flex-wrap">
+                  {!currentContact?.phone ? (
+                    // No phone → email this lead instead of calling.
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={emailCurrentLead}
+                        disabled={emailingLead || !currentContact?.email}
+                        className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-semibold text-lg shadow-sm transition-colors disabled:opacity-50"
+                        title={currentContact?.email ? "Este lead no tiene teléfono — envíale un email de seguimiento" : "Sin teléfono ni email"}
+                      >
+                        {emailingLead ? <Loader2 className="w-5 h-5 animate-spin" /> : <Mail className="w-5 h-5" />}
+                        {currentContact?.email ? "Enviar email (sin teléfono)" : "Sin teléfono ni email"}
+                      </button>
+                      <button onClick={nextCall} className="flex items-center gap-2 px-4 py-3 border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 font-medium">
+                        Siguiente →
+                      </button>
+                      {emailedNote && <span className="text-sm text-emerald-600 font-medium">{emailedNote}</span>}
+                    </div>
+                  ) : callStatus === "idle" || callStatus === "ended" ? (
                     <button
                       onClick={() => dialContact(currentContact)}
                       className="flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-xl hover:bg-green-700 font-semibold text-lg shadow-sm transition-colors"
