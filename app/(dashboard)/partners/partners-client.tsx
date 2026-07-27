@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Landmark, Plus, Loader2, Copy, Check, DollarSign, Users, TrendingUp, KeyRound, Trash2, CheckCircle2, XCircle, AlertCircle } from "lucide-react"
+import { Landmark, Plus, Loader2, Copy, Check, DollarSign, Users, TrendingUp, KeyRound, Trash2, CheckCircle2, XCircle, AlertCircle, Eye } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/components/ui/use-toast"
 import { cn } from "@/lib/utils"
@@ -200,6 +200,15 @@ export default function PartnersClient() {
                       Cancelar suscripción
                     </button>
                   )}
+                  <a
+                    href={`/api/partners/${p.id}/preview`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-xs text-gray-400 hover:text-indigo-600 transition-colors"
+                    title="Abrir su portal tal como lo ve el loan officer (sin contraseña)"
+                  >
+                    <Eye className="w-3.5 h-3.5" /> Ver portal
+                  </a>
                   <button onClick={() => resetPassword(p)} className="flex items-center gap-1 text-xs text-gray-400 hover:text-indigo-600 transition-colors">
                     <KeyRound className="w-3.5 h-3.5" /> Reset clave
                   </button>
