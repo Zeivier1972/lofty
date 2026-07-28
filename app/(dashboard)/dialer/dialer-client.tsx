@@ -180,6 +180,42 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
   const sessionRunningRef = useRef(false)
   useEffect(() => { sessionRunningRef.current = sessionRunning }, [sessionRunning])
 
+  // Pre-recorded voicemail messages (text or audio), shared with the Contacts page
+  type VmTemplate = { id: string; name: string; text?: string; audioUrl?: string }
+  const [vmTemplates, setVmTemplates] = useState<VmTemplate[]>([])
+  const [droppingVm, setDroppingVm] = useState(false)
+  const [showVmMenu, setShowVmMenu] = useState(false)
+  useEffect(() => {
+    fetch("/api/settings/voicemail-templates")
+      .then(r => r.ok ? r.json() : [])
+      .then(d => Array.isArray(d) && setVmTemplates(d))
+      .catch(() => {})
+  }, [])
+
+  // Drop a pre-recorded message (audio plays after the beep, or a text is sent),
+  // then hang up and move to the next call.
+  async function dropVoicemailAndNext(tpl: VmTemplate) {
+    const c = queue[currentCallIndex]
+    setShowVmMenu(false)
+    if (!c?.phone) { setSkipNotice("Este lead no tiene teléfono para dejar mensaje."); return }
+    setDroppingVm(true)
+    try {
+      const res = await fetch("/api/dialer/voicemail-drop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: c.phone, contactId: c.id, audioUrl: tpl.audioUrl, text: tpl.text }),
+      })
+      const d = await res.json().catch(() => ({}))
+      setSkipNotice(d.ok ? `📨 Mensaje "${tpl.name}" enviado a ${c.firstName} — pasando a la siguiente` : (d.error || "No se pudo enviar el mensaje"))
+    } catch {
+      setSkipNotice("Error al enviar el mensaje")
+    } finally {
+      setDroppingVm(false)
+    }
+    // Hang up the live call and advance (logged as Voicemail).
+    endCall("COMPLETED", "VOICEMAIL")
+  }
+
   // Trigger dial when autoDialContact is set (runs with fresh state)
   useEffect(() => {
     if (!autoDialContact) return
@@ -534,7 +570,7 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
     }
   }
 
-  async function endCall(status = "COMPLETED") {
+  async function endCall(status = "COMPLETED", dispositionOverride?: string) {
     if (callFinishedRef.current) return // already finishing this call — never double-advance
     callFinishedRef.current = true
     if (connectTimeoutRef.current) { clearTimeout(connectTimeoutRef.current); connectTimeoutRef.current = null }
@@ -561,7 +597,7 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
       body: JSON.stringify({
         callId: activeCallId,
         status,
-        disposition: disposition || undefined,
+        disposition: dispositionOverride || disposition || undefined,
         notes: buildNotesString(noteFields) || undefined,
         duration: callDuration,
       }),
@@ -1009,6 +1045,34 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
                     >
                       <PhoneOff className="w-5 h-5" /> Hang Up
                     </button>
+                  )}
+
+                  {(callStatus === "connected" || callStatus === "calling") && vmTemplates.length > 0 && (
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowVmMenu(v => !v)}
+                        disabled={droppingVm}
+                        title="Deja un mensaje pregrabado y pasa a la siguiente llamada"
+                        className="flex items-center gap-2 px-4 py-3 border-2 border-amber-300 text-amber-700 rounded-xl hover:bg-amber-50 font-medium disabled:opacity-50"
+                      >
+                        {droppingVm ? <Loader2 className="w-4 h-4 animate-spin" /> : <Voicemail className="w-4 h-4" />}
+                        Buzón de voz <ChevronDown className="w-3 h-3" />
+                      </button>
+                      {showVmMenu && (
+                        <div className="absolute z-20 mt-1 w-64 bg-white border border-gray-200 rounded-xl shadow-lg p-1 max-h-64 overflow-y-auto">
+                          {vmTemplates.map(t => (
+                            <button
+                              key={t.id}
+                              onClick={() => dropVoicemailAndNext(t)}
+                              className="w-full text-left px-3 py-2 rounded-lg hover:bg-amber-50 text-sm flex items-center justify-between gap-2"
+                            >
+                              <span className="font-medium text-gray-800 truncate">{t.name}</span>
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 flex-shrink-0">{t.audioUrl ? "🎙️ audio" : "✍️ texto"}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   )}
 
                   {currentCallIndex < queue.length - 1 && (
