@@ -345,10 +345,11 @@ export async function POST(req: Request) {
       return new Response(`<Response></Response>`, { headers: { "Content-Type": "text/xml" } })
     }
 
-    // Get history before logging new message (use correct table per channel)
+    // Get history before logging new message (use correct table per channel).
+    // Keep the window small (6) — fewer input tokens per turn = lower AI cost.
     const historyRaw = isWhatsApp
-      ? await prisma.whatsAppMessage.findMany({ where: { contactId: contact.id }, orderBy: { createdAt: "desc" }, take: 10 })
-      : await prisma.sMSMessage.findMany({ where: { contactId: contact.id }, orderBy: { createdAt: "desc" }, take: 10 })
+      ? await prisma.whatsAppMessage.findMany({ where: { contactId: contact.id }, orderBy: { createdAt: "desc" }, take: 6 })
+      : await prisma.sMSMessage.findMany({ where: { contactId: contact.id }, orderBy: { createdAt: "desc" }, take: 6 })
     historyRaw.reverse()
 
     if (isWhatsApp) {
@@ -408,12 +409,14 @@ export async function POST(req: Request) {
     let reply = "Hola, soy Sofía de Catherine Gomez Realtor. ¿En qué puedo ayudarte hoy?"
     const collectedImages: string[] = []
     const propertyCards: PropertyCard[] = []
-    const MAX = 6
+    // Cap the tool-use rounds (4) so a single reply can't rack up many AI calls.
+    const MAX = 4
 
     for (let i = 0; i < MAX; i++) {
       const res = await anthropic.messages.create({
         model: "claude-haiku-4-5-20251001",
-        max_tokens: 600,
+        // Shorter replies = fewer output tokens + get the message across faster.
+        max_tokens: 400,
         system: `${SYSTEM_PROMPT}\n\n---\nCONTEXTO DEL LEAD:\n${ctx.join("\n")}`,
         tools: TOOLS,
         messages: msgs,
