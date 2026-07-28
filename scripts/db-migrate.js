@@ -1231,6 +1231,81 @@ async function convertWhatsAppStepsToSMS(db) {
   else console.log("[db-migrate] No WhatsApp steps to convert (US plans already on SMS)")
 }
 
+// ─── Import Catherine's transactions from the old CRM (one-time, idempotent) ──
+// Source: CSV export from the old Lofty CRM (19 deals). Each row is matched to a
+// contact by lead email when one exists, and assigned to Catherine. Idempotent:
+// a "[oldCRM:<id>]" marker is stored in notes and re-runs skip anything already
+// imported. Commission ($) = GCI from the old CRM; commissionPercent = rate.
+const OLD_CRM_TRANSACTIONS = [
+  { oldId: "1500657", title: "24646 SW 118 Place Corsica", type: "LEASE", status: "CLOSED", address: "24646 SW 118 Place", city: "", state: "FL", zip: "", salePrice: 2600, pct: 50, commission: 1300, closeDate: "2025-03-04", email: "jmira012@outlook.com", note: "Renter: Jilliam Valdes Miranda" },
+  { oldId: "1501261", title: "Park Side", type: "BUYER", status: "UNDER_CONTRACT", address: "24646 SW 118 Place #407-408", city: "Miami", state: "FL", zip: "33129", salePrice: 1032000, pct: 7, commission: 72240, email: "icastro143@gmail.com", note: "Buyer: Ivan Castro | Expected close 2027-05-12" },
+  { oldId: "1501266", title: "474 NE 13 Street, Florida City, FL", type: "BUYER", status: "CLOSED", address: "474 NE 13 Street", city: "Florida City", state: "FL", zip: "", salePrice: 401000, pct: 3, commission: 12030, closeDate: "2025-03-04", email: "corchito12@hotmail.com", note: "Buyer: Jose, Daniel, Gabriela Chavez" },
+  { oldId: "1501269", title: "26143 SW 138th Ct, Homestead, FL 33032", type: "LEASE", status: "CLOSED", address: "26143 SW 138th Ct", city: "Homestead", state: "FL", zip: "33032-6754", salePrice: 2600, pct: 50, commission: 1300, closeDate: "2025-01-01", email: "jdchavez71@hotmail.com", note: "Renter: Jose Donaldo Chavez Barahona" },
+  { oldId: "1505891", title: "CB-0012C Costa Blanca", type: "BUYER", status: "CLOSED", address: "397 NW 10th Ct", city: "Florida City", state: "FL", zip: "33034", salePrice: 301985, listPrice: 301985, pct: null, commission: 3000, closeDate: "2025-09-13", email: "yanurk24@gmail.com", note: "Buyer: Yanurka Romero | New construction, flat $3,000 commission — VERIFY price (old CRM had a typo: 301.98)" },
+  { oldId: "1507035", title: "CPS - BLK 10 LOT 8 Century", type: "BUYER", status: "CLOSED", address: "8475 SW 94th St #213E", city: "Miami", state: "FL", zip: "33156", salePrice: 304990, listPrice: 304990, pct: 3, commission: 9149, closeDate: "2025-03-13", email: "mroaleman@gmail.com", note: "Buyer: Mario Aleman" },
+  { oldId: "1510078", title: "164 NE 13th Terrace, Homestead, FL 33033", type: "BUYER", status: "CLOSED", address: "164 NE 13th Terrace", city: "Homestead", state: "FL", zip: "33033", salePrice: 475000, pct: 3, commission: 14250, closeDate: "2025-03-26", email: "leonardo0963@hotmail.com", note: "Buyer: Leonardo Gonzalez Vargas" },
+  { oldId: "1521066", title: "14 SW 15th Ave, Homestead, FL 33030", type: "BUYER", status: "CANCELLED", address: "14 SW 15th Ave", city: "Homestead", state: "FL", zip: "33030", salePrice: 315000, listPrice: 315000, pct: 2.5, commission: 7875, contractDate: "2025-03-13", mls: "A11724413", email: "esmeraldavina40@gmail.com", note: "Buyer: Esmeralda Vina (cancelled)" },
+  { oldId: "1524041", title: "23202 SW 119 Ave, Homestead, FL 33032", type: "LEASE", status: "CLOSED", address: "23202 SW 119 Ave", city: "Homestead", state: "FL", zip: "33032", salePrice: 4100, pct: 50, commission: 2050, closeDate: "2025-03-30", email: "cdrodriguez67@yahoo.com", note: "Renter: Carmen Rodriguez" },
+  { oldId: "1567062", title: "11343 SW 239th St, Homestead, FL 33032 (Listing)", type: "SELLER", status: "CLOSED", address: "11343 SW 239th St", city: "Homestead", state: "FL", zip: "33032", salePrice: 3100, pct: 0, commission: 0, closeDate: "2025-07-25", email: "jnrolorenzo2727@gmail.com", note: "Seller: Juan Y Vanessa" },
+  { oldId: "1567063", title: "21026 SW 125th Pl, Miami, FL 33177", type: "BUYER", status: "CLOSED", address: "21026 SW 125th Pl", city: "Miami", state: "FL", zip: "33177-5762", salePrice: 457000, listPrice: 407500, pct: 1.956, commission: 8937, closeDate: "2025-07-01", mls: "A11183666", email: "diazheviayailenis@gmail.com", note: "Buyer: Yailenis Y" },
+  { oldId: "1597409", title: "11343 SW 239th St, Homestead, FL 33032 (Lease)", type: "LEASE", status: "CLOSED", address: "11343 SW 239th St", city: "Homestead", state: "FL", zip: "33032", salePrice: 3000, pct: 50, commission: 1500, closeDate: "2025-09-13", email: "galoremc1@gmail.com", note: "Renter: Carolina Ricci" },
+  { oldId: "1597489", title: "GZ Unit 907-B", type: "BUYER", status: "UNDER_CONTRACT", address: "GZ Unit 907-B", city: "", state: "FL", zip: "", salePrice: 382875, pct: 7, commission: 26801.25, email: "", note: "Buyer: Gabriel Ricardo Camacho | Preconstruction, expected close 2028-01-10" },
+  { oldId: "1769601", title: "2452 SW 99th Way #2452, Miramar, FL 33025", type: "BUYER", status: "CLOSED", address: "2452 SW 99th Way #2452", city: "Miramar", state: "FL", zip: "33025", salePrice: 348000, pct: 2, commission: 6960, closeDate: "2026-05-29", email: "laro262@gmail.com", note: "Buyer: Lady Romero" },
+  { oldId: "1770803", title: "12303 NW 10 Lane, Miami, FL 33182", type: "BUYER", status: "PENDING", address: "12303 NW 10 Lane", city: "Miami", state: "FL", zip: "33182", salePrice: 395990, pct: 3, commission: 11879.7, email: "atrioleidy@yahoo.com", note: "Buyer: Leidy Atrio" },
+  { oldId: "1770805", title: "24895 SW 113th Pl, Homestead, FL 33032", type: "LEASE", status: "ACTIVE_LISTING", address: "24895 SW 113th Pl", city: "Homestead", state: "FL", zip: "33032", salePrice: 3000, pct: 50, commission: 1500, email: "tonitofamilia@yahoo.com", note: "Renter: Maria Fernandez" },
+  { oldId: "1770807", title: "Nickelodeon Unit 406, Orlando, FL", type: "BUYER", status: "PENDING", address: "Nickelodeon Unit 406", city: "Orlando", state: "FL", zip: "", salePrice: 433300, pct: 6, commission: 25998, email: "diana8camacho@gmail.com", note: "Buyer: Diana Camacho | Preconstruction" },
+  { oldId: "1770835", title: "10282 NW 9th St Cir #206, Miami, FL 33172", type: "SELLER", status: "ACTIVE_LISTING", address: "10282 NW 9th St Cir #206", city: "Miami", state: "FL", zip: "33172", salePrice: 3000, pct: 50, commission: 1500, email: "ude70@yahoo.es", note: "Seller/listing: Eduardo Curbelo (lease listing)" },
+  { oldId: "1771848", title: "1418 NE 4 Avenue, Florida City, FL 33034", type: "BUYER", status: "PENDING", address: "1418 NE 4 Avenue", city: "Florida City", state: "FL", zip: "33034", salePrice: 359462, pct: 4, commission: 14378.48, email: "delgado4604@gmail.com", note: "Buyer: Daniel Delgado | Expected close 2026-06-30" },
+]
+
+async function importOldCrmTransactions(db) {
+  const owner =
+    (await db.user.findFirst({ where: { email: "info@catherinegomezrealtor.com" } })) ||
+    (await db.user.findFirst())
+  if (!owner) {
+    console.warn("[db-migrate] No user found — skipping transaction import")
+    return
+  }
+
+  let created = 0
+  for (const t of OLD_CRM_TRANSACTIONS) {
+    const marker = `[oldCRM:${t.oldId}]`
+    const existing = await db.transaction.findFirst({ where: { notes: { contains: marker } } })
+    if (existing) continue
+
+    let contactId = null
+    if (t.email) {
+      const c = await db.contact.findFirst({ where: { email: { equals: t.email, mode: "insensitive" } }, select: { id: true } })
+      contactId = c?.id || null
+    }
+
+    await db.transaction.create({
+      data: {
+        title: t.title,
+        address: t.address || "",
+        city: t.city || "",
+        state: t.state || "FL",
+        zip: t.zip || "",
+        type: t.type,
+        status: t.status,
+        salePrice: t.salePrice ?? null,
+        listPrice: t.listPrice ?? null,
+        commission: t.commission ?? null,
+        commissionPercent: t.pct ?? null,
+        closeDate: t.closeDate ? new Date(t.closeDate) : null,
+        contractDate: t.contractDate ? new Date(t.contractDate) : null,
+        mlsNumber: t.mls || null,
+        notes: `${t.note} ${marker}`.trim(),
+        contactId,
+        agentId: owner.id,
+      },
+    })
+    created++
+  }
+  if (created) console.log(`[db-migrate] Imported ${created} transaction(s) from the old CRM`)
+  else console.log("[db-migrate] Old-CRM transactions already imported — skip")
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -1248,6 +1323,7 @@ async function main() {
   await seedBrickellKeywords(db).catch(e => console.warn("[db-migrate] Brickell keywords skip:", e.message))
   await backfillPartnerTokens(db).catch(e => console.warn("[db-migrate] partner tokens skip:", e.message))
   await convertWhatsAppStepsToSMS(db).catch(e => console.warn("[db-migrate] WhatsApp→SMS convert skip:", e.message))
+  await importOldCrmTransactions(db).catch(e => console.warn("[db-migrate] transaction import skip:", e.message))
   await db.$disconnect()
   console.log("[db-migrate] done")
   process.exit(0)
