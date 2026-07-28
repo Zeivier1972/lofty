@@ -196,10 +196,20 @@ function PipelineSettingsModal({
 function ImportModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
   const [csv, setCsv] = useState("")
   const [importing, setImporting] = useState(false)
-  const [result, setResult] = useState<{ imported: number; updated?: number; stagePlaced?: number; stageMoved?: number; emailsSent?: number; skipped: number; errors: string[]; total: number; dryRunMode?: boolean; found?: number; missing?: number; wouldFixEmail?: number; missingSamples?: string[] } | null>(null)
+  const [result, setResult] = useState<{ imported: number; updated?: number; stagePlaced?: number; stageMoved?: number; referred?: number; emailsSent?: number; skipped: number; errors: string[]; total: number; dryRunMode?: boolean; found?: number; missing?: number; wouldFixEmail?: number; missingSamples?: string[] } | null>(null)
   const [progress, setProgress] = useState<{ done: number; total: number; imported: number } | null>(null)
   const [preview, setPreview] = useState<{ headers: string[]; rows: string[][] } | null>(null)
+  const [partners, setPartners] = useState<{ id: string; name: string }[]>([])
+  const [assignToPartnerId, setAssignToPartnerId] = useState("")
   const { toast } = useToast()
+
+  // Load referral partners so imported leads can be assigned to one (e.g. Bryan).
+  useEffect(() => {
+    fetch("/api/referral-partners")
+      .then(r => r.ok ? r.json() : [])
+      .then((data) => Array.isArray(data) && setPartners(data.map((p: any) => ({ id: p.id, name: p.name }))))
+      .catch(() => {})
+  }, [])
 
   function parsePreview(raw: string) {
     const lines = raw.trim().split(/\r?\n/).filter(l => l.trim()).slice(0, 6)
@@ -252,7 +262,7 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
     }
 
     const totals = {
-      imported: 0, updated: 0, stagePlaced: 0, stageMoved: 0, skipped: 0, emailsSent: 0,
+      imported: 0, updated: 0, stagePlaced: 0, stageMoved: 0, referred: 0, skipped: 0, emailsSent: 0,
       errors: [] as string[], total: dataRows.length,
       dryRunMode: dryRun, found: 0, missing: 0, wouldFixEmail: 0, missingSamples: [] as string[],
     }
@@ -261,7 +271,7 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
       const res = await fetch("/api/contacts/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ csv: chunkCsv, dryRun }),
+        body: JSON.stringify({ csv: chunkCsv, dryRun, assignToPartnerId: assignToPartnerId || undefined }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -282,6 +292,7 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
         totals.imported   += data.imported   || 0
         totals.stagePlaced += data.stagePlaced || 0
         totals.stageMoved  += data.stageMoved  || 0
+        totals.referred   += data.referred   || 0
         totals.updated    += data.updated    || 0
         totals.skipped    += data.skipped    || 0
         totals.emailsSent += data.emailsSent || 0
@@ -365,6 +376,9 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
                 {((result.stagePlaced ?? 0) > 0 || (result.stageMoved ?? 0) > 0) && (
                   <p className="text-sm text-green-700">📊 Pipeline: {result.stagePlaced ?? 0} agregados a su etapa · {result.stageMoved ?? 0} movidos a la etapa correcta</p>
                 )}
+                {(result.referred ?? 0) > 0 && (
+                  <p className="text-sm text-green-700">🤝 {result.referred} leads asignados al socio</p>
+                )}
                 {result.emailsSent != null && result.emailsSent > 0 && (
                   <p className="text-sm text-green-700">📧 {result.emailsSent} correos de bienvenida enviados</p>
                 )}
@@ -398,6 +412,22 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
           </div>
         ) : (
           <div className="p-5 space-y-4">
+            {/* Assign imported leads to a referral partner (optional) */}
+            {partners.length > 0 && (
+              <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
+                <label className="text-xs font-semibold text-amber-800 block mb-1.5">Asignar estos leads a un socio (opcional)</label>
+                <select
+                  value={assignToPartnerId}
+                  onChange={e => setAssignToPartnerId(e.target.value)}
+                  className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-300"
+                >
+                  <option value="">— No asignar (solo importar) —</option>
+                  {partners.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+                <p className="text-[11px] text-amber-700 mt-1">Cada lead importado se asignará a este socio (aparece en su portal). No duplica si ya está asignado.</p>
+              </div>
+            )}
+
             {/* Upload zone */}
             <div className="border-2 border-dashed border-gray-200 rounded-xl p-5 text-center hover:border-lofty-400 transition-colors">
               <FileText className="w-8 h-8 text-gray-300 mx-auto mb-2" />

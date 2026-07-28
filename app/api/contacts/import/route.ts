@@ -73,7 +73,7 @@ export async function POST(req: Request) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   try {
-    const { csv, dryRun } = await req.json()
+    const { csv, dryRun, assignToPartnerId } = await req.json()
     if (!csv?.trim()) return NextResponse.json({ error: "No CSV data provided" }, { status: 400 })
 
     const lines = csv.trim().split(/\r?\n/).filter((l: string) => l.trim())
@@ -427,11 +427,20 @@ export async function POST(req: Request) {
     const agentName  = aiConfig?.realtorName  || "Catherine Gomez"
     const agentPhone = aiConfig?.realtorPhone || "305-283-0872"
 
+    // Optional: assign every imported/matched contact to a referral partner
+    // (e.g. Bryan). Creates a LeadReferral per contact, idempotently.
+    let assignPartnerId: string | null = null
+    if (assignToPartnerId) {
+      const p = await prisma.referralPartner.findUnique({ where: { id: String(assignToPartnerId) }, select: { id: true } })
+      assignPartnerId = p?.id || null
+    }
+
     // ── Phase 5: upsert contacts in batches ─────────────────────────────
     let imported = 0
     let updated = 0
     let stagePlaced = 0
     let stageMoved = 0
+    let referred = 0
     const emailsSent = 0
     const errors: string[] = []
     const BATCH = 50
@@ -509,6 +518,21 @@ export async function POST(req: Request) {
           if (isNew) {
             await prisma.clientPortalAccess.create({ data: { contactId } }).catch(() => {})
           }
+
+          // Assign to the chosen referral partner (idempotent — one referral per
+          // contact+partner). Applies to both new and existing contacts.
+          if (assignPartnerId) {
+            const existingRef = await prisma.leadReferral.findFirst({
+              where: { contactId, partnerId: assignPartnerId },
+              select: { id: true },
+            })
+            if (!existingRef) {
+              await prisma.leadReferral.create({
+                data: { contactId, partnerId: assignPartnerId, status: "SENT", notes: "Asignado durante la importación" },
+              }).catch(() => {})
+              referred++
+            }
+          }
         } catch (e: any) {
           errors.push(`${contact.firstName} ${contact.lastName || ""}: ${e?.message?.slice(0, 80)}`)
         }
@@ -520,6 +544,7 @@ export async function POST(req: Request) {
       updated,
       stagePlaced,
       stageMoved,
+      referred,
       emailsSent,
       skipped: parseSkipped,
       inFileDuplicates,
