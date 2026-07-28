@@ -1212,6 +1212,25 @@ async function seedWarmToHotPlan(db) {
   console.log("[db-migrate] Warm → Hot smart plan created (9 steps, 14 days)")
 }
 
+// ─── Force US smart plans to text (SMS) instead of WhatsApp ──────────────────
+// WhatsApp is not used by leads in the USA, so those steps would only ever fall
+// back to SMS anyway. Convert every WHATSAPP step to SMS EXCEPT the Colombia
+// plan ("Invierte en Florida desde Colombia"), whose leads are in Colombia and
+// do use WhatsApp. Idempotent + self-healing: runs after all seeders, so even a
+// fresh re-seed ends up correct.
+async function convertWhatsAppStepsToSMS(db) {
+  const changed = await db.$executeRawUnsafe(`
+    UPDATE "SmartPlanStep"
+    SET "type" = 'SMS'
+    WHERE "type" = 'WHATSAPP'
+      AND "planId" NOT IN (
+        SELECT "id" FROM "SmartPlan" WHERE "name" = 'Invierte en Florida desde Colombia'
+      )
+  `)
+  if (changed) console.log(`[db-migrate] Converted ${changed} WhatsApp step(s) to SMS (kept Colombia plan on WhatsApp)`)
+  else console.log("[db-migrate] No WhatsApp steps to convert (US plans already on SMS)")
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -1228,6 +1247,7 @@ async function main() {
   await dedupPipelineLeads(db).catch(e => console.warn("[db-migrate] dedup pipeline leads skip:", e.message))
   await seedBrickellKeywords(db).catch(e => console.warn("[db-migrate] Brickell keywords skip:", e.message))
   await backfillPartnerTokens(db).catch(e => console.warn("[db-migrate] partner tokens skip:", e.message))
+  await convertWhatsAppStepsToSMS(db).catch(e => console.warn("[db-migrate] WhatsApp→SMS convert skip:", e.message))
   await db.$disconnect()
   console.log("[db-migrate] done")
   process.exit(0)
