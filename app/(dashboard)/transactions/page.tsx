@@ -26,7 +26,7 @@ export default async function TransactionsPage() {
         by: ["status"],
         where: { ...(userId && { agentId: userId }) },
         _count: true,
-        _sum: { salePrice: true },
+        _sum: { salePrice: true, commission: true },
       }),
     ])
   } catch (e) {

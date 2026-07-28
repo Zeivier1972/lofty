@@ -81,6 +81,8 @@ export default function TransactionsClient({ transactions, stats }: Transactions
 
   const totalVolume = stats.reduce((sum, s) => sum + (s._sum.salePrice || 0), 0)
   const closedVolume = stats.find((s) => s.status === "CLOSED")?._sum?.salePrice || 0
+  const totalCommission = stats.reduce((sum, s) => sum + (s._sum?.commission || 0), 0)
+  const closedCommission = stats.find((s) => s.status === "CLOSED")?._sum?.commission || 0
   const activeCount = (stats.find((s) => s.status === "ACTIVE_LISTING")?._count || 0) +
     (stats.find((s) => s.status === "UNDER_CONTRACT")?._count || 0)
 
@@ -111,11 +113,12 @@ export default function TransactionsClient({ transactions, stats }: Transactions
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: "Active Transactions", value: activeCount, icon: Home, color: "text-blue-600 bg-blue-50" },
           { label: "Total Volume", value: formatCurrency(totalVolume), icon: TrendingUp, color: "text-purple-600 bg-purple-50" },
-          { label: "Closed Volume", value: formatCurrency(closedVolume), icon: DollarSign, color: "text-green-600 bg-green-50" },
+          { label: "Comisión total (GCI)", value: formatCurrency(totalCommission), icon: DollarSign, color: "text-green-600 bg-green-50" },
+          { label: "Comisión ganada (cerradas)", value: formatCurrency(closedCommission), icon: DollarSign, color: "text-emerald-600 bg-emerald-50" },
         ].map((stat) => (
           <Card key={stat.label} className="border-0 shadow-sm">
             <CardContent className="p-4 flex items-center gap-3">
