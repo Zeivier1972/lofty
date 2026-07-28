@@ -37,6 +37,7 @@ const TX_TYPES = ["BUYER", "SELLER", "DUAL", "LEASE", "REFERRAL"]
 export default function TransactionsClient({ transactions, stats }: TransactionsClientProps) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<string>("ALL")
+  const [year, setYear] = useState<string>("ALL")
   const [showNew, setShowNew] = useState(false)
   const [saving, setSaving] = useState(false)
   const [txList, setTxList] = useState(transactions)
@@ -79,14 +80,32 @@ export default function TransactionsClient({ transactions, stats }: Transactions
     }
   }
 
-  const totalVolume = stats.reduce((sum, s) => sum + (s._sum.salePrice || 0), 0)
-  const closedVolume = stats.find((s) => s.status === "CLOSED")?._sum?.salePrice || 0
-  const totalCommission = stats.reduce((sum, s) => sum + (s._sum?.commission || 0), 0)
-  const closedCommission = stats.find((s) => s.status === "CLOSED")?._sum?.commission || 0
-  const activeCount = (stats.find((s) => s.status === "ACTIVE_LISTING")?._count || 0) +
-    (stats.find((s) => s.status === "UNDER_CONTRACT")?._count || 0)
+  // A deal's "year" = the year it closed; fall back to when it was created for
+  // deals that haven't closed yet (active/pending). Earnings are counted by
+  // close date, so "earned in 2026" = commission on deals that closed in 2026.
+  const effectiveYear = (t: any): number | null => {
+    const d = t.closeDate || t.createdAt
+    return d ? new Date(d).getFullYear() : null
+  }
 
-  const filtered = activeTab === "ALL" ? txList : txList.filter((t) => t.status === activeTab)
+  const availableYears = Array.from(
+    new Set(txList.map(effectiveYear).filter((y): y is number => y != null))
+  ).sort((a, b) => b - a)
+
+  // Filter by the selected year first — every stat and the list below reflect it.
+  const yearFiltered = year === "ALL" ? txList : txList.filter((t) => String(effectiveYear(t)) === year)
+
+  const totalVolume = yearFiltered.reduce((sum, t) => sum + (t.salePrice || 0), 0)
+  const totalCommission = yearFiltered.reduce((sum, t) => sum + (t.commission || 0), 0)
+  const closedCommission = yearFiltered
+    .filter((t) => t.status === "CLOSED")
+    .reduce((sum, t) => sum + (t.commission || 0), 0)
+  const activeCount = yearFiltered.filter(
+    (t) => t.status === "ACTIVE_LISTING" || t.status === "UNDER_CONTRACT"
+  ).length
+
+  const yearLabel = year === "ALL" ? "(todas)" : year
+  const filtered = activeTab === "ALL" ? yearFiltered : yearFiltered.filter((t) => t.status === activeTab)
 
   const tabs = [
     { key: "ALL", label: "All" },
@@ -105,6 +124,17 @@ export default function TransactionsClient({ transactions, stats }: Transactions
           <p className="text-gray-500 text-sm mt-0.5">{txList.length} total transactions</p>
         </div>
         <div className="flex items-center gap-2">
+          <select
+            value={year}
+            onChange={(e) => setYear(e.target.value)}
+            className="border border-gray-200 rounded-xl px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
+            aria-label="Filtrar por año"
+          >
+            <option value="ALL">Todos los años</option>
+            {availableYears.map((y) => (
+              <option key={y} value={String(y)}>{y}</option>
+            ))}
+          </select>
           <HelpPanel section="transactions" />
           <Button size="sm" onClick={() => setShowNew(true)} className="bg-lofty-600 hover:bg-lofty-700 gap-2">
             <Plus className="w-4 h-4" /> New Transaction
@@ -115,10 +145,10 @@ export default function TransactionsClient({ transactions, stats }: Transactions
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: "Active Transactions", value: activeCount, icon: Home, color: "text-blue-600 bg-blue-50" },
-          { label: "Total Volume", value: formatCurrency(totalVolume), icon: TrendingUp, color: "text-purple-600 bg-purple-50" },
-          { label: "Comisión total (GCI)", value: formatCurrency(totalCommission), icon: DollarSign, color: "text-green-600 bg-green-50" },
-          { label: "Comisión ganada (cerradas)", value: formatCurrency(closedCommission), icon: DollarSign, color: "text-emerald-600 bg-emerald-50" },
+          { label: `Transacciones activas ${yearLabel}`, value: activeCount, icon: Home, color: "text-blue-600 bg-blue-50" },
+          { label: `Volumen ${yearLabel}`, value: formatCurrency(totalVolume), icon: TrendingUp, color: "text-purple-600 bg-purple-50" },
+          { label: `Comisión total ${yearLabel}`, value: formatCurrency(totalCommission), icon: DollarSign, color: "text-green-600 bg-green-50" },
+          { label: `Ganado ${yearLabel} (cerradas)`, value: formatCurrency(closedCommission), icon: DollarSign, color: "text-emerald-600 bg-emerald-50" },
         ].map((stat) => (
           <Card key={stat.label} className="border-0 shadow-sm">
             <CardContent className="p-4 flex items-center gap-3">
@@ -149,7 +179,7 @@ export default function TransactionsClient({ transactions, stats }: Transactions
           >
             {tab.label}
             <span className="ml-1.5 text-xs text-gray-400">
-              ({tab.key === "ALL" ? txList.length : txList.filter((t) => t.status === tab.key).length})
+              ({tab.key === "ALL" ? yearFiltered.length : yearFiltered.filter((t) => t.status === tab.key).length})
             </span>
           </button>
         ))}
