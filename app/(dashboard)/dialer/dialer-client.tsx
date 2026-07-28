@@ -6,7 +6,7 @@ import {
   Play, Pause, SkipForward, Plus, Trash2, Clock,
   CheckCircle2, XCircle, MessageSquare, Voicemail,
   BarChart3, Users, Target, TrendingUp,
-  ChevronDown, ChevronUp, Search, User, Zap, ExternalLink, Mail, Loader2,
+  ChevronDown, ChevronUp, Search, User, Zap, ExternalLink, Mail, Loader2, RotateCcw,
 } from "lucide-react"
 import { cn, formatPhone } from "@/lib/utils"
 import HelpPanel from "@/components/help-panel"
@@ -171,6 +171,14 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
   const [autoDialContact, setAutoDialContact] = useState<Contact | null>(null)
   const countdownRef = useRef<NodeJS.Timeout | null>(null)
   const AUTO_DIAL_DELAY = 20
+  // Guards the call lifecycle: exactly ONE "finish & advance" per placed call,
+  // no matter what ends it (agent hangs up, callee hangs up, error, or the
+  // no-answer timeout). Prevents both freezing (never advancing) AND
+  // double-advancing (which would skip the next lead).
+  const callFinishedRef = useRef(false)
+  // Live mirror of sessionRunning so event handlers/timeouts read the real value.
+  const sessionRunningRef = useRef(false)
+  useEffect(() => { sessionRunningRef.current = sessionRunning }, [sessionRunning])
 
   // Trigger dial when autoDialContact is set (runs with fresh state)
   useEffect(() => {
@@ -430,25 +438,35 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
     return `${m}:${s}`
   }
 
-  async function dialContact(contact: Contact) {
-    if (!contact.phone) return
+  // Why a queued lead can't be dialed right now (shown to the agent, and used
+  // to auto-skip in a running session). Returns null when it's safe to call.
+  function skipReason(contact: Contact): string | null {
+    if (!contact.phone) return "Sin número de teléfono — usa el botón de Email"
+    if ((contact as any).doNotCall) return "Marcado como “No Llamar” (No Contactar)"
+    const p = assignedPartner(contact)
+    if (p) return `Asignado al socio ${p}`
+    return null
+  }
 
-    // Lead assigned to a partner realtor → skip it and tell the agent why
-    const partnerName = assignedPartner(contact)
-    if (partnerName) {
-      setSkipNotice(`⏭️ ${contact.firstName} ${contact.lastName || ""} skipped — assigned to ${partnerName}`.replace(/\s+/g, " "))
-      const idx = queue.findIndex(q => q.id === contact.id)
-      const next = idx + 1
-      if (next < queue.length) {
-        setCurrentCallIndex(next)
-        setCallStatus("idle")
-        if (sessionRunning) await dialContact(queue[next])
-      } else {
-        setSessionRunning(false)
-        setCallStatus("idle")
-      }
-      return
+  function skipAndAdvance(contact: Contact, reason: string) {
+    const name = `${contact.firstName} ${contact.lastName || ""}`.trim()
+    setSkipNotice(`⏭️ ${name} — ${reason}`)
+    const idx = queue.findIndex(q => q.id === contact.id)
+    const next = idx + 1
+    if (next < queue.length) {
+      setCurrentCallIndex(next)
+      setCallStatus("idle")
+      if (sessionRunningRef.current) dialContact(queue[next])
+    } else {
+      setSessionRunning(false); sessionRunningRef.current = false
+      setCallStatus("idle")
     }
+  }
+
+  async function dialContact(contact: Contact) {
+    // Can't / shouldn't dial this lead → tell the agent why, then move on.
+    const reason = skipReason(contact)
+    if (reason) { skipAndAdvance(contact, reason); return }
 
     if (!deviceRef.current) {
       setCallError(deviceError || "Browser calling is not ready yet — wait a moment and try again")
@@ -487,8 +505,9 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
       try { deviceRef.current.disconnectAll?.() } catch { /* noop */ }
       activeBrowserCallRef.current = null
       await new Promise(r => setTimeout(r, 400)) // let the SDK release the old leg
+      callFinishedRef.current = false // arm the finish-guard for this new call
 
-      const digits = contact.phone.replace(/\D/g, "")
+      const digits = (contact.phone || "").replace(/\D/g, "")
       const e164 = digits.length === 10 ? `+1${digits}` : `+${digits}`
       const call = await deviceRef.current.connect({ params: { To: e164 } })
       activeBrowserCallRef.current = call
@@ -497,33 +516,18 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
       // tear it down and reset so the UI never freezes on "Dialing…".
       if (connectTimeoutRef.current) clearTimeout(connectTimeoutRef.current)
       connectTimeoutRef.current = setTimeout(() => {
-        setCallStatus(prev => {
-          if (prev === "calling") {
-            try { activeBrowserCallRef.current?.disconnect() } catch { /* noop */ }
-            activeBrowserCallRef.current = null
-            stopTimer()
-            setCallError("La llamada no se conectó (sin respuesta o error de configuración). Intenta de nuevo.")
-            return "idle"
-          }
-          return prev
-        })
+        // Never connected within 45s → treat as no-answer and move on, so the
+        // queue never freezes on "Dialing…".
+        setCallError("La llamada no se conectó (sin respuesta). Pasando a la siguiente…")
+        endCall("NO_ANSWER")
       }, 45000)
       const clearConnectTimeout = () => { if (connectTimeoutRef.current) { clearTimeout(connectTimeoutRef.current); connectTimeoutRef.current = null } }
 
       call.on("accept", () => { clearConnectTimeout(); setCallStatus("connected"); startTimer() })
-      call.on("disconnect", () => {
-        clearConnectTimeout()
-        activeBrowserCallRef.current = null
-        stopTimer()
-      })
-      call.on("cancel", () => { clearConnectTimeout(); activeBrowserCallRef.current = null; stopTimer() })
-      call.on("error", (e: any) => {
-        clearConnectTimeout()
-        activeBrowserCallRef.current = null
-        stopTimer()
-        setCallError(e?.message || "Call error")
-        setCallStatus("idle")
-      })
+      // Any natural end (callee hung up, voicemail finished) → log + advance.
+      call.on("disconnect", () => { clearConnectTimeout(); endCall("COMPLETED") })
+      call.on("cancel", () => { clearConnectTimeout(); setCallError("No contestó."); endCall("NO_ANSWER") })
+      call.on("error", (e: any) => { clearConnectTimeout(); setCallError(e?.message || "Error de llamada"); endCall("FAILED") })
     } catch (e: any) {
       setCallError(e.message || "Network error — call could not be placed")
       setCallStatus("idle")
@@ -531,10 +535,13 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
   }
 
   async function endCall(status = "COMPLETED") {
+    if (callFinishedRef.current) return // already finishing this call — never double-advance
+    callFinishedRef.current = true
+    if (connectTimeoutRef.current) { clearTimeout(connectTimeoutRef.current); connectTimeoutRef.current = null }
     stopTimer()
 
     // Hang up the browser softphone leg (frees both sides of the call)
-    activeBrowserCallRef.current?.disconnect()
+    try { activeBrowserCallRef.current?.disconnect() } catch { /* noop */ }
     activeBrowserCallRef.current = null
 
     if (!activeCallId) { setCallStatus("idle"); return }
@@ -577,41 +584,88 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
     setActiveTwilioSid(null)
 
     const nextIdx = currentCallIndex + 1
-    if (sessionRunning && nextIdx < queue.length) {
+    if (sessionRunningRef.current && nextIdx < queue.length) {
       startAutoDialCountdown(nextIdx, queue[nextIdx])
-    } else if (sessionRunning) {
-      setSessionRunning(false)
+    } else if (sessionRunningRef.current) {
+      setSessionRunning(false); sessionRunningRef.current = false
     }
   }
 
   async function nextCall() {
+    // Manual skip: drop any live leg and block its disconnect from also
+    // advancing (nextCall itself advances — this prevents a double-skip).
+    callFinishedRef.current = true
+    try { activeBrowserCallRef.current?.disconnect() } catch { /* noop */ }
+    activeBrowserCallRef.current = null
+    if (connectTimeoutRef.current) { clearTimeout(connectTimeoutRef.current); connectTimeoutRef.current = null }
+    stopTimer()
     // Flush any notes typed after hang-up before the prefill overwrites them
     saveLeadData(false)
     const next = currentCallIndex + 1
     if (next >= queue.length) {
-      setSessionRunning(false)
+      setSessionRunning(false); sessionRunningRef.current = false
       setCallStatus("idle")
       return
     }
     setCurrentCallIndex(next)
     setCallStatus("idle")
-    if (sessionRunning) {
+    if (sessionRunningRef.current) {
       await dialContact(queue[next])
     }
   }
 
   async function startDialing() {
     if (queue.length === 0) return
-    setSessionRunning(true)
+    setSessionRunning(true); sessionRunningRef.current = true
     setCurrentCallIndex(0)
     await dialContact(queue[0])
   }
 
   function pauseDialing() {
     clearCountdown()
-    setSessionRunning(false)
+    setSessionRunning(false); sessionRunningRef.current = false
     if (callStatus === "connected") endCall("COMPLETED")
     else setCallStatus("idle")
+  }
+
+  // Rebuild the Twilio browser device from scratch (used by the Reset button).
+  async function reinitDevice() {
+    try { deviceRef.current?.destroy() } catch { /* noop */ }
+    deviceRef.current = null
+    setDeviceReady(false)
+    try {
+      const res = await fetch("/api/twilio/token")
+      const { token, error } = await res.json()
+      if (error || !token) { setDeviceError(error || "Browser calling not configured"); return }
+      const { Device } = await import("@twilio/voice-sdk")
+      const device = new Device(token, { codecPreferences: ["opus", "pcmu"] as any })
+      device.on("error", (e: any) => console.error("[dialer] device error:", e))
+      device.on("tokenWillExpire", async () => {
+        try { const r = await fetch("/api/twilio/token"); const d = await r.json(); if (d.token) device.updateToken(d.token) } catch {}
+      })
+      deviceRef.current = device
+      setDeviceReady(true); setDeviceError(null)
+    } catch { setDeviceError("Browser calling not available in this browser") }
+  }
+
+  // Full reset — for when the dialer gets stuck. Tears down any live call,
+  // clears all call state, and rebuilds the phone connection so you can keep
+  // going without reloading the page.
+  async function resetDialer() {
+    clearCountdown()
+    if (connectTimeoutRef.current) { clearTimeout(connectTimeoutRef.current); connectTimeoutRef.current = null }
+    stopTimer()
+    try { activeBrowserCallRef.current?.disconnect() } catch { /* noop */ }
+    try { deviceRef.current?.disconnectAll?.() } catch { /* noop */ }
+    activeBrowserCallRef.current = null
+    callFinishedRef.current = false
+    setSessionRunning(false); sessionRunningRef.current = false
+    setCallStatus("idle")
+    setActiveCallId(null); setActiveTwilioSid(null)
+    setCallError(null); setSkipNotice(null); setCountdown(null)
+    setAutoDialContact(null)
+    await reinitDevice()
+    setSkipNotice("🔄 Marcador reiniciado — listo para continuar")
   }
 
   const statusColor = {
@@ -742,9 +796,9 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
                     </div>
                     <div className="text-xs text-gray-500 flex items-center gap-1.5 flex-wrap">
                       {formatPhone(c.phone || "")}
-                      {assignedPartner(c) && (
+                      {skipReason(c) && (
                         <span className="text-[10px] px-1.5 py-0 rounded-full bg-amber-100 text-amber-700 font-medium">
-                          🤝 {assignedPartner(c)} — will skip
+                          ⏭️ Se omitirá — {skipReason(c)}
                         </span>
                       )}
                     </div>
@@ -998,6 +1052,13 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
                   <Pause className="w-4 h-4" /> Pause
                 </button>
               )}
+              <button
+                onClick={resetDialer}
+                title="Reinicia el marcador si se traba — cuelga la llamada actual y reconecta el teléfono"
+                className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 font-medium text-sm"
+              >
+                <RotateCcw className="w-4 h-4" /> Reiniciar
+              </button>
               <span className="text-sm text-lofty-700">
                 {sessionRunning ? "Auto-dialing enabled — next call starts automatically" : "Manual mode — click Call to dial each contact"}
               </span>
