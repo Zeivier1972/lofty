@@ -41,8 +41,17 @@ export default function TransactionsClient({ transactions, stats }: Transactions
   const [saving, setSaving] = useState(false)
   const [txList, setTxList] = useState(transactions)
   const [form, setForm] = useState({
-    title: "", address: "", city: "", state: "FL", zip: "", type: "BUYER", listPrice: "", closeDate: "",
+    title: "", address: "", city: "", state: "FL", zip: "", type: "BUYER", status: "ACTIVE_LISTING",
+    listPrice: "", salePrice: "", commissionPercent: "", closeDate: "",
   })
+
+  // Live GCI preview so Catherine sees her commission as she types.
+  const gciPreview = (() => {
+    const sale = parseFloat(form.salePrice)
+    const pct = parseFloat(form.commissionPercent)
+    if (!isNaN(sale) && !isNaN(pct)) return Math.round(sale * (pct / 100) * 100) / 100
+    return null
+  })()
 
   function setField(key: string, val: string) { setForm(f => ({ ...f, [key]: val })) }
 
@@ -53,7 +62,13 @@ export default function TransactionsClient({ transactions, stats }: Transactions
       const res = await fetch("/api/transactions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, listPrice: form.listPrice || undefined, closeDate: form.closeDate || undefined }),
+        body: JSON.stringify({
+          ...form,
+          listPrice: form.listPrice || undefined,
+          salePrice: form.salePrice || undefined,
+          commissionPercent: form.commissionPercent || undefined,
+          closeDate: form.closeDate || undefined,
+        }),
       })
       const data = await res.json()
       if (data.transaction) {
@@ -66,6 +81,8 @@ export default function TransactionsClient({ transactions, stats }: Transactions
 
   const totalVolume = stats.reduce((sum, s) => sum + (s._sum.salePrice || 0), 0)
   const closedVolume = stats.find((s) => s.status === "CLOSED")?._sum?.salePrice || 0
+  const totalCommission = stats.reduce((sum, s) => sum + (s._sum?.commission || 0), 0)
+  const closedCommission = stats.find((s) => s.status === "CLOSED")?._sum?.commission || 0
   const activeCount = (stats.find((s) => s.status === "ACTIVE_LISTING")?._count || 0) +
     (stats.find((s) => s.status === "UNDER_CONTRACT")?._count || 0)
 
@@ -96,11 +113,12 @@ export default function TransactionsClient({ transactions, stats }: Transactions
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: "Active Transactions", value: activeCount, icon: Home, color: "text-blue-600 bg-blue-50" },
           { label: "Total Volume", value: formatCurrency(totalVolume), icon: TrendingUp, color: "text-purple-600 bg-purple-50" },
-          { label: "Closed Volume", value: formatCurrency(closedVolume), icon: DollarSign, color: "text-green-600 bg-green-50" },
+          { label: "Comisión total (GCI)", value: formatCurrency(totalCommission), icon: DollarSign, color: "text-green-600 bg-green-50" },
+          { label: "Comisión ganada (cerradas)", value: formatCurrency(closedCommission), icon: DollarSign, color: "text-emerald-600 bg-emerald-50" },
         ].map((stat) => (
           <Card key={stat.label} className="border-0 shadow-sm">
             <CardContent className="p-4 flex items-center gap-3">
@@ -228,11 +246,23 @@ export default function TransactionsClient({ transactions, stats }: Transactions
                 <label className="text-xs text-gray-500 mb-1 block">Título *</label>
                 <input value={form.title} onChange={e => setField("title", e.target.value)} placeholder="ej: 1234 SW 5th St - Compra" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
               </div>
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Tipo</label>
-                <select value={form.type} onChange={e => setField("type", e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
-                  {TX_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Tipo</label>
+                  <select value={form.type} onChange={e => setField("type", e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
+                    {TX_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Estado</label>
+                  <select value={form.status} onChange={e => setField("status", e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
+                    <option value="ACTIVE_LISTING">Active</option>
+                    <option value="UNDER_CONTRACT">Under Contract</option>
+                    <option value="PENDING">Pending</option>
+                    <option value="CLOSED">Closed</option>
+                    <option value="CANCELLED">Cancelled</option>
+                  </select>
+                </div>
               </div>
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">Dirección *</label>
@@ -258,10 +288,25 @@ export default function TransactionsClient({ transactions, stats }: Transactions
                   <input type="number" value={form.listPrice} onChange={e => setField("listPrice", e.target.value)} placeholder="350000" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
                 </div>
                 <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Precio de venta / renta</label>
+                  <input type="number" value={form.salePrice} onChange={e => setField("salePrice", e.target.value)} placeholder="348000" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Comisión %</label>
+                  <input type="number" step="0.01" value={form.commissionPercent} onChange={e => setField("commissionPercent", e.target.value)} placeholder="3" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                </div>
+                <div>
                   <label className="text-xs text-gray-500 mb-1 block">Fecha cierre</label>
                   <input type="date" value={form.closeDate} onChange={e => setField("closeDate", e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
                 </div>
               </div>
+              {gciPreview != null && (
+                <div className="bg-green-50 border border-green-100 rounded-xl px-3 py-2 text-sm text-green-700 font-medium">
+                  Comisión estimada (GCI): {formatCurrency(gciPreview)}
+                </div>
+              )}
             </div>
             <div className="px-5 pb-5 flex gap-2 justify-end">
               <Button variant="ghost" onClick={() => setShowNew(false)}>Cancelar</Button>
