@@ -1306,6 +1306,52 @@ async function importOldCrmTransactions(db) {
   else console.log("[db-migrate] Old-CRM transactions already imported — skip")
 }
 
+// ─── One-time: move a batch of imported leads into the "Team assigned" stage ──
+// Catherine imported ~127 leads (assigned to Bryan) but forgot to place them in
+// the "Team assigned" pipeline stage. Match them by the original Lofty lead id
+// stored on each contact (customFields.loftyId) and move their PipelineLead to
+// the existing "Team assigned" stage. Guarded by a Setting marker so it runs
+// ONCE — a later deploy must not drag leads back if she moves them afterward.
+const TEAM_ASSIGNED_LOFTY_IDS = ["1138691404405785","1138691405348696","1138691416929045","1138691417311101","1138691419895110","1138691441773092","1138691453141273","1138691467016869","1138691596524888","1138691644678833","1138691701005030","1138691739254138","1138691752736334","1138691778014622","1138691818344988","1138691901770240","1138691917986290","1138692023433185","1138692025599754","1138692174625635","1138692187198582","1138692237385028","1138692261496764","1138692268383250","1138692317278396","1138692352892537","1138692359333524","1138692365249358","1138692365468310","1138692432125069","1138692443627772","1138692443778583","1138692491896376","1138692496089063","1138692521802062","1138692523562745","1138692524589060","1138692539413957","1138692540644034","1138692553670315","1139013489196009","1139035378295844","1139052092400236","1139059867029459","1139173635646589","1139282731490292","1139289140373533","1139584921472535","1140149846991384","1143531510468575","1143577196583139","1143577381816726","1144649562736542","1144665948308350","1145105536520762","1145115217534112","1145126331649019","1145133473713887","1145134494671474","1145175504023038","1145178363599151","1145187466065122","1145187980271138","1145225295644890","1145226652894983","1145233670656558","1145260415963812","1145284420201899","1145285977686681","1145286415302368","1145287177885547","1145289356948103","1145291717647920","1145306536202670","1145306554310013","1145307160280014","1145307908861976","1145315879418974","1145316664794578","1145317737357253","1145337280092513","1145828754002336","1146960080012997","1146962962059820","1146976648733225","1146984728618168","1147015914382965","1147020169897275","1147037131872387","1147037571397544","1147042386297602","1147051002644800","1147052602588904","1147102345416245","1147103093181650","1147121966551859","1147124275196216","1147191167233781","1147194327563853","1147818606489204","1147818772948256","1147825144870735","1147842142843143","1147842158348339","1147842221325758","1147849424038014","1147849735404304","1147853327503644","1147870196896809","1147890136642023","1147915326849549","1147937888739558","1147939987312248","1147940540117077","1147943084263265","1147945340083153","1147946950202007","1147950943762387","1147952573624872","1147953104371182","1148009164008284","1148010764105566","1148010949627308","1148011050405323","1148034472368038","1148038013812013","1148049602157149"]
+
+async function backfillTeamAssignedStage(db) {
+  const MARKER = "team_assigned_backfill_v1"
+  const done = await db.setting.findUnique({ where: { key: MARKER } }).catch(() => null)
+  if (done) { console.log("[db-migrate] Team-assigned backfill already done — skip"); return }
+
+  // Find the existing "Team assigned" stage (case-insensitive).
+  let stage =
+    (await db.pipelineStage.findFirst({ where: { name: { equals: "Team assigned", mode: "insensitive" } } })) ||
+    (await db.pipelineStage.findFirst({ where: { name: { contains: "team assigned", mode: "insensitive" } } }))
+  if (!stage) {
+    // Fallback: create it in the default pipeline so the move still succeeds.
+    const pipeline = await db.pipeline.findFirst({ where: { isDefault: true }, include: { stages: true } })
+    if (!pipeline) { console.warn("[db-migrate] No default pipeline — skip team-assigned backfill"); return }
+    const order = pipeline.stages.reduce((m, s) => Math.max(m, s.order), 0) + 1
+    stage = await db.pipelineStage.create({ data: { pipelineId: pipeline.id, name: "Team assigned", color: "#c9a84c", order } })
+    console.log("[db-migrate] Created 'Team assigned' stage (none existed)")
+  }
+
+  let moved = 0, created = 0, notFound = 0
+  for (const loftyId of TEAM_ASSIGNED_LOFTY_IDS) {
+    const contact =
+      (await db.contact.findFirst({ where: { customFields: { contains: `"loftyId":"${loftyId}"` } }, select: { id: true } })) ||
+      (await db.contact.findFirst({ where: { customFields: { contains: loftyId } }, select: { id: true } }))
+    if (!contact) { notFound++; continue }
+    const lead = await db.pipelineLead.findFirst({ where: { contactId: contact.id }, orderBy: { updatedAt: "desc" } })
+    if (!lead) {
+      await db.pipelineLead.create({ data: { contactId: contact.id, stageId: stage.id } }).catch(() => {})
+      created++
+    } else if (lead.stageId !== stage.id) {
+      await db.pipelineLead.update({ where: { id: lead.id }, data: { stageId: stage.id } }).catch(() => {})
+      moved++
+    }
+  }
+  const summary = `moved=${moved},placed=${created},notFound=${notFound},of=${TEAM_ASSIGNED_LOFTY_IDS.length}`
+  await db.setting.upsert({ where: { key: MARKER }, create: { key: MARKER, value: summary }, update: { value: summary } })
+  console.log(`[db-migrate] Team-assigned backfill → ${summary}`)
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -1324,6 +1370,7 @@ async function main() {
   await backfillPartnerTokens(db).catch(e => console.warn("[db-migrate] partner tokens skip:", e.message))
   await convertWhatsAppStepsToSMS(db).catch(e => console.warn("[db-migrate] WhatsApp→SMS convert skip:", e.message))
   await importOldCrmTransactions(db).catch(e => console.warn("[db-migrate] transaction import skip:", e.message))
+  await backfillTeamAssignedStage(db).catch(e => console.warn("[db-migrate] team-assigned backfill skip:", e.message))
   await db.$disconnect()
   console.log("[db-migrate] done")
   process.exit(0)
