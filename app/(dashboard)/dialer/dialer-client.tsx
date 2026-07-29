@@ -160,6 +160,7 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
   const noteFieldsRef = useRef(noteFields)
   const lastCallIdRef = useRef<string | null>(null)
   const lastContactIdRef = useRef<string | null>(null)
+  const savedNoteRef = useRef("")
   const [sessionRunning, setSessionRunning] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [callError, setCallError] = useState<string | null>(null)
@@ -212,8 +213,8 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
     } finally {
       setDroppingVm(false)
     }
-    // Hang up the live call and advance (logged as Voicemail).
-    endCall("COMPLETED", "VOICEMAIL")
+    // Hang up the live call and always advance to the next call (logged as Voicemail).
+    endCall("COMPLETED", "VOICEMAIL", true)
   }
 
   // Lead notes + activity history for the current call (so the agent sees the
@@ -221,7 +222,14 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
   const [leadHistory, setLeadHistory] = useState<{ notes: any[]; activities: any[]; referrals: any[] } | null>(null)
   const [loadingHistory, setLoadingHistory] = useState(false)
   const currentContactId = queue[currentCallIndex]?.id
+  async function refreshLeadHistory(id: string) {
+    try {
+      const d = await fetch(`/api/contacts/${id}/history`).then(r => r.ok ? r.json() : null)
+      if (d) setLeadHistory(d)
+    } catch { /* noop */ }
+  }
   useEffect(() => {
+    savedNoteRef.current = "" // reset per-lead so a new note always saves
     if (!currentContactId) { setLeadHistory(null); return }
     let cancelled = false
     setLoadingHistory(true)
@@ -361,6 +369,36 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
       } catch {
         if (showFeedback) {
           setSavedMsg("⚠️ No se pudo guardar — intenta de nuevo")
+          setTimeout(() => setSavedMsg(null), 4000)
+        }
+      }
+    }
+
+    // 3. Free-text note → a REAL note on the contact, so you SEE it appear in
+    //    the history panel below (visible confirmation) and on the contact page.
+    const noteText = fields.extraNotes.trim()
+    if (contactId && noteText && noteText !== savedNoteRef.current) {
+      try {
+        const r = await fetch(`/api/contacts/${contactId}/notes`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: `📞 Nota de llamada: ${noteText}` }),
+        })
+        if (r.ok) {
+          savedNoteRef.current = noteText
+          setNoteFields(f => ({ ...f, extraNotes: "" })) // clear so it's clearly captured
+          refreshLeadHistory(contactId)                  // show it in the panel now
+          if (showFeedback) {
+            setSavedMsg("✅ Nota guardada — mírala abajo en “Notas e historial”")
+            setTimeout(() => setSavedMsg(null), 5000)
+          }
+        } else if (showFeedback) {
+          setSavedMsg("⚠️ No se pudo guardar la nota — intenta de nuevo")
+          setTimeout(() => setSavedMsg(null), 4000)
+        }
+      } catch {
+        if (showFeedback) {
+          setSavedMsg("⚠️ No se pudo guardar la nota — intenta de nuevo")
           setTimeout(() => setSavedMsg(null), 4000)
         }
       }
@@ -521,6 +559,13 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
     const reason = skipReason(contact)
     if (reason) { skipAndAdvance(contact, reason); return }
 
+    // Fresh, authoritative partner check — catches leads assigned to a partner
+    // AFTER the dialer was opened (the in-memory queue would be stale).
+    try {
+      const pc = await fetch(`/api/contacts/${contact.id}/partner-check`).then(r => r.ok ? r.json() : null)
+      if (pc?.partner) { skipAndAdvance(contact, `Asignado al socio ${pc.partner}`); return }
+    } catch { /* if the check fails, fall through and dial */ }
+
     if (!deviceRef.current) {
       setCallError(deviceError || "Browser calling is not ready yet — wait a moment and try again")
       setCallStatus("idle")
@@ -587,7 +632,7 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
     }
   }
 
-  async function endCall(status = "COMPLETED", dispositionOverride?: string) {
+  async function endCall(status = "COMPLETED", dispositionOverride?: string, alwaysAdvance = false) {
     if (callFinishedRef.current) return // already finishing this call — never double-advance
     callFinishedRef.current = true
     if (connectTimeoutRef.current) { clearTimeout(connectTimeoutRef.current); connectTimeoutRef.current = null }
@@ -597,7 +642,12 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
     try { activeBrowserCallRef.current?.disconnect() } catch { /* noop */ }
     activeBrowserCallRef.current = null
 
-    if (!activeCallId) { setCallStatus("idle"); return }
+    if (!activeCallId) {
+      setCallStatus("idle")
+      // Manual voicemail-drop before a call connected → still move to next.
+      if (alwaysAdvance && currentCallIndex + 1 < queue.length) setCurrentCallIndex(currentCallIndex + 1)
+      return
+    }
 
     // Legacy server-dialed calls: also terminate on Twilio's side
     if (activeTwilioSid) {
@@ -641,6 +691,10 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
       startAutoDialCountdown(nextIdx, queue[nextIdx])
     } else if (sessionRunningRef.current) {
       setSessionRunning(false); sessionRunningRef.current = false
+    } else if (alwaysAdvance && nextIdx < queue.length) {
+      // Manual mode: hang-up / voicemail still moves to the next lead (ready to call).
+      setCurrentCallIndex(nextIdx)
+      setCallStatus("idle")
     }
   }
 
@@ -1062,10 +1116,11 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
                     </button>
                   ) : (
                     <button
-                      onClick={() => endCall("COMPLETED")}
+                      onClick={() => endCall("COMPLETED", undefined, true)}
                       className="flex items-center gap-2 px-6 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 font-semibold text-lg shadow-sm"
+                      title="Cuelga la llamada, guarda las notas y pasa a la siguiente"
                     >
-                      <PhoneOff className="w-5 h-5" /> Hang Up
+                      <PhoneOff className="w-5 h-5" /> Colgar y siguiente
                     </button>
                   )}
 
