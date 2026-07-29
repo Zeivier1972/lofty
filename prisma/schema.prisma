@@ -91,6 +91,7 @@ model Contact {
   smsTCPAConsentMethod  String?
   isArchived            Boolean               @default(false)
   lastContacted         DateTime?
+  hotLeadDismissedAt    DateTime?
   homeClosedAt          DateTime?
   preferredSendHour     Int?
   facebookLeadId        String?

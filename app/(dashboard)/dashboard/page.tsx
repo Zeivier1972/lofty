@@ -16,6 +16,7 @@ export default async function DashboardPage() {
   let pipelineData: any[] = []
   let contactsByStatus: any[] = []
   let hotAlerts: any[] = []
+  let hotScoreLeads: any[] = []
   let matchAlertsSentToday = 0
   let newLeadsToday = 0
   let portalUnread = 0
@@ -25,12 +26,15 @@ export default async function DashboardPage() {
     const userId = session?.user?.id
 
     const todayStart = new Date(new Date().setHours(0, 0, 0, 0))
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 3600 * 1000)
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000)
 
     const [
       totalContacts, newLeadsThisMonth, activeTransactions,
       tasksData, appointmentsData, recentActivitiesData,
       pipelineDataRaw, contactsByStatusData, tasksDueToday,
       hotAlertsData, matchAlertsTodayCount, newLeadsTodayCount, portalUnreadCount,
+      hotScoreLeadsData,
     ] = await Promise.all([
       prisma.contact.count({ where: { isArchived: false } }),
       prisma.contact.count({ where: { createdAt: { gte: new Date(new Date().setDate(1)) }, isArchived: false } }),
@@ -80,6 +84,22 @@ export default async function DashboardPage() {
       prisma.email.count({ where: { direction: "OUTBOUND", status: "SENT", createdAt: { gte: todayStart }, subject: { contains: "Sofia found" } } }),
       prisma.contact.count({ where: { createdAt: { gte: todayStart }, isArchived: false } }),
       prisma.portalMessage.count({ where: { isRead: false, fromClient: true } }),
+      // Score-based hot leads (same rule as the AI Agent), ready to call, minus
+      // any the agent has removed after speaking to them (resurface after 30d).
+      prisma.contact.findMany({
+        where: {
+          isArchived: false,
+          leadScore: { gte: 40 },
+          OR: [{ hotLeadDismissedAt: null }, { hotLeadDismissedAt: { lt: thirtyDaysAgo } }],
+        },
+        orderBy: { leadScore: "desc" },
+        take: 12,
+        select: {
+          id: true, firstName: true, lastName: true, phone: true, email: true,
+          leadScore: true, lastContacted: true,
+          propertyViews: { where: { createdAt: { gte: sevenDaysAgo } }, select: { id: true } },
+        },
+      }),
     ])
 
     tasks = tasksData
@@ -88,6 +108,10 @@ export default async function DashboardPage() {
     pipelineData = pipelineDataRaw
     contactsByStatus = contactsByStatusData
     hotAlerts = hotAlertsData
+    hotScoreLeads = hotScoreLeadsData.map((l: any) => ({
+      id: l.id, firstName: l.firstName, lastName: l.lastName, phone: l.phone, email: l.email,
+      leadScore: l.leadScore, lastContacted: l.lastContacted, recentViews: (l.propertyViews || []).length,
+    }))
     matchAlertsSentToday = matchAlertsTodayCount
     newLeadsToday = newLeadsTodayCount
     portalUnread = portalUnreadCount
@@ -119,6 +143,7 @@ export default async function DashboardPage() {
       pipelineData={JSON.parse(JSON.stringify(pipelineData))}
       contactsByStatus={JSON.parse(JSON.stringify(contactsByStatus))}
       hotAlerts={JSON.parse(JSON.stringify(hotAlerts))}
+      hotScoreLeads={JSON.parse(JSON.stringify(hotScoreLeads))}
       matchAlertsSentToday={matchAlertsSentToday}
       newLeadsToday={newLeadsToday}
       portalUnread={portalUnread}
