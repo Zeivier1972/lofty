@@ -216,6 +216,23 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
     endCall("COMPLETED", "VOICEMAIL")
   }
 
+  // Lead notes + activity history for the current call (so the agent sees the
+  // prior conversation and who the lead belongs to before dialing).
+  const [leadHistory, setLeadHistory] = useState<{ notes: any[]; activities: any[]; referrals: any[] } | null>(null)
+  const [loadingHistory, setLoadingHistory] = useState(false)
+  const currentContactId = queue[currentCallIndex]?.id
+  useEffect(() => {
+    if (!currentContactId) { setLeadHistory(null); return }
+    let cancelled = false
+    setLoadingHistory(true)
+    fetch(`/api/contacts/${currentContactId}/history`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (!cancelled) setLeadHistory(d) })
+      .catch(() => { if (!cancelled) setLeadHistory(null) })
+      .finally(() => { if (!cancelled) setLoadingHistory(false) })
+    return () => { cancelled = true }
+  }, [currentContactId])
+
   // Trigger dial when autoDialContact is set (runs with fresh state)
   useEffect(() => {
     if (!autoDialContact) return
@@ -998,6 +1015,11 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
                       Score: <strong>{currentContact.leadScore}</strong>
                     </span>
                   </div>
+                  {assignedPartner(currentContact) && (
+                    <div className="mt-2 flex items-center gap-2 bg-amber-50 border border-amber-300 text-amber-800 rounded-lg px-3 py-1.5 text-sm font-semibold">
+                      🤝 Este lead pertenece a {assignedPartner(currentContact)} — respeta la asignación del socio (no llamar).
+                    </div>
+                  )}
                 </div>
 
                 {/* Call controls */}
@@ -1126,6 +1148,50 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
               <span className="text-sm text-lofty-700">
                 {sessionRunning ? "Auto-dialing enabled — next call starts automatically" : "Manual mode — click Call to dial each contact"}
               </span>
+            </div>
+          )}
+
+          {/* Lead notes + history (so you see the prior conversation while calling) */}
+          {queue[currentCallIndex] && (
+            <div className="bg-white border-b px-6 py-4">
+              <label className="text-sm font-semibold text-gray-700 mb-2 block flex items-center gap-2">
+                📋 Notas e historial del lead
+                {loadingHistory && <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />}
+              </label>
+              {leadHistory?.referrals?.some((r: any) => ["SENT", "CONTACTED", "SHOWING", "UNDER_CONTRACT"].includes(r.status)) && (
+                <div className="mb-2 text-xs bg-amber-50 border border-amber-200 text-amber-800 rounded-lg px-3 py-1.5">
+                  🤝 Asignado a un socio: {leadHistory.referrals.filter((r: any) => r.partner?.name).map((r: any) => `${r.partner.name} (${r.status})`).join(", ")}
+                </div>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {/* Notes */}
+                <div className="border border-gray-100 rounded-xl p-3 bg-gray-50 max-h-44 overflow-y-auto">
+                  <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Notas ({leadHistory?.notes?.length || 0})</p>
+                  {leadHistory?.notes?.length ? leadHistory.notes.map((n: any) => (
+                    <div key={n.id} className="mb-2 text-xs text-gray-700 border-l-2 border-lofty-200 pl-2">
+                      {n.isPinned && <span className="text-[10px] text-amber-600 mr-1">📌</span>}
+                      <span className="whitespace-pre-wrap">{n.content}</span>
+                      <span className="block text-[10px] text-gray-400 mt-0.5">
+                        {n.author?.name ? `${n.author.name} · ` : ""}{new Date(n.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                  )) : <p className="text-xs text-gray-400">Sin notas.</p>}
+                </div>
+                {/* Activity timeline */}
+                <div className="border border-gray-100 rounded-xl p-3 bg-gray-50 max-h-44 overflow-y-auto">
+                  <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Historial ({leadHistory?.activities?.length || 0})</p>
+                  {leadHistory?.activities?.length ? leadHistory.activities.map((a: any) => (
+                    <div key={a.id} className="mb-1.5 text-xs text-gray-600 flex items-start gap-1.5">
+                      <span className="text-gray-300 mt-0.5">•</span>
+                      <span>
+                        <span className="font-medium text-gray-700">{a.title || a.type}</span>
+                        {a.description ? <span className="text-gray-500"> — {a.description.slice(0, 80)}</span> : null}
+                        <span className="block text-[10px] text-gray-400">{new Date(a.createdAt).toLocaleDateString()}</span>
+                      </span>
+                    </div>
+                  )) : <p className="text-xs text-gray-400">Sin actividad registrada.</p>}
+                </div>
+              </div>
             </div>
           )}
 
