@@ -16,6 +16,7 @@ interface Contact {
   buyerBudgetMax?: number | null
   buyerLocation?: string | null
   buyerPurpose?: string | null
+  tags?: string[]
 }
 
 interface Message {
@@ -32,15 +33,17 @@ const QUICK_PROMPTS = [
 
 interface Props {
   contacts: Contact[]
+  allTags?: string[]
 }
 
-export default function AdvisorClient({ contacts }: Props) {
+export default function AdvisorClient({ contacts, allTags = [] }: Props) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [loading, setLoading] = useState(false)
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null)
   const [showContactPicker, setShowContactPicker] = useState(false)
   const [contactSearch, setContactSearch] = useState("")
+  const [tagFilter, setTagFilter] = useState("all")
   const [hasApiKey, setHasApiKey] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -51,7 +54,9 @@ export default function AdvisorClient({ contacts }: Props) {
 
   const filteredContacts = contacts.filter(c => {
     const name = `${c.firstName} ${c.lastName}`.toLowerCase()
-    return name.includes(contactSearch.toLowerCase())
+    const matchesSearch = name.includes(contactSearch.toLowerCase())
+    const matchesTag = tagFilter === "all" || (c.tags || []).includes(tagFilter)
+    return matchesSearch && matchesTag
   })
 
   async function sendMessage(content: string) {
@@ -183,18 +188,33 @@ export default function AdvisorClient({ contacts }: Props) {
               </button>
               {showContactPicker && (
                 <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-10">
-                  <div className="p-2 border-b">
+                  <div className="p-2 border-b space-y-2">
+                    {allTags.length > 0 && (
+                      <select
+                        value={tagFilter}
+                        onChange={e => setTagFilter(e.target.value)}
+                        className="w-full text-xs px-2 py-1.5 border border-gray-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      >
+                        <option value="all">🏷️ Todos los tags ({contacts.length})</option>
+                        {allTags.map(t => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
+                    )}
                     <input
                       type="text"
-                      placeholder="Search leads…"
+                      placeholder="Buscar leads…"
                       value={contactSearch}
                       onChange={e => setContactSearch(e.target.value)}
                       className="w-full text-xs px-2 py-1.5 border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500"
                       autoFocus
                     />
                   </div>
-                  <div className="max-h-48 overflow-y-auto">
-                    {filteredContacts.slice(0, 20).map(c => (
+                  <div className="max-h-56 overflow-y-auto">
+                    {tagFilter !== "all" && (
+                      <p className="text-[10px] text-gray-400 px-3 pt-2">{filteredContacts.length} lead(s) con “{tagFilter}”</p>
+                    )}
+                    {filteredContacts.slice(0, 40).map(c => (
                       <button
                         key={c.id}
                         onClick={() => { setSelectedContact(c); setShowContactPicker(false); setContactSearch("") }}
@@ -202,10 +222,17 @@ export default function AdvisorClient({ contacts }: Props) {
                       >
                         <p className="font-medium text-gray-900">{c.firstName} {c.lastName}</p>
                         {c.buyerLocation && <p className="text-gray-500">{c.buyerLocation}</p>}
+                        {(c.tags || []).length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {(c.tags || []).slice(0, 3).map(t => (
+                              <span key={t} className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100">{t}</span>
+                            ))}
+                          </div>
+                        )}
                       </button>
                     ))}
                     {filteredContacts.length === 0 && (
-                      <p className="text-xs text-gray-400 p-3 text-center">No leads with investment profile</p>
+                      <p className="text-xs text-gray-400 p-3 text-center">No hay leads con este tag</p>
                     )}
                   </div>
                 </div>
