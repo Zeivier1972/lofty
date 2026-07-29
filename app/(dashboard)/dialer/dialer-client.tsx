@@ -165,6 +165,11 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
   const [showHistory, setShowHistory] = useState(false)
   const [callError, setCallError] = useState<string | null>(null)
   const [skipNotice, setSkipNotice] = useState<string | null>(null)
+  // Full transparency + control over skips (so the dialer never silently drops
+  // a lead it shouldn't): a running log of what was skipped and why, plus a
+  // master toggle for the partner-skip rule.
+  const [skippedLeads, setSkippedLeads] = useState<{ id: string; name: string; reason: string }[]>([])
+  const [skipPartners, setSkipPartners] = useState(true)
   const [addingToQueue, setAddingToQueue] = useState(false)
   const [selectedStage, setSelectedStage] = useState<string>("all")
   // Auto-dial countdown
@@ -529,19 +534,30 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
     return `${m}:${s}`
   }
 
+  // The lead's callable number (primary phone, or the alt phone if there's no
+  // primary). Prevents false "no phone" skips when only phone2 is set.
+  function leadPhone(contact: Contact): string | null {
+    return contact.phone || (contact as any).phone2 || null
+  }
+
   // Why a queued lead can't be dialed right now (shown to the agent, and used
   // to auto-skip in a running session). Returns null when it's safe to call.
   function skipReason(contact: Contact): string | null {
-    if (!contact.phone) return "Sin número de teléfono — usa el botón de Email"
+    if (!leadPhone(contact)) return "Sin número de teléfono — usa el botón de Email"
     if ((contact as any).doNotCall) return "Marcado como “No Llamar” (No Contactar)"
-    const p = assignedPartner(contact)
-    if (p) return `Asignado al socio ${p}`
+    if (skipPartners) {
+      const p = assignedPartner(contact)
+      if (p) return `Asignado al socio ${p}`
+    }
     return null
   }
 
   function skipAndAdvance(contact: Contact, reason: string) {
     const name = `${contact.firstName} ${contact.lastName || ""}`.trim()
     setSkipNotice(`⏭️ ${name} — ${reason}`)
+    // Log the skip so the agent can see exactly what was skipped and why, and
+    // call it anyway from the "Omitidos" panel if it was skipped wrongly.
+    setSkippedLeads(prev => prev.some(s => s.id === contact.id) ? prev : [{ id: contact.id, name, reason }, ...prev].slice(0, 40))
     const idx = queue.findIndex(q => q.id === contact.id)
     const next = idx + 1
     if (next < queue.length) {
@@ -554,17 +570,32 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
     }
   }
 
-  async function dialContact(contact: Contact) {
-    // Can't / shouldn't dial this lead → tell the agent why, then move on.
-    const reason = skipReason(contact)
-    if (reason) { skipAndAdvance(contact, reason); return }
+  // Force-call a lead the system skipped (override) — bypasses every skip check.
+  function forceCallSkipped(id: string) {
+    const idx = queue.findIndex(q => q.id === id)
+    if (idx < 0) return
+    setSkippedLeads(prev => prev.filter(s => s.id !== id))
+    setCurrentCallIndex(idx)
+    setCallStatus("idle")
+    dialContact(queue[idx], { force: true })
+  }
 
-    // Fresh, authoritative partner check — catches leads assigned to a partner
-    // AFTER the dialer was opened (the in-memory queue would be stale).
-    try {
-      const pc = await fetch(`/api/contacts/${contact.id}/partner-check`).then(r => r.ok ? r.json() : null)
-      if (pc?.partner) { skipAndAdvance(contact, `Asignado al socio ${pc.partner}`); return }
-    } catch { /* if the check fails, fall through and dial */ }
+  async function dialContact(contact: Contact, opts?: { force?: boolean }) {
+    if (!opts?.force) {
+      // Can't / shouldn't dial this lead → tell the agent why, then move on.
+      const reason = skipReason(contact)
+      if (reason) { skipAndAdvance(contact, reason); return }
+
+      // Fresh, authoritative partner check — catches leads assigned to a partner
+      // AFTER the dialer was opened (the in-memory queue would be stale). Only
+      // when the partner-skip rule is on.
+      if (skipPartners) {
+        try {
+          const pc = await fetch(`/api/contacts/${contact.id}/partner-check`).then(r => r.ok ? r.json() : null)
+          if (pc?.partner) { skipAndAdvance(contact, `Asignado al socio ${pc.partner}`); return }
+        } catch { /* if the check fails, fall through and dial */ }
+      }
+    }
 
     if (!deviceRef.current) {
       setCallError(deviceError || "Browser calling is not ready yet — wait a moment and try again")
@@ -605,7 +636,7 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
       await new Promise(r => setTimeout(r, 400)) // let the SDK release the old leg
       callFinishedRef.current = false // arm the finish-guard for this new call
 
-      const digits = (contact.phone || "").replace(/\D/g, "")
+      const digits = (leadPhone(contact) || "").replace(/\D/g, "")
       const e164 = digits.length === 10 ? `+1${digits}` : `+${digits}`
       const call = await deviceRef.current.connect({ params: { To: e164 } })
       activeBrowserCallRef.current = call
@@ -822,6 +853,27 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
             <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
               <span>{skipNotice}</span>
               <button onClick={() => setSkipNotice(null)} className="ml-1 hover:text-amber-950">✕</button>
+            </div>
+          )}
+          {skippedLeads.length > 0 && (
+            <div className="px-3 py-2 bg-amber-50/70 border border-amber-200 rounded-lg text-xs w-full max-w-xl">
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-semibold text-amber-800">Omitidos en esta sesión ({skippedLeads.length})</span>
+                <button onClick={() => setSkippedLeads([])} className="text-amber-600 hover:text-amber-900">Limpiar</button>
+              </div>
+              <div className="max-h-28 overflow-y-auto space-y-1">
+                {skippedLeads.map(s => (
+                  <div key={s.id} className="flex items-center justify-between gap-2">
+                    <span className="text-amber-800 truncate"><strong>{s.name}</strong> — {s.reason}</span>
+                    <button
+                      onClick={() => forceCallSkipped(s.id)}
+                      className="flex-shrink-0 text-[11px] font-semibold bg-green-600 text-white px-2 py-0.5 rounded hover:bg-green-700"
+                    >
+                      📞 Llamar de todos modos
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
           <div className={cn("px-3 py-1.5 rounded-full text-sm font-medium", statusColor)}>
@@ -1200,6 +1252,13 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
               >
                 <RotateCcw className="w-4 h-4" /> Reiniciar
               </button>
+              <label
+                className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none"
+                title="Si está activo, el marcador salta los leads asignados a un socio (Bryan, etc.). Desactívalo para llamar a todos."
+              >
+                <input type="checkbox" checked={skipPartners} onChange={e => setSkipPartners(e.target.checked)} className="rounded" />
+                Saltar leads de socios
+              </label>
               <span className="text-sm text-lofty-700">
                 {sessionRunning ? "Auto-dialing enabled — next call starts automatically" : "Manual mode — click Call to dial each contact"}
               </span>
