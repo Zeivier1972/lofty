@@ -13,6 +13,7 @@ import Link from "next/link"
 import { format } from "date-fns"
 import HelpPanel from "@/components/help-panel"
 import HotActivity from "./hot-activity"
+import HotScoreLeads from "./hot-score-leads"
 import PropertyCards from "./property-cards"
 
 interface DashboardClientProps {
@@ -32,6 +33,7 @@ interface DashboardClientProps {
   pipelineData: any[]
   contactsByStatus: any[]
   hotAlerts: any[]
+  hotScoreLeads: any[]
   matchAlertsSentToday: number
   newLeadsToday: number
   portalUnread: number
@@ -215,7 +217,7 @@ const ACTIVITY_ICONS: Record<string, string> = {
 
 export default function DashboardClient({
   stats, tasks, appointments, recentActivities, pipelineData, contactsByStatus,
-  hotAlerts, matchAlertsSentToday, newLeadsToday, portalUnread,
+  hotAlerts, hotScoreLeads, matchAlertsSentToday, newLeadsToday, portalUnread,
 }: DashboardClientProps) {
   const statCards = [
     {
@@ -292,6 +294,9 @@ export default function DashboardClient({
         tasksDueToday={stats.tasksDueToday}
         upcomingAppointments={stats.upcomingAppointments}
       />
+
+      {/* Highest-scoring hot leads — ready to call, removable once contacted */}
+      <HotScoreLeads leads={hotScoreLeads} />
 
       {/* Hot buyers + popular properties (IDX activity) */}
       <HotActivity />
