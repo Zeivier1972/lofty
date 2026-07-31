@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { isAssignedToPartner } from "@/lib/referral"
 import { sendEmail } from "@/lib/email"
 
 export async function POST(req: Request) {
@@ -81,18 +82,20 @@ export async function POST(req: Request) {
       },
     })
 
-    // Create task for Catherine
-    await prisma.task.create({
-      data: {
-        title: `Cita con ${firstName} ${lastName} — ${time}`,
-        description: `Tema: ${topic || "Consulta"}\n${message ? `Mensaje: ${message}` : ""}`,
-        priority: "HIGH",
-        type: "APPOINTMENT",
-        contactId: contact.id,
-        dueDate: startTime,
-        ...(agent && { assignedToId: agent.id }),
-      },
-    })
+    // Create task for Catherine — unless the lead belongs to a partner realtor.
+    if (!(await isAssignedToPartner(contact.id))) {
+      await prisma.task.create({
+        data: {
+          title: `Cita con ${firstName} ${lastName} — ${time}`,
+          description: `Tema: ${topic || "Consulta"}\n${message ? `Mensaje: ${message}` : ""}`,
+          priority: "HIGH",
+          type: "APPOINTMENT",
+          contactId: contact.id,
+          dueDate: startTime,
+          ...(agent && { assignedToId: agent.id }),
+        },
+      })
+    }
 
     // Notify Catherine by email and SMS
     const cfg = aiCfg

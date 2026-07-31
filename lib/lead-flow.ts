@@ -9,6 +9,7 @@
  */
 
 import { prisma } from "@/lib/prisma"
+import { isAssignedToPartner } from "@/lib/referral"
 import { sendSMS, toE164 } from "@/lib/sms"
 import { sendEmail } from "@/lib/email"
 
@@ -83,6 +84,8 @@ async function moveToStage(contactId: string, stageId: string, stageName: string
 }
 
 async function createCatherineTask(contactId: string, title: string, description?: string) {
+  // Skip: lead belongs to a partner realtor — not Catherine's to follow up.
+  if (await isAssignedToPartner(contactId)) return
   const user = await prisma.user.findFirst({ select: { id: true } })
   const due = new Date()
   due.setHours(due.getHours() + 2)

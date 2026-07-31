@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk"
 import { prisma } from "./prisma"
+import { isAssignedToPartner } from "./referral"
 import { sendSMS } from "./sms"
 import { sendEmail } from "./email"
 
@@ -334,8 +335,8 @@ Responde ÚNICAMENTE con este JSON (sin texto adicional):
       }
     }
 
-    // Create task
-    if (parsed.taskTitle) {
+    // Create task — but never for a lead that belongs to a partner realtor.
+    if (parsed.taskTitle && !(await isAssignedToPartner(contact.id))) {
       const dueDate = new Date()
       dueDate.setHours(dueDate.getHours() + (config.followUpDelayHours || 2))
 
