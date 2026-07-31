@@ -21,7 +21,10 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
 
   const config = await prisma.aIConfig.findFirst()
   const agentName = config?.realtorName || "Your Agent"
-  const portalUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/portal/login?token=${access.token}`
+  // Force the reliable www host — the apex domain intermittently 404s.
+  const base = (process.env.NEXT_PUBLIC_APP_URL || "https://www.catherinegomezrealtor.com")
+    .replace("://catherinegomezrealtor.com", "://www.catherinegomezrealtor.com")
+  const portalUrl = `${base}/portal/login?token=${access.token}`
 
   await sendEmail({
     to: contact.email,
@@ -67,6 +70,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
       </div>
     `,
     text: `¡Hola ${contact.firstName}! ${agentName} te invitó a tu portal personal de bienes raíces. Entra aquí: ${portalUrl}`,
+    transactional: true,
   })
 
   await prisma.activity.create({
