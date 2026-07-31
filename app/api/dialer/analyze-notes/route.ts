@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { isAssignedToPartner } from "@/lib/referral"
 import { auth } from "@/lib/auth"
 import Anthropic from "@anthropic-ai/sdk"
 
@@ -99,9 +100,10 @@ export async function POST(req: Request) {
     )
   }
 
-  // Auto-create tasks in DB
+  // Auto-create tasks in DB — but not for leads assigned to a partner realtor.
   const createdTasks = []
-  if (analysisResult.tasks && Array.isArray(analysisResult.tasks) && contactId) {
+  const belongsToPartner = await isAssignedToPartner(contactId)
+  if (analysisResult.tasks && Array.isArray(analysisResult.tasks) && contactId && !belongsToPartner) {
     for (const task of analysisResult.tasks) {
       try {
         const created = await prisma.task.create({

@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { isAssignedToPartner } from "@/lib/referral"
 import { sendEmail } from "@/lib/email"
 import { sendSMS, sendWhatsApp, toE164 } from "@/lib/sms"
 
@@ -166,7 +167,7 @@ export async function GET(req: Request) {
             },
           })
         }
-      } else if (step.type === "TASK" && step.taskTitle) {
+      } else if (step.type === "TASK" && step.taskTitle && !(await isAssignedToPartner(contact.id))) {
         const user = await prisma.user.findFirst({ select: { id: true } })
         const dueDate = new Date()
         dueDate.setDate(dueDate.getDate() + 1)

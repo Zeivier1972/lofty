@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { isAssignedToPartner } from "@/lib/referral"
 import { handleCallOutcome } from "@/lib/lead-flow"
 import { triggerOutboundCall } from "@/lib/vapi"
 import { sendEmail, wrapEmail } from "@/lib/email"
@@ -139,6 +140,10 @@ async function sendPropertyEmail(input: any, contactId: string): Promise<string>
 
 async function createTaskForContact(input: any, contactId: string): Promise<string> {
   try {
+    // Never create a task for a lead assigned to a partner realtor.
+    if (await isAssignedToPartner(contactId)) {
+      return "Este lead está asignado a otro agente, así que no creé la tarea."
+    }
     const contact = await prisma.contact.findUnique({
       where: { id: contactId },
       select: { assignedToId: true },

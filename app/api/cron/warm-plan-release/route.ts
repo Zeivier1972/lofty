@@ -17,6 +17,7 @@ export const maxDuration = 120
 
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { excludePartnerAssigned } from "@/lib/referral"
 
 const PLAN_NAME = "Warm → Hot: Camino a la Llamada"
 // Marker baked into the plan's TASK step titles — how we recognize our tasks
@@ -113,7 +114,9 @@ async function run(): Promise<Response> {
     where: { status: "PENDING", title: { contains: CALL_TASK_MARKER } },
     select: { contactId: true },
   })
-  const contactIds = Array.from(new Set(openCallTasks.map((t: { contactId: string | null }) => t.contactId).filter(Boolean))) as string[]
+  const allContactIds = Array.from(new Set(openCallTasks.map((t: { contactId: string | null }) => t.contactId).filter(Boolean))) as string[]
+  // Keep partner-owned leads off Catherine's call digest.
+  const contactIds = await excludePartnerAssigned(allContactIds)
   if (contactIds.length > 0) {
     const contacts = await prisma.contact.findMany({
       where: { id: { in: contactIds } },
