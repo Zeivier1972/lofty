@@ -9,7 +9,7 @@ import {
   Phone, Mail, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, MoreVertical,
   Trash2, Edit, Eye, MessageSquare, X, Send, CheckSquare,
   FileText, AlertCircle, CheckCircle2, Zap, Settings2, MoveRight, Loader2,
-  PhoneCall, PhoneOff, SkipForward, CheckCircle, Clock, Tag, Voicemail,
+  PhoneCall, PhoneOff, SkipForward, CheckCircle, Clock, Tag, Voicemail, Home,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -1546,6 +1546,7 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
   const [bulkReferring, setBulkReferring] = useState(false)
   const [referralPartners, setReferralPartners] = useState<{ id: string; name: string; brokerage: string | null }[]>([])
   const [bulkEnrolling, setBulkEnrolling] = useState(false)
+  const [bulkInviting, setBulkInviting] = useState(false)
   const [globalSelectAll, setGlobalSelectAll] = useState(false)
   const [showPowerDialer, setShowPowerDialer] = useState(false)
 
@@ -1705,6 +1706,37 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
     } catch {
       toast({ title: "Failed to enroll contacts", variant: "destructive" })
     } finally { setBulkEnrolling(false) }
+  }
+
+  const bulkPortalInvite = async () => {
+    if (!selected.size && !globalSelectAll) return
+    let contactIds = Array.from(selected)
+    if (globalSelectAll) {
+      try {
+        const idsRes = await fetch(`/api/contacts/ids?${buildParams()}`)
+        const idsData = await idsRes.json()
+        if (!idsRes.ok) throw new Error(idsData.error)
+        contactIds = idsData.ids
+      } catch {
+        toast({ title: "No se pudieron cargar los contactos", variant: "destructive" }); return
+      }
+    }
+    if (!confirm(`Enviar la invitación al Portal CASAi a ${contactIds.length} contacto${contactIds.length !== 1 ? "s" : ""}? Cada uno recibe su enlace personal de acceso. (Se omiten los que no tienen email o marcados No Enviar Email.)`)) return
+    setBulkInviting(true)
+    try {
+      const res = await fetch("/api/bulk/portal-invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contactIds }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      toast({ title: `✅ ${data.sent} invitación${data.sent !== 1 ? "es" : ""} enviada${data.sent !== 1 ? "s" : ""}${data.skipped ? ` · ${data.skipped} omitido${data.skipped !== 1 ? "s" : ""} (sin email)` : ""}${data.failed ? ` · ${data.failed} fallaron` : ""}` })
+      setSelected(new Set())
+      setGlobalSelectAll(false)
+    } catch (e: any) {
+      toast({ title: e.message || "No se pudieron enviar las invitaciones", variant: "destructive" })
+    } finally { setBulkInviting(false) }
   }
 
   const bulkApplyTag = async (tagId: string, tagName: string) => {
@@ -2053,6 +2085,16 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
               className="bg-white/10 hover:bg-white/20 text-white border-white/20 gap-1.5"
             >
               <Mail className="w-3.5 h-3.5" /> Bulk Email
+            </Button>
+            <Button
+              size="sm"
+              onClick={bulkPortalInvite}
+              disabled={bulkInviting}
+              title="Envía a cada contacto seleccionado su enlace personal para acceder al Portal CASAi"
+              className="bg-emerald-500/90 hover:bg-emerald-500 text-white border-white/20 gap-1.5"
+            >
+              {bulkInviting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Home className="w-3.5 h-3.5" />}
+              Invitar al Portal
             </Button>
             <Button
               size="sm"
