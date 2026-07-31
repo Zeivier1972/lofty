@@ -12,7 +12,9 @@ interface Props {
 
 export default function PortalLoginClient({ prefillToken, error, next }: Props) {
   const router = useRouter()
-  const [mode, setMode] = useState<"magic" | "email">("magic")
+  // Default to the email-link flow: most visitors (and everyone invited by mass
+  // email) don't have an access code yet — they get their secure link by email.
+  const [mode, setMode] = useState<"magic" | "email">("email")
   const [token, setToken] = useState(prefillToken || "")
   const [email, setEmail] = useState("")
   const [loading, setLoading] = useState(false)
