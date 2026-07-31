@@ -96,7 +96,14 @@ export async function POST(req: Request) {
 
     const { sent, failed } = await sendBulkEmail(
       recipients,
-      { subject: `${agentName} te invitó a tu Portal Personal 🏠 / Your client portal is ready`, html: inviteHtml(agentName) },
+      {
+        // Personalized subject + transactional flag = lands in Primary, not
+        // Promotions/Spam (each invite is a personal 1:1 message, not a blast).
+        subject: `{first_name}, tu portal de cliente ya está listo`,
+        html: inviteHtml(agentName),
+        transactional: true,
+        replyTo: process.env.AGENT_REPLY_EMAIL || undefined,
+      },
       50,
       1000
     )

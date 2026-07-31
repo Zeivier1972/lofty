@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
   CheckSquare, Plus, Phone, Mail, ChevronDown, ChevronUp,
-  Calendar, Clock, MoreVertical, Check, Square, Filter,
+  Calendar, Clock, MoreVertical, Check, Square, Filter, UserX, Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -31,6 +31,21 @@ export default function TasksClient({ tasks: initialTasks, counts, filters }: Ta
   const router = useRouter()
   const { toast } = useToast()
   const [tasks, setTasks] = useState(initialTasks)
+  const [cleaning, setCleaning] = useState(false)
+
+  const cleanupPartnerTasks = async () => {
+    if (!confirm("¿Cancelar todas las tareas pendientes de leads asignados a un socio (otro realtor)?")) return
+    setCleaning(true)
+    try {
+      const res = await fetch("/api/admin/cleanup-partner-tasks", { method: "POST" })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      toast({ title: `✅ ${data.cancelled} tarea${data.cancelled !== 1 ? "s" : ""} de socios cancelada${data.cancelled !== 1 ? "s" : ""}` })
+      router.refresh()
+    } catch (e: any) {
+      toast({ title: e.message || "No se pudo limpiar", variant: "destructive" })
+    } finally { setCleaning(false) }
+  }
 
   const pendingCount = counts.find((c: any) => c.status === "PENDING")?._count || 0
   const completedCount = counts.find((c: any) => c.status === "COMPLETED")?._count || 0
@@ -78,6 +93,17 @@ export default function TasksClient({ tasks: initialTasks, counts, filters }: Ta
         </div>
         <div className="flex items-center gap-2">
           <HelpPanel section="tasks" />
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-2"
+            onClick={cleanupPartnerTasks}
+            disabled={cleaning}
+            title="Cancela las tareas pendientes de leads asignados a un socio (otro realtor)"
+          >
+            {cleaning ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserX className="w-4 h-4" />}
+            Limpiar tareas de socios
+          </Button>
           <Button asChild size="sm" className="bg-lofty-600 hover:bg-lofty-700 gap-2">
             <Link href="/tasks/new"><Plus className="w-4 h-4" />New Task</Link>
           </Button>
