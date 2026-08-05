@@ -185,6 +185,10 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
   // Live mirror of sessionRunning so event handlers/timeouts read the real value.
   const sessionRunningRef = useRef(false)
   useEffect(() => { sessionRunningRef.current = sessionRunning }, [sessionRunning])
+  // Did the current call actually connect (answered / voicemail)? If so we DON'T
+  // auto-advance out from under the agent — they may be leaving a message or
+  // taking notes. Only never-answered calls auto-dial the next lead.
+  const wasConnectedRef = useRef(false)
 
   // Pre-recorded voicemail messages (text or audio), shared with the Contacts page
   type VmTemplate = { id: string; name: string; text?: string; audioUrl?: string }
@@ -203,6 +207,7 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
   async function dropVoicemailAndNext(tpl: VmTemplate) {
     const c = queue[currentCallIndex]
     setShowVmMenu(false)
+    clearCountdown() // don't let the auto-dial timer yank the lead away mid-drop
     if (!c?.phone) { setSkipNotice("Este lead no tiene teléfono para dejar mensaje."); return }
     setDroppingVm(true)
     try {
@@ -635,6 +640,7 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
       activeBrowserCallRef.current = null
       await new Promise(r => setTimeout(r, 400)) // let the SDK release the old leg
       callFinishedRef.current = false // arm the finish-guard for this new call
+      wasConnectedRef.current = false // reset per call — set true once it connects
 
       const digits = (leadPhone(contact) || "").replace(/\D/g, "")
       const e164 = digits.length === 10 ? `+1${digits}` : `+${digits}`
@@ -652,7 +658,7 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
       }, 45000)
       const clearConnectTimeout = () => { if (connectTimeoutRef.current) { clearTimeout(connectTimeoutRef.current); connectTimeoutRef.current = null } }
 
-      call.on("accept", () => { clearConnectTimeout(); setCallStatus("connected"); startTimer() })
+      call.on("accept", () => { clearConnectTimeout(); wasConnectedRef.current = true; setCallStatus("connected"); startTimer() })
       // Any natural end (callee hung up, voicemail finished) → log + advance.
       call.on("disconnect", () => { clearConnectTimeout(); endCall("COMPLETED") })
       call.on("cancel", () => { clearConnectTimeout(); setCallError("No contestó."); endCall("NO_ANSWER") })
@@ -675,8 +681,13 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
 
     if (!activeCallId) {
       setCallStatus("idle")
-      // Manual voicemail-drop before a call connected → still move to next.
-      if (alwaysAdvance && currentCallIndex + 1 < queue.length) setCurrentCallIndex(currentCallIndex + 1)
+      // Voicemail-drop / hang-up with no live leg → still move to next, and keep
+      // the auto-dial flowing in a running session.
+      if (alwaysAdvance && currentCallIndex + 1 < queue.length) {
+        const ni = currentCallIndex + 1
+        setCurrentCallIndex(ni)
+        if (sessionRunningRef.current) setAutoDialContact(queue[ni])
+      }
       return
     }
 
@@ -718,15 +729,23 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
     setActiveTwilioSid(null)
 
     const nextIdx = currentCallIndex + 1
-    if (sessionRunningRef.current && nextIdx < queue.length) {
-      startAutoDialCountdown(nextIdx, queue[nextIdx])
-    } else if (sessionRunningRef.current) {
-      setSessionRunning(false); sessionRunningRef.current = false
-    } else if (alwaysAdvance && nextIdx < queue.length) {
-      // Manual mode: hang-up / voicemail still moves to the next lead (ready to call).
+    const running = sessionRunningRef.current
+    if (nextIdx >= queue.length) {
+      if (running) { setSessionRunning(false); sessionRunningRef.current = false }
+      return
+    }
+    if (alwaysAdvance) {
+      // Explicit "Colgar y siguiente" / voicemail drop → go to the next lead now.
       setCurrentCallIndex(nextIdx)
       setCallStatus("idle")
+      if (running) setAutoDialContact(queue[nextIdx])
+    } else if (running && !wasConnectedRef.current) {
+      // Auto-dial ONLY advances calls that never connected (no answer). A call
+      // that connected (answered / voicemail) stays on the "ended" screen so the
+      // agent can leave a message, take notes, then move on when ready.
+      startAutoDialCountdown(nextIdx, queue[nextIdx])
     }
+    // else: connected call ended, or manual mode → stay on "ended".
   }
 
   async function nextCall() {
@@ -1176,10 +1195,10 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
                     </button>
                   )}
 
-                  {(callStatus === "connected" || callStatus === "calling") && vmTemplates.length > 0 && (
+                  {(callStatus === "connected" || callStatus === "calling" || callStatus === "ended") && vmTemplates.length > 0 && (
                     <div className="relative">
                       <button
-                        onClick={() => setShowVmMenu(v => !v)}
+                        onClick={() => { clearCountdown(); setShowVmMenu(v => !v) }}
                         disabled={droppingVm}
                         title="Deja un mensaje pregrabado y pasa a la siguiente llamada"
                         className="flex items-center gap-2 px-4 py-3 border-2 border-amber-300 text-amber-700 rounded-xl hover:bg-amber-50 font-medium disabled:opacity-50"
@@ -1463,6 +1482,7 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
                   <textarea
                     value={noteFields.extraNotes}
                     onChange={e => setNoteFields(f => ({ ...f, extraNotes: e.target.value }))}
+                    onFocus={clearCountdown} // taking notes pauses the auto-dial timer so nothing is lost
                     placeholder="Notas adicionales..."
                     rows={2}
                     className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-lofty-500 resize-none"
