@@ -20,14 +20,57 @@ function officialImages(): string[] {
   }
 }
 
+const BASE = "https://www.catherinegomezrealtor.com"
+const PAGE_URL = `${BASE}/guias/inversionista-costa-rica`
+const OG_IMAGE = `${BASE}/guias/one-twenty-brickell/01-exterior.jpg`
+const TITLE = "Invertir en Miami desde Costa Rica | One Twenty Brickell — Catherine Gomez"
+const DESCRIPTION =
+  "Guía para inversionistas de Costa Rica: cómo comprar pre-construcción en Miami (One Twenty Brickell), financiamiento para extranjeros (30–40% de enganche), rentabilidad y el proceso paso a paso, en español."
+
+// SEO + social. Open Graph / Twitter give rich previews when the link is posted
+// on Facebook, Instagram, WhatsApp and shared in messages.
 export const metadata: Metadata = {
-  title: "Tu Kit de Inversión | One Twenty Brickell — Invertir en Miami desde Costa Rica",
-  description:
-    "Kit del inversionista: por qué invertir en Miami desde Costa Rica, One Twenty Brickell, financiamiento para extranjeros, rentabilidad y el proceso paso a paso.",
+  title: TITLE,
+  description: DESCRIPTION,
+  keywords: [
+    "invertir en Miami desde Costa Rica",
+    "One Twenty Brickell",
+    "pre-construcción Miami",
+    "bienes raíces Miami Costa Rica",
+    "financiamiento para extranjeros Miami",
+    "comprar apartamento en Brickell",
+    "inversión inmobiliaria Miami costarricenses",
+  ],
+  alternates: { canonical: PAGE_URL },
+  openGraph: {
+    title: TITLE,
+    description: DESCRIPTION,
+    url: PAGE_URL,
+    type: "website",
+    siteName: "Catherine Gomez Realtor",
+    locale: "es_US",
+    images: [{ url: OG_IMAGE, width: 1200, height: 630, alt: "One Twenty Brickell — pre-construcción en Brickell, Miami" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: TITLE,
+    description: DESCRIPTION,
+    images: [OG_IMAGE],
+  },
 }
 
-const BOOK_URL = "https://www.catherinegomezrealtor.com/book"
-const PROJECTS_URL = "https://www.catherinegomezrealtor.com/new-construction"
+const BOOK_URL = `${BASE}/book`
+const PROJECTS_URL = `${BASE}/new-construction`
+
+// Q&A that doubles as SEO content and AIO (answer engines like Google AI
+// Overviews / ChatGPT / Perplexity quote clear question→answer pairs).
+const FAQS: { q: string; a: string }[] = [
+  { q: "¿Puede un costarricense comprar propiedad en Miami?", a: "Sí. No necesitas ser residente ni ciudadano de Estados Unidos para comprar bienes raíces en Miami. Los extranjeros pueden comprar a su nombre o mediante una empresa (LLC)." },
+  { q: "¿Hay financiamiento para extranjeros?", a: "Sí. Varios bancos ofrecen préstamos hipotecarios para extranjeros (foreign national loans) con aproximadamente 30–40% de enganche, sin necesidad de crédito estadounidense. Yo te conecto con esos bancos." },
+  { q: "¿Qué es One Twenty Brickell?", a: "One Twenty Brickell Residences es una torre de pre-construcción en Brickell, el distrito financiero de Miami, con amenidades de lujo y un plan de pagos por etapas durante la construcción — ideal para vivir o para invertir y rentar." },
+  { q: "¿Cuánto necesito para empezar?", a: "En pre-construcción normalmente pagas por etapas durante la obra, comenzando con un depósito de reserva. Solicita el Kit y en una llamada te doy los precios y el plan de pagos actualizados." },
+  { q: "¿Cómo es el proceso desde Costa Rica?", a: "1) Recibes el Kit con precios y plan de pagos. 2) Tenemos una llamada estratégica. 3) Reservas tu unidad (coordino contrato, abogado y depósito, todo en español). 4) Gestionamos financiamiento para extranjeros y cerramos. Puedes comprar sin viajar." },
+]
 
 // Reliable building/skyline fallbacks (used only when PEXELS_API_KEY isn't set).
 // All are high-rise / skyline shots — no interiors, houses, or people.
@@ -63,8 +106,41 @@ export default async function CostaRicaGuidePage() {
   const keys = keysImg || SKYLINE
   const agent = config?.realtorName || "Catherine"
 
+  // Structured data — read by Google (rich results) and AI answer engines (AIO).
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "RealEstateAgent",
+        name: config?.realtorName || "Catherine Gomez",
+        url: BASE,
+        ...(phone ? { telephone: phone } : {}),
+        areaServed: "Miami, Florida, USA",
+        knowsLanguage: ["es", "en"],
+      },
+      {
+        "@type": "Residence",
+        name: "One Twenty Brickell Residences",
+        url: PAGE_URL,
+        image: OG_IMAGE,
+        description: DESCRIPTION,
+        address: { "@type": "PostalAddress", addressLocality: "Miami", addressRegion: "FL", addressCountry: "US", streetAddress: "Brickell" },
+      },
+      {
+        "@type": "FAQPage",
+        mainEntity: FAQS.map(f => ({
+          "@type": "Question",
+          name: f.q,
+          acceptedAnswer: { "@type": "Answer", text: f.a },
+        })),
+      },
+    ],
+  }
+
   return (
     <main className="min-h-screen bg-white text-gray-900">
+      {/* eslint-disable-next-line react/no-danger */}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       {/* Hero */}
       <section className="relative min-h-[70vh] flex items-center">
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -228,6 +304,22 @@ export default async function CostaRicaGuidePage() {
               <h3 className="mt-4 font-bold">{t}</h3>
               <p className="mt-2 text-gray-600 text-sm leading-relaxed">{b}</p>
             </div>
+          ))}
+        </div>
+      </section>
+
+      {/* FAQ — SEO + AIO (answer engines quote these Q&A pairs) */}
+      <section className="mx-auto max-w-3xl px-5 py-16">
+        <h2 className="text-3xl font-extrabold text-center">Preguntas frecuentes</h2>
+        <div className="mt-8 space-y-3">
+          {FAQS.map(f => (
+            <details key={f.q} className="rounded-xl border border-gray-200 p-5 group">
+              <summary className="font-bold cursor-pointer list-none flex items-center justify-between gap-3">
+                {f.q}
+                <span className="text-gray-400 group-open:rotate-180 transition-transform flex-shrink-0">▾</span>
+              </summary>
+              <p className="mt-3 text-gray-600 leading-relaxed">{f.a}</p>
+            </details>
           ))}
         </div>
       </section>
