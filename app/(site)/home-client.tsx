@@ -25,7 +25,7 @@ const DEFAULT_HERO_SLIDES = [
 // `search` overrides the city sent to /homes when the display name isn't an MLS City value.
 const FEATURED_AREAS = [
   { name: "Miami",              img: "https://images.unsplash.com/photo-1533106497176-45ae19e68ba2?auto=format&fit=crop&w=1200&q=90" },
-  { name: "Brickell",          img: "https://images.unsplash.com/photo-1486325212027-8081e485255e?auto=format&fit=crop&w=1200&q=90", search: "Miami" },
+  { name: "Brickell",          img: "https://images.unsplash.com/photo-1486325212027-8081e485255e?auto=format&fit=crop&w=1200&q=90", search: "33129, 33130, 33131" },
   { name: "Coral Gables",      img: "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=1200&q=90" },
   { name: "Doral",             img: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&w=1200&q=90" },
   { name: "Sunny Isles Beach", img: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=90" },
