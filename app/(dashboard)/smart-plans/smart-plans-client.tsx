@@ -377,6 +377,21 @@ export default function SmartPlansClient({ plans: initial, tags }: { plans: Plan
   const [showBuilder, setShowBuilder] = useState(false)
   const [editingPlan, setEditingPlan] = useState<Plan | undefined>()
   const [expandedPlan, setExpandedPlan] = useState<string | null>(null)
+  const [cloningCR, setCloningCR] = useState(false)
+
+  const cloneCostaRica = async () => {
+    if (!confirm("¿Crear el plan de Costa Rica copiando el plan de Colombia (adaptado)? Se activa con el tag \"Inversionista Costa Rica\".")) return
+    setCloningCR(true)
+    try {
+      const res = await fetch("/api/admin/clone-costa-rica", { method: "POST" })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Error")
+      toast({ title: data.created ? `✅ Creado "${data.name}" (${data.steps} pasos)` : `✅ "${data.name}" ya existía — reactivado` })
+      setTimeout(() => window.location.reload(), 800)
+    } catch (e: any) {
+      toast({ title: e.message || "No se pudo crear", variant: "destructive" })
+    } finally { setCloningCR(false) }
+  }
 
   const togglePlan = async (planId: string) => {
     const plan = plans.find(p => p.id === planId)!
@@ -432,9 +447,14 @@ export default function SmartPlansClient({ plans: initial, tags }: { plans: Plan
           <h1 className="text-2xl font-bold text-gray-900">Smart Plans</h1>
           <p className="text-gray-500 text-sm mt-0.5">Automated follow-up sequences</p>
         </div>
-        <Button onClick={() => setShowBuilder(true)} size="sm" className="bg-lofty-600 hover:bg-lofty-700 gap-2">
-          <Plus className="w-4 h-4" /> Create Plan
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={cloneCostaRica} disabled={cloningCR} size="sm" variant="outline" className="gap-2" title="Copia el plan de Colombia y lo adapta a Costa Rica">
+            <Zap className="w-4 h-4" /> {cloningCR ? "Creando…" : "Plan Costa Rica"}
+          </Button>
+          <Button onClick={() => setShowBuilder(true)} size="sm" className="bg-lofty-600 hover:bg-lofty-700 gap-2">
+            <Plus className="w-4 h-4" /> Create Plan
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-3 gap-4">
