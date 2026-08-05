@@ -53,10 +53,12 @@ export default async function CostaRicaGuidePage() {
     fetchPexelsRaw("luxury high rise apartment building exterior").catch(() => null),
     fetchPexelsRaw("Miami downtown skyscrapers blue glass facade").catch(() => null),
   ])
-  const hero = heroImg || SKYLINE
-  const why = whyImg || TOWERS
-  // Prefer the real One Twenty Brickell rendering when it's been provided.
+  // Prefer the real One Twenty Brickell renderings when provided:
+  //   [0] exterior → showcase · [1] terrace/skyline → hero & CTA · rest → gallery
   const tower = official[0] || towerImg || TOWERS
+  const hero = official[1] || heroImg || SKYLINE
+  const gallery = official.length > 2 ? official.slice(2) : official.slice(1)
+  const why = whyImg || TOWERS
   const pool = poolImg || TOWERS
   const keys = keysImg || SKYLINE
   const agent = config?.realtorName || "Catherine"
@@ -157,13 +159,14 @@ export default async function CostaRicaGuidePage() {
       </section>
 
       {/* Official renderings gallery — shows only when images are provided */}
-      {official.length > 1 && (
+      {gallery.length > 0 && (
         <section className="mx-auto max-w-6xl px-5 pt-14">
           <h2 className="text-center text-2xl font-extrabold">Galería — One Twenty Brickell</h2>
+          <p className="text-center text-sm text-gray-400 mt-1">Renderings conceptuales del artista</p>
           <div className="mt-6 grid grid-cols-2 md:grid-cols-3 gap-4">
-            {official.slice(1).map((src, i) => (
+            {gallery.map((src, i) => (
               /* eslint-disable-next-line @next/next/no-img-element */
-              <img key={src} src={src} alt={`One Twenty Brickell ${i + 2}`} className="rounded-xl shadow w-full h-52 object-cover" loading="lazy" />
+              <img key={src} src={src} alt={`One Twenty Brickell ${i + 1}`} className="rounded-xl shadow w-full h-52 object-cover" loading="lazy" />
             ))}
           </div>
         </section>
