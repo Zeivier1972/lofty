@@ -2,134 +2,197 @@ export const dynamic = "force-dynamic"
 
 import type { Metadata } from "next"
 import { prisma } from "@/lib/prisma"
-import CaptureForm from "./capture-form"
+import { fetchPexelsPhoto } from "@/lib/pexels-video"
 
 export const metadata: Metadata = {
-  title: "Invierte en Miami desde Costa Rica | One Twenty Brickell — Catherine Gomez",
+  title: "Tu Kit de Inversión | One Twenty Brickell — Invertir en Miami desde Costa Rica",
   description:
-    "Guía para inversionistas de Costa Rica: cómo invertir en pre-construcción en Miami (One Twenty Brickell), financiamiento para extranjeros, rentabilidad y proceso paso a paso.",
+    "Kit del inversionista: por qué invertir en Miami desde Costa Rica, One Twenty Brickell, financiamiento para extranjeros, rentabilidad y el proceso paso a paso.",
 }
 
 const BOOK_URL = "https://www.catherinegomezrealtor.com/book"
+const PROJECTS_URL = "https://www.catherinegomezrealtor.com/new-construction"
+
+// Reliable image fallbacks (used when PEXELS_API_KEY isn't set). Same source the
+// rest of the app already hotlinks.
+const FALLBACK = {
+  skyline: "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=1600&q=80",
+  invest: "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1280&q=80",
+  tower: "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1280&q=80",
+  interior: "https://images.unsplash.com/photo-1613977257365-aaae5a9817ff?w=1280&q=80",
+  pool: "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=1280&q=80",
+  keys: "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1280&q=80",
+}
 
 export default async function CostaRicaGuidePage() {
   const config = await prisma.aIConfig.findFirst().catch(() => null)
+  const bookUrl = config?.calendlyUrl || BOOK_URL
   const phone = config?.realtorPhone || ""
   const waDigits = phone.replace(/\D/g, "")
   const waUrl = waDigits
-    ? `https://wa.me/${waDigits}?text=${encodeURIComponent("Hola Catherine, me interesa invertir en Miami desde Costa Rica (One Twenty Brickell).")}`
+    ? `https://wa.me/${waDigits}?text=${encodeURIComponent("Hola Catherine, vi el Kit de One Twenty Brickell y quiero agendar una llamada para invertir en Miami desde Costa Rica.")}`
     : null
+
+  // Fetch topical images (fall back to curated stock if Pexels isn't configured).
+  const [heroImg, whyImg, towerImg, poolImg, keysImg] = await Promise.all([
+    fetchPexelsPhoto("brickell miami downtown skyline night").catch(() => null),
+    fetchPexelsPhoto("miami investment dolares capital").catch(() => null),
+    fetchPexelsPhoto("modern luxury condo tower miami").catch(() => null),
+    fetchPexelsPhoto("luxury condo pool amenities").catch(() => null),
+    fetchPexelsPhoto("keys signing contract real estate").catch(() => null),
+  ])
+  const hero = heroImg || FALLBACK.skyline
+  const why = whyImg || FALLBACK.invest
+  const tower = towerImg || FALLBACK.tower
+  const pool = poolImg || FALLBACK.pool
+  const keys = keysImg || FALLBACK.keys
+  const agent = config?.realtorName || "Catherine"
 
   return (
     <main className="min-h-screen bg-white text-gray-900">
       {/* Hero */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-[#0b1f3a] via-[#12315c] to-[#1e40af] text-white">
-        <div className="mx-auto max-w-6xl px-5 py-16 sm:py-24 grid lg:grid-cols-2 gap-10 items-center">
-          <div>
-            <p className="inline-block rounded-full bg-white/10 px-4 py-1.5 text-sm font-semibold tracking-wide">
-              🇨🇷 Inversionistas de Costa Rica · 🇺🇸 Miami
-            </p>
-            <h1 className="mt-5 text-4xl sm:text-5xl font-extrabold leading-tight">
-              Invierte en Miami desde Costa Rica
-            </h1>
-            <p className="mt-3 text-xl text-blue-100 font-semibold">
-              One Twenty Brickell — pre-construcción con plan de pagos y financiamiento para extranjeros.
-            </p>
-            <p className="mt-4 text-blue-100/90 leading-relaxed">
-              Protege tu capital en dólares, genera renta y aprovecha la plusvalía de Brickell — el distrito
-              financiero de Miami. Yo te acompaño en todo el proceso, en español y de principio a fin.
-            </p>
-            <div className="mt-7 flex flex-wrap gap-3">
-              <a href="#kit" className="rounded-xl bg-white px-6 py-3.5 font-bold text-[#12315c] hover:bg-blue-50">
-                Recibe la información gratis →
+      <section className="relative min-h-[70vh] flex items-center">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={hero} alt="Brickell, Miami" className="absolute inset-0 h-full w-full object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#07162c]/90 via-[#0b1f3a]/75 to-[#0b1f3a]/40" />
+        <div className="relative mx-auto max-w-6xl px-5 py-20 text-white">
+          <p className="inline-block rounded-full bg-white/15 backdrop-blur px-4 py-1.5 text-sm font-semibold">
+            🇨🇷 Inversionistas de Costa Rica · 🏙️ One Twenty Brickell
+          </p>
+          <h1 className="mt-5 max-w-3xl text-4xl sm:text-6xl font-extrabold leading-tight">
+            Tu Kit de Inversión en Miami
+          </h1>
+          <p className="mt-4 max-w-2xl text-xl text-blue-100 font-medium">
+            Gracias por tu interés. Aquí está todo lo que necesitas saber para invertir en
+            <strong> One Twenty Brickell</strong> desde Costa Rica — y el siguiente paso: una llamada conmigo.
+          </p>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <a href={bookUrl} className="rounded-xl bg-white px-7 py-4 font-bold text-[#0b1f3a] hover:bg-blue-50 shadow-lg">
+              📅 Agenda tu llamada gratis
+            </a>
+            {waUrl && (
+              <a href={waUrl} className="rounded-xl bg-[#25D366] px-7 py-4 font-bold text-white hover:brightness-95 shadow-lg">
+                💬 Escríbeme por WhatsApp
               </a>
-              <a href={BOOK_URL} className="rounded-xl border border-white/40 px-6 py-3.5 font-bold text-white hover:bg-white/10">
-                Agenda una llamada
-              </a>
-            </div>
-          </div>
-          <div className="rounded-2xl bg-white p-6 shadow-2xl" id="kit">
-            <h2 className="text-2xl font-extrabold text-gray-900">Tu Kit de Inversión</h2>
-            <p className="mt-1 text-gray-500">Precios, plan de pagos y financiamiento — directo a tu correo.</p>
-            <div className="mt-5"><CaptureForm /></div>
+            )}
+            <a href={PROJECTS_URL} className="rounded-xl border border-white/40 px-7 py-4 font-bold text-white hover:bg-white/10">
+              🏗️ Ver proyectos
+            </a>
           </div>
         </div>
       </section>
 
-      {/* Trust bar */}
-      <section className="border-b bg-gray-50">
-        <div className="mx-auto max-w-6xl px-5 py-8 grid grid-cols-2 sm:grid-cols-4 gap-6 text-center">
-          {[
-            ["100%", "En dólares (USD)"],
-            ["30–40%", "Enganche para extranjeros"],
-            ["Plan de pagos", "Durante construcción"],
-            ["Brickell", "Distrito financiero"],
-          ].map(([big, small]) => (
-            <div key={small}>
-              <div className="text-2xl font-extrabold text-[#12315c]">{big}</div>
-              <div className="text-sm text-gray-500">{small}</div>
-            </div>
-          ))}
+      {/* What happens next */}
+      <section className="bg-blue-50 border-b border-blue-100">
+        <div className="mx-auto max-w-4xl px-5 py-8 text-center">
+          <p className="text-lg text-[#0b1f3a]">
+            ✅ <strong>Ya recibimos tus datos.</strong> En este Kit verás por qué Miami es una de las mejores
+            inversiones para tu capital — y cuando estés listo, <strong>agenda una llamada</strong> y te muestro los
+            números reales de One Twenty Brickell.
+          </p>
         </div>
       </section>
 
       {/* Why Miami */}
-      <section className="mx-auto max-w-6xl px-5 py-16">
-        <h2 className="text-3xl font-extrabold text-center">¿Por qué invertir en Miami?</h2>
-        <div className="mt-10 grid md:grid-cols-3 gap-6">
-          {[
-            ["💵", "Refugio en dólares", "Tu inversión está en USD, protegida de la volatilidad y la inflación local."],
-            ["📈", "Plusvalía comprobada", "Brickell ha tenido una fuerte apreciación año tras año; comprar en pre-construcción maximiza la ganancia."],
-            ["🏦", "Renta en un mercado fuerte", "Alta demanda de alquiler de profesionales y ejecutivos en el corazón financiero de Miami."],
-            ["🌎", "Puerta de entrada de LatAm", "Ciudad segura, conectada con Costa Rica por vuelos directos y con comunidad latina."],
-            ["🔑", "Financiamiento para extranjeros", "No necesitas ser residente: bancos ofrecen préstamos a extranjeros con 30–40% de enganche."],
-            ["📝", "Proceso simple y en español", "Yo coordino abogado, banco y desarrollador. Puedes comprar sin viajar."],
-          ].map(([icon, title, body]) => (
-            <div key={title} className="rounded-2xl border border-gray-100 p-6 shadow-sm">
-              <div className="text-3xl">{icon}</div>
-              <h3 className="mt-3 text-lg font-bold">{title}</h3>
-              <p className="mt-2 text-gray-600 leading-relaxed">{body}</p>
-            </div>
-          ))}
+      <section className="mx-auto max-w-6xl px-5 py-16 grid lg:grid-cols-2 gap-10 items-center">
+        <div>
+          <h2 className="text-3xl font-extrabold">¿Por qué invertir en Miami desde Costa Rica?</h2>
+          <ul className="mt-6 space-y-4">
+            {[
+              ["💵", "Tu capital en dólares", "Protege tu patrimonio en USD, lejos de la devaluación y la inflación local."],
+              ["📈", "Plusvalía comprobada", "Brickell se ha apreciado año tras año. Comprar en pre-construcción maximiza tu ganancia."],
+              ["🏦", "Renta en un mercado fuerte", "Alta demanda de alquiler de ejecutivos en el distrito financiero de Miami."],
+              ["✈️", "Cerca y conectado", "Vuelos directos desde San José, ciudad segura y con comunidad latina."],
+            ].map(([icon, t, b]) => (
+              <li key={t} className="flex gap-3">
+                <span className="text-2xl">{icon}</span>
+                <span><strong className="block">{t}</strong><span className="text-gray-600">{b}</span></span>
+              </li>
+            ))}
+          </ul>
         </div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={why} alt="Invertir en Miami" className="rounded-2xl shadow-xl w-full h-80 object-cover" loading="lazy" />
       </section>
 
       {/* One Twenty Brickell */}
       <section className="bg-[#0b1f3a] text-white">
-        <div className="mx-auto max-w-6xl px-5 py-16">
-          <h2 className="text-3xl font-extrabold">One Twenty Brickell Residences</h2>
-          <p className="mt-3 text-blue-100 max-w-2xl">
-            Una torre de pre-construcción en el centro de Brickell, diseñada tanto para vivir como para invertir —
-            con amenidades de lujo y un plan de pagos cómodo durante la construcción.
-          </p>
-          <div className="mt-8 grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {[
-              ["Ubicación", "Corazón de Brickell, a pasos de bancos, restaurantes y Brickell City Centre."],
-              ["Amenidades", "Piscina, gimnasio, espacios de coworking, seguridad 24/7 y más."],
-              ["Ideal para rentar", "Alta demanda de inquilinos profesionales en la zona."],
-              ["Plan de pagos", "Pagas por etapas durante la construcción — no todo de una vez."],
-            ].map(([t, b]) => (
-              <div key={t} className="rounded-2xl bg-white/5 p-5 border border-white/10">
-                <h3 className="font-bold text-lg">{t}</h3>
-                <p className="mt-2 text-blue-100/90 text-sm leading-relaxed">{b}</p>
-              </div>
-            ))}
+        <div className="mx-auto max-w-6xl px-5 py-16 grid lg:grid-cols-2 gap-10 items-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={tower} alt="One Twenty Brickell" className="rounded-2xl shadow-xl w-full h-80 object-cover order-2 lg:order-1" loading="lazy" />
+          <div className="order-1 lg:order-2">
+            <h2 className="text-3xl font-extrabold">One Twenty Brickell Residences</h2>
+            <p className="mt-3 text-blue-100">
+              Pre-construcción en el corazón de Brickell — diseñada para vivir y para invertir, con amenidades de lujo y
+              un plan de pagos cómodo durante la construcción.
+            </p>
+            <div className="mt-6 grid sm:grid-cols-2 gap-4">
+              {[
+                ["📍 Ubicación", "A pasos de bancos, restaurantes y Brickell City Centre."],
+                ["🏊 Amenidades", "Piscina, gimnasio, coworking y seguridad 24/7."],
+                ["💼 Ideal para rentar", "Inquilinos profesionales con alta demanda."],
+                ["💳 Plan de pagos", "Pagas por etapas — no todo de una vez."],
+              ].map(([t, b]) => (
+                <div key={t} className="rounded-xl bg-white/5 border border-white/10 p-4">
+                  <div className="font-bold">{t}</div>
+                  <div className="mt-1 text-sm text-blue-100/90">{b}</div>
+                </div>
+              ))}
+            </div>
           </div>
-          <p className="mt-6 text-sm text-blue-200/70">
-            *Precios, disponibilidad y planes de pago sujetos a cambios del desarrollador. Solicita el Kit para los números actuales.
+        </div>
+      </section>
+
+      {/* The numbers */}
+      <section className="mx-auto max-w-6xl px-5 py-16 text-center">
+        <h2 className="text-3xl font-extrabold">Los números que importan</h2>
+        <div className="mt-10 grid grid-cols-2 lg:grid-cols-4 gap-6">
+          {[
+            ["30–40%", "Enganche para extranjeros"],
+            ["100% USD", "Inversión en dólares"],
+            ["Por etapas", "Plan de pagos en obra"],
+            ["Brickell", "Distrito financiero #1"],
+          ].map(([big, small]) => (
+            <div key={small} className="rounded-2xl border border-gray-100 shadow-sm p-6">
+              <div className="text-3xl font-extrabold text-[#12315c]">{big}</div>
+              <div className="mt-1 text-sm text-gray-500">{small}</div>
+            </div>
+          ))}
+        </div>
+        <p className="mt-4 text-sm text-gray-400">*Precios y planes sujetos a cambios del desarrollador. En la llamada te doy los números actualizados.</p>
+      </section>
+
+      {/* Financing + amenities images strip */}
+      <section className="mx-auto max-w-6xl px-5 pb-4 grid sm:grid-cols-2 gap-6">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={pool} alt="Amenidades" className="rounded-2xl shadow w-full h-56 object-cover" loading="lazy" />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={keys} alt="Financiamiento para extranjeros" className="rounded-2xl shadow w-full h-56 object-cover" loading="lazy" />
+      </section>
+
+      {/* Explore more projects */}
+      <section className="mx-auto max-w-4xl px-5 py-12">
+        <div className="rounded-2xl border-2 border-blue-100 bg-blue-50 p-8 text-center">
+          <h2 className="text-2xl font-extrabold text-[#0b1f3a]">¿Quieres ver más proyectos?</h2>
+          <p className="mt-2 text-gray-600">
+            One Twenty Brickell es una de muchas oportunidades. Explora todos los proyectos de
+            pre-construcción en Miami y el Sur de Florida — listados actualizados a diario.
           </p>
+          <a href={PROJECTS_URL} className="mt-6 inline-block rounded-xl bg-[#12315c] px-7 py-4 font-bold text-white hover:bg-[#0b1f3a]">
+            🏗️ Ver proyectos de pre-construcción →
+          </a>
         </div>
       </section>
 
       {/* Process */}
       <section className="mx-auto max-w-6xl px-5 py-16">
-        <h2 className="text-3xl font-extrabold text-center">Cómo funciona — paso a paso</h2>
+        <h2 className="text-3xl font-extrabold text-center">Cómo lo hacemos — paso a paso</h2>
         <div className="mt-10 grid md:grid-cols-4 gap-6">
           {[
-            ["1", "Recibe el Kit", "Te envío precios, plan de pagos y opciones de financiamiento."],
-            ["2", "Llamada estratégica", "Revisamos tu objetivo, presupuesto y los números reales."],
-            ["3", "Reserva tu unidad", "Coordino contrato, abogado y depósito — todo en español."],
-            ["4", "Financiamiento y cierre", "Te conecto con bancos para extranjeros y cerramos la inversión."],
+            ["1", "Llamada estratégica", "Revisamos tu objetivo, presupuesto y los números reales."],
+            ["2", "Elige tu unidad", "Te muestro las mejores opciones de vista y precio."],
+            ["3", "Reserva", "Coordino contrato, abogado y depósito — todo en español."],
+            ["4", "Financiamiento y cierre", "Te conecto con bancos para extranjeros y cerramos."],
           ].map(([n, t, b]) => (
             <div key={n} className="text-center">
               <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#12315c] text-white font-bold text-lg">{n}</div>
@@ -140,34 +203,39 @@ export default async function CostaRicaGuidePage() {
         </div>
       </section>
 
-      {/* Final CTA */}
-      <section className="bg-gradient-to-br from-[#12315c] to-[#1e40af] text-white">
-        <div className="mx-auto max-w-3xl px-5 py-16 text-center">
-          <h2 className="text-3xl font-extrabold">Da el primer paso hoy</h2>
+      {/* Final CTA — schedule a call */}
+      <section className="relative">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={hero} alt="" className="absolute inset-0 h-full w-full object-cover" />
+        <div className="absolute inset-0 bg-[#0b1f3a]/85" />
+        <div className="relative mx-auto max-w-3xl px-5 py-20 text-center text-white">
+          <h2 className="text-3xl sm:text-4xl font-extrabold">Agenda tu llamada con {agent}</h2>
           <p className="mt-3 text-blue-100">
-            Recibe tu Kit de Inversión de One Twenty Brickell y agenda una llamada con {config?.realtorName || "Catherine"} —
-            sin compromiso.
+            Sin compromiso. Te muestro los números de One Twenty Brickell y resolvemos todas tus dudas sobre invertir
+            en Miami desde Costa Rica.
           </p>
-          <div className="mt-7 flex flex-wrap justify-center gap-3">
-            <a href="#kit" className="rounded-xl bg-white px-7 py-4 font-bold text-[#12315c] hover:bg-blue-50">
-              Recibir el Kit
-            </a>
-            <a href={BOOK_URL} className="rounded-xl border border-white/40 px-7 py-4 font-bold hover:bg-white/10">
-              Agendar llamada
+          <div className="mt-8 flex flex-wrap justify-center gap-3">
+            <a href={bookUrl} className="rounded-xl bg-white px-8 py-4 font-bold text-[#0b1f3a] hover:bg-blue-50 shadow-lg text-lg">
+              📅 Agendar mi llamada
             </a>
             {waUrl && (
-              <a href={waUrl} className="rounded-xl bg-[#25D366] px-7 py-4 font-bold text-white hover:brightness-95">
-                WhatsApp
+              <a href={waUrl} className="rounded-xl bg-[#25D366] px-8 py-4 font-bold text-white hover:brightness-95 shadow-lg text-lg">
+                💬 WhatsApp
+              </a>
+            )}
+            {phone && (
+              <a href={`tel:${phone}`} className="rounded-xl border border-white/40 px-8 py-4 font-bold hover:bg-white/10 text-lg">
+                📞 {phone}
               </a>
             )}
           </div>
         </div>
       </section>
 
-      <footer className="bg-[#0b1f3a] text-blue-200/70 text-center text-sm py-8 px-5">
-        {config?.realtorName || "Catherine Gomez"} · Real Estate en Miami{phone ? ` · ${phone}` : ""}
+      <footer className="bg-[#07162c] text-blue-200/70 text-center text-sm py-8 px-5">
+        {agent} · Real Estate en Miami{phone ? ` · ${phone}` : ""}
         <div className="mt-1 text-blue-200/50">
-          No es una oferta de valores. La información es referencial; sujeta a verificación con el desarrollador.
+          Información referencial, no es una oferta de valores. Sujeta a verificación con el desarrollador.
         </div>
       </footer>
     </main>
