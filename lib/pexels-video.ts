@@ -83,6 +83,32 @@ const PHOTO_QUERIES: Record<string, string> = {
 // top results — dramatically widens the pool of distinct photos over time.
 const PHOTO_MODIFIERS = ["", "modern", "luxury", "aerial view", "twilight", "sunny bright", "curb appeal", "tropical landscaping"]
 
+// Direct Pexels photo search on a LITERAL query (no theme remapping) — use when
+// you need exactly what you asked for, e.g. skyscrapers / investment towers.
+export async function fetchPexelsRaw(
+  query: string,
+  orientation: "landscape" | "portrait" | "square" = "landscape",
+): Promise<string | null> {
+  const apiKey = process.env.PEXELS_API_KEY
+  if (!apiKey) return null
+  try {
+    const res = await fetch(
+      `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=30&orientation=${orientation}`,
+      { headers: { Authorization: apiKey }, signal: AbortSignal.timeout(6000) }
+    )
+    if (!res.ok) return null
+    const data = await res.json()
+    const urls = (data?.photos ?? [])
+      .map((p: any) => p.src?.large2x ?? p.src?.large ?? p.src?.original)
+      .filter(Boolean) as string[]
+    if (!urls.length) return null
+    // Pick from the top matches for relevance, with a little variety.
+    return urls[Math.floor(Math.random() * Math.min(urls.length, 10))] ?? urls[0]
+  } catch {
+    return null
+  }
+}
+
 export async function fetchPexelsPhoto(
   themeOrQuery: string,
   orientation: "landscape" | "portrait" | "square" = "landscape",

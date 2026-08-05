@@ -1,8 +1,24 @@
 export const dynamic = "force-dynamic"
 
+import { readdirSync } from "fs"
+import { join } from "path"
 import type { Metadata } from "next"
 import { prisma } from "@/lib/prisma"
-import { fetchPexelsPhoto } from "@/lib/pexels-video"
+import { fetchPexelsRaw } from "@/lib/pexels-video"
+
+// Official One Twenty Brickell renderings, if provided. Drop image files into
+// public/guias/one-twenty-brickell/ and they're used automatically here.
+function officialImages(): string[] {
+  try {
+    const dir = join(process.cwd(), "public", "guias", "one-twenty-brickell")
+    return readdirSync(dir)
+      .filter(f => /\.(jpe?g|png|webp|avif)$/i.test(f))
+      .sort()
+      .map(f => `/guias/one-twenty-brickell/${f}`)
+  } catch {
+    return []
+  }
+}
 
 export const metadata: Metadata = {
   title: "Tu Kit de Inversión | One Twenty Brickell — Invertir en Miami desde Costa Rica",
@@ -13,16 +29,10 @@ export const metadata: Metadata = {
 const BOOK_URL = "https://www.catherinegomezrealtor.com/book"
 const PROJECTS_URL = "https://www.catherinegomezrealtor.com/new-construction"
 
-// Reliable image fallbacks (used when PEXELS_API_KEY isn't set). Same source the
-// rest of the app already hotlinks.
-const FALLBACK = {
-  skyline: "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=1600&q=80",
-  invest: "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1280&q=80",
-  tower: "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1280&q=80",
-  interior: "https://images.unsplash.com/photo-1613977257365-aaae5a9817ff?w=1280&q=80",
-  pool: "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=1280&q=80",
-  keys: "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1280&q=80",
-}
+// Reliable building/skyline fallbacks (used only when PEXELS_API_KEY isn't set).
+// All are high-rise / skyline shots — no interiors, houses, or people.
+const SKYLINE = "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=1600&q=80"
+const TOWERS = "https://images.unsplash.com/photo-1444723121867-7a241cacace9?w=1280&q=80"
 
 export default async function CostaRicaGuidePage() {
   const config = await prisma.aIConfig.findFirst().catch(() => null)
@@ -33,19 +43,22 @@ export default async function CostaRicaGuidePage() {
     ? `https://wa.me/${waDigits}?text=${encodeURIComponent("Hola Catherine, vi el Kit de One Twenty Brickell y quiero agendar una llamada para invertir en Miami desde Costa Rica.")}`
     : null
 
-  // Fetch topical images (fall back to curated stock if Pexels isn't configured).
+  const official = officialImages()
+
+  // Building-only imagery: Brickell skyline + high-rise investment towers.
   const [heroImg, whyImg, towerImg, poolImg, keysImg] = await Promise.all([
-    fetchPexelsPhoto("brickell miami downtown skyline night").catch(() => null),
-    fetchPexelsPhoto("miami investment dolares capital").catch(() => null),
-    fetchPexelsPhoto("modern luxury condo tower miami").catch(() => null),
-    fetchPexelsPhoto("luxury condo pool amenities").catch(() => null),
-    fetchPexelsPhoto("keys signing contract real estate").catch(() => null),
+    fetchPexelsRaw("Brickell Miami downtown skyline skyscrapers dusk").catch(() => null),
+    fetchPexelsRaw("Miami high rise condominium towers aerial").catch(() => null),
+    fetchPexelsRaw("modern glass residential skyscraper tower").catch(() => null),
+    fetchPexelsRaw("luxury high rise apartment building exterior").catch(() => null),
+    fetchPexelsRaw("Miami downtown skyscrapers blue glass facade").catch(() => null),
   ])
-  const hero = heroImg || FALLBACK.skyline
-  const why = whyImg || FALLBACK.invest
-  const tower = towerImg || FALLBACK.tower
-  const pool = poolImg || FALLBACK.pool
-  const keys = keysImg || FALLBACK.keys
+  const hero = heroImg || SKYLINE
+  const why = whyImg || TOWERS
+  // Prefer the real One Twenty Brickell rendering when it's been provided.
+  const tower = official[0] || towerImg || TOWERS
+  const pool = poolImg || TOWERS
+  const keys = keysImg || SKYLINE
   const agent = config?.realtorName || "Catherine"
 
   return (
@@ -142,6 +155,19 @@ export default async function CostaRicaGuidePage() {
           </div>
         </div>
       </section>
+
+      {/* Official renderings gallery — shows only when images are provided */}
+      {official.length > 1 && (
+        <section className="mx-auto max-w-6xl px-5 pt-14">
+          <h2 className="text-center text-2xl font-extrabold">Galería — One Twenty Brickell</h2>
+          <div className="mt-6 grid grid-cols-2 md:grid-cols-3 gap-4">
+            {official.slice(1).map((src, i) => (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img key={src} src={src} alt={`One Twenty Brickell ${i + 2}`} className="rounded-xl shadow w-full h-52 object-cover" loading="lazy" />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* The numbers */}
       <section className="mx-auto max-w-6xl px-5 py-16 text-center">
