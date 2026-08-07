@@ -8,8 +8,8 @@ on:
     - cron: "0 22 * * *"
     # Blog post — 10 PM ET (02:00 UTC next day)
     - cron: "0 2 * * *"
-    # Poll HeyGen for completed videos — every 15 min
-    - cron: "*/15 * * * *"
+    # NOTE: the every-15-min HeyGen video poll was removed — video posting is
+    # disabled. Re-add `- cron: "*/15 * * * *"` here to turn it back on.
   workflow_dispatch:
     inputs:
       slot:
