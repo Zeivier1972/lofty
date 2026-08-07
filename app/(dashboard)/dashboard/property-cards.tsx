@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { Heart, Eye, Home, Phone, Mail, MapPin, BedDouble, Bath, Square, X } from "lucide-react"
+import { Heart, Eye, Home, Phone, Mail, MapPin, BedDouble, Bath, Square, X, ChevronDown, Users } from "lucide-react"
 
 const LS_KEY = "dismissed_property_cards"
 
@@ -45,7 +45,16 @@ function getFirstImage(images: string | null): string | null {
 export default function PropertyCards() {
   const [cards, setCards] = useState<PropertyCard[]>([])
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [loaded, setLoaded] = useState(false)
+
+  function toggleExpanded(id: string) {
+    setExpanded(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
 
   useEffect(() => {
     const saved = new Set<string>(JSON.parse(localStorage.getItem(LS_KEY) || "[]"))
@@ -157,13 +166,21 @@ export default function PropertyCards() {
                 </div>
               </div>
 
-              {/* Interesados section */}
+              {/* Interesados — collapsible so the page stays short */}
               {card.buyers.length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                    Interesados ({card.buyers.length})
-                  </p>
-                  <ul className="space-y-2">
+                <div className="border-t border-gray-100 pt-3">
+                  <button
+                    onClick={() => toggleExpanded(card.id)}
+                    className="w-full flex items-center justify-between gap-2 text-left"
+                    aria-expanded={expanded.has(card.id)}
+                  >
+                    <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide flex items-center gap-1.5">
+                      <Users className="w-3.5 h-3.5" /> Interesados ({card.buyers.length})
+                    </span>
+                    <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${expanded.has(card.id) ? "rotate-180" : ""}`} />
+                  </button>
+                  {expanded.has(card.id) && (
+                  <ul className="space-y-2 mt-2">
                     {card.buyers.map(buyer => (
                       <li key={buyer.id} className="flex items-start justify-between gap-2 py-2 border-t border-gray-100 first:border-t-0">
                         <div className="min-w-0 flex-1">
@@ -199,6 +216,7 @@ export default function PropertyCards() {
                       </li>
                     ))}
                   </ul>
+                  )}
                 </div>
               )}
             </div>
