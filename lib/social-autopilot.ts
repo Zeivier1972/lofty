@@ -151,6 +151,12 @@ async function generateContent(
     return research.youtubeDescription
   }
 
+  // Real contact details — so the AI never signs off with a "(Tu número de
+  // contacto)" placeholder.
+  const cfg = await prisma.aIConfig.findFirst({ select: { realtorName: true, realtorPhone: true } }).catch(() => null)
+  const realtorName = cfg?.realtorName || "Catherine Gomez"
+  const realtorPhone = cfg?.realtorPhone || "305-283-0872"
+
   const theme = research?.trendingTopic ?? DAILY_THEMES[Math.floor(Math.random() * DAILY_THEMES.length)]
   const keywords = research?.additionalKeywords?.length
     ? research.additionalKeywords
@@ -178,6 +184,8 @@ Audiencia objetivo: ${research?.targetAudience ?? "compradores e inversores hisp
 ${platformGuide}
 ${blogInstruction}
 
+Si cierras con firma o datos de contacto, usa EXACTAMENTE: "${realtorName} | Realtor · ${realtorPhone}". NUNCA uses marcadores de posición como "(Tu número de contacto)", "[teléfono]", "(Your contact number)" ni similares.
+
 Escribe SOLO el contenido del post, listo para publicar. Sin explicaciones, sin preámbulos, sin etiquetas como "Post:" o "Caption:". Solo el texto del post.`
 
   const message = await anthropic.messages.create({
@@ -188,7 +196,12 @@ Escribe SOLO el contenido del post, listo para publicar. Sin explicaciones, sin 
   })
 
   const content = message.content[0].type === "text" ? message.content[0].text : ""
-  return content.trim()
+  // Safety net: replace any contact-number placeholder the model may still emit
+  // with the real phone (parentheses or brackets, ES/EN).
+  const cleaned = content
+    .replace(/[([]\s*(tu|su|your)\s+(n[uú]mero|number)[^)\]]*[)\]]/gi, realtorPhone)
+    .replace(/[([]\s*(tel[eé]fono|phone)[^)\]]*[)\]]/gi, realtorPhone)
+  return cleaned.trim()
 }
 
 // ─── Image deduplication helpers ─────────────────────────────────────────────
