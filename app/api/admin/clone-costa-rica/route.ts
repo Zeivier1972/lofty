@@ -42,13 +42,32 @@ export async function POST() {
     create: { name: TAG_NAME, color: "#10B981" },
   })
 
+  const stepData = src.steps.map(s => ({
+    order: s.order,
+    type: s.type,
+    delay: s.delay,
+    subject: adapt(s.subject),
+    content: adapt(s.content),
+    taskTitle: adapt(s.taskTitle),
+    taskType: s.taskType,
+    isActive: s.isActive,
+  }))
+
   const existing = await prisma.smartPlan.findFirst({ where: { name: NEW_NAME } })
   if (existing) {
+    // Regenerate the steps from the (adapted) source so re-running refreshes the
+    // copy — e.g. to strip any Colombia wording so Costa Rica leads aren't told
+    // they're Colombian.
+    await prisma.smartPlanStep.deleteMany({ where: { planId: existing.id } })
     await prisma.smartPlan.update({
       where: { id: existing.id },
-      data: { trigger: `CONTACT_TAGGED:${tag.id}`, isActive: true },
+      data: {
+        trigger: `CONTACT_TAGGED:${tag.id}`,
+        isActive: true,
+        steps: { create: stepData },
+      },
     })
-    return NextResponse.json({ ok: true, created: false, planId: existing.id, name: NEW_NAME, message: "Ya existía; trigger reactivado." })
+    return NextResponse.json({ ok: true, created: false, planId: existing.id, name: NEW_NAME, steps: stepData.length, message: "Actualizado: pasos regenerados y adaptados a Costa Rica." })
   }
 
   const plan = await prisma.smartPlan.create({
@@ -58,18 +77,7 @@ export async function POST() {
       trigger: `CONTACT_TAGGED:${tag.id}`,
       isActive: true,
       userId: (session.user?.id as string) || undefined,
-      steps: {
-        create: src.steps.map(s => ({
-          order: s.order,
-          type: s.type,
-          delay: s.delay,
-          subject: adapt(s.subject),
-          content: adapt(s.content),
-          taskTitle: adapt(s.taskTitle),
-          taskType: s.taskType,
-          isActive: s.isActive,
-        })),
-      },
+      steps: { create: stepData },
     },
   })
 
