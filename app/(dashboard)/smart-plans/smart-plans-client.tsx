@@ -386,7 +386,7 @@ export default function SmartPlansClient({ plans: initial, tags }: { plans: Plan
       const res = await fetch("/api/admin/clone-costa-rica", { method: "POST" })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Error")
-      toast({ title: data.created ? `✅ Creado "${data.name}" (${data.steps} pasos)` : `✅ "${data.name}" ya existía — reactivado` })
+      toast({ title: `✅ ${data.message || data.name}` })
       setTimeout(() => window.location.reload(), 800)
     } catch (e: any) {
       toast({ title: e.message || "No se pudo crear", variant: "destructive" })
