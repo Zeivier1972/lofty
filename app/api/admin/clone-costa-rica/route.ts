@@ -54,6 +54,8 @@ export async function POST() {
   }))
 
   const existing = await prisma.smartPlan.findFirst({ where: { name: NEW_NAME } })
+  let planId: string
+  let created: boolean
   if (existing) {
     // Regenerate the steps from the (adapted) source so re-running refreshes the
     // copy — e.g. to strip any Colombia wording so Costa Rica leads aren't told
@@ -61,25 +63,43 @@ export async function POST() {
     await prisma.smartPlanStep.deleteMany({ where: { planId: existing.id } })
     await prisma.smartPlan.update({
       where: { id: existing.id },
+      data: { trigger: `CONTACT_TAGGED:${tag.id}`, isActive: true, steps: { create: stepData } },
+    })
+    planId = existing.id
+    created = false
+  } else {
+    const plan = await prisma.smartPlan.create({
       data: {
+        name: NEW_NAME,
+        description: `Adaptado de "${SRC_NAME}" para inversionistas de Costa Rica. Se activa con el tag "${TAG_NAME}". Revisa los mensajes y ajusta lo que necesites.`,
         trigger: `CONTACT_TAGGED:${tag.id}`,
         isActive: true,
+        userId: (session.user?.id as string) || undefined,
         steps: { create: stepData },
       },
     })
-    return NextResponse.json({ ok: true, created: false, planId: existing.id, name: NEW_NAME, steps: stepData.length, message: "Actualizado: pasos regenerados y adaptados a Costa Rica." })
+    planId = plan.id
+    created = true
   }
 
-  const plan = await prisma.smartPlan.create({
-    data: {
-      name: NEW_NAME,
-      description: `Adaptado de "${SRC_NAME}" para inversionistas de Costa Rica. Se activa con el tag "${TAG_NAME}". Revisa los mensajes y ajusta lo que necesites.`,
-      trigger: `CONTACT_TAGGED:${tag.id}`,
-      isActive: true,
-      userId: (session.user?.id as string) || undefined,
-      steps: { create: stepData },
-    },
-  })
+  // Backfill: auto-enroll only fires the moment a tag is applied, so leads tagged
+  // BEFORE this plan existed were never enrolled. Enroll everyone currently
+  // carrying the tag who isn't already active in this plan.
+  const tagged = await prisma.contactTag.findMany({ where: { tagId: tag.id }, select: { contactId: true } })
+  const firstDelay = stepData.find(s => s.order === 0)?.delay ?? 0
+  const nextStepAt = new Date(Date.now() + firstDelay * 86400000)
+  let enrolled = 0
+  for (const { contactId } of tagged) {
+    const already = await prisma.smartPlanEnrollment.findFirst({ where: { contactId, planId, status: "ACTIVE" } })
+    if (!already) {
+      await prisma.smartPlanEnrollment.create({ data: { contactId, planId, status: "ACTIVE", currentStep: 0, nextStepAt } })
+      enrolled++
+    }
+  }
 
-  return NextResponse.json({ ok: true, created: true, planId: plan.id, name: NEW_NAME, steps: src.steps.length })
+  return NextResponse.json({
+    ok: true, created, planId, name: NEW_NAME, steps: stepData.length,
+    enrolled, taggedTotal: tagged.length,
+    message: `${created ? "Creado" : "Actualizado"} · ${enrolled} lead(s) inscritos${tagged.length > enrolled ? ` (${tagged.length - enrolled} ya estaban)` : ""}.`,
+  })
 }
