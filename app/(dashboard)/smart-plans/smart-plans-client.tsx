@@ -380,7 +380,7 @@ export default function SmartPlansClient({ plans: initial, tags }: { plans: Plan
   const [cloningCR, setCloningCR] = useState(false)
 
   const cloneCostaRica = async () => {
-    if (!confirm("¿Crear el plan de Costa Rica copiando el plan de Colombia (adaptado)? Se activa con el tag \"Inversionista Costa Rica\".")) return
+    if (!confirm("Plan Costa Rica: si no existe lo crea copiando el de Colombia (adaptado). Si ya existe, actualiza su texto e INSCRIBE a los leads ya etiquetados \"Inversionista Costa Rica\". No crea duplicados. ¿Continuar?")) return
     setCloningCR(true)
     try {
       const res = await fetch("/api/admin/clone-costa-rica", { method: "POST" })
