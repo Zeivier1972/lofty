@@ -2,6 +2,11 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import Anthropic from "@anthropic-ai/sdk"
+import { sendSMS } from "@/lib/sms"
+import { sendEmail } from "@/lib/email"
+import { applyTagAndEnroll } from "@/lib/lead-ingest"
+
+const MODEL = "claude-sonnet-5"
 
 // ─── Tool definitions ────────────────────────────────────────────────────────
 
@@ -111,11 +116,92 @@ const TOOLS: Anthropic.Tool[] = [
       required: ["contactId"],
     },
   },
+  {
+    name: "get_hot_leads",
+    description: "List the leads to act on right now — highest lead score first, with phone numbers, so Catherine knows exactly who to call/text next.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        minScore: { type: "number", description: "Minimum lead score (default 40)" },
+        limit:    { type: "number", description: "Max results (default 10)" },
+      },
+    },
+  },
+  {
+    name: "get_my_tasks",
+    description: "List Catherine's PENDING tasks due today and overdue, with the related contact — her to-do list for today.",
+    input_schema: { type: "object" as const, properties: {} },
+  },
+  {
+    name: "send_sms",
+    description: "Send an SMS text to a contact NOW. Only call this when Catherine has clearly asked to send the message. Personalize it.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        contactId: { type: "string" },
+        message:   { type: "string", description: "The text message to send" },
+      },
+      required: ["contactId", "message"],
+    },
+  },
+  {
+    name: "send_email",
+    description: "Send an email to a contact NOW. Only when Catherine has clearly asked to send. Body may include simple HTML.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        contactId: { type: "string" },
+        subject:   { type: "string" },
+        body:      { type: "string", description: "Email body (HTML allowed)" },
+      },
+      required: ["contactId", "subject", "body"],
+    },
+  },
+  {
+    name: "enroll_in_smart_plan",
+    description: "Enroll a contact into a Smart Plan (automated follow-up sequence) by plan name.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        contactId: { type: "string" },
+        planName:  { type: "string", description: "Plan name (partial match ok, e.g. 'Costa Rica')" },
+      },
+      required: ["contactId", "planName"],
+    },
+  },
+  {
+    name: "add_tag",
+    description: "Add a tag to a contact (also auto-enrolls them in any Smart Plan triggered by that tag).",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        contactId: { type: "string" },
+        tagName:   { type: "string" },
+      },
+      required: ["contactId", "tagName"],
+    },
+  },
+  {
+    name: "create_appointment",
+    description: "Book an appointment/showing for a contact.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        contactId:   { type: "string" },
+        title:       { type: "string", description: "e.g. 'Showing – 123 Brickell Ave' or 'Buyer consultation'" },
+        startTime:   { type: "string", description: "ISO datetime (e.g. 2026-08-15T15:00:00)" },
+        durationMin: { type: "number", description: "Length in minutes (default 30)" },
+        type:        { type: "string", description: "SHOWING | CONSULTATION | CALL | MEETING" },
+        location:    { type: "string" },
+      },
+      required: ["title", "startTime"],
+    },
+  },
 ]
 
 // ─── Tool execution ───────────────────────────────────────────────────────────
 
-async function executeTool(name: string, input: Record<string, unknown>): Promise<string> {
+async function executeTool(name: string, input: Record<string, unknown>, ctx: { userId?: string }): Promise<string> {
   try {
     switch (name) {
 
@@ -306,6 +392,94 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
         return JSON.stringify({ success: true, contact })
       }
 
+      case "get_hot_leads": {
+        const leads = await prisma.contact.findMany({
+          where: {
+            isArchived: false,
+            leadScore: { gte: (input.minScore as number) ?? 40 },
+            status: { notIn: ["CLOSED", "PAST_CLIENT", "DEAD"] },
+          },
+          select: {
+            id: true, firstName: true, lastName: true, phone: true, email: true,
+            status: true, leadScore: true, lastContacted: true, buyerLocation: true,
+            buyerBudgetMin: true, buyerBudgetMax: true,
+          },
+          orderBy: [{ leadScore: "desc" }, { lastContacted: "asc" }],
+          take: (input.limit as number) || 10,
+        })
+        return JSON.stringify(leads)
+      }
+
+      case "get_my_tasks": {
+        const now = new Date()
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+        const tomorrow = new Date(today.getTime() + 864e5)
+        const [dueToday, overdue] = await Promise.all([
+          prisma.task.findMany({
+            where: { status: "PENDING", dueDate: { gte: today, lt: tomorrow } },
+            include: { contact: { select: { id: true, firstName: true, lastName: true, phone: true } } },
+            orderBy: { priority: "desc" }, take: 25,
+          }),
+          prisma.task.findMany({
+            where: { status: "PENDING", dueDate: { lt: today } },
+            include: { contact: { select: { id: true, firstName: true, lastName: true, phone: true } } },
+            orderBy: { dueDate: "asc" }, take: 25,
+          }),
+        ])
+        return JSON.stringify({ dueToday, overdue })
+      }
+
+      case "send_sms": {
+        const c = await prisma.contact.findUnique({ where: { id: input.contactId as string }, select: { phone: true, firstName: true } })
+        if (!c?.phone) return JSON.stringify({ error: "Contact has no phone number" })
+        await sendSMS(c.phone, input.message as string, undefined, { contactId: input.contactId as string })
+        await prisma.activity.create({ data: { type: "SMS", title: "SMS enviado por Aria", description: (input.message as string).slice(0, 200), contactId: input.contactId as string, userId: ctx.userId } }).catch(() => {})
+        return JSON.stringify({ success: true, sentTo: c.firstName })
+      }
+
+      case "send_email": {
+        const c = await prisma.contact.findUnique({ where: { id: input.contactId as string }, select: { email: true, firstName: true } })
+        if (!c?.email) return JSON.stringify({ error: "Contact has no email" })
+        const ok = await sendEmail({ to: c.email, subject: input.subject as string, html: input.body as string, transactional: true })
+        await prisma.activity.create({ data: { type: "EMAIL", title: `Email enviado por Aria: ${input.subject}`, description: (input.body as string).slice(0, 200), contactId: input.contactId as string, userId: ctx.userId } }).catch(() => {})
+        return JSON.stringify({ success: ok, sentTo: c.firstName })
+      }
+
+      case "enroll_in_smart_plan": {
+        const plan = await prisma.smartPlan.findFirst({
+          where: { name: { contains: input.planName as string, mode: "insensitive" }, isActive: true },
+          include: { steps: { where: { order: 0 }, take: 1 } },
+        })
+        if (!plan) return JSON.stringify({ error: `No active Smart Plan matching "${input.planName}"` })
+        const already = await prisma.smartPlanEnrollment.findFirst({ where: { contactId: input.contactId as string, planId: plan.id, status: "ACTIVE" } })
+        if (already) return JSON.stringify({ success: true, note: "Already enrolled", plan: plan.name })
+        const delay = plan.steps[0]?.delay ?? 0
+        await prisma.smartPlanEnrollment.create({ data: { contactId: input.contactId as string, planId: plan.id, status: "ACTIVE", currentStep: 0, nextStepAt: new Date(Date.now() + delay * 864e5) } })
+        return JSON.stringify({ success: true, plan: plan.name })
+      }
+
+      case "add_tag": {
+        await applyTagAndEnroll(input.contactId as string, input.tagName as string)
+        return JSON.stringify({ success: true, tag: input.tagName })
+      }
+
+      case "create_appointment": {
+        const start = new Date(input.startTime as string)
+        if (isNaN(start.getTime())) return JSON.stringify({ error: "Invalid startTime" })
+        const end = new Date(start.getTime() + ((input.durationMin as number) || 30) * 60000)
+        const appt = await prisma.appointment.create({
+          data: {
+            title: input.title as string,
+            startTime: start, endTime: end,
+            type: (input.type as string) || "SHOWING",
+            location: (input.location as string) || undefined,
+            contactId: (input.contactId as string) || undefined,
+            userId: ctx.userId,
+          },
+        })
+        return JSON.stringify({ success: true, appointmentId: appt.id, startTime: appt.startTime })
+      }
+
       default:
         return JSON.stringify({ error: `Unknown tool: ${name}` })
     }
@@ -360,24 +534,16 @@ Active transactions: ${activeTransactions}
 Appointments in next 48h: ${upcomingAppts}
 
 ━━━ YOUR CAPABILITIES ━━━
-You have tools to:
-• search_contacts — find leads by name, status, source, or inactivity
-• get_contact_details — full profile: notes, activities, property interests, pipeline stage, appointments, AI conversations
-• get_contact_messages — complete SMS/email/WhatsApp/AI message history
-• get_appointments — upcoming showings and meetings
-• get_transaction_details — milestones, deadlines, documents
-• get_market_stats — live Miami MLS data
-• create_task — schedule follow-ups
-• add_note — log information to a contact
-• update_contact_status — move leads through the pipeline
+READ: search_contacts · get_contact_details · get_contact_messages · get_appointments · get_transaction_details · get_market_stats · get_hot_leads (who to call now) · get_my_tasks (today + overdue)
+ACT: create_task · add_note · update_contact_status · send_sms · send_email · enroll_in_smart_plan · add_tag · create_appointment
 
 ━━━ HOW YOU OPERATE ━━━
 1. ALWAYS use tools before making claims about specific leads or data. Never guess.
 2. When asked about a lead, get their full details AND messages — context is everything.
 3. Prioritize by revenue impact: closing soon > high score > new & hot > going cold.
 4. Be specific: names, phone numbers, dollar amounts, dates. Not generalities.
-5. Proactively spot risks: overdue milestones, cold leads with high scores, appointments without prep.
-6. Draft real follow-up messages when asked — personalized to the lead's situation and conversation history.
+5. Proactively spot risks and offer the next action — then, if Catherine says yes, DO it with your action tools.
+6. You can actually send texts/emails, enroll leads in Smart Plans, tag, and book appointments. When you DRAFT a message, show it and ask "¿Lo envío?" before calling send_sms/send_email — never send outbound messages without a clear go-ahead. Non-message actions (create_task, add_note, add_tag, create_appointment, enroll) you may do when asked.
 7. Think in pipelines: every lead should have a clear next action.
 
 ━━━ REAL ESTATE EXPERTISE ━━━
@@ -396,23 +562,25 @@ Respond in English or Spanish based on what the user writes. Be direct, sharp, a
     content: m.content,
   }))
 
+  const userId = session.user?.id as string | undefined
   let response = await anthropic.messages.create({
-    model: "claude-haiku-4-5-20251001",
+    model: MODEL,
     max_tokens: 2048,
     system: systemPrompt,
     tools: TOOLS,
     messages: claudeMessages,
   })
 
-  // Execute tool calls until Claude gives a final response
-  while (response.stop_reason === "tool_use") {
+  // Execute tool calls until Claude gives a final response (bounded).
+  let guard = 0
+  while (response.stop_reason === "tool_use" && guard++ < 12) {
     const toolUseBlocks = response.content.filter(b => b.type === "tool_use") as Anthropic.ToolUseBlock[]
 
     const toolResults: Anthropic.ToolResultBlockParam[] = await Promise.all(
       toolUseBlocks.map(async block => ({
         type: "tool_result" as const,
         tool_use_id: block.id,
-        content: await executeTool(block.name, block.input as Record<string, unknown>),
+        content: await executeTool(block.name, block.input as Record<string, unknown>, { userId }),
       }))
     )
 
@@ -420,7 +588,7 @@ Respond in English or Spanish based on what the user writes. Be direct, sharp, a
     claudeMessages.push({ role: "user", content: toolResults })
 
     response = await anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: MODEL,
       max_tokens: 2048,
       system: systemPrompt,
       tools: TOOLS,
