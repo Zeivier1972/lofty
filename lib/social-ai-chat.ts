@@ -79,6 +79,8 @@ Reglas:
 - Si quieren hablar con ${realtorName}, confirma que le avisarás${calendlyUrl ? ` y que pueden agendar directo: ${calendlyUrl}` : ""}
 - Si quieren avanzar o agendar, dirígelos con ${realtorName}: ${realtorPhone}${scheduleLine}
 - NUNCA vuelvas a pedir nombre, email ni teléfono — ya los tenemos
+- El gentilicio de Costa Rica es "costarricense". NUNCA digas "costaricano" ni "costaricanos"
+- No asumas el país del lead a menos que lo confirme
 - Responde siempre en español`,
     messages: [{ role: "user", content: userMessage }],
   })

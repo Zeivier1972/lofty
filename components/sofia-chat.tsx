@@ -11,6 +11,11 @@ const HIDDEN_PREFIXES = ["/dashboard", "/portal", "/login", "/partner", "/lender
 type Listing = { address: string; city: string; price: number | null; beds: number | null; baths: number | null; photo: string | null; url: string }
 type Msg = { role: "user" | "assistant"; content: string; listings?: Listing[]; projectsUrl?: string | null }
 
+function listingKeyFrom(path: string): string | null {
+  const m = path.match(/^\/(?:homes|new-construction)\/([^/?#]+)/)
+  return m ? decodeURIComponent(m[1]) : null
+}
+
 function pageContextFrom(path: string): string {
   if (/^\/homes\/[^/]+/.test(path) || /^\/(site\/)?listing\//.test(path)) return "El visitante está viendo la ficha de una propiedad."
   if (path.startsWith("/new-construction")) return "El visitante está viendo proyectos de preconstrucción."
@@ -74,7 +79,7 @@ export default function SofiaChat() {
       const res = await fetch("/api/site/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: next, contactId, pageContext: pageContextFrom(pathname) }),
+        body: JSON.stringify({ messages: next, contactId, pageContext: pageContextFrom(pathname), listingKey: listingKeyFrom(pathname) }),
       })
       const data = await res.json()
       if (data.contactId) setContactId(data.contactId)
