@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react"
 import { usePathname } from "next/navigation"
-import { MessageCircle, X, Send, Loader2, CalendarDays, Building2 } from "lucide-react"
+import { X, Send, Loader2, CalendarDays, Building2 } from "lucide-react"
+import SofiaAvatar from "@/components/sofia-avatar"
 
 // Routes where Sofía should NOT appear (agent dashboard, client portal, logins —
 // those have their own tools). Everything else is public and gets the widget.
@@ -101,9 +102,12 @@ export default function SofiaChat() {
         <button
           onClick={openChat}
           aria-label="Chatear con Sofía"
-          className="fixed bottom-5 right-5 z-[60] flex items-center gap-2 rounded-full bg-[#12315c] px-5 py-3.5 text-white shadow-xl hover:bg-[#0b1f3a] transition-colors"
+          className="fixed bottom-5 right-5 z-[60] flex items-center gap-2.5 rounded-full bg-[#12315c] pl-1.5 pr-5 py-1.5 text-white shadow-xl hover:bg-[#0b1f3a] transition-colors"
         >
-          <MessageCircle className="w-5 h-5" />
+          <span className="relative">
+            <SofiaAvatar size={40} className="rounded-full ring-2 ring-white/70" />
+            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-green-400 ring-2 ring-[#12315c]" />
+          </span>
           <span className="font-semibold text-sm">Chatea con Sofía</span>
         </button>
       )}
@@ -113,10 +117,12 @@ export default function SofiaChat() {
         <div className="fixed bottom-5 right-5 z-[60] w-[92vw] max-w-sm h-[70vh] max-h-[560px] flex flex-col rounded-2xl bg-white shadow-2xl border border-gray-200 overflow-hidden">
           <div className="flex items-center justify-between bg-gradient-to-r from-[#12315c] to-[#1e40af] text-white px-4 py-3">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center font-bold">S</div>
+              <SofiaAvatar size={38} className="rounded-full ring-2 ring-white/60" />
               <div>
                 <div className="font-bold text-sm leading-tight">Sofía</div>
-                <div className="text-[11px] text-blue-100 leading-tight">Asistente de Catherine Gómez</div>
+                <div className="text-[11px] text-blue-100 leading-tight flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" /> En línea · Catherine Gómez
+                </div>
               </div>
             </div>
             <button onClick={() => setOpen(false)} aria-label="Cerrar" className="p-1 rounded-lg hover:bg-white/10"><X className="w-5 h-5" /></button>
