@@ -44,10 +44,23 @@ export default function SofiaChat() {
 
   function openChat() {
     setOpen(true)
+    try { sessionStorage.setItem("sofia_seen", "1") } catch { /* noop */ }
     if (messages.length === 0) {
       setMessages([{ role: "assistant", content: "¡Hola! 👋 Soy Sofía, la asistente de Catherine Gómez. ¿Buscas invertir o vivir en Miami/Orlando? Cuéntame qué estás buscando y te ayudo — presupuesto, zonas, financiamiento para extranjeros, lo que sea. 🏙️" }])
     }
   }
+
+  // Pop the chat open automatically the first time a visitor lands (once per
+  // session, so it doesn't re-open on every page they browse).
+  useEffect(() => {
+    if (hidden) return
+    let seen = false
+    try { seen = !!sessionStorage.getItem("sofia_seen") } catch { /* noop */ }
+    if (seen) return
+    const t = setTimeout(() => openChat(), 1200)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hidden])
 
   async function send() {
     const text = input.trim()
