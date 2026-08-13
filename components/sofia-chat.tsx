@@ -2,13 +2,14 @@
 
 import { useEffect, useRef, useState } from "react"
 import { usePathname } from "next/navigation"
-import { MessageCircle, X, Send, Loader2, CalendarDays } from "lucide-react"
+import { MessageCircle, X, Send, Loader2, CalendarDays, Building2 } from "lucide-react"
 
 // Routes where Sofía should NOT appear (agent dashboard, client portal, logins —
 // those have their own tools). Everything else is public and gets the widget.
 const HIDDEN_PREFIXES = ["/dashboard", "/portal", "/login", "/partner", "/lender", "/api"]
 
-type Msg = { role: "user" | "assistant"; content: string }
+type Listing = { address: string; city: string; price: number | null; beds: number | null; baths: number | null; photo: string | null; url: string }
+type Msg = { role: "user" | "assistant"; content: string; listings?: Listing[]; projectsUrl?: string | null }
 
 function pageContextFrom(path: string): string {
   if (/^\/homes\/[^/]+/.test(path) || /^\/(site\/)?listing\//.test(path)) return "El visitante está viendo la ficha de una propiedad."
@@ -78,7 +79,7 @@ export default function SofiaChat() {
       const data = await res.json()
       if (data.contactId) setContactId(data.contactId)
       if (data.bookUrl) setBookUrl(data.bookUrl)
-      setMessages(m => [...m, { role: "assistant", content: data.reply || "¿Puedes repetirlo?" }])
+      setMessages(m => [...m, { role: "assistant", content: data.reply || "¿Puedes repetirlo?", listings: data.listings || [], projectsUrl: data.projectsUrl || null }])
     } catch {
       setMessages(m => [...m, { role: "assistant", content: "Disculpa, tuve un problema de conexión. ¿Puedes intentarlo otra vez?" }])
     } finally {
@@ -118,10 +119,38 @@ export default function SofiaChat() {
 
           <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-2.5 bg-gray-50">
             {messages.map((m, i) => (
-              <div key={i} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
-                <div className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed ${m.role === "user" ? "bg-[#12315c] text-white rounded-br-sm" : "bg-white text-gray-800 border border-gray-200 rounded-bl-sm"}`}>
-                  {m.content}
+              <div key={i} className="space-y-2">
+                <div className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
+                  <div className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed ${m.role === "user" ? "bg-[#12315c] text-white rounded-br-sm" : "bg-white text-gray-800 border border-gray-200 rounded-bl-sm"}`}>
+                    {m.content}
+                  </div>
                 </div>
+                {/* Resale listing cards */}
+                {!!m.listings?.length && (
+                  <div className="space-y-2">
+                    {m.listings.map((l, j) => (
+                      <a key={j} href={l.url} target="_blank" rel="noopener noreferrer" className="flex gap-2.5 rounded-xl bg-white border border-gray-200 p-2 hover:border-[#12315c] transition-colors">
+                        {l.photo ? (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img src={l.photo} alt={l.address} className="w-20 h-16 rounded-lg object-cover flex-shrink-0" />
+                        ) : (
+                          <div className="w-20 h-16 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0 text-2xl">🏠</div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="font-bold text-sm text-[#12315c]">{l.price != null ? `$${Number(l.price).toLocaleString()}` : "Consultar"}</div>
+                          <div className="text-xs text-gray-600 truncate">{l.address}{l.city ? `, ${l.city}` : ""}</div>
+                          <div className="text-[11px] text-gray-400 mt-0.5">{[l.beds != null ? `${l.beds} hab` : null, l.baths != null ? `${l.baths} baños` : null].filter(Boolean).join(" · ")}</div>
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+                )}
+                {/* Pre-construction projects link */}
+                {m.projectsUrl && (
+                  <a href={m.projectsUrl} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 rounded-xl border-2 border-[#12315c] text-[#12315c] text-sm font-semibold py-2 hover:bg-blue-50">
+                    <Building2 className="w-4 h-4" /> Ver proyectos de pre-construcción
+                  </a>
+                )}
               </div>
             ))}
             {loading && (
