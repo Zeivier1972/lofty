@@ -4,8 +4,15 @@ import { NextResponse } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
 import { prisma } from "@/lib/prisma"
 import { sendSMS } from "@/lib/sms"
-import { searchIdxListings, buildDisplayAddress, fetchPrimaryPhotos } from "@/lib/bridge"
+import { searchIdxListings, buildDisplayAddress, fetchPrimaryPhotos, fetchListingByKey } from "@/lib/bridge"
 import { getMatchingPreConstruction } from "@/lib/social-ai-chat"
+
+// Correct the demonym: it's "costarricense(s)", never "costaricano(s)".
+function fixDemonym(s: string): string {
+  return s
+    .replace(/costa\s?r{1,2}ican[oa]s/gi, "costarricenses")
+    .replace(/costa\s?r{1,2}ican[oa]/gi, "costarricense")
+}
 
 const APP = process.env.NEXT_PUBLIC_APP_URL || "https://www.catherinegomezrealtor.com"
 
@@ -163,8 +170,28 @@ export async function POST(req: Request) {
       .filter((m: any) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
       .slice(-12)
     const pageContext = String(body.pageContext || "").slice(0, 300)
+    const listingKey = typeof body.listingKey === "string" ? body.listingKey.trim() : ""
     let contactId: string | null = typeof body.contactId === "string" ? body.contactId : null
     if (!messages.length) return NextResponse.json({ error: "No messages" }, { status: 400 })
+
+    // Per-property awareness: if the visitor is on a specific listing, load it so
+    // Sofía can talk about THAT home.
+    let propertyContext = ""
+    if (listingKey) {
+      const l = await fetchListingByKey(listingKey).catch(() => null)
+      if (l) {
+        const bits = [
+          buildDisplayAddress(l),
+          l.ListPrice != null ? `$${Number(l.ListPrice).toLocaleString()}` : null,
+          l.BedroomsTotal != null ? `${l.BedroomsTotal} habitaciones` : null,
+          l.BathroomsTotalDecimal != null ? `${l.BathroomsTotalDecimal} baños` : null,
+          l.LivingArea != null ? `${Number(l.LivingArea).toLocaleString()} sqft` : null,
+          l.PropertySubType || null,
+          l.YearBuilt != null ? `construida en ${l.YearBuilt}` : null,
+        ].filter(Boolean).join(" · ")
+        propertyContext = `El visitante está viendo AHORA esta propiedad: ${bits}. Puedes hablar de ESTA propiedad específicamente y responder preguntas sobre ella (precio, zona, potencial de renta/plusvalía) y ofrecer agendar una visita.`
+      }
+    }
 
     const cfg = await prisma.aIConfig.findFirst()
     const agentName = cfg?.agentName || "Sofía"
@@ -225,7 +252,7 @@ export async function POST(req: Request) {
 MISIÓN: aportar valor real y, cuando el visitante muestre interés, llevarlo a AGENDAR una llamada con ${realtorName}.
 
 CONTEXTO DE LA PÁGINA: ${pageContext || "Explorando el sitio"}
-${knownName ? `El visitante es ${knownName} (ya es un lead registrado). Salúdalo por su nombre y NO le pidas de nuevo sus datos.` : "Aún no sabemos quién es."}
+${propertyContext ? `\n${propertyContext}\n` : ""}${knownName ? `El visitante es ${knownName} (ya es un lead registrado). Salúdalo por su nombre y NO le pidas de nuevo sus datos.` : "Aún no sabemos quién es."}
 
 PRECONSTRUCCIÓN vs REVENTA — clave para asesorar bien:
 - Si aún no sabes qué busca, PREGÚNTALE si le interesa PRECONSTRUCCIÓN (proyectos nuevos, en planos) o REVENTA (propiedades existentes), y explícale la diferencia en 1-2 frases:
@@ -238,6 +265,7 @@ REGLAS:
 - Español por defecto (cambia a inglés si te escriben en inglés). Cálida, experta, concisa (2 a 4 oraciones).
 - Suena como una asesora experta que da datos útiles, nunca como un bot genérico.
 - NUNCA asumas el país del visitante (muchos son de Costa Rica, Colombia, etc.). Refiérete a "tu país" si no lo sabes.
+- El gentilicio de Costa Rica es "costarricense(s)". NUNCA escribas "costaricano" ni "costaricanos".
 - ${knownName ? "No pidas sus datos otra vez." : `Cuando el visitante esté interesado, pide de forma natural su NOMBRE y WhatsApp para enviarle opciones y que ${realtorName} lo contacte.`}
 - No inventes propiedades ni precios; usa solo lo que se te da. Para invertir desde el extranjero, menciona financiamiento para extranjeros (30-40% de enganche, sin ciudadanía) cuando sea relevante.
 - Empuja suavemente a agendar y comparte el enlace: ${bookUrl}`
@@ -248,7 +276,7 @@ REGLAS:
       system,
       messages: messages.map(m => ({ role: m.role, content: m.content })),
     })
-    const reply = resp.content[0]?.type === "text" ? resp.content[0].text.trim() : "¿En qué te puedo ayudar con tu búsqueda en Miami?"
+    const reply = fixDemonym(resp.content[0]?.type === "text" ? resp.content[0].text.trim() : "¿En qué te puedo ayudar con tu búsqueda en Miami?")
 
     if (contactId) {
       prisma.activity.create({
