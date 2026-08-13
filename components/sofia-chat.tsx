@@ -5,9 +5,19 @@ import { usePathname } from "next/navigation"
 import { X, Send, Loader2, CalendarDays, Building2 } from "lucide-react"
 import SofiaAvatar from "@/components/sofia-avatar"
 
-// Routes where Sofía should NOT appear (agent dashboard, client portal, logins —
-// those have their own tools). Everything else is public and gets the widget.
-const HIDDEN_PREFIXES = ["/dashboard", "/portal", "/login", "/partner", "/lender", "/api"]
+// Sofía is the LEAD-facing assistant, so she appears ONLY on the public website.
+// The CRM backend has its own agent assistant (Aria) and the client portal has
+// its own chat — Sofía must never show there. Allowlist of public prefixes
+// (fail-closed: anything not listed — incl. all backend routes like /contacts,
+// /tasks, /dialer, /smart-plans — hides Sofía).
+const PUBLIC_PREFIXES = [
+  "/homes", "/search", "/comprar", "/new-construction", "/guias", "/guides",
+  "/property", "/book", "/brochure", "/valuacion", "/site", "/capture", "/privacy",
+]
+function isPublicPage(path: string): boolean {
+  if (path === "/") return true
+  return PUBLIC_PREFIXES.some(p => path === p || path.startsWith(p + "/"))
+}
 
 type Listing = { address: string; city: string; price: number | null; beds: number | null; baths: number | null; photo: string | null; url: string }
 type Msg = { role: "user" | "assistant"; content: string; listings?: Listing[]; projectsUrl?: string | null }
@@ -28,7 +38,7 @@ function pageContextFrom(path: string): string {
 
 export default function SofiaChat() {
   const pathname = usePathname() || "/"
-  const hidden = HIDDEN_PREFIXES.some(p => pathname.startsWith(p))
+  const hidden = !isPublicPage(pathname)
 
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState<Msg[]>([])
