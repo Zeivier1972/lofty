@@ -60,6 +60,44 @@ async function captureContact(input: { firstName?: string | null; email?: string
   return contact.id
 }
 
+// From the conversation, keep the lead's profile in sync: a running note + their
+// search preferences (updated if they change). Best-effort, runs after the reply.
+async function syncLeadProfile(contactId: string, convoMsgs: Msg[]) {
+  try {
+    const convo = convoMsgs.map(m => `${m.role === "user" ? "Lead" : "Sofía"}: ${m.content}`).join("\n").slice(-4000)
+    const r = await anthropic.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 400,
+      system: `Analiza esta conversación de bienes raíces entre "Sofía" (asistente) y un "Lead". Devuelve SOLO un objeto JSON válido (sin texto extra) con esta forma exacta:
+{"note":"resumen breve (1-2 frases) de qué busca el lead y su situación/objeción","prefs":{"location":string|null,"bedroomsMin":number|null,"bathroomsMin":number|null,"budgetMin":number|null,"budgetMax":number|null,"timelineMonths":number|null,"purpose":"INVERSION"|"VIVIENDA"|null,"propertyType":"CONDO"|"HOUSE"|"TOWNHOUSE"|"PRE_CONSTRUCTION"|"MULTI_FAMILY"|"LAND"|null}}
+Usa null cuando el dato no aparezca. Presupuestos en dólares como número. No inventes datos.`,
+      messages: [{ role: "user", content: convo }],
+    })
+    const txt = r.content[0]?.type === "text" ? r.content[0].text : ""
+    const parsed = JSON.parse(txt.slice(txt.indexOf("{"), txt.lastIndexOf("}") + 1))
+    const p = parsed.prefs || {}
+
+    const data: Record<string, unknown> = {}
+    if (typeof p.location === "string" && p.location.trim()) data.buyerLocation = p.location.trim()
+    if (Number.isFinite(p.bedroomsMin)) data.buyerBedroomsMin = Math.round(p.bedroomsMin)
+    if (Number.isFinite(p.bathroomsMin)) data.buyerBathroomsMin = p.bathroomsMin
+    if (Number.isFinite(p.budgetMin)) data.buyerBudgetMin = p.budgetMin
+    if (Number.isFinite(p.budgetMax)) data.buyerBudgetMax = p.budgetMax
+    if (Number.isFinite(p.timelineMonths)) data.buyerTimelineMonths = Math.round(p.timelineMonths)
+    if (typeof p.purpose === "string" && p.purpose) data.buyerPurpose = p.purpose
+    if (typeof p.propertyType === "string" && p.propertyType) data.buyerPropertyType = p.propertyType
+    if (Object.keys(data).length) await prisma.contact.update({ where: { id: contactId }, data }).catch(() => {})
+
+    if (typeof parsed.note === "string" && parsed.note.trim()) {
+      const marker = "🗨️ Chat web con Sofía"
+      const content = `${marker}\n${parsed.note.trim()}`
+      const existing = await prisma.note.findFirst({ where: { contactId, content: { startsWith: marker } }, orderBy: { createdAt: "desc" } })
+      if (existing) await prisma.note.update({ where: { id: existing.id }, data: { content } }).catch(() => {})
+      else await prisma.note.create({ data: { contactId, content } }).catch(() => {})
+    }
+  } catch { /* best-effort — never break the chat */ }
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}))
@@ -132,6 +170,8 @@ REGLAS:
       prisma.activity.create({
         data: { type: "CHAT", title: "Chat web con Sofía", description: `${lastUser.slice(0, 140)} → ${reply.slice(0, 140)}`, contactId },
       }).catch(() => {})
+      // Keep the lead's notes + search preferences up to date from the chat.
+      void syncLeadProfile(contactId, [...messages, { role: "assistant", content: reply }])
     }
 
     return NextResponse.json({ reply, contactId, bookUrl })
