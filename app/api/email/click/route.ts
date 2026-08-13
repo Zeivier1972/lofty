@@ -60,6 +60,12 @@ export async function GET(req: Request) {
     }).catch(() => {})
     // Fire-and-forget so the redirect stays instant.
     void recordPropertyView(contactId, dest)
+    // Tell the on-page Sofía chat who this is, so she greets them by name.
+    try {
+      const d = new URL(dest)
+      d.searchParams.set("sofia", contactId)
+      dest = d.toString()
+    } catch { /* keep dest */ }
   }
 
   return NextResponse.redirect(dest, 302)
