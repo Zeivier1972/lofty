@@ -5,6 +5,7 @@ import Anthropic from "@anthropic-ai/sdk"
 import { sendSMS } from "@/lib/sms"
 import { sendEmail } from "@/lib/email"
 import { applyTagAndEnroll } from "@/lib/lead-ingest"
+import { sendPortalInvites } from "@/lib/portal-invite"
 
 const MODEL = "claude-sonnet-5"
 
@@ -195,6 +196,20 @@ const TOOLS: Anthropic.Tool[] = [
         location:    { type: "string" },
       },
       required: ["title", "startTime"],
+    },
+  },
+  {
+    name: "send_portal_invites",
+    description: "Send bulk CLIENT PORTAL invitations (a personalized one-click magic-link email) to contacts. Provide explicit contactIds OR a filter to select them (status/tag/source/minLeadScore). Contacts with no email or opted out are skipped automatically. Always confirm with Catherine before sending to a large group.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        contactIds:   { type: "array", items: { type: "string" }, description: "Explicit contact IDs to invite" },
+        status:       { type: "string", description: "Filter: only contacts with this status (e.g. ACTIVE_BUYER, UNDER_CONTRACT, CLOSED)" },
+        tag:          { type: "string", description: "Filter: only contacts with this tag name" },
+        source:       { type: "string", description: "Filter: only contacts from this lead source" },
+        minLeadScore: { type: "number", description: "Filter: only contacts at/above this score" },
+      },
     },
   },
 ]
@@ -480,6 +495,26 @@ async function executeTool(name: string, input: Record<string, unknown>, ctx: { 
         return JSON.stringify({ success: true, appointmentId: appt.id, startTime: appt.startTime })
       }
 
+      case "send_portal_invites": {
+        let ids = Array.isArray(input.contactIds) ? (input.contactIds as string[]) : []
+        if (!ids.length) {
+          const where: Record<string, unknown> = { isArchived: false, email: { not: null }, doNotEmail: false }
+          if (input.status) where.status = input.status
+          if (input.source) where.source = { contains: input.source as string, mode: "insensitive" }
+          if (input.minLeadScore) where.leadScore = { gte: input.minLeadScore }
+          if (input.tag) {
+            const t = await prisma.tag.findFirst({ where: { name: { equals: input.tag as string, mode: "insensitive" } }, select: { id: true } })
+            if (!t) return JSON.stringify({ error: `No tag named "${input.tag}"` })
+            where.tags = { some: { tagId: t.id } }
+          }
+          const rows = await prisma.contact.findMany({ where, select: { id: true }, take: 2000 })
+          ids = rows.map(r => r.id)
+        }
+        if (!ids.length) return JSON.stringify({ error: "No matching contacts with a usable email" })
+        const result = await sendPortalInvites(ids, ctx.userId)
+        return JSON.stringify({ success: true, ...result })
+      }
+
       default:
         return JSON.stringify({ error: `Unknown tool: ${name}` })
     }
@@ -535,7 +570,7 @@ Appointments in next 48h: ${upcomingAppts}
 
 ━━━ YOUR CAPABILITIES ━━━
 READ: search_contacts · get_contact_details · get_contact_messages · get_appointments · get_transaction_details · get_market_stats · get_hot_leads (who to call now) · get_my_tasks (today + overdue)
-ACT: create_task · add_note · update_contact_status · send_sms · send_email · enroll_in_smart_plan · add_tag · create_appointment
+ACT: create_task · add_note · update_contact_status · send_sms · send_email · enroll_in_smart_plan · add_tag · create_appointment · send_portal_invites (bulk client-portal invitations by list or filter)
 
 ━━━ HOW YOU OPERATE ━━━
 1. ALWAYS use tools before making claims about specific leads or data. Never guess.
@@ -543,7 +578,7 @@ ACT: create_task · add_note · update_contact_status · send_sms · send_email 
 3. Prioritize by revenue impact: closing soon > high score > new & hot > going cold.
 4. Be specific: names, phone numbers, dollar amounts, dates. Not generalities.
 5. Proactively spot risks and offer the next action — then, if Catherine says yes, DO it with your action tools.
-6. You can actually send texts/emails, enroll leads in Smart Plans, tag, and book appointments. When you DRAFT a message, show it and ask "¿Lo envío?" before calling send_sms/send_email — never send outbound messages without a clear go-ahead. Non-message actions (create_task, add_note, add_tag, create_appointment, enroll) you may do when asked.
+6. You can actually send texts/emails, send bulk client-portal invites, enroll leads in Smart Plans, tag, and book appointments. When you DRAFT a message, show it and ask "¿Lo envío?" before calling send_sms/send_email — never send outbound messages without a clear go-ahead. For send_portal_invites, first tell Catherine HOW MANY contacts match and confirm before sending. Non-message actions (create_task, add_note, add_tag, create_appointment, enroll) you may do when asked.
 7. Think in pipelines: every lead should have a clear next action.
 
 ━━━ REAL ESTATE EXPERTISE ━━━
