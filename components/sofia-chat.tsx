@@ -22,6 +22,11 @@ function isPublicPage(path: string): boolean {
 type Listing = { address: string; city: string; price: number | null; beds: number | null; baths: number | null; photo: string | null; url: string }
 type Msg = { role: "user" | "assistant"; content: string; listings?: Listing[]; projectsUrl?: string | null }
 
+// Persist the conversation across page loads/tabs so it continues (not restarts)
+// when a lead clicks a listing card. Expires after a few hours of inactivity.
+const STORE_KEY = "sofia_chat_v1"
+const MAX_AGE_MS = 6 * 60 * 60 * 1000
+
 function listingKeyFrom(path: string): string | null {
   const m = path.match(/^\/(?:homes|new-construction)\/([^/?#]+)/)
   return m ? decodeURIComponent(m[1]) : null
@@ -48,8 +53,21 @@ export default function SofiaChat() {
   const [bookUrl, setBookUrl] = useState("https://www.catherinegomezrealtor.com/book")
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // Pick up a known lead id from the URL (?sofia= or ?lead=), e.g. from an email link.
+  // Restore an in-progress conversation (persisted across page loads / new tabs)
+  // so clicking a listing card continues the chat instead of restarting it.
   useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORE_KEY)
+      if (raw) {
+        const s = JSON.parse(raw)
+        if (s && Array.isArray(s.messages) && s.ts && Date.now() - s.ts < MAX_AGE_MS) {
+          if (s.messages.length) setMessages(s.messages)
+          if (s.contactId) setContactId(s.contactId)
+          if (s.bookUrl) setBookUrl(s.bookUrl)
+        }
+      }
+    } catch { /* noop */ }
+    // Known lead id from the URL (?sofia= / ?lead=) — e.g. a property-email link.
     try {
       const p = new URLSearchParams(window.location.search)
       const id = p.get("sofia") || p.get("lead")
@@ -57,14 +75,21 @@ export default function SofiaChat() {
     } catch { /* noop */ }
   }, [])
 
+  // Persist the conversation whenever it changes.
+  useEffect(() => {
+    try {
+      if (messages.length) localStorage.setItem(STORE_KEY, JSON.stringify({ messages, contactId, bookUrl, ts: Date.now() }))
+    } catch { /* noop */ }
+  }, [messages, contactId, bookUrl])
+
   useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" }) }, [messages, loading])
 
   function openChat() {
     setOpen(true)
     try { sessionStorage.setItem("sofia_seen", "1") } catch { /* noop */ }
-    if (messages.length === 0) {
-      setMessages([{ role: "assistant", content: "¡Hola! 👋 Soy Sofía, la asistente de Catherine Gómez. ¿Buscas invertir o vivir en Miami/Orlando? Cuéntame qué estás buscando y te ayudo — presupuesto, zonas, financiamiento para extranjeros, lo que sea. 🏙️" }])
-    }
+    // Only seed the greeting if there's no conversation yet (functional update so
+    // a restored conversation is never overwritten).
+    setMessages(prev => prev.length ? prev : [{ role: "assistant", content: "¡Hola! 👋 Soy Sofía, la asistente de Catherine Gómez. ¿Buscas invertir o vivir en Miami/Orlando? Cuéntame qué estás buscando y te ayudo — presupuesto, zonas, financiamiento para extranjeros, lo que sea. 🏙️" }])
   }
 
   // Pop the chat open automatically the first time a visitor lands (once per
