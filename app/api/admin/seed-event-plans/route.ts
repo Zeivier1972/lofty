@@ -12,8 +12,9 @@ const BOGOTA_LINK = "https://www.eventbrite.com/e/1998107399018?aff=oddtdtcreato
 const MEDELLIN_LINK = "https://www.eventbrite.com/e/1998110626672?aff=oddtdtcreator"
 
 // NOTE: these tag strings must match the form's utm_content EXACTLY.
+// These tag strings MUST match each Facebook form's utm_content EXACTLY.
 const EVENTS = [
-  { tag: "Evento Septiembre 2026 B", city: "Bogotá", dateLabel: "24 y 25 de septiembre", link: BOGOTA_LINK },
+  { tag: "Evento septiembre Bogota", city: "Bogotá", dateLabel: "24 y 25 de septiembre", link: BOGOTA_LINK },
   { tag: "Evento Medellin Septiembre 2026", city: "Medellín", dateLabel: "23 de septiembre", link: MEDELLIN_LINK },
 ]
 
