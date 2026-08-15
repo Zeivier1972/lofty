@@ -1,13 +1,14 @@
 export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
-import { ingestLead } from "@/lib/lead-ingest"
+import { prisma } from "@/lib/prisma"
+import { ingestLead, applyTagAndEnroll } from "@/lib/lead-ingest"
 
-// Eventbrite → CASAi lead intake (via Zapier/Make, which expands the attendee).
-// Tags each registrant by their event so they auto-enroll in the matching Smart
-// Plan and are trackable per event. Reusable for every event (Colombia, Costa
-// Rica, etc.) — point the Zap here and pass the event name (+ an optional `tag`
-// that triggers the Smart Plan you want).
+// Eventbrite → CASAi: a TICKET CONFIRMATION. When someone gets their ticket
+// (via Zapier "New Attendee" → this webhook), we mark them confirmed and STOP
+// the "get your ticket" Smart Plan chase for that event. Pass `tag` = the event
+// tag (the same utm_content tag the Facebook form applied, e.g.
+// "Evento Medellin Septiembre 2026"), so we can find & stop the matching plan.
 function reader(body: Record<string, any>) {
   return (...keys: string[]) => {
     for (const k of keys) {
@@ -19,7 +20,6 @@ function reader(body: Record<string, any>) {
 }
 
 export async function POST(req: Request) {
-  // Optional shared-secret check (set ZAPIER_SECRET in Railway to require it).
   const secret = process.env.ZAPIER_SECRET
   if (secret) {
     const provided = req.headers.get("x-zapier-secret") || new URL(req.url).searchParams.get("secret")
@@ -29,13 +29,10 @@ export async function POST(req: Request) {
   try {
     let body: Record<string, any> = {}
     const ct = req.headers.get("content-type") || ""
-    if (ct.includes("application/json")) {
-      body = await req.json()
-    } else {
+    if (ct.includes("application/json")) body = await req.json()
+    else {
       const text = await req.text()
-      try { body = JSON.parse(text) } catch {
-        const p = new URLSearchParams(text); p.forEach((v, k) => { body[k] = v })
-      }
+      try { body = JSON.parse(text) } catch { const p = new URLSearchParams(text); p.forEach((v, k) => { body[k] = v }) }
     }
 
     const get = reader(body)
@@ -43,39 +40,62 @@ export async function POST(req: Request) {
     const firstName = get("firstName", "first_name", "firstname")?.split(" ")[0] || rawName.split(" ")[0] || "Invitado"
     const lastName = get("lastName", "last_name", "lastname") || (rawName.includes(" ") ? rawName.split(" ").slice(1).join(" ") : undefined)
     const email = get("email", "email_address", "Email")
-    const phone = get("phone", "cell_phone", "phone_number", "mobile", "cell", "Phone")
-
-    if (!email && !phone) {
-      return NextResponse.json({ error: "email or phone required" }, { status: 400 })
-    }
+    const phoneRaw = get("phone", "cell_phone", "phone_number", "mobile", "cell", "Phone")
+    const phoneDigits = phoneRaw ? phoneRaw.replace(/\D/g, "").slice(-10) : null
+    if (!email && !phoneDigits) return NextResponse.json({ error: "email or phone required" }, { status: 400 })
 
     const eventName = get("event_name", "event", "eventName", "event_title", "title")
-    const country = get("country", "pais", "país")
-    const message = get("message", "notes", "comment")
+    const eventTag = get("tag", "event_tag", "tags")   // the event tag whose chase-plan should stop
+    const confirmedTag = eventName ? `Ticket: ${eventName}` : (eventTag ? `Ticket: ${eventTag}` : "Ticket confirmado")
 
-    // Build tags: an "Evento: X" tag for tracking + any explicit tag(s) you set in
-    // the Zap (use the exact tag that triggers the Smart Plan you want).
-    const tags: string[] = []
-    if (eventName) tags.push(`Evento: ${eventName}`)
-    const explicit = get("tag", "tags")
-    if (explicit) explicit.split(",").map(s => s.trim()).filter(Boolean).forEach(t => tags.push(t))
-    if (country) tags.push(country)
+    // Find the existing lead (they filled the FB form first). Don't re-run the
+    // full welcome for someone we already have — just confirm + stop the chase.
+    const existing = email
+      ? await prisma.contact.findFirst({ where: { email: { equals: email, mode: "insensitive" } }, select: { id: true } })
+      : phoneDigits
+        ? await prisma.contact.findFirst({ where: { phone: { contains: phoneDigits } }, select: { id: true } })
+        : null
 
-    const { contactId, isNew } = await ingestLead({
-      firstName,
-      lastName,
-      email,
-      phone,
-      source: "EVENTBRITE",
-      campaign: eventName || "Eventbrite",
-      message: message || (eventName ? `Se registró en el evento: ${eventName}` : undefined),
-      smsConsent: !!phone,
-      tags: tags.length ? tags : undefined,
-    })
+    let contactId: string
+    if (existing) {
+      contactId = existing.id
+      await applyTagAndEnroll(contactId, confirmedTag) // marks confirmed + can trigger a reminders plan
+      await prisma.activity.create({
+        data: { type: "OTHER", title: `🎟️ Ticket confirmado${eventName ? `: ${eventName}` : ""}`, description: "Registró su ticket en Eventbrite", contactId },
+      }).catch(() => {})
+    } else {
+      // New person who registered on Eventbrite directly (no prior FB lead).
+      const tags = [confirmedTag]
+      if (eventTag) tags.push(eventTag)
+      const r = await ingestLead({
+        firstName, lastName, email, phone: phoneRaw, source: "EVENTBRITE",
+        campaign: eventName || "Eventbrite",
+        message: `Registró su ticket en Eventbrite${eventName ? `: ${eventName}` : ""}`,
+        smsConsent: !!phoneRaw, tags,
+      })
+      contactId = r.contactId
+    }
 
-    return NextResponse.json({ ok: true, contactId, isNew, tags })
+    // Stop the "get your ticket" chase: complete active enrollments in any plan
+    // triggered by the event tag (they already have their ticket).
+    let stoppedChase = 0
+    if (eventTag) {
+      const t = await prisma.tag.findFirst({ where: { name: { equals: eventTag, mode: "insensitive" } }, select: { id: true } })
+      if (t) {
+        const plans = await prisma.smartPlan.findMany({ where: { trigger: `CONTACT_TAGGED:${t.id}` }, select: { id: true } })
+        if (plans.length) {
+          const res = await prisma.smartPlanEnrollment.updateMany({
+            where: { contactId, planId: { in: plans.map(p => p.id) }, status: "ACTIVE" },
+            data: { status: "COMPLETED", completedAt: new Date() },
+          })
+          stoppedChase = res.count
+        }
+      }
+    }
+
+    return NextResponse.json({ ok: true, contactId, confirmedTag, stoppedChase })
   } catch (e) {
-    console.error("[eventbrite intake]", e)
-    return NextResponse.json({ error: "Failed to ingest" }, { status: 500 })
+    console.error("[eventbrite confirm]", e)
+    return NextResponse.json({ error: "Failed" }, { status: 500 })
   }
 }
