@@ -30,7 +30,11 @@ function steps(city: string, dateLabel: string, link: string) {
 }
 
 async function seedOne(ev: { tag: string; city: string; dateLabel: string; link: string }, userId?: string) {
-  const tag = await prisma.tag.upsert({ where: { name: ev.tag }, update: {}, create: { name: ev.tag, color: "#7C3AED" } })
+  // Bind to the tag the Facebook form ACTUALLY created — matched case-insensitively
+  // so capitalization differences (e.g. "Septiembre" vs "septiembre") don't matter.
+  // Only creates a new tag if none exists yet (send a test lead first so it does).
+  let tag = await prisma.tag.findFirst({ where: { name: { equals: ev.tag, mode: "insensitive" } }, select: { id: true, name: true } })
+  if (!tag) tag = await prisma.tag.create({ data: { name: ev.tag, color: "#7C3AED" }, select: { id: true, name: true } })
   const name = `Evento ${ev.city} — Reserva tu Ticket`
   const stepData = steps(ev.city, ev.dateLabel, ev.link).map((s, i) => ({
     order: i, type: s.type, delay: s.delay,
@@ -68,7 +72,7 @@ async function seedOne(ev: { tag: string; city: string; dateLabel: string; link:
       enrolled++
     }
   }
-  return { plan: name, tag: ev.tag, enrolled, tagged: tagged.length }
+  return { plan: name, tag: tag.name, enrolled, tagged: tagged.length }
 }
 
 export async function POST() {
