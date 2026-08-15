@@ -153,9 +153,13 @@ export async function POST(req: Request) {
           const utmMedium = fields["utm_medium"] || undefined
           const utmContent = fields["utm_content"] || undefined
 
-          // Apply utm_campaign as a CRM tag so smart plans can trigger on it
+          // Apply utm_campaign AND utm_content as CRM tags so smart plans can
+          // trigger on either — utm_campaign = the audience/campaign (e.g.
+          // "Inversionista Bogota"), utm_content = the specific event/creative
+          // (e.g. "Evento Septiembre 2026"), so leads are segmentable per event.
           const tags: string[] = []
           if (utmCampaign) tags.push(utmCampaign)
+          if (utmContent) tags.push(utmContent)
           if (hiddenTag) tags.push(hiddenTag)
 
           // Append UTM data to notes for visibility in the contact timeline
