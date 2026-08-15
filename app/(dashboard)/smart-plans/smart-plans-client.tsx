@@ -379,6 +379,22 @@ export default function SmartPlansClient({ plans: initial, tags }: { plans: Plan
   const [expandedPlan, setExpandedPlan] = useState<string | null>(null)
   const [cloningCR, setCloningCR] = useState(false)
 
+  const [seedingEvents, setSeedingEvents] = useState(false)
+  const seedEventPlans = async () => {
+    if (!confirm("Crear/actualizar los planes de los eventos de septiembre (Bogotá y Medellín) e inscribir a los leads ya etiquetados?")) return
+    setSeedingEvents(true)
+    try {
+      const res = await fetch("/api/admin/seed-event-plans", { method: "POST" })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      const summary = (data.results || []).map((r: any) => `${r.plan}: ${r.enrolled} inscritos`).join(" · ")
+      toast({ title: `✅ ${summary || "Planes creados"}` })
+      setTimeout(() => window.location.reload(), 900)
+    } catch (e: any) {
+      toast({ title: e.message || "No se pudieron crear", variant: "destructive" })
+    } finally { setSeedingEvents(false) }
+  }
+
   const cloneCostaRica = async () => {
     if (!confirm("Plan Costa Rica: si no existe lo crea copiando el de Colombia (adaptado). Si ya existe, actualiza su texto e INSCRIBE a los leads ya etiquetados \"Inversionista Costa Rica\". No crea duplicados. ¿Continuar?")) return
     setCloningCR(true)
@@ -450,6 +466,9 @@ export default function SmartPlansClient({ plans: initial, tags }: { plans: Plan
         <div className="flex items-center gap-2">
           <Button onClick={cloneCostaRica} disabled={cloningCR} size="sm" variant="outline" className="gap-2" title="Copia el plan de Colombia y lo adapta a Costa Rica">
             <Zap className="w-4 h-4" /> {cloningCR ? "Creando…" : "Plan Costa Rica"}
+          </Button>
+          <Button onClick={seedEventPlans} disabled={seedingEvents} size="sm" variant="outline" className="gap-2" title="Crea los planes de los eventos de septiembre (Bogotá y Medellín)">
+            <Zap className="w-4 h-4" /> {seedingEvents ? "Creando…" : "Planes Eventos"}
           </Button>
           <Button onClick={() => setShowBuilder(true)} size="sm" className="bg-lofty-600 hover:bg-lofty-700 gap-2">
             <Plus className="w-4 h-4" /> Create Plan
