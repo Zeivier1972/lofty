@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { detectKeyword, deliverLeadMagnet } from "@/lib/lead-magnet-delivery"
 import {
   getFacebookUserProfile,
-  getFacebookLeadData,
+  fetchFacebookLeadData,
   sendFacebookMessage,
   sendFacebookMessageWithQuickReplies,
   privateReplyToComment,
@@ -112,10 +112,27 @@ export async function POST(req: Request) {
       if (change.field === "leadgen") {
         const { leadgen_id, campaign_name, ad_name } = change.value || {}
         if (!leadgen_id) continue
+        console.log(`[FB webhook leadgen] received leadgen_id=${leadgen_id} campaign=${campaign_name || ad_name || "?"}`)
 
         try {
-          const fields = await getFacebookLeadData(leadgen_id)
-          if (!fields) continue
+          const { data: fields, error: fetchErr } = await fetchFacebookLeadData(leadgen_id)
+          if (!fields) {
+            // A webhook was delivered but CASAi could not DOWNLOAD the lead's
+            // data (usually the Page token is missing `leads_retrieval`). Never
+            // drop it silently — log the exact Graph error and raise a visible
+            // CRM alert so a real lead is never lost without a trace.
+            console.error(`[FB webhook leadgen] could not fetch lead ${leadgen_id}: ${fetchErr}`)
+            await prisma.aINotification.create({
+              data: {
+                type: "NEW_LEAD",
+                priority: "HIGH",
+                title: "⚠️ Lead de Facebook no se pudo descargar",
+                body: `Facebook envió un lead (id ${leadgen_id}) pero CASAi no pudo descargar sus datos. Suele ser el permiso "leads_retrieval" del token de la página. Error de Facebook: ${fetchErr || "desconocido"}`,
+              },
+            }).catch(() => {})
+            continue
+          }
+          console.log(`[FB webhook leadgen] fetched fields for ${leadgen_id}: ${Object.keys(fields).join(", ") || "(empty)"}`)
 
           const fullName = fields["full_name"] || fields["name"] || ""
           const nameParts = fullName.trim().split(" ")
@@ -172,7 +189,7 @@ export async function POST(req: Request) {
 
           const allNotes = [notes, utmNote].filter(Boolean).join(" | ") || undefined
 
-          await ingestLead({
+          const { contactId, isNew } = await ingestLead({
             firstName,
             lastName,
             email,
@@ -188,6 +205,7 @@ export async function POST(req: Request) {
             smsConsent: !!phone,
             tags: tags.length > 0 ? tags : undefined,
           })
+          console.log(`[FB webhook leadgen] ${isNew ? "created" : "merged into existing"} contact=${contactId} tags=[${tags.join(", ")}]`)
         } catch (e) {
           console.error("[FB webhook leadgen]", e)
         }

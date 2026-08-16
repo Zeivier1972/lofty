@@ -159,27 +159,42 @@ export async function getFacebookUserProfile(psid: string): Promise<{ firstName:
   } catch { return null }
 }
 
-// Fetch a submitted lead's field data from Meta
-export async function getFacebookLeadData(leadgenId: string): Promise<Record<string, string> | null> {
+// Fetch a submitted lead's field data from Meta, returning the exact error when
+// it fails so the caller can log it AND surface it in the CRM (a webhook can be
+// delivered while lead RETRIEVAL still fails — that's the `leads_retrieval`
+// permission, a separate grant from webhook delivery).
+export async function fetchFacebookLeadData(
+  leadgenId: string,
+): Promise<{ data: Record<string, string> | null; error: string | null }> {
   if (!token()) {
-    console.error("[FB] getFacebookLeadData: FB_PAGE_ACCESS_TOKEN is not set")
-    return null
+    const error = "FB_PAGE_ACCESS_TOKEN is not set"
+    console.error("[FB] getFacebookLeadData:", error)
+    return { data: null, error }
   }
   try {
     const res = await fetch(`${GRAPH}/${leadgenId}?fields=field_data&access_token=${token()}`)
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}))
-      console.error("[FB] getFacebookLeadData failed — likely expired token:", res.status, JSON.stringify(errData))
-      return null
+      const g = errData?.error || errData
+      const error = `HTTP ${res.status} — ${g?.message || JSON.stringify(g)}${g?.code ? ` (code ${g.code})` : ""}`
+      console.error("[FB] getFacebookLeadData failed — likely token/permission:", error)
+      return { data: null, error }
     }
     const d = await res.json()
     const result: Record<string, string> = {}
     for (const f of d.field_data || []) result[f.name] = f.values?.[0] || ""
-    return result
+    return { data: result, error: null }
   } catch (e) {
-    console.error("[FB] getFacebookLeadData exception:", e)
-    return null
+    const error = e instanceof Error ? e.message : String(e)
+    console.error("[FB] getFacebookLeadData exception:", error)
+    return { data: null, error }
   }
+}
+
+// Back-compat wrapper — returns just the field map (or null on failure).
+export async function getFacebookLeadData(leadgenId: string): Promise<Record<string, string> | null> {
+  const { data } = await fetchFacebookLeadData(leadgenId)
+  return data
 }
 
 // ─── Meta Marketing API ───────────────────────────────────────────────────────
