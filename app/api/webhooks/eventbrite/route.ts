@@ -73,21 +73,29 @@ export async function POST(req: Request) {
     const eventName = mapped?.name || data.event?.name?.text || undefined
     const eventTag = mapped?.tag || undefined
 
+    // Order-level buyer info — used as a fallback when an attendee record
+    // doesn't carry its own email/name (common for simple single-ticket orders:
+    // the email lives on the ORDER, not the attendee profile).
+    const orderEmail: string | undefined = data.email || undefined
+    const orderFirst: string | undefined = data.first_name || (data.name ? String(data.name).split(" ")[0] : undefined)
+    const orderLast: string | undefined = data.last_name || (data.name && String(data.name).includes(" ") ? String(data.name).split(" ").slice(1).join(" ") : undefined)
+
     const attendees: any[] = Array.isArray(data.attendees) && data.attendees.length
       ? data.attendees
       : data.profile
         ? [data]
-        : [{ profile: { first_name: data.first_name, last_name: data.last_name, email: data.email } }]
+        : [{ profile: {} }]
 
     const results = []
     for (const a of attendees) {
       const p = a.profile || {}
-      const firstName = p.first_name || (p.name ? String(p.name).split(" ")[0] : undefined)
-      const lastName = p.last_name || (p.name && String(p.name).includes(" ") ? String(p.name).split(" ").slice(1).join(" ") : undefined)
+      const firstName = p.first_name || (p.name ? String(p.name).split(" ")[0] : undefined) || orderFirst
+      const lastName = p.last_name || (p.name && String(p.name).includes(" ") ? String(p.name).split(" ").slice(1).join(" ") : undefined) || orderLast
+      const email = p.email || orderEmail
       results.push(await confirmEventbriteTicket({
         firstName,
         lastName,
-        email: p.email || undefined,
+        email,
         phone: p.cell_phone || phoneFromAnswers(a.answers) || undefined,
         eventName,
         eventTag,
