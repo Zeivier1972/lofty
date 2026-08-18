@@ -124,6 +124,33 @@ function NewCampaignModal({ tags, onClose, onCreated }: { tags: any[]; onClose: 
   const [sending, setSending] = useState(false)
   const [audienceCount, setAudienceCount] = useState<number | null>(null)
   const [loadingCount, setLoadingCount] = useState(false)
+  const [ariaPrompt, setAriaPrompt] = useState("")
+  const [ariaLang, setAriaLang] = useState<"es" | "en">("es")
+  const [ariaLoading, setAriaLoading] = useState(false)
+
+  // Ask Aria to design the whole email from a plain-language brief. Fills the
+  // subject + body (which the user can then edit, add images to, preview, send).
+  const designWithAria = async () => {
+    if (!ariaPrompt.trim() || ariaLoading) return
+    setAriaLoading(true)
+    try {
+      const res = await fetch("/api/ai/design-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: ariaPrompt, language: ariaLang, currentBody: body || undefined }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "No se pudo diseñar el email")
+      if (data.subject) setSubject(data.subject)
+      if (data.body) setBody(data.body)
+      if (!name.trim() && data.subject) setName(data.subject.replace(/^[^A-Za-z0-9À-ÿ]+/, "").slice(0, 60))
+      toast({ title: "✨ Aria diseñó tu email", description: "Revísalo, agrega tus imágenes y ajústalo a tu gusto." })
+    } catch (e: any) {
+      toast({ title: e.message || "Error al diseñar", variant: "destructive" })
+    } finally {
+      setAriaLoading(false)
+    }
+  }
 
   const applyTemplate = (tpl: typeof TEMPLATES[0]) => {
     const monthName = new Date().toLocaleString("es", { month: "long" })
@@ -331,6 +358,38 @@ function NewCampaignModal({ tags, onClose, onCreated }: { tags: any[]; onClose: 
           {/* Step 3: Compose */}
           {step === "compose" && (
             <div className="space-y-4">
+              {/* Ask Aria to design the email */}
+              <div className="rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-purple-50 p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center flex-shrink-0">
+                    <Sparkles className="w-3.5 h-3.5 text-white" />
+                  </div>
+                  <span className="text-sm font-semibold text-indigo-900">Diséñalo con Aria</span>
+                  <div className="ml-auto flex rounded-lg bg-white border border-indigo-200 overflow-hidden text-[11px] font-semibold">
+                    <button type="button" onClick={() => setAriaLang("es")} className={ariaLang === "es" ? "px-2 py-0.5 bg-indigo-600 text-white" : "px-2 py-0.5 text-indigo-600"}>ES</button>
+                    <button type="button" onClick={() => setAriaLang("en")} className={ariaLang === "en" ? "px-2 py-0.5 bg-indigo-600 text-white" : "px-2 py-0.5 text-indigo-600"}>EN</button>
+                  </div>
+                </div>
+                <textarea
+                  value={ariaPrompt}
+                  onChange={e => setAriaPrompt(e.target.value)}
+                  rows={2}
+                  placeholder="Ej: Un email para mi evento de inversión en Miami en Bogotá, 24-25 sep, con botón para registrarse en Eventbrite: https://www.eventbrite.com/e/1998107399018"
+                  className="w-full border border-indigo-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-400 resize-none bg-white"
+                />
+                <div className="flex items-center justify-between mt-2">
+                  <p className="text-[11px] text-indigo-500">Aria escribe el asunto y el cuerpo. Tú agregas imágenes y ajustas.</p>
+                  <Button
+                    type="button"
+                    onClick={designWithAria}
+                    disabled={!ariaPrompt.trim() || ariaLoading}
+                    className="bg-indigo-600 hover:bg-indigo-700 h-8 text-sm"
+                  >
+                    {ariaLoading ? <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> Diseñando…</> : <><Sparkles className="w-4 h-4 mr-1.5" /> {body.trim() ? "Rediseñar" : "Diseñar email"}</>}
+                  </Button>
+                </div>
+              </div>
+
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-sm font-semibold text-gray-700">Asunto del email *</label>
