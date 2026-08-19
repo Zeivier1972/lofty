@@ -75,6 +75,7 @@ export default function PropertySendPanel({
   const [maxSqft, setMaxSqft] = useState("")
   const [minYear, setMinYear] = useState("")
   const [maxHoa, setMaxHoa] = useState("")
+  const [stories, setStories] = useState("")   // "1" one story, "2" two story, "3" 3+
   const [pool, setPool] = useState(false)
   const [waterfront, setWaterfront] = useState(false)
   const [showMore, setShowMore] = useState(false)
@@ -158,6 +159,7 @@ export default function PropertySendPanel({
       if (maxSqft) qs.set("maxSqft", maxSqft)
       if (minYear) qs.set("minYear", minYear)
       if (maxHoa) qs.set("maxHoa", maxHoa)
+      if (stories) qs.set("stories", stories)
       if (pool) qs.set("pool", "1")
       if (waterfront) qs.set("waterfront", "1")
       if (propTypes.size) qs.set("type", Array.from(propTypes).join(","))
@@ -429,6 +431,15 @@ export default function PropertySendPanel({
                     <label className="text-xs font-semibold text-gray-500 mb-1 block">Max HOA / mo</label>
                     <input type="number" value={maxHoa} onChange={e => setMaxHoa(e.target.value)} onKeyDown={e => e.key === "Enter" && search()} placeholder="any" className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400" />
                   </div>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 mb-1 block">Niveles / pisos</label>
+                  <select value={stories} onChange={e => setStories(e.target.value)} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-400">
+                    <option value="">Cualquiera</option>
+                    <option value="1">1 piso (una planta)</option>
+                    <option value="2">2 pisos</option>
+                    <option value="3">3+ pisos</option>
+                  </select>
                 </div>
                 <div className="flex items-center gap-4 pt-1">
                   <label className="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer">
