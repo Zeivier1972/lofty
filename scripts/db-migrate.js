@@ -38,6 +38,8 @@ const STMTS = [
   `ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "buyerTimelineMonths" INTEGER`,
   `ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "buyerPurpose" TEXT`,
   `ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "matchPrefsCompletedAt" TIMESTAMP(3)`,
+  // buyer preferred interior levels / stories (1 = one story, 2 = two story, 3 = 3+)
+  `ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "buyerStories" INTEGER`,
   // dashboard hot-leads "remove from list" (dismiss) marker
   `ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "hotLeadDismissedAt" TIMESTAMP(3)`,
   // property alert dedup table (migration 20260618010000)
