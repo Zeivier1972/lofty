@@ -92,6 +92,7 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
   const [minBeds, setMinBeds] = useState("")
   const [minBaths, setMinBaths] = useState("")
   const [minGarage, setMinGarage] = useState("")
+  const [stories, setStories] = useState("")
   const [propType, setPropType] = useState("")
   // Advanced filters
   const [maxBeds, setMaxBeds] = useState("")
@@ -194,6 +195,7 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
       setStr("minBeds", p.minBeds); setStr("maxBeds", p.maxBeds)
       setStr("minBaths", p.minBaths); setStr("maxBaths", p.maxBaths)
       setStr("minGarage", p.minGarage); setStr("type", p.propType); setStr("sort", p.sort)
+      setStr("stories", p.stories)
       setStr("minSqft", p.minSqft); setStr("maxSqft", p.maxSqft)
       setStr("minYear", p.minYear); setStr("maxYear", p.maxYear)
       setStr("maxHoa", p.maxHoa); setStr("maxDom", p.maxDom)
@@ -225,10 +227,10 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
   }, [])
 
   const currentFilters = () => ({
-    city, minPrice, maxPrice, minBeds, maxBeds, minBaths, maxBaths, minGarage, propType, mode, sort,
+    city, minPrice, maxPrice, minBeds, maxBeds, minBaths, maxBaths, minGarage, stories, propType, mode, sort,
     minSqft, maxSqft, minYear, maxYear, maxHoa, maxDom, pool, waterfront,
   })
-  const search = useCallback(() => { setPage(1); runQuery({ ...currentFilters(), offset: "0" }) }, [runQuery, city, minPrice, maxPrice, minBeds, maxBeds, minBaths, maxBaths, minGarage, propType, mode, sort, minSqft, maxSqft, minYear, maxYear, maxHoa, maxDom, pool, waterfront]) // eslint-disable-line react-hooks/exhaustive-deps
+  const search = useCallback(() => { setPage(1); runQuery({ ...currentFilters(), offset: "0" }) }, [runQuery, city, minPrice, maxPrice, minBeds, maxBeds, minBaths, maxBaths, minGarage, stories, propType, mode, sort, minSqft, maxSqft, minYear, maxYear, maxHoa, maxDom, pool, waterfront]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function changeSort(v: string) {
     setSort(v)
@@ -260,6 +262,7 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
       minPrice: sp.get("minPrice") || "",
       maxPrice: sp.get("maxPrice") || "",
       minBeds: sp.get("minBeds") || "",
+      stories: sp.get("stories") || "",
       propType: sp.get("type") || "",
       mode: m,
     }
@@ -268,6 +271,7 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
     if (init.minPrice) setMinPrice(init.minPrice)
     if (init.maxPrice) setMaxPrice(init.maxPrice)
     if (init.minBeds) setMinBeds(init.minBeds)
+    if (init.stories) setStories(init.stories)
     if (init.propType) setPropType(init.propType)
     runQuery(init)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -345,6 +349,12 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
             <option value="">Garaje</option>
             <option value="1">1+ garaje</option>
             <option value="2">2+ garaje</option>
+          </select>
+          <select value={stories} onChange={e => setStories(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-lofty-400">
+            <option value="">Niveles</option>
+            <option value="1">1 piso (una planta)</option>
+            <option value="2">2 pisos</option>
+            <option value="3">3+ pisos</option>
           </select>
           <button onClick={search} className="flex items-center justify-center gap-2 bg-lofty-600 text-white rounded-lg px-4 py-2 text-sm font-semibold hover:bg-lofty-700">
             <Search className="w-4 h-4" /> Buscar

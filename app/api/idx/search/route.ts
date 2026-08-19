@@ -37,6 +37,11 @@ export async function GET(req: Request) {
     const pageSize = Math.min(num("limit") || 24, 48)
     const offset = num("offset") || 0
 
+    // Interior levels: "1" = one story (single floor), "2" = two story, "3" = 3+.
+    const storiesSel = searchParams.get("stories") || ""
+    const minStories = storiesSel === "1" ? 1 : storiesSel === "2" ? 2 : storiesSel === "3" ? 3 : undefined
+    const maxStories = storiesSel === "1" ? 1 : storiesSel === "2" ? 2 : undefined
+
     const keyword = searchParams.get("keyword")?.trim() || undefined
     // When keyword is set, skip city/zip — they'd AND together and block MLS# / address results
     const listings = await searchIdxListings({
@@ -61,6 +66,8 @@ export async function GET(req: Request) {
       maxDom: num("maxDom"),
       pool: bool("pool"),
       waterfront: bool("waterfront"),
+      minStories,
+      maxStories,
       sort: searchParams.get("sort") || undefined,
       limit: pageSize,
       offset,
@@ -86,6 +93,7 @@ export async function GET(req: Request) {
       baths: l.BathroomsTotalDecimal ?? null,
       sqft: l.LivingArea ?? null,
       yearBuilt: l.YearBuilt ?? null,
+      stories: l.StoriesTotal ?? null,
       subType: l.PropertySubType ?? null,
       description: l.PublicRemarks ? String(l.PublicRemarks).slice(0, 300) : null,
       photo: photos[l.ListingKey] || null,

@@ -102,6 +102,7 @@ model Contact {
   buyerBudgetMax        Float?
   buyerBedroomsMin      Int?
   buyerBathroomsMin     Float?
+  buyerStories          Int?     // preferred interior levels: 1 = one story, 2 = two story, 3 = 3+
   buyerPropertyType     String?
   buyerMustHaves        String?
   buyerLocation         String?

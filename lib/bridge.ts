@@ -170,6 +170,7 @@ export async function searchIdxListings(params: {
   minGarage?: number; propertySubType?: string; propertySubTypes?: string[]; mode?: "sale" | "rent"
   minSqft?: number; maxSqft?: number; minYear?: number; maxYear?: number
   maxHoa?: number; maxDom?: number; pool?: boolean; waterfront?: boolean
+  minStories?: number; maxStories?: number
   sort?: string; limit?: number; offset?: number; keyword?: string
 }): Promise<any[]> {
   const token = process.env.BRIDGE_SERVER_TOKEN
@@ -281,26 +282,48 @@ export async function searchIdxListings(params: {
     }
   }
 
-  const query = new URLSearchParams()
-  query.set("access_token", token)
-  query.set("$top", String(params.limit || 24))
-  query.set("$skip", String(params.offset || 0))
-  query.set("$filter", filters.join(" and "))
+  // Interior levels / stories (RESO StoriesTotal, integer). Kept in a separate
+  // clause list so that, if this dataset doesn't expose StoriesTotal, we can
+  // retry WITHOUT it instead of breaking the whole search.
+  const storyClauses: string[] = []
+  if (params.minStories) storyClauses.push(`StoriesTotal ge ${params.minStories}`)
+  if (params.maxStories) storyClauses.push(`StoriesTotal le ${params.maxStories}`)
+
   const orderBy = params.sort === "price_asc" ? "ListPrice asc"
     : params.sort === "price_desc" ? "ListPrice desc"
     : "ModificationTimestamp desc"
-  query.set("$orderby", orderBy)
-  query.set("$count", "true")
 
-  const res = await fetch(`${BRIDGE_ODATA_BASE}/Property?${query.toString()}`, { next: { revalidate: 300 } })
-  if (!res.ok) {
-    const err = await res.text()
-    throw new Error(`Bridge search error ${res.status}: ${err}`)
+  const execute = async (filterList: string[]) => {
+    const query = new URLSearchParams()
+    query.set("access_token", token)
+    query.set("$top", String(params.limit || 24))
+    query.set("$skip", String(params.offset || 0))
+    query.set("$filter", filterList.join(" and "))
+    query.set("$orderby", orderBy)
+    query.set("$count", "true")
+
+    const res = await fetch(`${BRIDGE_ODATA_BASE}/Property?${query.toString()}`, { next: { revalidate: 300 } })
+    if (!res.ok) {
+      const err = await res.text()
+      throw new Error(`Bridge search error ${res.status}: ${err}`)
+    }
+    const data = await res.json()
+    const listings = data.value || []
+    ;(listings as any).__total = data["@odata.count"] ?? listings.length
+    return listings
   }
-  const data = await res.json()
-  const listings = data.value || []
-  ;(listings as any).__total = data["@odata.count"] ?? listings.length
-  return listings
+
+  if (storyClauses.length) {
+    try {
+      return await execute([...filters, ...storyClauses])
+    } catch (e: any) {
+      // Degrade gracefully — the dataset may not carry StoriesTotal. Log it so
+      // we can switch to the RESO `Levels` enum if that's the case.
+      console.warn(`[bridge] StoriesTotal filter failed, retrying without it: ${e?.message || e}`)
+      return await execute(filters)
+    }
+  }
+  return await execute(filters)
 }
 
 // Total count of matching listings (for numbered pagination).

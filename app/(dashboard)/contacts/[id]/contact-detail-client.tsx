@@ -92,6 +92,7 @@ function BuyerPrefsPanel({ contact }: { contact: any }) {
     buyerLocation: contact.buyerLocation || "",
     buyerBedroomsMin: contact.buyerBedroomsMin != null ? String(contact.buyerBedroomsMin) : "",
     buyerBathroomsMin: contact.buyerBathroomsMin != null ? String(contact.buyerBathroomsMin) : "",
+    buyerStories: contact.buyerStories != null ? String(contact.buyerStories) : "",
     buyerBudgetMin: contact.buyerBudgetMin != null ? String(contact.buyerBudgetMin) : "",
     buyerBudgetMax: contact.buyerBudgetMax != null ? String(contact.buyerBudgetMax) : "",
     buyerTimelineMonths: contact.buyerTimelineMonths != null ? String(contact.buyerTimelineMonths) : "",
@@ -107,6 +108,7 @@ function BuyerPrefsPanel({ contact }: { contact: any }) {
         buyerLocation: fields.buyerLocation || null,
         buyerBedroomsMin: fields.buyerBedroomsMin ? parseInt(fields.buyerBedroomsMin) : null,
         buyerBathroomsMin: fields.buyerBathroomsMin ? parseFloat(fields.buyerBathroomsMin) : null,
+        buyerStories: fields.buyerStories ? parseInt(fields.buyerStories) : null,
         buyerBudgetMin: fields.buyerBudgetMin ? parseInt(fields.buyerBudgetMin) : null,
         buyerBudgetMax: fields.buyerBudgetMax ? parseInt(fields.buyerBudgetMax) : null,
         buyerTimelineMonths: fields.buyerTimelineMonths ? parseInt(fields.buyerTimelineMonths) : null,
@@ -188,6 +190,16 @@ function BuyerPrefsPanel({ contact }: { contact: any }) {
               {["1","2","3","4"].map(v => <option key={v} value={v}>{v}+</option>)}
             </select>
           </div>
+          <select
+            value={fields.buyerStories}
+            onChange={e => setFields(f => ({ ...f, buyerStories: e.target.value }))}
+            className="w-full border rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-lofty-500"
+          >
+            <option value="">Niveles / pisos...</option>
+            <option value="1">1 piso (una planta)</option>
+            <option value="2">2 pisos</option>
+            <option value="3">3+ pisos</option>
+          </select>
           <div className="flex gap-2 items-center">
             <input
               type="number"

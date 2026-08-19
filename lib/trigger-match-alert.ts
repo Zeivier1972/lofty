@@ -121,11 +121,17 @@ export async function triggerMatchAlert(contactId: string): Promise<{ sent: bool
       buyerBudgetMax: contact.buyerBudgetMax,
       buyerBedroomsMin: contact.buyerBedroomsMin,
       buyerBathroomsMin: contact.buyerBathroomsMin,
+      buyerStories: contact.buyerStories,
       buyerPropertyType: contact.buyerPropertyType,
       buyerMustHaves: contact.buyerMustHaves,
       buyerLocation: contact.buyerLocation,
       matchPrefsCompletedAt: contact.matchPrefsCompletedAt,
     }
+
+    // Preferred interior levels → StoriesTotal range (1=one story, 2=two, 3=3+).
+    const bs = prefs.buyerStories
+    const minStories = bs === 1 ? 1 : bs === 2 ? 2 : bs === 3 ? 3 : undefined
+    const maxStories = bs === 1 ? 1 : bs === 2 ? 2 : undefined
 
     if (!prefs.buyerBudgetMax && !prefs.buyerLocation && !prefs.buyerBedroomsMin) {
       return { sent: false, reason: "No buyer prefs" }
@@ -154,6 +160,8 @@ export async function triggerMatchAlert(contactId: string): Promise<{ sent: bool
       maxPrice: prefs.buyerBudgetMax || undefined,
       minBeds: prefs.buyerBedroomsMin || undefined,
       minBaths: prefs.buyerBathroomsMin || undefined,
+      minStories,
+      maxStories,
       propertySubTypes: propSubTypes.length > 0 ? propSubTypes : undefined,
       limit: 40,
     })
