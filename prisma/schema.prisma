@@ -541,6 +541,16 @@ model IntegrationHealth {
   consecutiveFailures Int       @default(0)
 }
 
+// Manually-entered marketing spend per source or campaign (ad spend isn't
+// available programmatically), used to compute cost-per-lead and ROI.
+model MarketingSpend {
+  id        String   @id @default(cuid())
+  label     String   @unique // lowercased source name or campaign tag
+  display   String? // original-cased label for display
+  amount    Float    @default(0)
+  updatedAt DateTime @updatedAt @default(now())
+}
+
 model AIConfig {
   id                 String   @id @default(cuid())
   agentName          String   @default("Sofia")

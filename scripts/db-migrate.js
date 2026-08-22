@@ -54,6 +54,16 @@ const STMTS = [
     CONSTRAINT "IntegrationHealth_pkey" PRIMARY KEY ("id")
   )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "IntegrationHealth_name_key" ON "IntegrationHealth"("name")`,
+  // Manually-entered marketing spend per source/campaign — powers cost-per-lead + ROI
+  `CREATE TABLE IF NOT EXISTS "MarketingSpend" (
+    "id"        TEXT NOT NULL,
+    "label"     TEXT NOT NULL,
+    "display"   TEXT,
+    "amount"    DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "MarketingSpend_pkey" PRIMARY KEY ("id")
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "MarketingSpend_label_key" ON "MarketingSpend"("label")`,
   // dashboard hot-leads "remove from list" (dismiss) marker
   `ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "hotLeadDismissedAt" TIMESTAMP(3)`,
   // property alert dedup table (migration 20260618010000)
