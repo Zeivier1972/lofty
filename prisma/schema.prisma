@@ -529,6 +529,18 @@ model AINotification {
   createdAt DateTime @default(now())
 }
 
+model IntegrationHealth {
+  id                  String    @id @default(cuid())
+  name                String    @unique
+  ok                  Boolean   @default(true)
+  detail              String?
+  lastCheckedAt       DateTime  @default(now())
+  lastOkAt            DateTime?
+  lastDownAt          DateTime?
+  lastAlertedAt       DateTime?
+  consecutiveFailures Int       @default(0)
+}
+
 model AIConfig {
   id                 String   @id @default(cuid())
   agentName          String   @default("Sofia")

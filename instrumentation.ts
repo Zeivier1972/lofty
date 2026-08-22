@@ -27,6 +27,19 @@ export async function register() {
     fetch(`${base}/api/cron/calls`, { headers }).catch(e => console.error("[cron] calls error:", e))
   })
 
+  // Every 20 min: integration health check — alerts (SMS + email) only when a
+  // service breaks or recovers (no report spam). Catches outages fast.
+  schedule("*/20 * * * *", () => {
+    fetch(`${base}/api/cron/system-check?report=0`, { headers })
+      .catch(e => console.error("[cron] health-check error:", e))
+  })
+
+  // Daily 8am ET (12:00 UTC): full system status report email.
+  schedule("0 12 * * *", () => {
+    fetch(`${base}/api/cron/system-check?report=1`, { headers })
+      .catch(e => console.error("[cron] daily report error:", e))
+  })
+
   // Every hour: fire smart plans, SOI check, score decay, HeyGen video check
   schedule("0 * * * *", () => {
     Promise.allSettled([

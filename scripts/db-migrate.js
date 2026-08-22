@@ -40,6 +40,20 @@ const STMTS = [
   `ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "matchPrefsCompletedAt" TIMESTAMP(3)`,
   // buyer preferred interior levels / stories (1 = one story, 2 = two story, 3 = 3+)
   `ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "buyerStories" INTEGER`,
+  // Integration health monitor — tracks each service's up/down state + alert times
+  `CREATE TABLE IF NOT EXISTS "IntegrationHealth" (
+    "id"                  TEXT NOT NULL,
+    "name"                TEXT NOT NULL,
+    "ok"                  BOOLEAN NOT NULL DEFAULT true,
+    "detail"              TEXT,
+    "lastCheckedAt"       TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "lastOkAt"            TIMESTAMP(3),
+    "lastDownAt"          TIMESTAMP(3),
+    "lastAlertedAt"       TIMESTAMP(3),
+    "consecutiveFailures" INTEGER NOT NULL DEFAULT 0,
+    CONSTRAINT "IntegrationHealth_pkey" PRIMARY KEY ("id")
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "IntegrationHealth_name_key" ON "IntegrationHealth"("name")`,
   // dashboard hot-leads "remove from list" (dismiss) marker
   `ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "hotLeadDismissedAt" TIMESTAMP(3)`,
   // property alert dedup table (migration 20260618010000)
