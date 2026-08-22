@@ -102,6 +102,7 @@ const navGroups: NavGroup[] = [
     icon: BarChart3,
     items: [
       { href: "/reports", icon: BarChart3, label: "Reports" },
+      { href: "/attribution", icon: TrendingUp, label: "ROI y Atribución" },
       { href: "/health", icon: Activity, label: "System Health" },
       { href: "/integrations", icon: Plug, label: "Integrations" },
       { href: "/settings", icon: Settings, label: "Settings" },
