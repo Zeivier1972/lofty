@@ -3,8 +3,9 @@ export const maxDuration = 60
 
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { searchIdxListings } from "@/lib/bridge"
 import { sendEmail } from "@/lib/email"
+import { runAllChecks, type CheckResult } from "@/lib/health-checks"
+import { persistAndAlert } from "@/lib/health-monitor"
 
 function isAuthorized(req: Request): boolean {
   const secret = process.env.CRON_SECRET
@@ -12,113 +13,6 @@ function isAuthorized(req: Request): boolean {
   const header = req.headers.get("x-cron-secret") || req.headers.get("authorization")?.replace("Bearer ", "")
   const param = new URL(req.url).searchParams.get("secret")
   return header === secret || param === secret
-}
-
-interface CheckResult {
-  name: string
-  ok: boolean
-  detail?: string
-  ms?: number
-}
-
-async function checkDatabase(): Promise<CheckResult> {
-  const t = Date.now()
-  try {
-    const count = await prisma.contact.count()
-    return { name: "Database (Prisma/PostgreSQL)", ok: true, detail: `${count} contacts`, ms: Date.now() - t }
-  } catch (e: any) {
-    return { name: "Database (Prisma/PostgreSQL)", ok: false, detail: e.message, ms: Date.now() - t }
-  }
-}
-
-async function checkBridgeMLS(): Promise<CheckResult> {
-  const t = Date.now()
-  try {
-    if (!process.env.BRIDGE_SERVER_TOKEN) {
-      return { name: "Bridge MLS API", ok: false, detail: "BRIDGE_SERVER_TOKEN not set", ms: 0 }
-    }
-    const listings = await searchIdxListings({ city: "Miami", limit: 3 })
-    return { name: "Bridge MLS API", ok: listings.length > 0, detail: `${listings.length} listings returned`, ms: Date.now() - t }
-  } catch (e: any) {
-    return { name: "Bridge MLS API", ok: false, detail: e.message, ms: Date.now() - t }
-  }
-}
-
-async function checkEmail(): Promise<CheckResult> {
-  const hasResend = !!process.env.RESEND_API_KEY
-  const hasSMTP = !!(process.env.SMTP_USER && process.env.SMTP_PASS)
-  const ok = hasResend || hasSMTP
-  return {
-    name: "Email (Resend/SMTP)",
-    ok,
-    detail: ok
-      ? (hasResend ? "Resend configured" : "SMTP configured")
-      : "Neither RESEND_API_KEY nor SMTP_USER/SMTP_PASS are set",
-  }
-}
-
-async function checkSMS(): Promise<CheckResult> {
-  const ok = !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER)
-  return {
-    name: "SMS (Twilio)",
-    ok,
-    detail: ok ? "Twilio credentials configured" : "TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_PHONE_NUMBER missing",
-  }
-}
-
-async function checkAI(): Promise<CheckResult> {
-  const ok = !!process.env.ANTHROPIC_API_KEY
-  return {
-    name: "AI (Anthropic)",
-    ok,
-    detail: ok ? "ANTHROPIC_API_KEY set" : "ANTHROPIC_API_KEY not set — Sofia AI will not work",
-  }
-}
-
-async function checkLeadFlow(): Promise<CheckResult> {
-  const t = Date.now()
-  try {
-    const recent = await prisma.contact.count({
-      where: { createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
-    })
-    const total = await prisma.contact.count()
-    return { name: "Lead Flow (last 24h)", ok: true, detail: `${recent} new leads · ${total} total contacts`, ms: Date.now() - t }
-  } catch (e: any) {
-    return { name: "Lead Flow (last 24h)", ok: false, detail: e.message, ms: Date.now() - t }
-  }
-}
-
-async function checkEmailVolume(): Promise<CheckResult> {
-  const t = Date.now()
-  try {
-    // Midnight ET → UTC
-    const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" })
-    const todayStart = new Date(`${todayStr}T00:00:00-05:00`)
-    const count = await prisma.email.count({
-      where: { direction: "OUTBOUND", status: "SENT", createdAt: { gte: todayStart } },
-    })
-    const LIMIT = Number(process.env.EMAIL_DAILY_LIMIT || 100) // Resend free tier
-    return {
-      name: "Email volume (today)",
-      ok: count < LIMIT * 0.9,
-      detail: `${count} sent · provider limit ~${LIMIT}/day${count >= LIMIT * 0.9 ? " — NEAR/OVER LIMIT, emails may be blocked" : ""}`,
-      ms: Date.now() - t,
-    }
-  } catch (e: any) {
-    return { name: "Email volume (today)", ok: false, detail: e.message, ms: Date.now() - t }
-  }
-}
-
-async function checkActivities(): Promise<CheckResult> {
-  const t = Date.now()
-  try {
-    const count = await prisma.activity.count({
-      where: { createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
-    })
-    return { name: "CRM Activity (last 24h)", ok: true, detail: `${count} activities logged`, ms: Date.now() - t }
-  } catch (e: any) {
-    return { name: "CRM Activity (last 24h)", ok: false, detail: e.message, ms: Date.now() - t }
-  }
 }
 
 function buildReportEmail(checks: CheckResult[], runAt: string, appUrl: string): string {
@@ -189,21 +83,23 @@ export async function GET(req: Request) {
     hour: "2-digit", minute: "2-digit", timeZoneName: "short",
   })
 
-  const checks = await Promise.all([
-    checkDatabase(),
-    checkBridgeMLS(),
-    checkEmail(),
-    checkSMS(),
-    checkAI(),
-    checkLeadFlow(),
-    checkActivities(),
-    checkEmailVolume(),
-  ])
+  const checks = await runAllChecks()
+
+  // ALWAYS persist state + fire instant SMS/email alerts on any transition
+  // (a service breaking or recovering). This is what catches outages fast.
+  const monitor = await persistAndAlert(checks).catch(e => {
+    console.error("[system-check] persistAndAlert failed:", e?.message || e)
+    return { transitions: [], alerted: false }
+  })
 
   const allOk = checks.every(c => c.ok)
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
 
-  // Send report email to agent
+  // The full status-report email is opt-in (?report=1, e.g. the daily run) so the
+  // frequent 20-min checks don't email a report every time — they only alert on
+  // transitions above. Default keeps the old behavior for existing callers.
+  const sendReport = new URL(req.url).searchParams.get("report") !== "0"
+
   const aiConfig = await prisma.aIConfig.findFirst({
     select: { realtorEmail: true, realtorName: true },
   }).catch(() => null)
@@ -212,7 +108,7 @@ export async function GET(req: Request) {
     || process.env.REALTOR_EMAIL
     || process.env.AGENT_EMAIL
 
-  if (toEmail) {
+  if (sendReport && toEmail) {
     try {
       await sendEmail({
         to: toEmail,
@@ -230,6 +126,8 @@ export async function GET(req: Request) {
     ok: allOk,
     runAt,
     checks,
-    emailSent: !!toEmail,
+    transitions: monitor.transitions,
+    alerted: monitor.alerted,
+    reportEmailSent: sendReport && !!toEmail,
   })
 }

@@ -8,7 +8,7 @@ import {
   Zap, Settings, ChevronLeft, ChevronRight, BarChart3,
   MessageSquare, Bot, Phone, Share2, Key, Globe,
   BellRing, UserCheck, Send, Inbox, ClipboardList, Plug, X, Instagram, Landmark, Facebook,
-  Wand2, ChevronDown, Mail, TrendingUp, Megaphone, Handshake,
+  Wand2, ChevronDown, Mail, TrendingUp, Megaphone, Handshake, Activity,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
@@ -102,6 +102,7 @@ const navGroups: NavGroup[] = [
     icon: BarChart3,
     items: [
       { href: "/reports", icon: BarChart3, label: "Reports" },
+      { href: "/health", icon: Activity, label: "System Health" },
       { href: "/integrations", icon: Plug, label: "Integrations" },
       { href: "/settings", icon: Settings, label: "Settings" },
     ],
