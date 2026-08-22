@@ -209,22 +209,24 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
     setShowVmMenu(false)
     clearCountdown() // don't let the auto-dial timer yank the lead away mid-drop
     if (!c?.phone) { setSkipNotice("Este lead no tiene teléfono para dejar mensaje."); return }
-    setDroppingVm(true)
-    try {
-      const res = await fetch("/api/dialer/voicemail-drop", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: c.phone, contactId: c.id, audioUrl: tpl.audioUrl, text: tpl.text }),
-      })
-      const d = await res.json().catch(() => ({}))
-      setSkipNotice(d.ok ? `📨 Mensaje "${tpl.name}" enviado a ${c.firstName} — pasando a la siguiente` : (d.error || "No se pudo enviar el mensaje"))
-    } catch {
-      setSkipNotice("Error al enviar el mensaje")
-    } finally {
-      setDroppingVm(false)
-    }
-    // Hang up the live call and always advance to the next call (logged as Voicemail).
+
+    // Advance the queue IMMEDIATELY — hang up the live leg and jump to the next
+    // lead. The agent never waits for the recorded message to play or send.
+    setSkipNotice(`📨 Dejando "${tpl.name}" a ${c.firstName} — pasando a la siguiente`)
     endCall("COMPLETED", "VOICEMAIL", true)
+
+    // Send the recorded voicemail / SMS in the BACKGROUND. For an audio drop we
+    // wait ~1.5s so the just-ended call's line frees up and the recorded message
+    // can reach the lead's voicemail (an SMS drop needs no delay).
+    const payload = { phone: c.phone, contactId: c.id, audioUrl: tpl.audioUrl, text: tpl.text }
+    const fire = () => fetch("/api/dialer/voicemail-drop", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(r => r.json()).catch(() => ({}))
+      .then((d: any) => { if (d && d.ok === false && d.error) setSkipNotice(d.error) })
+    if (tpl.audioUrl) setTimeout(fire, 1500)
+    else fire()
   }
 
   // Lead notes + activity history for the current call (so the agent sees the
@@ -700,7 +702,12 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
       }).catch(() => {})
     }
 
-    await fetch("/api/dialer/call", {
+    // Log the call in the BACKGROUND so hang-up + advance is instant — the agent
+    // never waits on the network (or on a voicemail message) to move to the next
+    // lead. Notes/disposition are captured from the closure, so advancing the
+    // queue right after can't corrupt this payload.
+    lastCallIdRef.current = activeCallId
+    fetch("/api/dialer/call", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -710,19 +717,19 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
         notes: buildNotesString(noteFields) || undefined,
         duration: callDuration,
       }),
-    })
+    }).catch(() => {})
 
-    // Remember this call so notes typed AFTER hang-up can still be saved,
-    // and sync the buyer criteria to the contact right away.
-    lastCallIdRef.current = activeCallId
+    // Sync buyer criteria to the contact (reads the current lead's data now).
     saveLeadData(false)
 
-    // refresh active session stats
-    const res = await fetch("/api/dialer/sessions")
-    const updated: DialerSession[] = await res.json()
-    setSessions(updated)
-    const refreshed = updated.find(s => s.id === activeSession?.id) || null
-    setActiveSession(refreshed)
+    // Refresh active session stats in the background — don't block advancing.
+    fetch("/api/dialer/sessions")
+      .then(r => r.json())
+      .then((updated: DialerSession[]) => {
+        setSessions(updated)
+        setActiveSession(updated.find(s => s.id === activeSession?.id) || null)
+      })
+      .catch(() => {})
 
     setCallStatus("ended")
     setActiveCallId(null)
