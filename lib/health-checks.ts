@@ -144,7 +144,7 @@ async function checkEmailVolume(): Promise<CheckResult> {
       ok: !near,
       detail: `${count} enviados · límite ~${LIMIT}/día${near ? " — CERCA/SOBRE EL LÍMITE, emails pueden bloquearse" : ""}`,
       ms: Date.now() - t,
-      critical: true,
+      critical: false, // informational — shown on dashboard/daily report, no repeated alert
     }
   } catch (e: any) {
     return { name: "Volumen de email (hoy)", ok: false, detail: e.message, ms: Date.now() - t, critical: false }
