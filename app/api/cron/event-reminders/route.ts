@@ -16,7 +16,7 @@ const BOGOTA_LINK = "https://www.eventbrite.com/e/1998107399018?aff=oddtdtcreato
 const MEDELLIN_LINK = "https://www.eventbrite.com/e/1998110626672?aff=oddtdtcreator"
 
 const EVENTS = [
-  { tag: "Evento Septiembre 2026 Bogota", city: "Bogotá", dateLabel: "24 y 25 de septiembre", isoDate: "2026-09-24", link: BOGOTA_LINK },
+  { tag: "Evento Septiembre 2026 Bogota", city: "Bogotá", dateLabel: "25 y 26 de septiembre", isoDate: "2026-09-25", link: BOGOTA_LINK },
   { tag: "Evento Medellin Septiembre 2026", city: "Medellín", dateLabel: "23 de septiembre", isoDate: "2026-09-23", link: MEDELLIN_LINK },
 ]
 

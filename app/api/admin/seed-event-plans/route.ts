@@ -15,7 +15,7 @@ const MEDELLIN_LINK = "https://www.eventbrite.com/e/1998110626672?aff=oddtdtcrea
 // These tag strings MUST match each Facebook form's utm_content EXACTLY.
 const EVENTS = [
   // Bogotá tag confirmed from a real imported lead's utm_content: "Evento Septiembre 2026 Bogota".
-  { tag: "Evento Septiembre 2026 Bogota", city: "Bogotá", dateLabel: "24 y 25 de septiembre", link: BOGOTA_LINK },
+  { tag: "Evento Septiembre 2026 Bogota", city: "Bogotá", dateLabel: "25 y 26 de septiembre", link: BOGOTA_LINK },
   { tag: "Evento Medellin Septiembre 2026", city: "Medellín", dateLabel: "23 de septiembre", link: MEDELLIN_LINK },
 ]
 
