@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/prisma"
-import { sendSMS, toE164 } from "@/lib/sms"
 import { sendEmail } from "@/lib/email"
 import type { CheckResult } from "@/lib/health-checks"
 
@@ -68,20 +67,10 @@ export async function persistAndAlert(checks: CheckResult[]): Promise<{ transiti
     return { transitions: [], alerted: false }
   }
 
-  // Build one combined alert (avoid multiple texts).
+  // Alert by EMAIL only (per agent preference — no SMS for system alerts).
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
-  const cfg = await prisma.aIConfig.findFirst({ select: { realtorEmail: true, realtorPhone: true, realtorName: true } }).catch(() => null)
-  const phone = cfg?.realtorPhone || process.env.AGENT_PHONE
+  const cfg = await prisma.aIConfig.findFirst({ select: { realtorEmail: true, realtorName: true } }).catch(() => null)
   const email = cfg?.realtorEmail || process.env.AGENT_EMAIL
-
-  const downLine = toAlertDown.length ? `⚠️ CAÍDO: ${toAlertDown.map(d => d.name).join(", ")}` : ""
-  const upLine = recoveries.length ? `✅ RESTABLECIDO: ${recoveries.map(d => d.name).join(", ")}` : ""
-
-  // SMS — short
-  if (phone) {
-    const sms = [`CASAi — estado de sistemas:`, downLine, upLine, `Detalle: ${appUrl}/health`].filter(Boolean).join("\n")
-    sendSMS(toE164(phone), sms).catch(e => console.error("[health-monitor] SMS failed:", e?.message || e))
-  }
 
   // Email — with detail
   if (email) {
@@ -110,5 +99,5 @@ export async function persistAndAlert(checks: CheckResult[]): Promise<{ transiti
     }).catch(e => console.error("[health-monitor] email failed:", e?.message || e))
   }
 
-  return { transitions: [...toAlertDown, ...recoveries], alerted: !!(phone || email) }
+  return { transitions: [...toAlertDown, ...recoveries], alerted: !!email }
 }
