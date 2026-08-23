@@ -43,6 +43,26 @@ export async function checkAndEnrollSmartPlans(contactId: string, tagId: string)
   }
 }
 
+// Enroll a contact into an active Smart Plan looked up by name (idempotent).
+// Used to put ALL Colombia investor leads (Bogotá, Medellín, future cities) into
+// the one general educational drip regardless of which city campaign they came
+// from — the plan's tag trigger only covers a single tag.
+export async function enrollContactInPlanByName(contactId: string, planName: string): Promise<boolean> {
+  const plan = await prisma.smartPlan.findFirst({
+    where: { isActive: true, name: { contains: planName, mode: "insensitive" } },
+    include: { steps: { where: { order: 0 }, take: 1 } },
+  })
+  if (!plan) return false
+  const already = await prisma.smartPlanEnrollment.findFirst({ where: { contactId, planId: plan.id, status: "ACTIVE" } })
+  if (already) return false
+  const delay = plan.steps[0]?.delay ?? 0
+  await prisma.smartPlanEnrollment.create({
+    data: { contactId, planId: plan.id, status: "ACTIVE", currentStep: 0, nextStepAt: new Date(Date.now() + delay * 86400000) },
+  })
+  console.log(`[INGEST] Enrolled ${contactId} in "${plan.name}" by name`)
+  return true
+}
+
 export async function applyTagAndEnroll(contactId: string, tagName: string): Promise<void> {
   const tag = await prisma.tag.upsert({
     where: { name: tagName },

@@ -15,7 +15,7 @@ import {
   isOptOut,
   parseIntent,
 } from "@/lib/facebook"
-import { ingestLead } from "@/lib/lead-ingest"
+import { ingestLead, enrollContactInPlanByName } from "@/lib/lead-ingest"
 import { generateSocialAIReply, getMatchingProperties, getMatchingPreConstruction, notifyCatherineAboutLead } from "@/lib/social-ai-chat"
 
 function greetingQuickReplies(config: any) {
@@ -206,6 +206,13 @@ export async function POST(req: Request) {
             tags: tags.length > 0 ? tags : undefined,
           })
           console.log(`[FB webhook leadgen] ${isNew ? "created" : "merged into existing"} contact=${contactId} tags=[${tags.join(", ")}]`)
+
+          // ALL Colombia investor leads (Bogotá, Medellín, future cities) get the
+          // one general educational drip — its tag trigger only covers Bogotá, so
+          // enroll by name for any "Inversionista …" campaign.
+          if (tags.some(t => /inversionista/i.test(t))) {
+            await enrollContactInPlanByName(contactId, "Invierte en Florida desde Colombia").catch(() => {})
+          }
         } catch (e) {
           console.error("[FB webhook leadgen]", e)
         }

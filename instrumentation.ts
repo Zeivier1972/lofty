@@ -40,6 +40,13 @@ export async function register() {
       .catch(e => console.error("[cron] daily report error:", e))
   })
 
+  // Daily 9am Colombia (14:00 UTC): date-anchored event countdown reminders
+  // (7 / 3 / 1 / 0 days before each event).
+  schedule("0 14 * * *", () => {
+    fetch(`${base}/api/cron/event-reminders`, { headers })
+      .catch(e => console.error("[cron] event-reminders error:", e))
+  })
+
   // Every hour: fire smart plans, SOI check, score decay, HeyGen video check
   schedule("0 * * * *", () => {
     Promise.allSettled([
