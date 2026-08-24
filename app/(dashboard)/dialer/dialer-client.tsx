@@ -677,8 +677,12 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
     if (connectTimeoutRef.current) { clearTimeout(connectTimeoutRef.current); connectTimeoutRef.current = null }
     stopTimer()
 
-    // Hang up the browser softphone leg (frees both sides of the call)
+    // Hang up the browser softphone leg (frees both sides of the call). Also
+    // force-disconnect ANY call still on the Device — if the tracked ref got out
+    // of sync, the lead's voicemail can otherwise keep playing and block the
+    // agent. disconnectAll() guarantees the line is truly cut right now.
     try { activeBrowserCallRef.current?.disconnect() } catch { /* noop */ }
+    try { deviceRef.current?.disconnectAll?.() } catch { /* noop */ }
     activeBrowserCallRef.current = null
 
     if (!activeCallId) {
@@ -760,6 +764,7 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
     // advancing (nextCall itself advances — this prevents a double-skip).
     callFinishedRef.current = true
     try { activeBrowserCallRef.current?.disconnect() } catch { /* noop */ }
+    try { deviceRef.current?.disconnectAll?.() } catch { /* noop */ } // force-cut any lingering voicemail leg
     activeBrowserCallRef.current = null
     if (connectTimeoutRef.current) { clearTimeout(connectTimeoutRef.current); connectTimeoutRef.current = null }
     stopTimer()
