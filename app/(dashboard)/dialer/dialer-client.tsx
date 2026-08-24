@@ -1173,7 +1173,7 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
                       </button>
                       {emailedNote && <span className="text-sm text-emerald-600 font-medium">{emailedNote}</span>}
                     </div>
-                  ) : callStatus === "idle" || callStatus === "ended" ? (
+                  ) : callStatus === "idle" ? (
                     <button
                       onClick={() => dialContact(currentContact)}
                       className="flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-xl hover:bg-green-700 font-semibold text-lg shadow-sm transition-colors"
@@ -1192,7 +1192,7 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
                     >
                       <PhoneOff className="w-5 h-5" /> Cancel
                     </button>
-                  ) : (
+                  ) : callStatus === "connected" ? (
                     <button
                       onClick={() => endCall("COMPLETED", undefined, true)}
                       className="flex items-center gap-2 px-6 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 font-semibold text-lg shadow-sm"
@@ -1200,6 +1200,26 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
                     >
                       <PhoneOff className="w-5 h-5" /> Colgar y siguiente
                     </button>
+                  ) : (
+                    // "ended" — the call dropped (e.g. voicemail beep fired a
+                    // disconnect) but you may still be leaving a message. Keep a
+                    // PROMINENT one-click "next" so you're never stuck waiting, and
+                    // offer re-dial as a secondary action.
+                    <>
+                      <button
+                        onClick={nextCall}
+                        className="flex items-center gap-2 px-6 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 font-semibold text-lg shadow-sm"
+                        title="Cuelga y pasa a la siguiente llamada"
+                      >
+                        <PhoneOff className="w-5 h-5" /> Colgar y siguiente
+                      </button>
+                      <button
+                        onClick={() => dialContact(currentContact)}
+                        className="flex items-center gap-2 px-4 py-3 border-2 border-gray-200 text-gray-600 rounded-xl hover:border-green-400 hover:text-green-700 font-medium"
+                      >
+                        <Phone className="w-4 h-4" /> Volver a llamar
+                      </button>
+                    </>
                   )}
 
                   {(callStatus === "connected" || callStatus === "calling" || callStatus === "ended") && vmTemplates.length > 0 && (
