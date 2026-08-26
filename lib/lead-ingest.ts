@@ -4,6 +4,7 @@ import { triggerOutboundCall } from "@/lib/vapi"
 import { sendEmail } from "@/lib/email"
 import { sendSMS, sendWhatsApp, sendWhatsAppTemplate, toE164 } from "@/lib/sms"
 import { sendCapiEvent } from "@/lib/facebook"
+import { findEventByTag } from "@/lib/events"
 
 export interface LeadData {
   firstName: string
@@ -248,8 +249,24 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
     const toPhone = phone.startsWith("+") ? phone : `+1${phoneDigits}`
     const isInvestor = tags?.some(t => t.toLowerCase().includes("inversionista") || t.toLowerCase().includes("investor"))
     const waNumber = process.env.TWILIO_WHATSAPP_NUMBER
+    const eventInfo = (tags || []).map(t => findEventByTag(t)).find(Boolean)
 
-    if (isInvestor && waNumber) {
+    if (eventInfo) {
+      // Event lead → an IMMEDIATE SMS that NAMES the event, so they instantly
+      // recognize what they signed up for (fixes "I don't know how you got my
+      // number"). Non-event leads fall through to the investor/regular welcome
+      // below, which stays geared to the campaign they came from.
+      const smsBody = `Hola ${firstName}, soy Sofia de Catherine Gomez Realtor. Gracias por registrarte en nuestro Evento de Inversion en Miami en ${eventInfo.city} (${eventInfo.dateLabel}). Catherine te contactara pronto. Asegura tu lugar: ${eventInfo.link}`
+      sendSMS(toPhone, smsBody, undefined, { automated: true, contactId: contact.id })
+        .then(() => {
+          console.log(`[INGEST] Event welcome SMS sent to ${toPhone}`)
+          prisma.activity.create({ data: { type: "SMS", title: "Sofía sent event welcome SMS", description: smsBody.slice(0, 200), contactId: contact.id } }).catch(() => {})
+        })
+        .catch(e => console.error("[INGEST] Event welcome SMS failed:", e))
+      prisma.sMSMessage.create({
+        data: { toNumber: toPhone, fromNumber: process.env.TWILIO_PHONE_NUMBER || "", body: smsBody, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
+      }).catch(() => {})
+    } else if (isInvestor && waNumber) {
       // Investor leads → WhatsApp via template only.
       // Free-form WhatsApp (sendWhatsApp) requires an open 24h session from a prior inbound message.
       // New leads have no session, so free-form always fails with error 63016.

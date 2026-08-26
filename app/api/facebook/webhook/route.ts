@@ -187,7 +187,24 @@ export async function POST(req: Request) {
             utmContent  ? `Content: ${utmContent}`   : "",
           ].filter(Boolean).join(" | ")
 
-          const allNotes = [notes, utmNote].filter(Boolean).join(" | ") || undefined
+          // Capture ANY custom form question (anything that isn't a standard
+          // contact/UTM field) so the answers to questions you add — e.g.
+          // "¿Cuándo planeas invertir?" — are saved on the contact.
+          const RESERVED = new Set([
+            "full_name", "name", "first_name", "last_name", "email", "email_address",
+            "phone_number", "phone", "budget", "budget_range", "max_budget", "price_range",
+            "city", "zip_code", "location", "area_of_interest", "interested_area",
+            "neighborhood", "area", "zone", "bedrooms", "num_bedrooms", "bedroom_count",
+            "cuartos", "property_type", "home_type", "type_of_property", "tipo", "timeline",
+            "when_to_buy", "pre_approved", "message", "comments", "notes", "tag", "source_tag",
+            "hidden_tag", "custom_tag", "utm_campaign", "utm_source", "utm_medium", "utm_content",
+          ])
+          const customAnswers = Object.entries(fields)
+            .filter(([k, v]) => !RESERVED.has(k.toLowerCase()) && v && String(v).trim())
+            .map(([k, v]) => `${k.replace(/_/g, " ")}: ${String(v).trim()}`)
+            .join(" | ")
+
+          const allNotes = [notes, customAnswers, utmNote].filter(Boolean).join(" | ") || undefined
 
           const { contactId, isNew } = await ingestLead({
             firstName,
