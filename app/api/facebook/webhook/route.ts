@@ -322,6 +322,15 @@ export async function POST(req: Request) {
           await prisma.facebookBotConversation.create({
             data: { psid: commenterId, pageId, state: "ASKED_NAME", sourceCommentId: commentId, campaignKeyword: fbCampaignKeyword },
           })
+          // Ring the bell — someone started the Facebook bot from a comment.
+          await prisma.aINotification.create({
+            data: {
+              type: "BOT_STARTED",
+              title: `Nuevo interesado en Facebook (comentario)`,
+              body: `Comentó "${(keyword || "").slice(0, 40)}" y le escribimos por Messenger. Esperando su nombre — si no responde, búscalo en Facebook y ayúdale a completar el registro.`,
+              priority: "MEDIUM",
+            },
+          }).catch(() => {})
           const privateOk = await privateReplyToComment(commentId, greeting)
           console.log(`[FB bot] privateReplyToComment result: ${privateOk}`)
 
@@ -624,6 +633,15 @@ export async function POST(req: Request) {
               campaignKeyword: matchedCampaign?.keyword || null,
             },
           })
+          // Ring the bell — someone started the Facebook bot by DM.
+          await prisma.aINotification.create({
+            data: {
+              type: "BOT_STARTED",
+              title: `Nuevo interesado en Facebook por mensaje`,
+              body: `Escribió "${(matchedCampaign?.keyword || text || "").slice(0, 40)}" y empezó el registro. Esperando su nombre — si se detiene, búscalo en Facebook y ayúdale a completar.`,
+              priority: "MEDIUM",
+            },
+          }).catch(() => {})
           await sendFacebookMessage(psid, greeting)
         } else {
         // ── Non-bot Messenger DM handling ───────────────────────────────────

@@ -119,6 +119,17 @@ export async function POST(req: Request) {
           data: { igUserId, igUsername, state: "ASKED_NAME", sourceCommentId: commentId, campaignKeyword },
         })
 
+        // Ring the bell so Catherine can see someone just started the bot (and
+        // can DM them personally if they stall before finishing the form).
+        await prisma.aINotification.create({
+          data: {
+            type: "BOT_STARTED",
+            title: `Nuevo interesado en Instagram${igUsername ? `: @${igUsername}` : ""}`,
+            body: `Comentó "${(campaignKeyword || commentText || "").slice(0, 40)}" y le escribimos por DM. Esperando su nombre — si no responde, búscalo en Instagram y ayúdale a completar el registro.`,
+            priority: "MEDIUM",
+          },
+        }).catch(() => {})
+
         replyToComment(commentId, "¡Hola! Te acabo de enviar un mensaje privado 📩").catch(() => {})
         await sendInstagramDM(igUserId, greeting)
       }
@@ -140,6 +151,15 @@ export async function POST(req: Request) {
           convo = await prisma.instagramConversation.create({
             data: { igUserId, state: "ASKED_NAME", campaignKeyword },
           })
+          // Ring the bell — someone started the bot by DM but hasn't finished.
+          await prisma.aINotification.create({
+            data: {
+              type: "BOT_STARTED",
+              title: `Nuevo interesado en Instagram por DM`,
+              body: `Escribió "${(campaignKeyword || text || "").slice(0, 40)}" y empezó el registro. Esperando su nombre — si se detiene, búscalo en Instagram y ayúdale a completar.`,
+              priority: "MEDIUM",
+            },
+          }).catch(() => {})
           await sendInstagramDM(igUserId, greeting)
           continue
         }

@@ -30,6 +30,8 @@ const TYPE_ICONS: Record<string, any> = {
   PROPERTY_VIEWED_3X: Eye,
   SEARCH_BEHAVIOR: Activity,
   NEW_LEAD: Users,
+  RETURNING_LEAD: TrendingUp,
+  BOT_STARTED: MessageSquare,
   FOLLOW_UP: Clock,
   PRE_QUALIFY: Target,
   APPOINTMENT_REQUEST: Calendar,
