@@ -1,4 +1,5 @@
 import crypto from "crypto"
+import { findEventByTag } from "@/lib/events"
 
 // Live lead → Google Sheets sync using a Google service account.
 // No SDK/dependency: we sign a JWT with the service account's private key,
@@ -76,48 +77,50 @@ async function getAccessToken(): Promise<string | null> {
 }
 
 export interface SheetLeadRow {
-  type: string          // "Nuevo" | "Volvió"
   firstName: string
   lastName?: string
   email?: string
   phone?: string
-  source: string
-  campaign?: string
-  tags?: string[]
-  location?: string
-  contactId: string
+  tags?: string[]       // used to detect which event (Bogotá/Medellín) → which tab
+  eventDay?: string     // the "¿Qué día quieres atender?" answer, if captured
 }
 
-// Append one lead as a new row. Fire-and-forget: never throws, never blocks
-// lead ingestion. No-ops (returns false) when the integration isn't configured.
-export async function appendLeadToSheet(lead: SheetLeadRow): Promise<boolean> {
+// Append ONE event lead to the matching city tab of the event sheet.
+// Fire-and-forget: never throws, never blocks lead ingestion.
+//   - No-ops when the integration isn't configured (GOOGLE_SHEETS_LEADS_ID unset).
+//   - No-ops when the lead has no Bogotá/Medellín event tag — this sheet is for
+//     EVENT leads only, not every lead in the CRM.
+export async function appendEventLeadToSheet(lead: SheetLeadRow): Promise<boolean> {
   const sheetId = process.env.GOOGLE_SHEETS_LEADS_ID
   if (!sheetId) return false
+
+  // Event leads only — resolve the event (and its tab) from the lead's tags.
+  const ev = (lead.tags || []).map(t => findEventByTag(t)).find(Boolean)
+  if (!ev) return false
 
   const token = await getAccessToken()
   if (!token) return false
 
-  const tab = process.env.GOOGLE_SHEETS_LEADS_TAB || "Leads"
-  const base = process.env.NEXT_PUBLIC_APP_URL || "https://www.catherinegomezrealtor.com"
-  const fecha = new Date().toLocaleString("es-CO", { timeZone: "America/Bogota" })
+  // Timestamp like "2026-08-19 15:47:48" in Colombia time (sv-SE ≈ ISO).
+  const timestamp = new Date().toLocaleString("sv-SE", { timeZone: "America/Bogota" })
+  const name = `${lead.firstName || ""} ${lead.lastName || ""}`.trim()
+  const phoneDigits = (lead.phone || "").replace(/\D/g, "")
 
-  // Column order (put a matching header row in the sheet once):
-  // Fecha | Tipo | Nombre | Apellido | Email | Teléfono | Fuente | Campaña | Etiquetas | Ubicación | CRM
+  // Column order matches the existing sheet exactly:
+  // A Name | B Email | C Phone Number | D Registered At | E Attendance | F timestamp | G | H | I Contestaron
   const row = [
-    fecha,
-    lead.type,
-    lead.firstName || "",
-    lead.lastName || "",
+    name,
     lead.email || "",
-    lead.phone || "",
-    lead.source || "",
-    lead.campaign || "",
-    (lead.tags || []).join(", "),
-    lead.location || "",
-    `${base}/contacts/${lead.contactId}`,
+    phoneDigits,
+    lead.eventDay || "",
+    "",
+    timestamp,
+    "",
+    "",
+    "No contesto",
   ]
 
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(sheetId)}/values/${encodeURIComponent(tab)}!A1:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(sheetId)}/values/${encodeURIComponent(ev.sheetTab)}!A1:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`
 
   try {
     const res = await fetch(url, {

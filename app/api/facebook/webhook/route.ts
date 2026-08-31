@@ -206,6 +206,11 @@ export async function POST(req: Request) {
 
           const allNotes = [notes, customAnswers, utmNote].filter(Boolean).join(" | ") || undefined
 
+          // The event day the lead picked ("¿Qué día quieres atender?") — feeds
+          // the event sheet's "Registered At" column.
+          const dayEntry = Object.entries(fields).find(([k]) => /d[ií]a|atender|asistir|fecha|\bday\b/i.test(k))
+          const eventDay = dayEntry && dayEntry[1] ? String(dayEntry[1]).trim() : undefined
+
           const { contactId, isNew } = await ingestLead({
             firstName,
             lastName,
@@ -221,6 +226,7 @@ export async function POST(req: Request) {
             facebookLeadId: leadgen_id,
             smsConsent: !!phone,
             tags: tags.length > 0 ? tags : undefined,
+            eventDay,
           })
           console.log(`[FB webhook leadgen] ${isNew ? "created" : "merged into existing"} contact=${contactId} tags=[${tags.join(", ")}]`)
 

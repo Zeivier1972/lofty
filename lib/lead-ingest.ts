@@ -5,7 +5,7 @@ import { sendEmail } from "@/lib/email"
 import { sendSMS, sendWhatsApp, sendWhatsAppTemplate, toE164 } from "@/lib/sms"
 import { sendCapiEvent } from "@/lib/facebook"
 import { findEventByTag } from "@/lib/events"
-import { appendLeadToSheet } from "@/lib/google-sheets"
+import { appendEventLeadToSheet } from "@/lib/google-sheets"
 
 export interface LeadData {
   firstName: string
@@ -23,6 +23,7 @@ export interface LeadData {
   smsConsent?: boolean
   facebookLeadId?: string
   tags?: string[]        // tag names to apply on creation (triggers smart plan enrollment)
+  eventDay?: string      // event form answer "¿Qué día quieres atender?" — synced to the event sheet
 }
 
 export async function checkAndEnrollSmartPlans(contactId: string, tagId: string): Promise<void> {
@@ -80,7 +81,7 @@ export async function applyTagAndEnroll(contactId: string, tagName: string): Pro
 }
 
 export async function ingestLead(data: LeadData): Promise<{ contactId: string; isNew: boolean }> {
-  const { firstName, lastName, email, phone, source, campaign, budget, location, bedroomsMin, propertyType, message, notes, smsConsent, facebookLeadId, tags } = data
+  const { firstName, lastName, email, phone, source, campaign, budget, location, bedroomsMin, propertyType, message, notes, smsConsent, facebookLeadId, tags, eventDay } = data
 
   const phoneDigits = phone ? phone.replace(/\D/g, "").slice(-10) : null
 
@@ -167,10 +168,9 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
       }
     }
 
-    // Log the re-registration to the Google Sheet (fire-and-forget).
-    appendLeadToSheet({
-      type: "Volvió", firstName, lastName: lastName || existing.lastName || "", email, phone,
-      source, campaign, tags, location, contactId: existing.id,
+    // Sync to the event sheet (only fires for Bogotá/Medellín event leads).
+    appendEventLeadToSheet({
+      firstName, lastName: lastName || existing.lastName || "", email, phone, tags, eventDay,
     }).catch(() => {})
 
     return { contactId: existing.id, isNew: false }
@@ -302,11 +302,8 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
     }
   }
 
-  // Log the new lead to the Google Sheet (fire-and-forget).
-  appendLeadToSheet({
-    type: "Nuevo", firstName, lastName, email, phone,
-    source, campaign, tags, location, contactId: contact.id,
-  }).catch(() => {})
+  // Sync to the event sheet (only fires for Bogotá/Medellín event leads).
+  appendEventLeadToSheet({ firstName, lastName, email, phone, tags, eventDay }).catch(() => {})
 
   // Direct outreach — works without Anthropic API key
   const cfg = await prisma.aIConfig.findFirst()
