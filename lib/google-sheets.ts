@@ -85,6 +85,44 @@ export interface SheetLeadRow {
   eventDay?: string     // the "¿Qué día quieres atender?" answer, if captured
 }
 
+// Build one sheet row in the exact column order of the existing event sheet:
+// A Name | B Email | C Phone Number | D Registered At | E Attendance | F timestamp | G | H | I Contestaron
+export function buildEventLeadRow(lead: Pick<SheetLeadRow, "firstName" | "lastName" | "email" | "phone" | "eventDay">): string[] {
+  const timestamp = new Date().toLocaleString("sv-SE", { timeZone: "America/Bogota" })
+  const name = `${lead.firstName || ""} ${lead.lastName || ""}`.trim()
+  const phoneDigits = (lead.phone || "").replace(/\D/g, "")
+  return [name, lead.email || "", phoneDigits, lead.eventDay || "", "", timestamp, "", "", "No contesto"]
+}
+
+// Read one column of a tab (e.g. "B" for emails) — used to dedupe on backfill.
+export async function getTabColumn(tab: string, col: string): Promise<string[]> {
+  const sheetId = process.env.GOOGLE_SHEETS_LEADS_ID
+  if (!sheetId) return []
+  const token = await getAccessToken()
+  if (!token) return []
+  const range = `${tab}!${col}:${col}`
+  try {
+    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(sheetId)}/values/${encodeURIComponent(range)}`, { headers: { Authorization: `Bearer ${token}` } })
+    if (!res.ok) return []
+    const data = await res.json()
+    return (data.values || []).map((r: string[]) => (r[0] || "").toString().trim())
+  } catch { return [] }
+}
+
+// Append many pre-built rows to a specific tab in a single call (for backfill).
+export async function appendRowsToTab(tab: string, rows: string[][]): Promise<boolean> {
+  const sheetId = process.env.GOOGLE_SHEETS_LEADS_ID
+  if (!sheetId || rows.length === 0) return false
+  const token = await getAccessToken()
+  if (!token) return false
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(sheetId)}/values/${encodeURIComponent(tab)}!A1:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`
+  try {
+    const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ values: rows }) })
+    if (!res.ok) { console.error("[SHEETS] batch append failed:", res.status, await res.text().catch(() => "")) ; return false }
+    return true
+  } catch (e) { console.error("[SHEETS] batch append error:", e); return false }
+}
+
 // Append ONE event lead to the matching city tab of the event sheet.
 // Fire-and-forget: never throws, never blocks lead ingestion.
 //   - No-ops when the integration isn't configured (GOOGLE_SHEETS_LEADS_ID unset).
@@ -101,24 +139,7 @@ export async function appendEventLeadToSheet(lead: SheetLeadRow): Promise<boolea
   const token = await getAccessToken()
   if (!token) return false
 
-  // Timestamp like "2026-08-19 15:47:48" in Colombia time (sv-SE ≈ ISO).
-  const timestamp = new Date().toLocaleString("sv-SE", { timeZone: "America/Bogota" })
-  const name = `${lead.firstName || ""} ${lead.lastName || ""}`.trim()
-  const phoneDigits = (lead.phone || "").replace(/\D/g, "")
-
-  // Column order matches the existing sheet exactly:
-  // A Name | B Email | C Phone Number | D Registered At | E Attendance | F timestamp | G | H | I Contestaron
-  const row = [
-    name,
-    lead.email || "",
-    phoneDigits,
-    lead.eventDay || "",
-    "",
-    timestamp,
-    "",
-    "",
-    "No contesto",
-  ]
+  const row = buildEventLeadRow(lead)
 
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(sheetId)}/values/${encodeURIComponent(ev.sheetTab)}!A1:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`
 
