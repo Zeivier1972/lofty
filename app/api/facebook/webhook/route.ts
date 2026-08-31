@@ -206,6 +206,11 @@ export async function POST(req: Request) {
 
           const allNotes = [notes, customAnswers, utmNote].filter(Boolean).join(" | ") || undefined
 
+          // The event day the lead picked ("¿Qué día quieres atender?") — feeds
+          // the event sheet's "Registered At" column.
+          const dayEntry = Object.entries(fields).find(([k]) => /d[ií]a|atender|asistir|fecha|\bday\b/i.test(k))
+          const eventDay = dayEntry && dayEntry[1] ? String(dayEntry[1]).trim() : undefined
+
           const { contactId, isNew } = await ingestLead({
             firstName,
             lastName,
@@ -221,6 +226,7 @@ export async function POST(req: Request) {
             facebookLeadId: leadgen_id,
             smsConsent: !!phone,
             tags: tags.length > 0 ? tags : undefined,
+            eventDay,
           })
           console.log(`[FB webhook leadgen] ${isNew ? "created" : "merged into existing"} contact=${contactId} tags=[${tags.join(", ")}]`)
 
@@ -322,6 +328,15 @@ export async function POST(req: Request) {
           await prisma.facebookBotConversation.create({
             data: { psid: commenterId, pageId, state: "ASKED_NAME", sourceCommentId: commentId, campaignKeyword: fbCampaignKeyword },
           })
+          // Ring the bell — someone started the Facebook bot from a comment.
+          await prisma.aINotification.create({
+            data: {
+              type: "BOT_STARTED",
+              title: `Nuevo interesado en Facebook (comentario)`,
+              body: `Comentó "${(keyword || "").slice(0, 40)}" y le escribimos por Messenger. Esperando su nombre — si no responde, búscalo en Facebook y ayúdale a completar el registro.`,
+              priority: "MEDIUM",
+            },
+          }).catch(() => {})
           const privateOk = await privateReplyToComment(commentId, greeting)
           console.log(`[FB bot] privateReplyToComment result: ${privateOk}`)
 
@@ -624,6 +639,15 @@ export async function POST(req: Request) {
               campaignKeyword: matchedCampaign?.keyword || null,
             },
           })
+          // Ring the bell — someone started the Facebook bot by DM.
+          await prisma.aINotification.create({
+            data: {
+              type: "BOT_STARTED",
+              title: `Nuevo interesado en Facebook por mensaje`,
+              body: `Escribió "${(matchedCampaign?.keyword || text || "").slice(0, 40)}" y empezó el registro. Esperando su nombre — si se detiene, búscalo en Facebook y ayúdale a completar.`,
+              priority: "MEDIUM",
+            },
+          }).catch(() => {})
           await sendFacebookMessage(psid, greeting)
         } else {
         // ── Non-bot Messenger DM handling ───────────────────────────────────

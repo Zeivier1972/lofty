@@ -5,6 +5,7 @@ import { sendEmail } from "@/lib/email"
 import { sendSMS, sendWhatsApp, sendWhatsAppTemplate, toE164 } from "@/lib/sms"
 import { sendCapiEvent } from "@/lib/facebook"
 import { findEventByTag } from "@/lib/events"
+import { appendEventLeadToSheet } from "@/lib/google-sheets"
 
 export interface LeadData {
   firstName: string
@@ -22,6 +23,7 @@ export interface LeadData {
   smsConsent?: boolean
   facebookLeadId?: string
   tags?: string[]        // tag names to apply on creation (triggers smart plan enrollment)
+  eventDay?: string      // event form answer "¿Qué día quieres atender?" — synced to the event sheet
 }
 
 export async function checkAndEnrollSmartPlans(contactId: string, tagId: string): Promise<void> {
@@ -79,7 +81,7 @@ export async function applyTagAndEnroll(contactId: string, tagName: string): Pro
 }
 
 export async function ingestLead(data: LeadData): Promise<{ contactId: string; isNew: boolean }> {
-  const { firstName, lastName, email, phone, source, campaign, budget, location, bedroomsMin, propertyType, message, notes, smsConsent, facebookLeadId, tags } = data
+  const { firstName, lastName, email, phone, source, campaign, budget, location, bedroomsMin, propertyType, message, notes, smsConsent, facebookLeadId, tags, eventDay } = data
 
   const phoneDigits = phone ? phone.replace(/\D/g, "").slice(-10) : null
 
@@ -106,6 +108,71 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
     if (message) {
       await prisma.note.create({ data: { content: `[${source}] ${message}`, contactId: existing.id } })
     }
+
+    // A lead already in the system just submitted a form / finished the IG bot.
+    // That is a real re-engagement Catherine must not miss — an existing client
+    // registering for an event is exactly this case. Previously we returned here
+    // silently (no bell, no tags). Now we ring the bell, email the alert (email
+    // only, to respect the SMS-off cost choice), apply the campaign/event tags,
+    // and log it on the timeline.
+    const returningName = `${firstName} ${lastName || existing.lastName || ""}`.trim()
+
+    await prisma.aINotification.create({
+      data: {
+        type: "RETURNING_LEAD",
+        title: `Lead existente volvió: ${returningName} — ${source}`,
+        body: [
+          "Ya estaba en el sistema y acaba de completar un formulario.",
+          campaign ? `Campaña: ${campaign}` : "",
+          tags?.length ? `Etiquetas: ${tags.join(", ")}` : "",
+          phone ? `Tel: ${phone}` : "",
+          email ? `Email: ${email}` : "",
+        ].filter(Boolean).join(" · "),
+        priority: "HIGH",
+        contactId: existing.id,
+      },
+    }).catch(() => {})
+
+    // Email alert to Catherine (email only — no SMS cost on returning leads).
+    prisma.aIConfig.findFirst({ select: { realtorEmail: true, realtorName: true } }).then(cfg => {
+      if (!cfg?.realtorEmail) return
+      const lines = [
+        `Nombre: ${returningName}`,
+        phone ? `Tel: ${phone}` : "",
+        email ? `Email: ${email}` : "",
+        campaign ? `Campaña: ${campaign}` : "",
+        tags?.length ? `Etiquetas: ${tags.join(", ")}` : "",
+      ].filter(Boolean)
+      sendEmail({
+        to: cfg.realtorEmail,
+        subject: `🔁 Lead existente volvió a registrarse: ${returningName} — ${source}`,
+        html: `<p>Hola ${cfg.realtorName || "Catherine"},</p><p><strong>${returningName}</strong> ya estaba en tu sistema y acaba de <strong>completar un formulario</strong> desde <strong>${source}</strong>${campaign ? ` (campaña: ${campaign})` : ""}. Buen momento para un seguimiento personal.</p><ul>${lines.map(l => `<li>${l}</li>`).join("")}</ul><p><a href="${process.env.NEXT_PUBLIC_APP_URL}/contacts/${existing.id}">Ver en el CRM →</a></p>`,
+        text: `Lead existente volvió (${source}):\n${lines.join("\n")}\n\nVer en CRM: ${process.env.NEXT_PUBLIC_APP_URL}/contacts/${existing.id}`,
+      }).catch(() => {})
+    }).catch(() => {})
+
+    await prisma.activity.create({
+      data: {
+        type: "LEAD_REENGAGED",
+        title: `Volvió a registrarse — ${source}`,
+        description: [campaign ? `Campaña: ${campaign}` : "", tags?.length ? `Etiquetas: ${tags.join(", ")}` : ""].filter(Boolean).join(" · ") || `Completó un formulario desde ${source}`,
+        contactId: existing.id,
+      },
+    }).catch(() => {})
+
+    // Existing contacts still need the campaign/event tags applied so they enter
+    // the right smart plans, get event reminders, and show on the guest list.
+    if (tags?.length) {
+      for (const tagName of tags) {
+        applyTagAndEnroll(existing.id, tagName).catch(e => console.error("[INGEST] Returning-lead tag apply error:", e))
+      }
+    }
+
+    // Sync to the event sheet (only fires for Bogotá/Medellín event leads).
+    appendEventLeadToSheet({
+      firstName, lastName: lastName || existing.lastName || "", email, phone, tags, eventDay,
+    }).catch(() => {})
+
     return { contactId: existing.id, isNew: false }
   }
 
@@ -234,6 +301,9 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
       applyTagAndEnroll(contact.id, tagName).catch(e => console.error("[INGEST] Tag apply error:", e))
     }
   }
+
+  // Sync to the event sheet (only fires for Bogotá/Medellín event leads).
+  appendEventLeadToSheet({ firstName, lastName, email, phone, tags, eventDay }).catch(() => {})
 
   // Direct outreach — works without Anthropic API key
   const cfg = await prisma.aIConfig.findFirst()
