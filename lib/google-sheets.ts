@@ -24,16 +24,10 @@ function base64url(input: Buffer | string): string {
 // Cache the access token in-process; Google tokens last ~1h.
 let cachedToken: { token: string; expiresAt: number } | null = null
 
-async function getAccessToken(): Promise<string | null> {
-  const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL
-  const rawKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY
-  if (!email || !rawKey) return null
-
-  if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) return cachedToken.token
-
-  // Env-var fields mangle PEM line breaks in every possible way, so normalize
-  // defensively: strip accidental wrapping quotes, accept a base64-encoded PEM
-  // (single line — impossible to mangle), then restore literal \n to newlines.
+// Env-var fields mangle PEM line breaks in every possible way, so normalize
+// defensively: strip accidental wrapping quotes, accept a base64-encoded PEM
+// (single line — impossible to mangle), then restore literal \n to newlines.
+function normalizePrivateKey(rawKey: string): string {
   let privateKey = rawKey.trim()
   if ((privateKey.startsWith('"') && privateKey.endsWith('"')) || (privateKey.startsWith("'") && privateKey.endsWith("'"))) {
     privateKey = privateKey.slice(1, -1).trim()
@@ -44,7 +38,17 @@ async function getAccessToken(): Promise<string | null> {
       if (decoded.includes("BEGIN PRIVATE KEY")) privateKey = decoded
     } catch { /* not base64 — fall through */ }
   }
-  privateKey = privateKey.replace(/\\n/g, "\n")
+  return privateKey.replace(/\\n/g, "\n")
+}
+
+async function getAccessToken(): Promise<string | null> {
+  const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL
+  const rawKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY
+  if (!email || !rawKey) return null
+
+  if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) return cachedToken.token
+
+  const privateKey = normalizePrivateKey(rawKey)
 
   const now = Math.floor(Date.now() / 1000)
   const header = base64url(JSON.stringify({ alg: "RS256", typ: "JWT" }))
