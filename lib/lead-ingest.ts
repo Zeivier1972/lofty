@@ -5,6 +5,7 @@ import { sendEmail } from "@/lib/email"
 import { sendSMS, sendWhatsApp, sendWhatsAppTemplate, toE164 } from "@/lib/sms"
 import { sendCapiEvent } from "@/lib/facebook"
 import { findEventByTag } from "@/lib/events"
+import { appendLeadToSheet } from "@/lib/google-sheets"
 
 export interface LeadData {
   firstName: string
@@ -166,6 +167,12 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
       }
     }
 
+    // Log the re-registration to the Google Sheet (fire-and-forget).
+    appendLeadToSheet({
+      type: "Volvió", firstName, lastName: lastName || existing.lastName || "", email, phone,
+      source, campaign, tags, location, contactId: existing.id,
+    }).catch(() => {})
+
     return { contactId: existing.id, isNew: false }
   }
 
@@ -294,6 +301,12 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
       applyTagAndEnroll(contact.id, tagName).catch(e => console.error("[INGEST] Tag apply error:", e))
     }
   }
+
+  // Log the new lead to the Google Sheet (fire-and-forget).
+  appendLeadToSheet({
+    type: "Nuevo", firstName, lastName, email, phone,
+    source, campaign, tags, location, contactId: contact.id,
+  }).catch(() => {})
 
   // Direct outreach — works without Anthropic API key
   const cfg = await prisma.aIConfig.findFirst()
