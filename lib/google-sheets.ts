@@ -31,8 +31,20 @@ async function getAccessToken(): Promise<string | null> {
 
   if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) return cachedToken.token
 
-  // Env vars usually store the PEM with escaped "\n" — turn those back into real newlines.
-  const privateKey = rawKey.replace(/\\n/g, "\n")
+  // Env-var fields mangle PEM line breaks in every possible way, so normalize
+  // defensively: strip accidental wrapping quotes, accept a base64-encoded PEM
+  // (single line — impossible to mangle), then restore literal \n to newlines.
+  let privateKey = rawKey.trim()
+  if ((privateKey.startsWith('"') && privateKey.endsWith('"')) || (privateKey.startsWith("'") && privateKey.endsWith("'"))) {
+    privateKey = privateKey.slice(1, -1).trim()
+  }
+  if (!privateKey.includes("BEGIN PRIVATE KEY")) {
+    try {
+      const decoded = Buffer.from(privateKey.replace(/\s/g, ""), "base64").toString("utf8")
+      if (decoded.includes("BEGIN PRIVATE KEY")) privateKey = decoded
+    } catch { /* not base64 — fall through */ }
+  }
+  privateKey = privateKey.replace(/\\n/g, "\n")
 
   const now = Math.floor(Date.now() / 1000)
   const header = base64url(JSON.stringify({ alg: "RS256", typ: "JWT" }))
