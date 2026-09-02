@@ -6,6 +6,7 @@ import {
   ChevronDown, X, Sparkles, Calculator, MapPin, Building2, AlertTriangle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { AdvisorMessageContent } from "@/components/advisor-message-content"
 
 interface Contact {
   id: string
@@ -318,7 +319,7 @@ export default function AdvisorClient({ contacts, allTags = [] }: Props) {
                     <span className="text-xs">Analyzing…</span>
                   </div>
                 ) : (
-                  <div className="whitespace-pre-wrap">{msg.content}</div>
+                  <AdvisorMessageContent content={msg.content} />
                 )}
               </div>
             </div>

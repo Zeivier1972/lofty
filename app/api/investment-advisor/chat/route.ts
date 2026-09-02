@@ -62,6 +62,7 @@ REGLAS:
 - Siempre menciona riesgos relevantes (developer risk, mercado, tipo de cambio)
 - Prioriza proyectos del portafolio de Catherine cuando sean relevantes
 - Cuando busques en la web, cita la fuente y la fecha de los datos
+- IMÁGENES: cuando recomiendes un proyecto de la cartera de Catherine que tenga una "Foto:" en su ficha, incluye la imagen en tu respuesta con markdown exactamente así: ![Nombre del proyecto](URL_DE_LA_FOTO). Así Catherine puede mostrarle la foto al lead. Si un resultado de la web trae una URL de imagen clara (.jpg/.png/.webp), puedes incluirla igual. No inventes URLs de imágenes.
 
 BÚSQUEDA EXHAUSTIVA DE PROYECTOS (MUY IMPORTANTE):
 - Cuando te pregunten por proyectos disponibles, opciones de inversión, o "qué hay" en una zona/rango de precio, NO respondas solo de memoria: USA la herramienta de búsqueda web.
@@ -246,6 +247,7 @@ export async function POST(req: Request) {
             p.status ? `Estado: ${p.status}` : "",
             p.investmentHighlights ? `Puntos clave: ${p.investmentHighlights}` : "",
             p.description ? `Descripción: ${p.description}` : "",
+            (Array.isArray(p.photos) && p.photos[0]) ? `Foto: ${p.photos[0]}` : "",
           ].filter(Boolean).join(" · ")
           contextLines.push(`\n• ${header}\n  ${details}`)
         })
