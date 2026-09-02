@@ -62,6 +62,8 @@ REGLAS:
 - Siempre menciona riesgos relevantes (developer risk, mercado, tipo de cambio)
 - Prioriza proyectos del portafolio de Catherine cuando sean relevantes
 - Cuando busques en la web, cita la fuente y la fecha de los datos
+- IMÁGENES: cuando recomiendes un proyecto de la cartera de Catherine que tenga una "Foto:" en su ficha, incluye la imagen en tu respuesta con markdown exactamente así: ![Nombre del proyecto](URL_DE_LA_FOTO). Así Catherine puede mostrarle la foto al lead. Si un resultado de la web trae una URL de imagen clara (.jpg/.png/.webp), puedes incluirla igual. No inventes URLs de imágenes. No uses imágenes que tengan el logo, marca de agua o branding de otro corredor.
+- MARCA / BRANDING (CRÍTICO): toda la información que entregas es de parte de **Catherine Gómez Realtor**. Puedes usar sitios de otros corredores (p. ej. dianajimenezproperty.com) SOLO como fuente de datos de proyectos, pero NUNCA muestres el nombre, agente, empresa, teléfono, email, enlace ni marca de ningún otro corredor o sitio de la competencia. Elimina cualquier branding ajeno y presenta todo como si fuera de Catherine. Si el lead quiere más info o ver los proyectos, dirígelo a la página de Catherine (/new-construction) y a agendar con Catherine — nunca a la competencia.
 
 BÚSQUEDA EXHAUSTIVA DE PROYECTOS (MUY IMPORTANTE):
 - Cuando te pregunten por proyectos disponibles, opciones de inversión, o "qué hay" en una zona/rango de precio, NO respondas solo de memoria: USA la herramienta de búsqueda web.
@@ -130,7 +132,7 @@ async function tavilySearch(query: string, apiKey: string): Promise<string> {
   // change; leave TAVILY_INCLUDE_DOMAINS empty to search the whole web.
   const depth = process.env.TAVILY_SEARCH_DEPTH || "advanced"
   const maxResults = Number(process.env.TAVILY_MAX_RESULTS || 12)
-  const domainsRaw = process.env.TAVILY_INCLUDE_DOMAINS ?? "preconstruction.miami"
+  const domainsRaw = process.env.TAVILY_INCLUDE_DOMAINS ?? "preconstruction.miami,dianajimenezproperty.com"
   const includeDomains = domainsRaw.split(",").map(d => d.trim()).filter(Boolean)
   try {
     const resp = await fetch("https://api.tavily.com/search", {
@@ -246,6 +248,7 @@ export async function POST(req: Request) {
             p.status ? `Estado: ${p.status}` : "",
             p.investmentHighlights ? `Puntos clave: ${p.investmentHighlights}` : "",
             p.description ? `Descripción: ${p.description}` : "",
+            (Array.isArray(p.photos) && p.photos[0]) ? `Foto: ${p.photos[0]}` : "",
           ].filter(Boolean).join(" · ")
           contextLines.push(`\n• ${header}\n  ${details}`)
         })
