@@ -4,6 +4,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { sendEmail, wrapEmail } from "@/lib/email"
+import { randomUUID } from "crypto"
 
 const SSE_HEADERS = {
   "Content-Type": "text/event-stream",
@@ -64,6 +65,7 @@ REGLAS:
 - Cuando busques en la web, cita la fuente y la fecha de los datos
 - IMÁGENES: cuando recomiendes un proyecto de la cartera de Catherine que tenga una "Foto:" en su ficha, incluye la imagen en tu respuesta con markdown exactamente así: ![Nombre del proyecto](URL_DE_LA_FOTO). Así Catherine puede mostrarle la foto al lead. Si un resultado de la web trae una URL de imagen clara (.jpg/.png/.webp), puedes incluirla igual. No inventes URLs de imágenes. No uses imágenes que tengan el logo, marca de agua o branding de otro corredor.
 - MARCA / BRANDING (CRÍTICO): toda la información que entregas es de parte de **Catherine Gómez Realtor**. Puedes usar sitios de otros corredores (p. ej. dianajimenezproperty.com) SOLO como fuente de datos de proyectos, pero NUNCA muestres el nombre, agente, empresa, teléfono, email, enlace ni marca de ningún otro corredor o sitio de la competencia. Elimina cualquier branding ajeno y presenta todo como si fuera de Catherine. Si el lead quiere más info o ver los proyectos, dirígelo a la página de Catherine (/new-construction) y a agendar con Catherine — nunca a la competencia.
+- GUARDAR PROYECTOS: cuando encuentres (vía búsqueda web, con fuente real) un proyecto de nueva construcción que NO esté ya en la cartera de Catherine y sea relevante, dile a Catherine que puedes agregarlo a su inventario; si te lo pide o si claramente vale la pena, usa la herramienta save_project para guardarlo (aparecerá en su página de Pre-Construcción y en /new-construction, marcado "por revisar"). NUNCA guardes proyectos inventados — solo reales y con fuente. Quita todo branding de la competencia antes de guardar. Después de guardar, dile a Catherine que revise/afine los datos y agregue fotos.
 
 BÚSQUEDA EXHAUSTIVA DE PROYECTOS (MUY IMPORTANTE):
 - Cuando te pregunten por proyectos disponibles, opciones de inversión, o "qué hay" en una zona/rango de precio, NO respondas solo de memoria: USA la herramienta de búsqueda web.
@@ -122,6 +124,33 @@ const SEARCH_TOOL = {
         },
       },
       required: ["query"],
+    },
+  },
+}
+
+const SAVE_PROJECT_TOOL = {
+  type: "function" as const,
+  function: {
+    name: "save_project",
+    description: "Save a REAL new-construction/pre-construction project you found (via web search, with a real source) into Catherine's own project inventory. It will appear on Catherine's Pre-Construction page and her public /new-construction page. Only save genuine projects you actually found — never invented ones. Do NOT include any competitor realtor's name/branding. Do not duplicate a project already in Catherine's portfolio.",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Project/building name, e.g. 'Edge House Edgewater'" },
+        developer: { type: "string", description: "Developer/builder if known" },
+        neighborhood: { type: "string", description: "Neighborhood, e.g. 'Edgewater'" },
+        city: { type: "string", description: "City, default 'Miami'" },
+        priceMin: { type: "number", description: "Starting price in USD (number only)" },
+        priceMax: { type: "number", description: "Top price in USD if known" },
+        bedrooms: { type: "string", description: "Bedroom range, e.g. 'Studio-3'" },
+        deliveryDate: { type: "string", description: "Estimated delivery/completion, e.g. '2027'" },
+        estimatedROI: { type: "string", description: "Estimated ROI if known, e.g. '6-8%'" },
+        downPayment: { type: "string", description: "Typical down payment, e.g. '30-40%'" },
+        description: { type: "string", description: "Short neutral description (no competitor branding)" },
+        investmentHighlights: { type: "string", description: "Key investment points" },
+        sourceUrl: { type: "string", description: "The source URL where you found this project (for Catherine's reference; not shown to leads)" },
+      },
+      required: ["name"],
     },
   },
 }
@@ -265,7 +294,7 @@ export async function POST(req: Request) {
     ...messages.slice(-20),
   ]
 
-  const tools: any[] = [EMAIL_TOOL, ...(tavilyKey ? [SEARCH_TOOL] : [])]
+  const tools: any[] = [EMAIL_TOOL, SAVE_PROJECT_TOOL, ...(tavilyKey ? [SEARCH_TOOL] : [])]
 
   const callOpenAI = (msgs: any[], opts: { stream: boolean; withTools: boolean }) =>
     fetch("https://api.openai.com/v1/chat/completions", {
@@ -283,6 +312,42 @@ export async function POST(req: Request) {
 
   async function executeToolCall(tc: any): Promise<string> {
     try {
+      if (tc.function.name === "save_project") {
+        const p = JSON.parse(tc.function.arguments || "{}")
+        if (!p.name?.trim()) return "No pude guardar: falta el nombre del proyecto."
+        const SETTING_KEY = "preconstruction_projects"
+        const row = await prisma.setting.findUnique({ where: { key: SETTING_KEY } })
+        let projects: any[] = []
+        if (row) { try { projects = JSON.parse(row.value) } catch {} }
+        if (projects.some(x => (x.name || "").trim().toLowerCase() === p.name.trim().toLowerCase())) {
+          return `El proyecto "${p.name}" ya está en la cartera de Catherine — no lo dupliqué.`
+        }
+        const project = {
+          id: randomUUID(),
+          name: p.name.trim(),
+          developer: p.developer?.trim() || "",
+          neighborhood: p.neighborhood?.trim() || "",
+          city: p.city?.trim() || "Miami",
+          priceMin: p.priceMin ? Number(p.priceMin) : undefined,
+          priceMax: p.priceMax ? Number(p.priceMax) : undefined,
+          bedrooms: p.bedrooms?.trim() || undefined,
+          deliveryDate: p.deliveryDate?.trim() || undefined,
+          estimatedROI: p.estimatedROI?.trim() || undefined,
+          downPayment: p.downPayment?.trim() || undefined,
+          description: p.description?.trim() || undefined,
+          investmentHighlights: p.investmentHighlights?.trim() || undefined,
+          url: p.sourceUrl?.trim() || undefined,
+          status: "por_revisar",
+        }
+        projects.push(project)
+        await prisma.setting.upsert({
+          where: { key: SETTING_KEY },
+          update: { value: JSON.stringify(projects) },
+          create: { key: SETTING_KEY, value: JSON.stringify(projects) },
+        })
+        console.log(`[Investment Advisor] Saved project to portfolio: ${project.name}`)
+        return `✅ Guardé "${project.name}" en la cartera de Catherine (marcado "por revisar"). Ya aparece en la página de Pre-Construcción y en /new-construction. Sugiérele a Catherine revisar los datos y agregar fotos.`
+      }
       if (tc.function.name === "search_web" && tavilyKey) {
         const { query } = JSON.parse(tc.function.arguments || "{}")
         console.log("[Investment Advisor] Tavily search:", query)
