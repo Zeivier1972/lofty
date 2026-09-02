@@ -28,6 +28,7 @@ import { useToast } from "@/components/ui/use-toast"
 import { AiAssistBar } from "@/components/ui/ai-assist-bar"
 import PropertySendPanel from "./property-send-panel"
 import PreconstructionSendPanel from "./preconstruction-send-panel"
+import InvestorAdvisorPanel from "@/components/contact/investor-advisor-panel"
 import ReferButton from "./refer-button"
 
 function generateInsight(contact: any): string | null {
@@ -968,6 +969,13 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
                 {/* Activity timeline */}
                 <div className={cn("space-y-3", (activityFilter === "Tasks" || activityFilter === "Appointments") ? "col-span-1 lg:col-span-3" : "col-span-1 lg:col-span-2")}>
+                  {/* Investor Advisor — contact-scoped; save answers straight to notes */}
+                  <InvestorAdvisorPanel
+                    contactId={contact.id}
+                    contactName={`${contact.firstName || ""} ${contact.lastName || ""}`.trim()}
+                    onNoteSaved={(note) => { setNotes([note, ...notes]); toast({ title: "Guardado en notas" }) }}
+                  />
+
                   {/* Note input */}
                   <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
                     <div className="flex items-center gap-2 mb-2">
