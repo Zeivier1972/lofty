@@ -384,6 +384,20 @@ export async function POST(req: Request) {
         if (convo.state === "OPTED_OUT") continue
 
         if (convo.state === "COMPLETE") {
+          // Ping Catherine that this (already-captured) lead just replied by
+          // Messenger, so she can respond from the Inbox and not miss it.
+          if (convo.contactId) {
+            await prisma.aINotification.create({
+              data: {
+                type: "FACEBOOK_REPLY",
+                title: `💬 ${convo.firstName || "Un lead"} respondió por Messenger`,
+                body: text.slice(0, 200),
+                priority: "HIGH",
+                contactId: convo.contactId,
+              },
+            }).catch(() => {})
+          }
+
           // Keyword re-trigger: a SHORT message that is a campaign/lead-magnet
           // keyword delivers THAT PDF (aligned with the keyword) instead of a
           // generic AI reply + property dump. Longer questions still go to the
@@ -698,6 +712,18 @@ export async function POST(req: Request) {
             data: { lastContacted: new Date() },
           }),
         ])
+
+        // Ping Catherine that a lead messaged/replied by Messenger, so she can
+        // respond from the Inbox without missing it.
+        await prisma.aINotification.create({
+          data: {
+            type: "FACEBOOK_REPLY",
+            title: `💬 ${`${contact.firstName} ${contact.lastName || ""}`.trim() || "Un lead"} escribió por Messenger`,
+            body: text.slice(0, 200),
+            priority: "HIGH",
+            contactId: contact.id,
+          },
+        }).catch(() => {})
         } // end non-bot DM
       }
     }
