@@ -675,15 +675,29 @@ export async function POST(req: Request) {
         let contact = await prisma.contact.findFirst({ where: { facebookPsid: psid } })
 
         if (!contact) {
-          const profile = await getFacebookUserProfile(psid)
-          contact = await prisma.contact.create({
-            data: {
-              firstName: profile?.firstName || "Facebook",
-              lastName: profile?.lastName || "Lead",
-              facebookPsid: psid,
-              source: "FACEBOOK",
-            },
-          })
+          // Avoid duplicates: click-to-Messenger leads already exist as a
+          // lead-form contact (matched by email/phone). If this message carries
+          // an email/phone that matches one, link the Messenger identity to THAT
+          // contact instead of creating a second one.
+          const msgEmail = extractEmail(text)
+          const msgPhone = extractPhone(text)
+          const msgPhoneDigits = msgPhone ? msgPhone.replace(/\D/g, "").slice(-10) : null
+          if (msgEmail) contact = await prisma.contact.findFirst({ where: { email: msgEmail } })
+          if (!contact && msgPhoneDigits) contact = await prisma.contact.findFirst({ where: { phone: { contains: msgPhoneDigits } } })
+
+          if (contact) {
+            await prisma.contact.update({ where: { id: contact.id }, data: { facebookPsid: psid } }).catch(() => {})
+          } else {
+            const profile = await getFacebookUserProfile(psid)
+            contact = await prisma.contact.create({
+              data: {
+                firstName: profile?.firstName || "Facebook",
+                lastName: profile?.lastName || "Lead",
+                facebookPsid: psid,
+                source: "FACEBOOK",
+              },
+            })
+          }
         }
 
         await prisma.facebookMessage.create({
