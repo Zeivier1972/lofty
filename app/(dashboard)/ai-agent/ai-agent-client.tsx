@@ -32,6 +32,7 @@ const TYPE_ICONS: Record<string, any> = {
   NEW_LEAD: Users,
   RETURNING_LEAD: TrendingUp,
   BOT_STARTED: MessageSquare,
+  FACEBOOK_REPLY: MessageSquare,
   FOLLOW_UP: Clock,
   PRE_QUALIFY: Target,
   APPOINTMENT_REQUEST: Calendar,

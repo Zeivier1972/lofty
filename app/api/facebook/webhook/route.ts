@@ -384,6 +384,20 @@ export async function POST(req: Request) {
         if (convo.state === "OPTED_OUT") continue
 
         if (convo.state === "COMPLETE") {
+          // Ping Catherine that this (already-captured) lead just replied by
+          // Messenger, so she can respond from the Inbox and not miss it.
+          if (convo.contactId) {
+            await prisma.aINotification.create({
+              data: {
+                type: "FACEBOOK_REPLY",
+                title: `💬 ${convo.firstName || "Un lead"} respondió por Messenger`,
+                body: text.slice(0, 200),
+                priority: "HIGH",
+                contactId: convo.contactId,
+              },
+            }).catch(() => {})
+          }
+
           // Keyword re-trigger: a SHORT message that is a campaign/lead-magnet
           // keyword delivers THAT PDF (aligned with the keyword) instead of a
           // generic AI reply + property dump. Longer questions still go to the
@@ -528,6 +542,13 @@ export async function POST(req: Request) {
             data: { phone, state: "COMPLETE", contactId },
           })
 
+          // Link the Messenger identity to the contact so this thread shows in
+          // the CASAi Inbox AND Catherine can reply to Messenger from CASAi (the
+          // reply route requires facebookPsid). Also attach the earlier bot
+          // messages that were logged before the contact existed.
+          await prisma.contact.update({ where: { id: contactId }, data: { facebookPsid: psid } }).catch(() => {})
+          await prisma.facebookMessage.updateMany({ where: { psid, contactId: null }, data: { contactId } }).catch(() => {})
+
           // Thank you message
           const thankYou = botConfig.msgThankYou
             .replace("{name}", convo.firstName?.split(" ")[0] || "")
@@ -654,15 +675,29 @@ export async function POST(req: Request) {
         let contact = await prisma.contact.findFirst({ where: { facebookPsid: psid } })
 
         if (!contact) {
-          const profile = await getFacebookUserProfile(psid)
-          contact = await prisma.contact.create({
-            data: {
-              firstName: profile?.firstName || "Facebook",
-              lastName: profile?.lastName || "Lead",
-              facebookPsid: psid,
-              source: "FACEBOOK",
-            },
-          })
+          // Avoid duplicates: click-to-Messenger leads already exist as a
+          // lead-form contact (matched by email/phone). If this message carries
+          // an email/phone that matches one, link the Messenger identity to THAT
+          // contact instead of creating a second one.
+          const msgEmail = extractEmail(text)
+          const msgPhone = extractPhone(text)
+          const msgPhoneDigits = msgPhone ? msgPhone.replace(/\D/g, "").slice(-10) : null
+          if (msgEmail) contact = await prisma.contact.findFirst({ where: { email: msgEmail } })
+          if (!contact && msgPhoneDigits) contact = await prisma.contact.findFirst({ where: { phone: { contains: msgPhoneDigits } } })
+
+          if (contact) {
+            await prisma.contact.update({ where: { id: contact.id }, data: { facebookPsid: psid } }).catch(() => {})
+          } else {
+            const profile = await getFacebookUserProfile(psid)
+            contact = await prisma.contact.create({
+              data: {
+                firstName: profile?.firstName || "Facebook",
+                lastName: profile?.lastName || "Lead",
+                facebookPsid: psid,
+                source: "FACEBOOK",
+              },
+            })
+          }
         }
 
         await prisma.facebookMessage.create({
@@ -691,6 +726,18 @@ export async function POST(req: Request) {
             data: { lastContacted: new Date() },
           }),
         ])
+
+        // Ping Catherine that a lead messaged/replied by Messenger, so she can
+        // respond from the Inbox without missing it.
+        await prisma.aINotification.create({
+          data: {
+            type: "FACEBOOK_REPLY",
+            title: `💬 ${`${contact.firstName} ${contact.lastName || ""}`.trim() || "Un lead"} escribió por Messenger`,
+            body: text.slice(0, 200),
+            priority: "HIGH",
+            contactId: contact.id,
+          },
+        }).catch(() => {})
         } // end non-bot DM
       }
     }
