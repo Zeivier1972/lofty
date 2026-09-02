@@ -61,7 +61,14 @@ REGLAS:
 - Para ROI, muestra el cálculo paso a paso con supuestos claros
 - Siempre menciona riesgos relevantes (developer risk, mercado, tipo de cambio)
 - Prioriza proyectos del portafolio de Catherine cuando sean relevantes
-- Cuando busques en la web, cita la fuente y la fecha de los datos`
+- Cuando busques en la web, cita la fuente y la fecha de los datos
+
+BÚSQUEDA EXHAUSTIVA DE PROYECTOS (MUY IMPORTANTE):
+- Cuando te pregunten por proyectos disponibles, opciones de inversión, o "qué hay" en una zona/rango de precio, NO respondas solo de memoria: USA la herramienta de búsqueda web.
+- Haz VARIAS búsquedas en la misma respuesta para ser exhaustivo, no una sola. Por ejemplo, busca por: (a) cada vecindario relevante ("preconstruction condos Brickell 2026", "new developments Edgewater", "Doral preconstruction"), (b) el rango de precio del lead, (c) por desarrollador, y (d) "new preconstruction Miami" en general.
+- Combina los resultados de todas las búsquedas + el portafolio de Catherine + tu conocimiento en UNA lista completa. Marca claramente cuáles son del portafolio de Catherine.
+- Si una búsqueda no da resultados, reformula y vuelve a intentar con otros términos antes de rendirte.
+- Presenta los proyectos en una tabla (nombre, zona, desarrollador, precio desde, entrega, ROI estimado, fuente) y sé claro sobre qué datos son actuales (de la web) vs rangos generales del mercado.`
 
 const EMAIL_TOOL = {
   type: "function" as const,
@@ -108,6 +115,13 @@ const SEARCH_TOOL = {
 }
 
 async function tavilySearch(query: string, apiKey: string): Promise<string> {
+  // Extensive search by default: "advanced" depth + more results. Domains are
+  // configurable (comma-separated) so Catherine can add sources without a code
+  // change; leave TAVILY_INCLUDE_DOMAINS empty to search the whole web.
+  const depth = process.env.TAVILY_SEARCH_DEPTH || "advanced"
+  const maxResults = Number(process.env.TAVILY_MAX_RESULTS || 12)
+  const domainsRaw = process.env.TAVILY_INCLUDE_DOMAINS ?? "preconstruction.miami"
+  const includeDomains = domainsRaw.split(",").map(d => d.trim()).filter(Boolean)
   try {
     const resp = await fetch("https://api.tavily.com/search", {
       method: "POST",
@@ -115,17 +129,19 @@ async function tavilySearch(query: string, apiKey: string): Promise<string> {
       body: JSON.stringify({
         api_key: apiKey,
         query,
-        search_depth: "basic",
-        include_domains: ["preconstruction.miami"],
-        max_results: 5,
+        search_depth: depth,
+        max_results: maxResults,
+        include_answer: true,
+        ...(includeDomains.length ? { include_domains: includeDomains } : {}),
       }),
     })
     if (!resp.ok) return `Search unavailable (status ${resp.status})`
     const data = await resp.json()
     const results: any[] = data.results || []
-    if (results.length === 0) return "No results found on preconstruction.miami for that query."
-    return results
-      .map(r => `**${r.title}**\nURL: ${r.url}\n${r.content?.slice(0, 600) || ""}`)
+    if (results.length === 0) return `No results found for "${query}". Try a broader query or a different neighborhood/price range.`
+    const answer = data.answer ? `RESUMEN: ${data.answer}\n\n` : ""
+    return answer + results
+      .map(r => `**${r.title}**\nURL: ${r.url}\n${r.content?.slice(0, 900) || ""}`)
       .join("\n\n---\n\n")
   } catch (e: any) {
     return `Search error: ${e.message}`
@@ -221,97 +237,85 @@ export async function POST(req: Request) {
 
   const tools: any[] = [EMAIL_TOOL, ...(tavilyKey ? [SEARCH_TOOL] : [])]
 
-  // Pass 1: non-streaming, detect if web search is needed
-  const pass1Resp = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "gpt-4o",
-      messages: openaiMessages,
-      ...(tools.length ? { tools, tool_choice: "auto" } : {}),
-      temperature: 0.6,
-      max_tokens: 1500,
-    }),
-  })
-
-  if (!pass1Resp.ok) {
-    const errText = await pass1Resp.text()
-    console.error("[Investment Advisor] OpenAI error:", errText)
-    return NextResponse.json({ error: "OpenAI API error — check OPENAI_API_KEY in Railway" }, { status: 500 })
-  }
-
-  const pass1Data = await pass1Resp.json()
-  const choice = pass1Data.choices?.[0]
-
-  // If the model wants to use a tool, execute it then stream the final answer
-  if (choice?.finish_reason === "tool_calls") {
-    const toolCalls: any[] = choice.message.tool_calls || []
-    const toolResults: any[] = []
-
-    for (const tc of toolCalls) {
-      if (tc.function.name === "search_web" && tavilyKey) {
-        const { query } = JSON.parse(tc.function.arguments || "{}")
-        console.log("[Investment Advisor] Tavily search:", query)
-        const results = await tavilySearch(query, tavilyKey)
-        toolResults.push({ role: "tool", tool_call_id: tc.id, content: results })
-      } else if (tc.function.name === "send_email") {
-        const { to, subject, body } = JSON.parse(tc.function.arguments || "{}")
-        let recipientEmail = to
-        if (to === "contact" || !to?.includes("@")) {
-          // Look up contact email
-          if (contactId) {
-            try {
-              const c = await prisma.contact.findUnique({ where: { id: contactId }, select: { email: true, firstName: true } })
-              if (c?.email) {
-                recipientEmail = c.email
-              } else {
-                toolResults.push({ role: "tool", tool_call_id: tc.id, content: "No email address found for this contact. Please ask for their email address first." })
-                continue
-              }
-            } catch {
-              toolResults.push({ role: "tool", tool_call_id: tc.id, content: "Could not look up contact email." })
-              continue
-            }
-          } else {
-            toolResults.push({ role: "tool", tool_call_id: tc.id, content: "No contact selected and no email address provided. Please specify an email address." })
-            continue
-          }
-        }
-        try {
-          const html = wrapEmail(body, { agentName: "Catherine Gómez Realtor" })
-          const sent = await sendEmail({ to: recipientEmail, subject, html })
-          if (sent && contactId) {
-            prisma.activity.create({
-              data: { type: "EMAIL_SENT", title: `Investment advisor email: ${subject}`, description: `Sent to ${recipientEmail}: ${subject}`, contactId },
-            }).catch(() => {})
-          }
-          toolResults.push({ role: "tool", tool_call_id: tc.id, content: sent ? `Email sent successfully to ${recipientEmail}` : "Failed to send email — check RESEND_API_KEY in Railway." })
-        } catch (e: any) {
-          toolResults.push({ role: "tool", tool_call_id: tc.id, content: `Email error: ${e.message}` })
-        }
-      }
-    }
-
-    const pass2Resp = await fetch("https://api.openai.com/v1/chat/completions", {
+  const callOpenAI = (msgs: any[], opts: { stream: boolean; withTools: boolean }) =>
+    fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         model: "gpt-4o",
-        messages: [...openaiMessages, choice.message, ...toolResults],
-        stream: true,
+        messages: msgs,
+        ...(opts.withTools && tools.length ? { tools, tool_choice: "auto" } : {}),
+        ...(opts.stream ? { stream: true } : {}),
         temperature: 0.6,
-        max_tokens: 1500,
+        max_tokens: 2000,
       }),
     })
 
-    if (!pass2Resp.ok) {
-      return NextResponse.json({ error: "OpenAI API error on tool pass" }, { status: 500 })
+  async function executeToolCall(tc: any): Promise<string> {
+    try {
+      if (tc.function.name === "search_web" && tavilyKey) {
+        const { query } = JSON.parse(tc.function.arguments || "{}")
+        console.log("[Investment Advisor] Tavily search:", query)
+        return await tavilySearch(query, tavilyKey)
+      }
+      if (tc.function.name === "send_email") {
+        const { to, subject, body } = JSON.parse(tc.function.arguments || "{}")
+        let recipientEmail = to
+        if (to === "contact" || !to?.includes("@")) {
+          if (!contactId) return "No contact selected and no email address provided. Please specify an email address."
+          const c = await prisma.contact.findUnique({ where: { id: contactId }, select: { email: true } }).catch(() => null)
+          if (!c?.email) return "No email address found for this contact. Please ask for their email address first."
+          recipientEmail = c.email
+        }
+        const html = wrapEmail(body, { agentName: "Catherine Gómez Realtor" })
+        const sent = await sendEmail({ to: recipientEmail, subject, html })
+        if (sent && contactId) {
+          prisma.activity.create({
+            data: { type: "EMAIL_SENT", title: `Investment advisor email: ${subject}`, description: `Sent to ${recipientEmail}: ${subject}`, contactId },
+          }).catch(() => {})
+        }
+        return sent ? `Email sent successfully to ${recipientEmail}` : "Failed to send email — check RESEND_API_KEY in Railway."
+      }
+    } catch (e: any) {
+      return `Tool error: ${e.message}`
     }
-
-    return new Response(pass2Resp.body, { headers: SSE_HEADERS })
+    return "Tool not available."
   }
 
-  // No tool call — return pass1 content as a simulated SSE stream
-  const content = choice?.message?.content || ""
-  return simulateSSE(content)
+  // Multi-round tool loop: let the model search, read results, and search AGAIN
+  // (e.g. several neighborhoods / price bands / developers) before writing its
+  // answer, so it surfaces as many projects as possible. Bounded to cap cost.
+  const MAX_TOOL_ROUNDS = Number(process.env.ADVISOR_MAX_TOOL_ROUNDS || 3)
+  const convo: any[] = [...openaiMessages]
+
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    const resp = await callOpenAI(convo, { stream: false, withTools: tools.length > 0 })
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => "")
+      console.error("[Investment Advisor] OpenAI error:", errText)
+      return NextResponse.json({ error: "OpenAI API error — check OPENAI_API_KEY in Railway" }, { status: 500 })
+    }
+    const data = await resp.json()
+    const choice = data.choices?.[0]
+
+    if (choice?.finish_reason === "tool_calls" && choice.message?.tool_calls?.length) {
+      convo.push(choice.message)
+      for (const tc of choice.message.tool_calls) {
+        const content = await executeToolCall(tc)
+        convo.push({ role: "tool", tool_call_id: tc.id, content })
+      }
+      continue
+    }
+
+    // Model answered without needing (more) tools — return its complete answer.
+    return simulateSSE(choice?.message?.content || "")
+  }
+
+  // Tool budget exhausted while still searching — force a final written answer
+  // (streaming, tools off) from everything gathered so far.
+  const finalResp = await callOpenAI(convo, { stream: true, withTools: false })
+  if (!finalResp.ok) {
+    return NextResponse.json({ error: "OpenAI API error on final pass" }, { status: 500 })
+  }
+  return new Response(finalResp.body, { headers: SSE_HEADERS })
 }
