@@ -528,6 +528,13 @@ export async function POST(req: Request) {
             data: { phone, state: "COMPLETE", contactId },
           })
 
+          // Link the Messenger identity to the contact so this thread shows in
+          // the CASAi Inbox AND Catherine can reply to Messenger from CASAi (the
+          // reply route requires facebookPsid). Also attach the earlier bot
+          // messages that were logged before the contact existed.
+          await prisma.contact.update({ where: { id: contactId }, data: { facebookPsid: psid } }).catch(() => {})
+          await prisma.facebookMessage.updateMany({ where: { psid, contactId: null }, data: { contactId } }).catch(() => {})
+
           // Thank you message
           const thankYou = botConfig.msgThankYou
             .replace("{name}", convo.firstName?.split(" ")[0] || "")
