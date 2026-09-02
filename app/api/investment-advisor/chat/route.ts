@@ -215,12 +215,29 @@ export async function POST(req: Request) {
     if (setting) {
       const projects: any[] = JSON.parse(setting.value)
       if (projects.length > 0) {
-        contextLines.push(`\nPROYECTOS EN CARTERA DE CATHERINE:`)
-        projects.slice(0, 10).forEach(p => {
-          const price = p.priceMin ? `desde $${Number(p.priceMin).toLocaleString()}` : ""
-          contextLines.push(
-            `- ${p.name} (${p.neighborhood || p.city || "Miami"}): ${price}${p.developer ? `, ${p.developer}` : ""}${p.deliveryDate ? `, entrega ${p.deliveryDate}` : ""}${p.estimatedROI ? `, ROI estimado ${p.estimatedROI}` : ""}`
-          )
+        // Catherine's own inventory is AUTHORITATIVE and often includes off-market
+        // projects that are NOT online yet — the advisor can't find these via web
+        // search, so give it the full detail she entered on the Pre-Construction
+        // page and tell it to prioritize + quote these accurately.
+        contextLines.push(`\nPROYECTOS EN CARTERA DE CATHERINE (fuente autoritativa — incluye proyectos exclusivos/off-market que NO están en línea todavía; priorízalos y cita sus datos con exactitud):`)
+        projects.slice(0, 40).forEach(p => {
+          const header = `${p.name}${(p.neighborhood || p.city) ? ` (${[p.neighborhood, p.city].filter(Boolean).join(", ")})` : ""}`
+          const priceRange = (p.priceMin || p.priceMax)
+            ? `Precio: ${p.priceMin ? `$${Number(p.priceMin).toLocaleString()}` : "?"}${p.priceMax ? ` – $${Number(p.priceMax).toLocaleString()}` : "+"}`
+            : ""
+          const details = [
+            p.developer ? `Desarrollador: ${p.developer}` : "",
+            priceRange,
+            p.bedrooms ? `Recámaras: ${p.bedrooms}` : "",
+            p.propertyType ? `Tipo: ${p.propertyType}` : "",
+            p.deliveryDate ? `Entrega: ${p.deliveryDate}` : "",
+            p.estimatedROI ? `ROI estimado: ${p.estimatedROI}` : "",
+            p.downPayment ? `Down payment: ${p.downPayment}` : "",
+            p.status ? `Estado: ${p.status}` : "",
+            p.investmentHighlights ? `Puntos clave: ${p.investmentHighlights}` : "",
+            p.description ? `Descripción: ${p.description}` : "",
+          ].filter(Boolean).join(" · ")
+          contextLines.push(`\n• ${header}\n  ${details}`)
         })
       }
     }
