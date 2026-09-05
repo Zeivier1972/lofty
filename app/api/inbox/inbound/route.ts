@@ -312,18 +312,19 @@ export async function POST(req: Request) {
       return new Response(`<Response></Response>`, { headers: { "Content-Type": "text/xml" } })
     }
 
-    // Meta forwards these ONLY on click-to-WhatsApp ad messages (via Twilio). For
-    // every other inbound message they are null, isCtwa is false, and nothing below
-    // this point behaves any differently than it did before.
-    const referralSourceId = params.get("ReferralSourceId")
-    const isCtwa = !!referralSourceId
-    const ctwaEvent = isCtwa
-      ? findEventByAdText(params.get("ReferralHeadline"), params.get("ReferralBody"))
-      : undefined
-
     const isWhatsApp = from.toLowerCase().startsWith("whatsapp:")
     const phone = from.replace(/^whatsapp:/i, "").trim()
     const digits = phone.replace(/\D/g, "")
+
+    // Meta forwards these ONLY on click-to-WhatsApp ad messages (via Twilio). Also
+    // require the WhatsApp channel explicitly, so an SMS lead can never take this
+    // path even if a referral field ever showed up on one. For every other inbound
+    // message isCtwa is false and nothing below behaves differently than before.
+    const referralSourceId = params.get("ReferralSourceId")
+    const isCtwa = !!referralSourceId && isWhatsApp
+    const ctwaEvent = isCtwa
+      ? findEventByAdText(params.get("ReferralHeadline"), params.get("ReferralBody"))
+      : undefined
 
     // Find or create contact
     let contact = await prisma.contact.findFirst({
