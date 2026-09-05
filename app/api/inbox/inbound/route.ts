@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic"
 import { prisma } from "@/lib/prisma"
 import { sendSMS, sendWhatsApp, toE164, sanitizeSmsBody } from "@/lib/sms"
 import { searchIdxListings, fetchPrimaryPhotos } from "@/lib/bridge"
-import { findEventByAdText, type EventInfo } from "@/lib/events"
+import { findEventByAdText, findEventByTag, type EventInfo } from "@/lib/events"
 import { applyTagAndEnroll } from "@/lib/lead-ingest"
 import { appendEventLeadToSheet } from "@/lib/google-sheets"
 import Anthropic from "@anthropic-ai/sdk"
@@ -52,6 +52,8 @@ REGLAS:
 - Para pre-construcción: NUNCA menciones el nombre del constructor ni la comunidad — solo área, precio, cuartos y entrega
 - Si no hay propiedades disponibles, di que estás buscando y que Catherine les llamará
 - Actualiza update_lead_preferences CADA VEZ que el lead comparta información nueva
+- Si el lead comparte su correo electrónico, guárdalo DE INMEDIATO con update_lead_preferences (junto con su nombre completo si también lo dio). No le pidas el correo a un lead que no viene por un evento.
+- Si hay un EVENTO en el contexto del lead y ya te dio nombre y correo: confírmale que le envías las entradas y compártele el link de registro del evento. Si aún falta el correo, pídeselo una sola vez — nunca insistas más de una vez.
 
 CATHERINE GOMEZ:
 - Experta en Miami con amplia experiencia en pre-construcción e inversiones
@@ -99,6 +101,7 @@ const TOOLS: Anthropic.Tool[] = [
       type: "object" as const,
       properties: {
         lead_name: { type: "string", description: "Nombre completo si lo mencionó" },
+        email: { type: "string", description: "Correo electrónico si lo compartió (para enviarle entradas, guías o alertas)" },
         budget_min: { type: "number", description: "Presupuesto mínimo" },
         budget_max: { type: "number", description: "Presupuesto máximo" },
         bedrooms_min: { type: "number", description: "Cuartos mínimos" },
@@ -276,6 +279,13 @@ async function runTool(name: string, input: any, contactId: string): Promise<{te
         data.firstName = parts[0]
         if (parts.length > 1) data.lastName = parts.slice(1).join(" ")
       }
+      // Only accept something that actually looks like an address, and never
+      // overwrite an email we already hold (a form lead's is more trustworthy
+      // than one re-typed into a chat).
+      if (input.email && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(input.email.trim())) {
+        const current = await prisma.contact.findUnique({ where: { id: contactId }, select: { email: true } })
+        if (!current?.email) data.email = input.email.trim().toLowerCase()
+      }
       if (Object.keys(data).length > 0) {
         await prisma.contact.update({ where: { id: contactId }, data })
       }
@@ -297,7 +307,10 @@ function ctwaGreeting(firstName: string, ev?: EventInfo): string {
     return `${hi} Soy Sofía, asistente de Catherine Gómez Realtor. Gracias por escribirnos — te ayudo a invertir en Miami desde Colombia. ¿Qué te gustaría saber?`
   }
   const venue = ev.venue ? ` en ${ev.venue}` : ""
-  return `${hi} Soy Sofía, asistente de Catherine Gómez Realtor. Gracias por tu interés en nuestro Evento de Inversión en Miami en ${ev.city} — ${ev.dateLabel}${venue}. La entrada es GRATIS pero los cupos son limitados. 🎟️ Asegura tu lugar aquí: ${ev.link}\n\n¿Te aparto un cupo?`
+  // Ask for the email in exchange for the tickets — it is the one contact detail
+  // an ad lead does not already hand us (WhatsApp gives us their number, and their
+  // profile name), and without it they can only ever get SMS event reminders.
+  return `${hi} Soy Sofía, asistente de Catherine Gómez Realtor 🏙️\n\nGracias por tu interés en nuestro Evento de Inversión en Miami en ${ev.city} — ${ev.dateLabel}${venue}. La entrada es GRATIS 🎟️ pero los cupos son limitados.\n\nPara enviarte tus entradas, ¿me confirmas tu nombre completo y tu correo electrónico? Tu número de WhatsApp ya lo tengo ✅`
 }
 
 export async function POST(req: Request) {
@@ -453,6 +466,16 @@ export async function POST(req: Request) {
     const isInvestor = tags.some(t => /investor|inversionista/i.test(t))
     const ctx: string[] = [`Nombre: ${name}`, `Estado CRM: ${contact.status}`]
     if (tags.length > 0) ctx.push(`Etiquetas CRM: ${tags.join(", ")}`)
+    // A lead tagged for one of Catherine's events: give Sofía the real date, venue
+    // and registration link so she can send the tickets instead of inventing details.
+    const taggedEvent = tags.map(t => findEventByTag(t)).find(Boolean)
+    if (taggedEvent) {
+      ctx.push(
+        `EVENTO AL QUE ESTE LEAD ESTÁ REGISTRADO/INTERESADO: Evento de Inversión en Miami en ${taggedEvent.city}, ${taggedEvent.dateLabel}` +
+        `${taggedEvent.venue ? `, ${taggedEvent.venue}` : ""}. Entrada gratis, cupos limitados. Link de registro: ${taggedEvent.link}` +
+        ` — usa SOLO estos datos del evento, nunca inventes fecha, lugar ni link.`
+      )
+    }
     if (isInvestor) ctx.push("⚠️ ESTE LEAD ES UN INVERSIONISTA — usa search_preconstruction como primera opción cuando pregunte por propiedades o inversiones.")
     if (contact.buyerBudgetMin || contact.buyerBudgetMax)
       ctx.push(`Presupuesto conocido: $${(contact.buyerBudgetMin || 0).toLocaleString()} – $${(contact.buyerBudgetMax || 0).toLocaleString()}`)
