@@ -24,9 +24,6 @@ export interface LeadData {
   facebookLeadId?: string
   tags?: string[]        // tag names to apply on creation (triggers smart plan enrollment)
   eventDay?: string      // event form answer "¿Qué día quieres atender?" — synced to the event sheet
-  skipOutreach?: boolean // lead already messaged us first (e.g. click-to-WhatsApp ad):
-                         // reply happens in that open thread, so suppress the
-                         // outbound SMS/email/call welcome and don't double-message.
 }
 
 export async function checkAndEnrollSmartPlans(contactId: string, tagId: string): Promise<void> {
@@ -84,7 +81,7 @@ export async function applyTagAndEnroll(contactId: string, tagName: string): Pro
 }
 
 export async function ingestLead(data: LeadData): Promise<{ contactId: string; isNew: boolean }> {
-  const { firstName, lastName, email, phone, source, campaign, budget, location, bedroomsMin, propertyType, message, notes, smsConsent, facebookLeadId, tags, eventDay, skipOutreach } = data
+  const { firstName, lastName, email, phone, source, campaign, budget, location, bedroomsMin, propertyType, message, notes, smsConsent, facebookLeadId, tags, eventDay } = data
 
   const phoneDigits = phone ? phone.replace(/\D/g, "").slice(-10) : null
 
@@ -318,7 +315,7 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
   const bookingUrl = (cfg as any)?.calendlyUrl || `${process.env.NEXT_PUBLIC_APP_URL}/book`
   const realtorPhone = cfg?.realtorPhone || "305-283-0872"
 
-  if (phone && autoSMS && !skipOutreach) {
+  if (phone && autoSMS) {
     const toPhone = phone.startsWith("+") ? phone : `+1${phoneDigits}`
     const isInvestor = tags?.some(t => t.toLowerCase().includes("inversionista") || t.toLowerCase().includes("investor"))
     const waNumber = process.env.TWILIO_WHATSAPP_NUMBER
@@ -404,7 +401,7 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
     console.log(`[INGEST] SMS skipped — phone=${!!phone} autoSMS=${autoSMS}`)
   }
 
-  if (email && autoEmail && !skipOutreach) {
+  if (email && autoEmail) {
     const subject = `Hola ${firstName}! Catherine Gomez Realtor está aquí para ayudarte 🏠`
     const html = `<p>Hola ${firstName},</p><p>Gracias por tu interés en propiedades en <strong>${area}</strong>. Soy Sofía, la asistente virtual de <strong>Catherine Gomez Realtor</strong>.</p><p>Catherine tiene más de 20 años de experiencia en Miami y habla español. Estamos listos para ayudarte a encontrar tu hogar ideal.</p><p><a href="${bookingUrl}" style="background:#4F46E5;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;display:inline-block;margin:12px 0">Agendar cita gratis con Catherine →</a></p><p>O llámanos al <strong>${realtorPhone}</strong></p>`
     const fromAddress = process.env.RESEND_FROM || "Sofia <sofia@catherinegomezrealtor.com>"
@@ -424,7 +421,7 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
   }
 
   // VAPI outbound call — immediate, or schedule for next business hours
-  if (phone && autoCall && !skipOutreach) {
+  if (phone && autoCall) {
     const toPhone = phone.startsWith("+") ? phone : `+1${phoneDigits}`
     const callOpts = {
       toPhone,

@@ -6,22 +6,6 @@ import { chatWithAI } from "@/lib/ai-agent"
 import { sendWhatsApp } from "@/lib/sms"
 import { handleLeadEngaged, notifyAgentOfLeadReply } from "@/lib/lead-flow"
 import { extractBuyerPrefsFromNote, triggerMatchAlert, buildListingsReply } from "@/lib/trigger-match-alert"
-import { ingestLead } from "@/lib/lead-ingest"
-import { findEventByAdText, type EventInfo } from "@/lib/events"
-
-// ---------------------------------------------------------------------------
-// Sofía's first reply to someone arriving from a click-to-WhatsApp ad.
-// This is the ONE message a cold ad lead sees, so keep it short, name the event,
-// and end with a question — edit the copy here.
-// ---------------------------------------------------------------------------
-function ctwaGreeting(firstName: string, ev?: EventInfo): string {
-  const hi = firstName && firstName !== "Lead" ? `¡Hola ${firstName}! 👋` : "¡Hola! 👋"
-  if (!ev) {
-    return `${hi} Soy Sofía, asistente de Catherine Gómez Realtor. Gracias por escribirnos — te ayudo a invertir en Miami desde Colombia. ¿Qué te gustaría saber?`
-  }
-  const venue = ev.venue ? ` en ${ev.venue}` : ""
-  return `${hi} Soy Sofía, asistente de Catherine Gómez Realtor. Gracias por tu interés en nuestro Evento de Inversión en Miami en ${ev.city} — ${ev.dateLabel}${venue}. La entrada es GRATIS pero los cupos son limitados. 🎟️ Asegura tu lugar aquí: ${ev.link}\n\n¿Te aparto un cupo?`
-}
 
 export async function POST(req: Request) {
   const formData = await req.formData()
@@ -29,18 +13,10 @@ export async function POST(req: Request) {
   const body = formData.get("Body") as string
   const mediaUrl = formData.get("MediaUrl0") as string | null
 
-  // Meta forwards these only when the message came from a click-to-WhatsApp ad.
-  // ReferralSourceId (the ad) present == this is an ad lead, not an organic message.
-  const referralSourceId = formData.get("ReferralSourceId") as string | null
-  const referralHeadline = formData.get("ReferralHeadline") as string | null
-  const referralBody = formData.get("ReferralBody") as string | null
-  const referralCtwaClid = formData.get("ReferralCtwaClid") as string | null
-  const profileName = (formData.get("ProfileName") as string | null) || ""
-
   if (!from || !body) return new NextResponse("", { status: 200 })
 
   const phone = from.replace("whatsapp:", "").replace(/\D/g, "")
-  let contact = await prisma.contact.findFirst({
+  const contact = await prisma.contact.findFirst({
     where: {
       OR: [
         { phone: { contains: phone.slice(-10) } },
@@ -48,42 +24,6 @@ export async function POST(req: Request) {
       ],
     },
   })
-
-  // A click-to-WhatsApp lead is by definition a number we have never seen. Without
-  // this, the handler below (all gated on `contact`) would return silence: no reply,
-  // no tag, no notification — the lead taps the ad and never hears back.
-  // Reuse the normal lead pipeline so they get the same tags, smart-plan enrollment,
-  // event-sheet sync and alert as a form lead; skipOutreach stops the outbound
-  // SMS/email/call welcome, because Sofía answers in this thread instead.
-  let ctwaEvent: EventInfo | undefined
-  let isNewCtwaLead = false
-  if (!contact && referralSourceId) {
-    ctwaEvent = findEventByAdText(referralHeadline, referralBody)
-    const nameParts = profileName.trim().split(/\s+/).filter(Boolean)
-    try {
-      const { contactId } = await ingestLead({
-        firstName: nameParts[0] || "Lead",
-        lastName: nameParts.slice(1).join(" ") || undefined,
-        phone: from.replace("whatsapp:", ""),   // keep E.164 so +57 is preserved
-        source: "FACEBOOK_CTWA",
-        campaign: referralHeadline || undefined,
-        message: body,
-        notes: [
-          "Lead de anuncio click-to-WhatsApp",
-          referralHeadline ? `Anuncio: ${referralHeadline}` : null,
-          `ad_id: ${referralSourceId}`,
-          referralCtwaClid ? `ctwa_clid: ${referralCtwaClid}` : null,
-        ].filter(Boolean).join(" · "),
-        tags: ctwaEvent ? [ctwaEvent.tag] : [],
-        skipOutreach: true,
-      })
-      contact = await prisma.contact.findUnique({ where: { id: contactId } })
-      isNewCtwaLead = true
-      console.log(`[CTWA] New WhatsApp ad lead ${from} → contact ${contactId}${ctwaEvent ? ` (${ctwaEvent.city})` : ""}`)
-    } catch (e) {
-      console.error("[CTWA] Failed to create contact for ad lead:", e)
-    }
-  }
 
   await prisma.whatsAppMessage.create({
     data: {
@@ -120,12 +60,9 @@ export async function POST(req: Request) {
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
 
-    // First message from a click-to-WhatsApp ad lead: answer with the event greeting
-    // rather than a generic AI reply, so they immediately see which event they
-    // reached and the ticket link. It is stored in the conversation history below,
-    // so Sofía has that context for every following message.
-    let reply: string | null = isNewCtwaLead ? ctwaGreeting(contact.firstName, ctwaEvent) : null
-    const prefs = reply ? null : await extractBuyerPrefsFromNote(body).catch(() => null)
+    // If buyer criteria are shared, reply with the actual matching listings
+    let reply: string | null = null
+    const prefs = await extractBuyerPrefsFromNote(body).catch(() => null)
     const hasCriteria = prefs && (prefs.buyerLocation || prefs.buyerBudgetMax || prefs.buyerBedroomsMin)
     if (hasCriteria) {
       const data: Record<string, any> = {}
