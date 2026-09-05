@@ -4,6 +4,7 @@ export const maxDuration = 60
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth"
+import { extractEmail, extractPhone } from "@/lib/facebook"
 
 // One-time backfill: link EXISTING Facebook Messenger bot conversations to their
 // contact so they show up as repliable threads in the CASAi Inbox. For each
@@ -23,6 +24,7 @@ export async function GET(req: Request) {
 
   let matchedByContact = 0
   let matchedByEmailPhone = 0
+  let matchedByMessage = 0
   let alreadyLinked = 0
   let unmatched = 0
   let psidSet = 0
@@ -46,6 +48,34 @@ export async function GET(req: Request) {
       if (contactId) matchedByEmailPhone++
     } else {
       matchedByContact++
+    }
+
+    // Click-to-Messenger form leads send all their info in one message, so the
+    // conversation record has no email/phone — but the message body does. Scan
+    // the inbound messages for an email/phone and match a contact by those.
+    if (!contactId) {
+      const msgs = await prisma.facebookMessage.findMany({
+        where: { psid: c.psid, direction: "INBOUND" },
+        select: { body: true },
+        take: 25,
+      })
+      for (const m of msgs) {
+        const body = m.body || ""
+        const email = extractEmail(body)
+        if (email) {
+          const byEmail = await prisma.contact.findFirst({ where: { email }, select: { id: true } })
+          if (byEmail) { contactId = byEmail.id; break }
+        }
+        const phone = extractPhone(body)
+        if (phone) {
+          const digits = phone.replace(/\D/g, "").slice(-10)
+          if (digits) {
+            const byPhone = await prisma.contact.findFirst({ where: { phone: { contains: digits } }, select: { id: true } })
+            if (byPhone) { contactId = byPhone.id; break }
+          }
+        }
+      }
+      if (contactId) matchedByMessage++
     }
 
     if (!contactId) { unmatched++; continue }
@@ -75,6 +105,7 @@ export async function GET(req: Request) {
     apply,
     conversations: convos.length,
     matchedByContact,
+    matchedByMessage,
     matchedByEmailPhone,
     alreadyLinked,
     unmatched,
