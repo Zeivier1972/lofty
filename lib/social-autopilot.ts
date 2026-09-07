@@ -627,7 +627,10 @@ async function triggerHeyGenVideo(script: string, dayOfWeek: number): Promise<st
 
     const payload = {
       video_inputs: videoInputs,
-      dimension: { width: 720, height: 1280 },
+      // 1080x1920 — Reels/Shorts/TikTok re-compress on upload, so a 720p source
+      // lands visibly soft. Must match the Creatomate render size below, or the
+      // caption pass would scale this straight back down.
+      dimension: { width: 1080, height: 1920 },
       caption: true,
     }
 
@@ -1054,8 +1057,10 @@ export async function checkHeygenVideos(): Promise<{ checked: number; completed:
               source: {
                 output_format: "mp4",
                 frame_rate: 30,
-                width: 720,
-                height: 1280,
+                // Keep in step with the HeyGen dimension above — this caption pass
+                // is the final output, so a smaller size here silently undoes it.
+                width: 1080,
+                height: 1920,
                 elements: [
                   { id: "main-video", type: "video", source: videoUrl, fit: "cover", time: 0, duration: "auto" },
                   {
