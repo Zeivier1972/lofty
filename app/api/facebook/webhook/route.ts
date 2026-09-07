@@ -738,6 +738,49 @@ export async function POST(req: Request) {
             contactId: contact.id,
           },
         }).catch(() => {})
+
+        // Answer them. Until now this branch logged the message, rang the bell and
+        // stopped — so anyone whose DM did not contain a campaign or trigger keyword
+        // got total silence from Sofía, which is most organic replies. Facebook's
+        // 24h messaging window is open (they just wrote to us), so a free-form reply
+        // is allowed here.
+        if (isOptOut(text)) {
+          await sendFacebookMessage(psid, "Entendido, no te enviaremos más mensajes. ¡Que tengas un buen día! 👋").catch(() => {})
+        } else {
+          const result = await generateSocialAIReply(text, {
+            firstName: contact.firstName,
+            campaignKeyword: null,
+            platform: "FACEBOOK",
+          }).catch(e => { console.error("[FB non-bot DM] AI reply failed:", e); return null })
+
+          if (result) {
+            await sendFacebookMessage(psid, result.reply)
+            await prisma.facebookMessage.create({
+              data: { psid, pageId, body: result.reply, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
+            }).catch(() => {})
+
+            // Follow through on what the reply promised, so Sofía does not say she
+            // is sending options and then send nothing.
+            if (result.sendPreConstruction) {
+              const aiConfig = await prisma.aIConfig.findFirst()
+              const communities = await getMatchingPreConstruction(text, aiConfig?.calendlyUrl || "").catch(() => [])
+              for (const msg of communities) await sendFacebookMessage(psid, msg).catch(() => {})
+            }
+            if (result.sendProperties) {
+              const listings = await getMatchingProperties(null).catch(() => [])
+              for (const msg of listings) await sendFacebookMessage(psid, msg).catch(() => {})
+            }
+            if (result.notifyCatherine) {
+              notifyCatherineAboutLead({
+                firstName: contact.firstName,
+                phone: contact.phone,
+                email: contact.email,
+                message: text,
+                platform: "FACEBOOK",
+              }).catch(() => {})
+            }
+          }
+        }
         } // end non-bot DM
       }
     }
