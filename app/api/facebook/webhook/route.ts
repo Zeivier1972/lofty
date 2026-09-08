@@ -754,10 +754,24 @@ export async function POST(req: Request) {
           }).catch(e => { console.error("[FB non-bot DM] AI reply failed:", e); return null })
 
           if (result) {
-            await sendFacebookMessage(psid, result.reply)
+            // sendFacebookMessage returns the message id on success and null when
+            // Facebook rejects the send (an expired page token, for instance). Only
+            // record it as SENT if it actually left — otherwise the Inbox shows a
+            // reply the lead never received, and Catherine thinks they were answered.
+            const sentId = await sendFacebookMessage(psid, result.reply)
             await prisma.facebookMessage.create({
-              data: { psid, pageId, body: result.reply, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
+              data: {
+                psid, pageId, body: result.reply, direction: "OUTBOUND",
+                status: sentId ? "SENT" : "FAILED",
+                messageId: sentId || undefined,
+                contactId: contact.id,
+              },
             }).catch(() => {})
+
+            if (!sentId) {
+              console.error(`[FB non-bot DM] reply NOT delivered to ${psid} — check FB_PAGE_ACCESS_TOKEN`)
+              continue
+            }
 
             // Follow through on what the reply promised, so Sofía does not say she
             // is sending options and then send nothing.
