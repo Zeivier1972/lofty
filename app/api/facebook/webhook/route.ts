@@ -16,7 +16,7 @@ import {
   parseIntent,
 } from "@/lib/facebook"
 import { ingestLead, enrollContactInPlanByName } from "@/lib/lead-ingest"
-import { generateSocialAIReply, getMatchingProperties, getMatchingPreConstruction, notifyCatherineAboutLead } from "@/lib/social-ai-chat"
+import { generateSocialAIReply, getMatchingProperties, getMatchingPreConstruction, notifyCatherineAboutLead, escalateUndeliveredMessengerReply } from "@/lib/social-ai-chat"
 
 function greetingQuickReplies(config: any) {
   return (config.greetingButtons || "Sí, me interesa,Quiero más info")
@@ -669,7 +669,18 @@ export async function POST(req: Request) {
               priority: "MEDIUM",
             },
           }).catch(() => {})
-          await sendFacebookMessage(psid, greeting)
+          // Same trap as the non-bot branch: if Facebook refuses the greeting the
+          // conversation sits in ASKED_NAME forever and the lead sees nothing. This
+          // is the path an engagement campaign's keyword replies land on, so escalate.
+          const greetingSent = await sendFacebookMessage(psid, greeting)
+          if (!greetingSent) {
+            console.error(`[FB bot] greeting NOT delivered to ${psid} — see the [FB] error above`)
+            await escalateUndeliveredMessengerReply({
+              firstName: null,
+              leadMessage: text,
+              draftReply: greeting,
+            }).catch(() => {})
+          }
         } else {
         // ── Non-bot Messenger DM handling ───────────────────────────────────
         let contact = await prisma.contact.findFirst({ where: { facebookPsid: psid } })
@@ -769,7 +780,16 @@ export async function POST(req: Request) {
             }).catch(() => {})
 
             if (!sentId) {
-              console.error(`[FB non-bot DM] reply NOT delivered to ${psid} — check FB_PAGE_ACCESS_TOKEN`)
+              console.error(`[FB non-bot DM] reply NOT delivered to ${psid} — see the [FB] error above`)
+              // The lead is waiting and Sofía was refused. A human can still answer
+              // from the Page inbox, so hand Catherine the draft rather than letting
+              // a paid click go quiet.
+              await escalateUndeliveredMessengerReply({
+                contactId: contact.id,
+                firstName: contact.firstName,
+                leadMessage: text,
+                draftReply: result.reply,
+              }).catch(() => {})
               continue
             }
 
