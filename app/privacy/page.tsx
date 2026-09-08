@@ -6,7 +6,7 @@ export default function PrivacyPage() {
   return (
     <main className="max-w-3xl mx-auto px-6 py-16">
       <h1 className="text-3xl font-bold mb-6">Privacy Policy</h1>
-      <p className="text-sm text-gray-500 mb-8">Last updated: June 2025</p>
+      <p className="text-sm text-gray-500 mb-8">Last updated: September 2026</p>
 
       <section className="space-y-6 text-gray-700 leading-relaxed">
         <div>
@@ -42,7 +42,26 @@ export default function PrivacyPage() {
         </div>
 
         <div>
-          <h2 className="text-xl font-semibold mb-2">4. Data Sharing</h2>
+          <h2 className="text-xl font-semibold mb-2">4. Facebook and Instagram Messaging</h2>
+          <p>
+            If you send a message to our Facebook Page or Instagram account, we receive the content of that
+            conversation along with the public profile information Meta provides — typically your name and
+            profile picture. We use it only to answer your real estate question, to send you listings or
+            event details you asked for, and to continue the conversation you started.
+          </p>
+          <p className="mt-2">
+            Our assistant, Sofía, may reply automatically so you get an answer outside office hours. You can
+            ask to speak with Catherine at any time, and a person will take over the conversation.
+          </p>
+          <p className="mt-2">
+            We do not use your messages for advertising or profiling, and we do not sell them. Reply
+            <strong> STOP </strong> in the conversation at any time and we will stop messaging you. To have
+            your conversation history deleted, contact us using the details below.
+          </p>
+        </div>
+
+        <div>
+          <h2 className="text-xl font-semibold mb-2">5. Data Sharing</h2>
           <p>
             We do not sell your personal information. We may share data with trusted service providers
             (such as our CRM platform) solely to fulfill the services described above.
@@ -50,7 +69,7 @@ export default function PrivacyPage() {
         </div>
 
         <div>
-          <h2 className="text-xl font-semibold mb-2">5. Data Retention</h2>
+          <h2 className="text-xl font-semibold mb-2">6. Data Retention</h2>
           <p>
             We retain your information for as long as necessary to provide services and comply with legal
             obligations. You may request deletion of your data at any time by contacting us.
@@ -58,7 +77,7 @@ export default function PrivacyPage() {
         </div>
 
         <div>
-          <h2 className="text-xl font-semibold mb-2">6. Contact Us</h2>
+          <h2 className="text-xl font-semibold mb-2">7. Contact Us</h2>
           <p>
             If you have questions about this privacy policy or wish to exercise your data rights, contact us at:
           </p>
