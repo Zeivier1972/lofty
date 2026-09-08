@@ -327,15 +327,21 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
       // number"). Non-event leads fall through to the investor/regular welcome
       // below, which stays geared to the campaign they came from.
       const smsBody = `Hola ${firstName}, soy Sofia de Catherine Gomez Realtor. Gracias por registrarte en nuestro Evento de Inversion en Miami en ${eventInfo.city} (${eventInfo.dateLabel}). Catherine te contactara pronto. Asegura tu lugar: ${eventInfo.link}`
+      // sendSMS resolves to null when the text never left — the automated kill
+      // switch, the budget cap, the per-contact cooldown, doNotText, or a Twilio
+      // rejection. Only record the activity when it actually went out, and never
+      // write our own SMSMessage row: sendSMS already logs one on success, so a
+      // second here both duplicates real sends and invents skipped ones.
       sendSMS(toPhone, smsBody, undefined, { automated: true, contactId: contact.id })
-        .then(() => {
+        .then(sid => {
+          if (!sid) {
+            console.warn(`[INGEST] Event welcome SMS NOT sent to ${toPhone} — see the [SMS ...] line above for the reason`)
+            return
+          }
           console.log(`[INGEST] Event welcome SMS sent to ${toPhone}`)
           prisma.activity.create({ data: { type: "SMS", title: "Sofía sent event welcome SMS", description: smsBody.slice(0, 200), contactId: contact.id } }).catch(() => {})
         })
         .catch(e => console.error("[INGEST] Event welcome SMS failed:", e))
-      prisma.sMSMessage.create({
-        data: { toNumber: toPhone, fromNumber: process.env.TWILIO_PHONE_NUMBER || "", body: smsBody, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
-      }).catch(() => {})
     } else if (isInvestor && waNumber) {
       // Investor leads → WhatsApp via template only.
       // Free-form WhatsApp (sendWhatsApp) requires an open 24h session from a prior inbound message.
@@ -345,7 +351,11 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
 
       if (templateSid) {
         sendWhatsAppTemplate(toPhone, templateSid, { "1": firstName })
-          .then(() => {
+          .then(sid => {
+            if (!sid) {
+              console.warn(`[INGEST] WhatsApp template NOT sent to investor ${toPhone}`)
+              return
+            }
             console.log(`[INGEST] WhatsApp template sent to investor ${toPhone}`)
             const sentDescription = `Hola ${firstName}, soy Sofía, asistente de Catherine Gómez Realtor 🏙️ Vi que estás interesado en inversiones inmobiliarias en Miami...`
             prisma.activity.create({
@@ -359,7 +369,11 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
             console.error("[INGEST] WhatsApp template failed, falling back to SMS:", e)
             const smsBody = `Hola ${firstName}, soy Sofia de Catherine Gomez Realtor. Gracias por solicitar informacion sobre invertir en Miami. Te muestro los numeros y el plan de pagos? Agenda: ${bookingUrl}`
             sendSMS(toPhone, smsBody, undefined, { automated: true, contactId: contact.id })
-              .then(() => {
+              .then(sid => {
+                if (!sid) {
+                  console.warn(`[INGEST] Investor fallback SMS NOT sent to ${toPhone}`)
+                  return
+                }
                 prisma.activity.create({
                   data: { type: "SMS", title: "Sofía sent investor welcome via SMS (WhatsApp fallback)", description: smsBody.slice(0, 200), contactId: contact.id },
                 }).catch(() => {})
@@ -371,7 +385,11 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
         console.log("[INGEST] No TWILIO_WA_INVESTOR_TEMPLATE_SID — sending SMS to investor")
         const smsBody = `Hola ${firstName}, soy Sofia de Catherine Gomez Realtor. Gracias por solicitar informacion sobre invertir en Miami. Te muestro los numeros y el plan de pagos? Agenda: ${bookingUrl}`
         sendSMS(toPhone, smsBody, undefined, { automated: true, contactId: contact.id })
-          .then(() => {
+          .then(sid => {
+            if (!sid) {
+              console.warn(`[INGEST] Investor SMS NOT sent to ${toPhone}`)
+              return
+            }
             prisma.activity.create({
               data: { type: "SMS", title: "Sofía sent investor welcome via SMS (no WhatsApp template)", description: smsBody.slice(0, 200), contactId: contact.id },
             }).catch(() => {})
@@ -385,17 +403,17 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
         : propertyType ? `${propertyType.toLowerCase().replace("_", " ")} en Miami` : "propiedades en Miami"
       const smsBody = `Hola ${firstName}, soy Sofia de Catherine Gomez Realtor. Gracias por solicitar informacion sobre ${interest}. Hablamos? Agenda: ${bookingUrl}`
       sendSMS(toPhone, smsBody, undefined, { automated: true, contactId: contact.id })
-        .then(() => {
+        .then(sid => {
+          if (!sid) {
+            console.warn(`[INGEST] Welcome SMS NOT sent to ${toPhone} — see the [SMS ...] line above for the reason`)
+            return
+          }
           console.log(`[INGEST] SMS sent to ${toPhone}`)
           prisma.activity.create({
             data: { type: "SMS", title: "Sofía sent welcome SMS", description: smsBody.slice(0, 200), contactId: contact.id },
           }).catch(() => {})
         })
         .catch(e => console.error("[INGEST] SMS failed:", e))
-
-      prisma.sMSMessage.create({
-        data: { toNumber: toPhone, fromNumber: process.env.TWILIO_PHONE_NUMBER || "", body: smsBody, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
-      }).catch(() => {})
     }
   } else {
     console.log(`[INGEST] SMS skipped — phone=${!!phone} autoSMS=${autoSMS}`)
