@@ -7,9 +7,85 @@ function token() {
   return process.env.FB_PAGE_ACCESS_TOKEN || process.env.FACEBOOK_PAGE_ACCESS_TOKEN || ""
 }
 
+function pageId() {
+  return process.env.FACEBOOK_PAGE_ID || process.env.FB_PAGE_ID || ""
+}
+
+// The configured token is not necessarily a Page token. A Business Manager System
+// User token never expires — which is why we want one — but `me` on it resolves to
+// the system user, and a system user has no /messages edge, so Graph answers
+// "Object with ID 'me' does not exist" (code 100, subcode 33) on every send.
+//
+// So never address the page as `me`. Use the page id, and exchange the configured
+// token for the page's own token once. A Page token derived from a non-expiring
+// System User token does not expire either, so this stays a one-time cost per boot.
+let cachedPageToken: string | null = null
+
+async function pageToken(): Promise<string> {
+  if (cachedPageToken) return cachedPageToken
+  const configured = token()
+  const id = pageId()
+  if (!configured || !id) return configured
+  try {
+    const res = await fetch(`${GRAPH}/${id}?fields=access_token&access_token=${configured}`)
+    const data = await res.json()
+    if (res.ok && data.access_token) {
+      cachedPageToken = data.access_token as string
+      console.log("[FB] Derived a Page access token from the configured token")
+      return cachedPageToken
+    }
+    // Already a Page token, or the token cannot read the page node — either way the
+    // configured token is the best we have. Not cached, so we retry on the next send.
+    console.warn("[FB] Could not derive a Page token, using the configured one:", JSON.stringify(data))
+  } catch (e) {
+    console.warn("[FB] pageToken exception, using the configured token:", e)
+  }
+  return configured
+}
+
+// A token-shaped Graph failure — as opposed to a real one like a closed 24h window.
+function isTokenError(data: any): boolean {
+  const e = data?.error
+  if (!e) return false
+  return e.code === 190 || e.code === 102 || (e.code === 100 && e.error_subcode === 33) || e.type === "OAuthException"
+}
+
+// POST to the page's /messages edge, re-deriving the Page token once if the first
+// attempt fails on the token itself.
+async function postToPageMessages(body: Record<string, unknown>, label: string): Promise<string | null> {
+  if (!token()) { console.error(`[FB] ${label}: FB_PAGE_ACCESS_TOKEN not set`); return null }
+  if (!pageId()) { console.error(`[FB] ${label}: FACEBOOK_PAGE_ID not set`); return null }
+
+  const attempt = async () => {
+    const res = await fetch(`${GRAPH}/${pageId()}/messages?access_token=${await pageToken()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+    return { ok: res.ok, data: await res.json() }
+  }
+
+  try {
+    let { ok, data } = await attempt()
+    if (!ok && cachedPageToken && isTokenError(data)) {
+      // The cached Page token was rejected — drop it and derive a fresh one once.
+      cachedPageToken = null
+      ;({ ok, data } = await attempt())
+    }
+    if (!ok) {
+      console.error(`[FB] ${label} error:`, JSON.stringify(data))
+      return null
+    }
+    return data.message_id || null
+  } catch (e) {
+    console.error(`[FB] ${label} exception:`, e)
+    return null
+  }
+}
+
 // Send a private Messenger reply to a Facebook page post commenter
 export async function privateReplyToComment(commentId: string, message: string): Promise<boolean> {
-  const tok = token()
+  const tok = await pageToken()
   if (!tok) return false
   try {
     const res = await fetch(`${GRAPH}/${commentId}/private_replies?access_token=${tok}`, {
@@ -31,7 +107,7 @@ export async function privateReplyToComment(commentId: string, message: string):
 
 // Post a public comment reply on a Facebook post comment
 export async function postPublicCommentReply(commentId: string, message: string): Promise<boolean> {
-  const tok = token()
+  const tok = await pageToken()
   if (!tok) return false
   try {
     const res = await fetch(`${GRAPH}/${commentId}/comments?access_token=${tok}`, {
@@ -95,27 +171,11 @@ function userToken() {
 }
 
 export async function sendFacebookMessage(psid: string, text: string): Promise<string | null> {
-  if (!token()) { console.error("[FB] sendFacebookMessage: FB_PAGE_ACCESS_TOKEN not set"); return null }
-  try {
-    const res = await fetch(`${GRAPH}/me/messages?access_token=${token()}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        recipient: { id: psid },
-        message: { text },
-        messaging_type: "RESPONSE",
-      }),
-    })
-    const data = await res.json()
-    if (!res.ok) {
-      console.error("[FB] sendFacebookMessage error:", JSON.stringify(data))
-      return null
-    }
-    return data.message_id || null
-  } catch (e) {
-    console.error("[FB] sendFacebookMessage exception:", e)
-    return null
-  }
+  return postToPageMessages({
+    recipient: { id: psid },
+    message: { text },
+    messaging_type: "RESPONSE",
+  }, "sendFacebookMessage")
 }
 
 type QuickReply = { title: string; payload: string }
@@ -125,34 +185,24 @@ export async function sendFacebookMessageWithQuickReplies(
   text: string,
   quickReplies: QuickReply[],
 ): Promise<string | null> {
-  if (!token()) return null
-  try {
-    const res = await fetch(`${GRAPH}/me/messages?access_token=${token()}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        recipient: { id: psid },
-        message: {
-          text,
-          quick_replies: quickReplies.map(qr => ({
-            content_type: "text",
-            title: qr.title,
-            payload: qr.payload,
-          })),
-        },
-        messaging_type: "RESPONSE",
-      }),
-    })
-    const data = await res.json()
-    if (!res.ok) console.error("[FB] sendWithQuickReplies error:", data)
-    return data.message_id || null
-  } catch { return null }
+  return postToPageMessages({
+    recipient: { id: psid },
+    message: {
+      text,
+      quick_replies: quickReplies.map(qr => ({
+        content_type: "text",
+        title: qr.title,
+        payload: qr.payload,
+      })),
+    },
+    messaging_type: "RESPONSE",
+  }, "sendWithQuickReplies")
 }
 
 export async function getFacebookUserProfile(psid: string): Promise<{ firstName: string; lastName: string } | null> {
   if (!token()) return null
   try {
-    const res = await fetch(`${GRAPH}/${psid}?fields=first_name,last_name&access_token=${token()}`)
+    const res = await fetch(`${GRAPH}/${psid}?fields=first_name,last_name&access_token=${await pageToken()}`)
     if (!res.ok) return null
     const d = await res.json()
     return { firstName: d.first_name || "Facebook", lastName: d.last_name || "Lead" }
@@ -172,7 +222,7 @@ export async function fetchFacebookLeadData(
     return { data: null, error }
   }
   try {
-    const res = await fetch(`${GRAPH}/${leadgenId}?fields=field_data&access_token=${token()}`)
+    const res = await fetch(`${GRAPH}/${leadgenId}?fields=field_data&access_token=${await pageToken()}`)
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}))
       const g = errData?.error || errData
