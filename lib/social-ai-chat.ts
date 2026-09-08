@@ -222,3 +222,65 @@ export async function notifyCatherineAboutLead(lead: {
 
   await sendSMS(realtorPhone, sms).catch(e => console.error("[AI chat] Catherine SMS notify failed:", e))
 }
+
+
+// Meta refuses the Send API for anyone who is not an admin, developer or tester
+// of the app until pages_messaging passes App Review and the app is Live
+// (OAuthException code 10). During an engagement campaign that is a paid click
+// writing in, Sofía being refused, and the lead sitting there unanswered with
+// nobody aware of it.
+//
+// A human can still reply by hand from the Page inbox — App Review gates the API,
+// not the person. So turn every refused send into something Catherine can act on:
+// a HIGH notification carrying the lead's message and Sofía's drafted reply, ready
+// to paste. Text her too, but at most once an hour, so a busy campaign pings her
+// phone once and then keeps the rest in the app.
+export async function escalateUndeliveredMessengerReply(lead: {
+  contactId?: string | null
+  firstName?: string | null
+  leadMessage: string
+  draftReply: string
+}): Promise<void> {
+  const name = lead.firstName?.trim() || "Un lead"
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || ""
+
+  try {
+    const hourAgo = new Date(Date.now() - 60 * 60 * 1000)
+    const recent = await prisma.aINotification.findFirst({
+      where: { type: "FB_SEND_BLOCKED", createdAt: { gte: hourAgo } },
+      select: { id: true },
+    }).catch(() => null)
+
+    await prisma.aINotification.create({
+      data: {
+        type: "FB_SEND_BLOCKED",
+        title: `⚠️ Responde tú a ${name} en Messenger — Facebook bloqueó a Sofía`,
+        body: [
+          `${name} escribió: "${lead.leadMessage.slice(0, 160)}"`,
+          ``,
+          `Sofía NO pudo responder: Facebook aún no aprueba el permiso pages_messaging para esta app.`,
+          `Responde a mano desde la Bandeja de la página (Meta Business Suite). Puedes copiar y pegar esto:`,
+          ``,
+          lead.draftReply.slice(0, 600),
+          ...(appUrl && lead.contactId ? [``, `Ficha del contacto: ${appUrl}/contacts/${lead.contactId}`] : []),
+        ].join("\n"),
+        priority: "HIGH",
+        ...(lead.contactId ? { contactId: lead.contactId } : {}),
+      },
+    })
+
+    // Only the first blocked send in the hour texts her — the rest are in the app.
+    if (!recent) {
+      const aiConfig = await prisma.aIConfig.findFirst()
+      const realtorPhone = aiConfig?.realtorPhone
+      if (realtorPhone) {
+        await sendSMS(
+          realtorPhone,
+          `⚠️ Facebook esta bloqueando las respuestas de Sofia en Messenger. ${name} y posiblemente otros estan esperando respuesta. Contestales a mano desde Meta Business Suite. Detalles en CASAi.`,
+        ).catch(e => console.error("[FB escalate] Catherine SMS failed:", e))
+      }
+    }
+  } catch (e) {
+    console.error("[FB escalate] could not raise the blocked-send alert:", e)
+  }
+}
