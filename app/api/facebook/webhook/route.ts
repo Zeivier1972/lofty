@@ -16,7 +16,7 @@ import {
   parseIntent,
 } from "@/lib/facebook"
 import { ingestLead, enrollContactInPlanByName } from "@/lib/lead-ingest"
-import { generateSocialAIReply, getMatchingProperties, getMatchingPreConstruction, notifyCatherineAboutLead, escalateUndeliveredMessengerReply } from "@/lib/social-ai-chat"
+import { generateSocialAIReply, getMatchingProperties, getMatchingPreConstruction, notifyCatherineAboutLead } from "@/lib/social-ai-chat"
 
 function greetingQuickReplies(config: any) {
   return (config.greetingButtons || "Sí, me interesa,Quiero más info")
@@ -669,17 +669,12 @@ export async function POST(req: Request) {
               priority: "MEDIUM",
             },
           }).catch(() => {})
-          // Same trap as the non-bot branch: if Facebook refuses the greeting the
-          // conversation sits in ASKED_NAME forever and the lead sees nothing. This
-          // is the path an engagement campaign's keyword replies land on, so escalate.
+          // If Facebook refuses the greeting the conversation sits in ASKED_NAME
+          // forever and the lead sees nothing, so record the failure in the log even
+          // though it no longer raises an alert.
           const greetingSent = await sendFacebookMessage(psid, greeting)
           if (!greetingSent) {
             console.error(`[FB bot] greeting NOT delivered to ${psid} — see the [FB] error above`)
-            await escalateUndeliveredMessengerReply({
-              firstName: null,
-              leadMessage: text,
-              draftReply: greeting,
-            }).catch(() => {})
           }
         } else {
         // ── Non-bot Messenger DM handling ───────────────────────────────────
@@ -780,16 +775,11 @@ export async function POST(req: Request) {
             }).catch(() => {})
 
             if (!sentId) {
+              // Logged, not escalated. While pages_messaging sits at Standard access
+              // every send is refused, so a per-message alert is pure noise — the
+              // FACEBOOK_REPLY notification above already tells Catherine the lead
+              // wrote in, and the Inbox row records the reply as FAILED.
               console.error(`[FB non-bot DM] reply NOT delivered to ${psid} — see the [FB] error above`)
-              // The lead is waiting and Sofía was refused. A human can still answer
-              // from the Page inbox, so hand Catherine the draft rather than letting
-              // a paid click go quiet.
-              await escalateUndeliveredMessengerReply({
-                contactId: contact.id,
-                firstName: contact.firstName,
-                leadMessage: text,
-                draftReply: result.reply,
-              }).catch(() => {})
               continue
             }
 
