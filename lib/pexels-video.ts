@@ -35,17 +35,17 @@ export function getSceneQuery(sceneText: string): string {
 
 // Fallback static images when Pexels is not configured or fails
 const FALLBACK_BY_QUERY_KEY: Record<string, string> = {
-  pool:      "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=1280&q=80",
-  family:    "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=1280&q=80",
-  beach:     "https://images.unsplash.com/photo-1533106497176-45ae19e68ba2?w=1280&q=80",
-  night:     "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=1280&q=80",
-  penthouse: "https://images.unsplash.com/photo-1613977257365-aaae5a9817ff?w=1280&q=80",
-  modern:    "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1280&q=80",
-  invest:    "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1280&q=80",
-  seller:    "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1280&q=80",
-  airbnb:    "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=1280&q=80",
-  signing:   "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1280&q=80",
-  default:   "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1280&q=80",
+  pool:      "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=1920&q=85",
+  family:    "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=1920&q=85",
+  beach:     "https://images.unsplash.com/photo-1533106497176-45ae19e68ba2?w=1920&q=85",
+  night:     "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=1920&q=85",
+  penthouse: "https://images.unsplash.com/photo-1613977257365-aaae5a9817ff?w=1920&q=85",
+  modern:    "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1920&q=85",
+  invest:    "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1920&q=85",
+  seller:    "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1920&q=85",
+  airbnb:    "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=1920&q=85",
+  signing:   "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1920&q=85",
+  default:   "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1920&q=85",
 }
 
 export function getFallbackBackground(sceneText: string, index: number): Record<string, string> {
