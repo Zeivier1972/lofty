@@ -1,10 +1,11 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import Link from "next/link"
 import { Building2, Search, Bed, Bath, Maximize2, MapPin, Loader2, Phone, SlidersHorizontal, ChevronUp, ChevronDown, Heart } from "lucide-react"
 import { IdxDisclaimer } from "@/components/idx-disclaimer"
 import { LeadCaptureModal } from "@/components/idx/lead-capture-modal"
+import { PROPERTY_TYPE_GROUPS, keysToParam, paramToKeys, labelForKeys } from "@/lib/property-types"
 import { getFavs, setFavs, getLead, setLead, saveHome, type LeadFields } from "@/lib/idx-favorites"
 
 interface Result {
@@ -32,14 +33,6 @@ const PRICE_OPTIONS = [
   { label: "$2M", value: "2000000" },
 ]
 
-// RESO PropertySubType values (verified via /api/mls/bridge-test → subTypesSeen)
-const PROPERTY_TYPES = [
-  { label: "Cualquier tipo", value: "" },
-  { label: "Casa", value: "Single Family Residence" },
-  { label: "Condominio", value: "Condominium" },
-  { label: "Townhouse", value: "Townhouse" },
-  { label: "Cooperativa", value: "Stock Cooperative" },
-]
 
 // South Florida cities (Miami-Dade, Broward, Palm Beach) for the city autocomplete.
 const SOUTH_FLORIDA_CITIES = [
@@ -93,7 +86,9 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
   const [minBaths, setMinBaths] = useState("")
   const [minGarage, setMinGarage] = useState("")
   const [stories, setStories] = useState("")
-  const [propType, setPropType] = useState("")
+  const [propTypeKeys, setPropTypeKeys] = useState<string[]>([])
+  const [typeMenuOpen, setTypeMenuOpen] = useState(false)
+  const typeMenuRef = useRef<HTMLDivElement | null>(null)
   // Advanced filters
   const [maxBeds, setMaxBeds] = useState("")
   const [maxBaths, setMaxBaths] = useState("")
@@ -145,7 +140,7 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
   function buildSearchLabel(): string {
     const parts: string[] = []
     if (city.trim()) parts.push(city.trim())
-    if (propType) parts.push(PROPERTY_TYPES.find(t => t.value === propType)?.label || "")
+    if (propTypeKeys.length) parts.push(labelForKeys(propTypeKeys))
     if (minBeds) parts.push(`${minBeds}+ cuartos`)
     if (maxPrice) parts.push(`hasta $${Number(maxPrice).toLocaleString()}`)
     return parts.filter(Boolean).join(" · ") || "Todas las propiedades"
@@ -162,7 +157,7 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
         zip: isZip ? city.trim() : undefined,
         minPrice: minPrice || undefined, maxPrice: maxPrice || undefined,
         minBeds: minBeds || undefined, minBaths: minBaths || undefined,
-        type: propType || undefined,
+        type: keysToParam(propTypeKeys) || undefined,
         contactId: getLead()?.contactId,
         ...lead,
       }),
@@ -226,11 +221,28 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
     }
   }, [])
 
+  // Selecting "Multifamiliar" also ticks nothing else — it already carries
+  // duplex, triplex and fourplex — but the three stay individually selectable
+  // for a buyer who wants only one of them.
+  function toggleTypeKey(key: string) {
+    setPropTypeKeys(prev => (prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]))
+  }
+
+  useEffect(() => {
+    if (!typeMenuOpen) return
+    function onDocClick(e: MouseEvent) {
+      if (typeMenuRef.current && !typeMenuRef.current.contains(e.target as Node)) setTypeMenuOpen(false)
+    }
+    document.addEventListener("mousedown", onDocClick)
+    return () => document.removeEventListener("mousedown", onDocClick)
+  }, [typeMenuOpen])
+
   const currentFilters = () => ({
-    city, minPrice, maxPrice, minBeds, maxBeds, minBaths, maxBaths, minGarage, stories, propType, mode, sort,
+    city, minPrice, maxPrice, minBeds, maxBeds, minBaths, maxBaths, minGarage, stories, mode, sort,
+    propType: keysToParam(propTypeKeys),
     minSqft, maxSqft, minYear, maxYear, maxHoa, maxDom, pool, waterfront,
   })
-  const search = useCallback(() => { setPage(1); runQuery({ ...currentFilters(), offset: "0" }) }, [runQuery, city, minPrice, maxPrice, minBeds, maxBeds, minBaths, maxBaths, minGarage, stories, propType, mode, sort, minSqft, maxSqft, minYear, maxYear, maxHoa, maxDom, pool, waterfront]) // eslint-disable-line react-hooks/exhaustive-deps
+  const search = useCallback(() => { setPage(1); runQuery({ ...currentFilters(), offset: "0" }) }, [runQuery, city, minPrice, maxPrice, minBeds, maxBeds, minBaths, maxBaths, minGarage, stories, propTypeKeys, mode, sort, minSqft, maxSqft, minYear, maxYear, maxHoa, maxDom, pool, waterfront]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function changeSort(v: string) {
     setSort(v)
@@ -272,7 +284,7 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
     if (init.maxPrice) setMaxPrice(init.maxPrice)
     if (init.minBeds) setMinBeds(init.minBeds)
     if (init.stories) setStories(init.stories)
-    if (init.propType) setPropType(init.propType)
+    if (init.propType) setPropTypeKeys(paramToKeys(init.propType))
     runQuery(init)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -328,9 +340,51 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
           <datalist id="sfla-cities">
             {SOUTH_FLORIDA_CITIES.map(c => <option key={c} value={c} />)}
           </datalist>
-          <select value={propType} onChange={e => setPropType(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-lofty-400">
-            {PROPERTY_TYPES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
+          <div ref={typeMenuRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setTypeMenuOpen(o => !o)}
+              aria-expanded={typeMenuOpen}
+              className="w-full flex items-center justify-between gap-2 border border-gray-200 rounded-lg px-3 py-2 text-sm text-left bg-white focus:outline-none focus:ring-2 focus:ring-lofty-400"
+            >
+              <span className={propTypeKeys.length ? "text-gray-900 truncate" : "text-gray-500"}>
+                {propTypeKeys.length ? labelForKeys(propTypeKeys) : "Cualquier tipo"}
+              </span>
+              <svg className="w-4 h-4 flex-shrink-0 text-gray-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fillRule="evenodd" d="M5.2 7.3a1 1 0 011.4 0L10 10.7l3.4-3.4a1 1 0 111.4 1.4l-4.1 4.1a1 1 0 01-1.4 0L5.2 8.7a1 1 0 010-1.4z" clipRule="evenodd" />
+              </svg>
+            </button>
+            {typeMenuOpen && (
+              <div className="absolute z-20 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg py-1 max-h-72 overflow-y-auto">
+                {PROPERTY_TYPE_GROUPS.map(g => {
+                  const checked = propTypeKeys.includes(g.key)
+                  return (
+                    <label
+                      key={g.key}
+                      className={`flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer ${g.parent ? "pl-8 text-gray-600" : "text-gray-900"}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleTypeKey(g.key)}
+                        className="rounded border-gray-300 text-lofty-600 focus:ring-lofty-400"
+                      />
+                      {g.label}
+                    </label>
+                  )
+                })}
+                {propTypeKeys.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setPropTypeKeys([])}
+                    className="w-full text-left px-3 py-2 text-xs text-gray-500 hover:text-gray-800 border-t border-gray-100 mt-1"
+                  >
+                    Limpiar selección
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
           <select value={minPrice} onChange={e => setMinPrice(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-lofty-400">
             {PRICE_OPTIONS.map(o => <option key={`min${o.value}`} value={o.value}>{o.value ? `Desde ${o.label}` : "Precio mín."}</option>)}
           </select>
