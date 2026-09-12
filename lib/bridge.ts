@@ -167,7 +167,7 @@ export function buildDisplayAddress(l: any): string {
 export async function searchIdxListings(params: {
   city?: string; cities?: string[]; zip?: string; zips?: string[]; minPrice?: number; maxPrice?: number
   minBeds?: number; maxBeds?: number; minBaths?: number; maxBaths?: number
-  minGarage?: number; propertySubType?: string; propertySubTypes?: string[]; mode?: "sale" | "rent"
+  minGarage?: number; propertySubType?: string; propertySubTypes?: string[]; propertyTypes?: string[]; mode?: "sale" | "rent"
   minSqft?: number; maxSqft?: number; minYear?: number; maxYear?: number
   maxHoa?: number; maxDom?: number; pool?: boolean; waterfront?: boolean
   minStories?: number; maxStories?: number
@@ -179,14 +179,24 @@ export async function searchIdxListings(params: {
   const titleCase = (s: string) => s.trim().toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
 
   // "rent" → Residential Lease; "sale" (default) → Residential (for-sale).
-  const resoType = params.mode === "rent" ? "Residential Lease" : "Residential"
+  //
+  // Sale searches may need more than one: duplexes, triplexes and fourplexes are
+  // filed as "Residential Income" in RESO, so a query pinned to "Residential"
+  // dropped every one of them before PropertySubType was even considered — the
+  // MLS had them and CASAi returned nothing. Callers pass the types their
+  // selection needs; the subtype filter still pins what comes back.
+  const resoTypes = params.mode === "rent"
+    ? ["Residential Lease"]
+    : (params.propertyTypes && params.propertyTypes.length > 0 ? params.propertyTypes : ["Residential"])
 
   // InternetEntireListingDisplayYN gates IDX display: listings whose agent/seller
   // opted out must NOT be shown (compliance) — and those are exactly the ones whose
   // photo URLs come back null. Filtering to true fixes both.
   const filters = [
     `StandardStatus eq 'Active'`,
-    `PropertyType eq '${resoType}'`,
+    resoTypes.length === 1
+      ? `PropertyType eq '${esc(resoTypes[0])}'`
+      : `(${resoTypes.map(t => `PropertyType eq '${esc(t)}'`).join(" or ")})`,
     `InternetEntireListingDisplayYN eq true`,
   ]
   if (params.minPrice) filters.push(`ListPrice ge ${params.minPrice}`)

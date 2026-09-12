@@ -4,6 +4,7 @@
 import { prisma } from "@/lib/prisma"
 import { searchIdxListings, fetchPrimaryPhotos, buildDisplayAddress } from "@/lib/bridge"
 import { sendEmail, proxiedImage, emailClickUrl } from "@/lib/email"
+import { propertyTypesForSubTypes } from "@/lib/property-types"
 import Anthropic from "@anthropic-ai/sdk"
 
 // Map CRM buyerPropertyType enum → Bridge MLS PropertySubType string
@@ -152,6 +153,8 @@ export async function triggerMatchAlert(contactId: string): Promise<{ sent: bool
       .map(t => PROP_TYPE_MAP[t.trim()])
       .filter(Boolean)
 
+    const incomeTypes = propertyTypesForSubTypes(propSubTypes)
+
     // Query live Bridge MLS with buyer's criteria
     const mlsListings = await searchIdxListings({
       zips: zipTokens.length > 0 ? zipTokens : undefined,
@@ -163,6 +166,10 @@ export async function triggerMatchAlert(contactId: string): Promise<{ sent: bool
       minStories,
       maxStories,
       propertySubTypes: propSubTypes.length > 0 ? propSubTypes : undefined,
+      // A buyer whose preference is multi-family matched nothing without this:
+      // those subtypes sit under Residential Income, so the default
+      // PropertyType filter removed them and the alert simply never fired.
+      propertyTypes: incomeTypes.length > 0 ? incomeTypes : undefined,
       limit: 40,
     })
 
