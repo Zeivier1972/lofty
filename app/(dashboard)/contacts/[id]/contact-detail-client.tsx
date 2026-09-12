@@ -29,6 +29,7 @@ import { AiAssistBar } from "@/components/ui/ai-assist-bar"
 import PropertySendPanel from "./property-send-panel"
 import PreconstructionSendPanel from "./preconstruction-send-panel"
 import InvestorAdvisorPanel from "@/components/contact/investor-advisor-panel"
+import { PROPERTY_TYPE_GROUPS, normalizeBuyerTypeKeys, labelForKeys } from "@/lib/property-types"
 import ReferButton from "./refer-button"
 
 function generateInsight(contact: any): string | null {
@@ -101,6 +102,17 @@ function BuyerPrefsPanel({ contact }: { contact: any }) {
     buyerMustHaves: contact.buyerMustHaves || "",
   })
 
+  // Stored as a comma-separated list of canonical group keys. Older rows hold
+  // display labels ("Casa") or enum keys ("SINGLE_FAMILY"); normalizing on read
+  // means editing one of those quietly upgrades it instead of losing it.
+  function toggleBuyerType(key: string) {
+    setFields(f => {
+      const keys = normalizeBuyerTypeKeys(f.buyerPropertyType)
+      const next = keys.includes(key) ? keys.filter(k => k !== key) : [...keys, key]
+      return { ...f, buyerPropertyType: next.join(",") }
+    })
+  }
+
   async function save() {
     setSaving(true)
     try {
@@ -155,16 +167,36 @@ function BuyerPrefsPanel({ contact }: { contact: any }) {
 
       {editing ? (
         <div className="bg-gray-50 rounded-lg p-3 space-y-2 text-xs">
-          <div className="flex gap-2">
-            <select
-              value={fields.buyerPropertyType}
-              onChange={e => setFields(f => ({ ...f, buyerPropertyType: e.target.value }))}
-              className="flex-1 border rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-lofty-500"
-            >
-              <option value="">Tipo de propiedad...</option>
-              <option>Casa</option><option>Apartamento</option><option>Townhouse</option>
-              <option>Condo</option><option>Terreno</option><option>Commercial</option>
-            </select>
+          <div>
+            <p className="text-[11px] font-semibold text-gray-500 mb-1">
+              Tipo de propiedad <span className="font-normal text-gray-400">· elige uno o varios</span>
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {PROPERTY_TYPE_GROUPS.map(g => {
+                const selected = normalizeBuyerTypeKeys(fields.buyerPropertyType).includes(g.key)
+                return (
+                  <button
+                    key={g.key}
+                    type="button"
+                    onClick={() => toggleBuyerType(g.key)}
+                    className={`rounded-lg border text-[11px] font-medium transition-colors ${
+                      g.parent ? "px-2 py-1 border-dashed" : "px-2.5 py-1.5"
+                    } ${
+                      selected
+                        ? "bg-lofty-600 text-white border-lofty-600"
+                        : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+                    }`}
+                  >
+                    {g.label}
+                  </button>
+                )
+              })}
+            </div>
+            <p className="text-[10px] text-gray-400 mt-1">
+              {normalizeBuyerTypeKeys(fields.buyerPropertyType).length === 0
+                ? "Sin preferencia — recibirá todo tipo de propiedad"
+                : `Alertas: ${labelForKeys(normalizeBuyerTypeKeys(fields.buyerPropertyType))}`}
+            </p>
           </div>
           <input
             type="text"
