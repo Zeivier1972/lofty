@@ -6,7 +6,7 @@ import {
   Bed, Bath, Maximize2, CheckCircle, ChevronDown, ChevronUp,
   Send, Square, CheckSquare, X,
 } from "lucide-react"
-import { PROPERTY_TYPE_GROUPS, keysToParam, labelForKeys } from "@/lib/property-types"
+import { PROPERTY_TYPE_GROUPS, keysToParam, labelForKeys, normalizeBuyerTypeKeys } from "@/lib/property-types"
 import { useToast } from "@/components/ui/use-toast"
 
 interface MlsListing {
@@ -30,14 +30,6 @@ const PROP_TYPE_OPTIONS = PROPERTY_TYPE_GROUPS.map(g => ({
   label: g.labelEn,
   nested: !!g.parent,
 }))
-
-// CRM buyerPropertyType enum → type group key
-const CRM_TO_GROUP: Record<string, string> = {
-  SINGLE_FAMILY: "single_family",
-  CONDO: "condo",
-  TOWNHOUSE: "townhouse",
-  MULTI_FAMILY: "multi_family",
-}
 
 interface Props {
   contactId: string
@@ -83,13 +75,11 @@ export default function PropertySendPanel({
   const [showMore, setShowMore] = useState(false)
   // Multiple property types — start with the buyer's known preference(s).
   // buyerPropertyType may hold several comma-separated types.
+  // Read the stored preference generously — older rows hold display labels
+  // ("Casa") or enum keys ("SINGLE_FAMILY"), and a strict lookup left the
+  // panel opening with nothing selected for most contacts.
   const [propTypes, setPropTypes] = useState<Set<string>>(
-    new Set(
-      (defaultPropertyType || "")
-        .split(",")
-        .map(t => CRM_TO_GROUP[t.trim()])
-        .filter(Boolean)
-    )
+    new Set(normalizeBuyerTypeKeys(defaultPropertyType))
   )
 
   function togglePropType(v: string) {

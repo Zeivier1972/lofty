@@ -109,3 +109,95 @@ export function propertyTypesForSubTypes(subTypes: string[]): string[] {
   const needsIncome = subTypes.some(t => MULTI_FAMILY_SUBTYPES.includes(t.trim()))
   return needsIncome ? MULTI_FAMILY_PROPERTY_TYPES : []
 }
+
+// ── Buyer preferences ────────────────────────────────────────────────
+//
+// contact.buyerPropertyType is free-ish text with years of history in it: the
+// old dropdown wrote display labels ("Casa", "Condo") because its options
+// carried no value attribute, bulk imports wrote enum keys ("SINGLE_FAMILY"),
+// and Facebook lead forms write whatever the advertiser typed. Anything that
+// does not resolve was silently dropped, which left the alert searching with no
+// type filter at all — a buyer who asked for condos got everything.
+//
+// So resolve generously: one alias table, matched on a form with case, accents
+// and separators flattened.
+const BUYER_TYPE_ALIASES: Record<string, string> = {
+  // canonical group keys
+  "single family": "single_family",
+  "condo": "condo",
+  "townhouse": "townhouse",
+  "coop": "coop",
+  "multi family": "multi_family",
+  "duplex": "duplex",
+  "triplex": "triplex",
+  "fourplex": "fourplex",
+  // labels and MLS names seen in existing data
+  "casa": "single_family",
+  "single family residence": "single_family",
+  "house": "single_family",
+  "apartamento": "condo",
+  "apartment": "condo",
+  "condominio": "condo",
+  "condominium": "condo",
+  "cooperativa": "coop",
+  "stock cooperative": "coop",
+  "multifamiliar": "multi_family",
+  "multifamily": "multi_family",
+  "residential income": "multi_family",
+  "quadruplex": "fourplex",
+  "cuadruplex": "fourplex",
+  "four plex": "fourplex",
+}
+
+/** Lowercase, strip accents, flatten _ - / to spaces, collapse whitespace. */
+function normalizeToken(raw: string): string {
+  return raw
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[_\-\/]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+/** Resolve a stored buyerPropertyType into canonical group keys. */
+export function normalizeBuyerTypeKeys(raw: string | null | undefined): string[] {
+  const out: string[] = []
+  for (const part of (raw || "").split(",")) {
+    const key = BUYER_TYPE_ALIASES[normalizeToken(part)]
+    if (key && !out.includes(key)) out.push(key)
+  }
+  return out
+}
+
+/** Selecting Multifamiliar implies its slices, for matching purposes. */
+export function expandKeysWithChildren(keys: string[]): string[] {
+  const out = new Set(keys)
+  for (const k of keys) {
+    for (const g of PROPERTY_TYPE_GROUPS) if (g.parent === k) out.add(g.key)
+  }
+  return Array.from(out)
+}
+
+/** MLS subtypes a stored buyer preference should search for. */
+export function buyerTypeSubTypes(raw: string | null | undefined): string[] {
+  return subTypesForKeys(normalizeBuyerTypeKeys(raw))
+}
+
+/**
+ * Does a property's own type satisfy the buyer's stated preference?
+ *
+ * Fails open on both sides: no stated preference matches everything, and a
+ * property whose type we cannot resolve is never excluded. Dropping a listing
+ * on an unrecognised label would be silent, and a buyer seeing one extra house
+ * is cheaper than a buyer seeing none.
+ */
+export function buyerWantsPropertyType(
+  buyerRaw: string | null | undefined,
+  propertyType: string | null | undefined,
+): boolean {
+  const wanted = expandKeysWithChildren(normalizeBuyerTypeKeys(buyerRaw))
+  if (wanted.length === 0) return true
+  const actual = normalizeBuyerTypeKeys(propertyType)
+  if (actual.length === 0) return true
+  return actual.some(k => wanted.includes(k))
+}

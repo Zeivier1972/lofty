@@ -4,17 +4,10 @@
 import { prisma } from "@/lib/prisma"
 import { searchIdxListings, fetchPrimaryPhotos, buildDisplayAddress } from "@/lib/bridge"
 import { sendEmail, proxiedImage, emailClickUrl } from "@/lib/email"
-import { propertyTypesForSubTypes } from "@/lib/property-types"
+import { propertyTypesForSubTypes, buyerTypeSubTypes } from "@/lib/property-types"
 import Anthropic from "@anthropic-ai/sdk"
 
 // Map CRM buyerPropertyType enum → Bridge MLS PropertySubType string
-const PROP_TYPE_MAP: Record<string, string> = {
-  SINGLE_FAMILY: "Single Family Residence",
-  CONDO: "Condominium",
-  TOWNHOUSE: "Townhouse",
-  MULTI_FAMILY: "Multi Family",
-}
-
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
 
 interface AlertProperty {
@@ -146,12 +139,12 @@ export async function triggerMatchAlert(contactId: string): Promise<{ sent: bool
     const zipTokens = locTokens.filter((l: string) => ZIP_RE.test(l))
     const cityTokens = locTokens.filter((l: string) => !ZIP_RE.test(l))
 
-    // buyerPropertyType can hold MULTIPLE comma-separated types
-    // (e.g. "SINGLE_FAMILY,TOWNHOUSE") — map each to its MLS subtype
-    const propSubTypes = (prefs.buyerPropertyType || "")
-      .split(",")
-      .map(t => PROP_TYPE_MAP[t.trim()])
-      .filter(Boolean)
+    // buyerPropertyType holds one or more comma-separated types. It has to be
+    // read generously: the old preferences dropdown saved display labels
+    // ("Casa", "Condo") rather than enum keys, so a strict lookup resolved
+    // nothing and the alert searched with no type filter at all — a buyer who
+    // asked for condos was matched against every house in the county.
+    const propSubTypes = buyerTypeSubTypes(prefs.buyerPropertyType)
 
     const incomeTypes = propertyTypesForSubTypes(propSubTypes)
 
@@ -339,6 +332,9 @@ export async function buildListingsReply(prefs: {
   const tokens = loc ? loc.split(",").map(s => s.trim()).filter(Boolean) : []
   const zips = tokens.filter(t => /^\d{5}$/.test(t))
   const cities = tokens.filter(t => !/^\d{5}$/.test(t))
+  const smsSubTypes = buyerTypeSubTypes(prefs.buyerPropertyType)
+  const smsIncomeTypes = propertyTypesForSubTypes(smsSubTypes)
+
   try {
     const listings = await searchIdxListings({
       zips: zips.length ? zips : undefined,
@@ -347,7 +343,10 @@ export async function buildListingsReply(prefs: {
       maxPrice: prefs.buyerBudgetMax || undefined,
       minBeds: prefs.buyerBedroomsMin || undefined,
       minBaths: prefs.buyerBathroomsMin || undefined,
-      propertySubType: prefs.buyerPropertyType ? PROP_TYPE_MAP[prefs.buyerPropertyType] : undefined,
+      // Same generous read as the match alert above, and the same reason: a
+      // strict lookup silently resolved nothing for most stored preferences.
+      propertySubTypes: smsSubTypes.length > 0 ? smsSubTypes : undefined,
+      propertyTypes: smsIncomeTypes.length > 0 ? smsIncomeTypes : undefined,
       limit: 4,
     })
     if (!listings.length) return null
