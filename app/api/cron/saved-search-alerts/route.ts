@@ -4,6 +4,7 @@ export const maxDuration = 300
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { searchIdxListings } from "@/lib/bridge"
+import { propertyTypesForSubTypes } from "@/lib/property-types"
 import { sendEmail } from "@/lib/email"
 
 function authOk(req: Request): boolean {
@@ -48,6 +49,7 @@ export async function GET(req: Request) {
   for (const s of searches) {
     if (!s.contact?.email || s.contact.doNotEmail) continue
     try {
+      const savedIncomeTypes = propertyTypesForSubTypes((s.propertySubType || "").split(","))
       const listings = await searchIdxListings({
         city: s.city || undefined,
         zip: s.zip || undefined,
@@ -56,6 +58,9 @@ export async function GET(req: Request) {
         minBeds: s.minBeds || undefined,
         minBaths: s.minBaths || undefined,
         propertySubType: s.propertySubType || undefined,
+        // Same trap as the live search: a saved multi-family search matched
+        // nothing, because those subtypes are filed under Residential Income.
+        propertyTypes: savedIncomeTypes.length > 0 ? savedIncomeTypes : undefined,
         limit: 50,
       })
 

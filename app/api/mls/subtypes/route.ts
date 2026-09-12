@@ -3,14 +3,20 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { searchIdxListings } from "@/lib/bridge"
-import { PROPERTY_TYPE_GROUPS, MULTI_FAMILY_SUBTYPES } from "@/lib/property-types"
+import {
+  PROPERTY_TYPE_GROUPS,
+  MULTI_FAMILY_SUBTYPES,
+  MULTI_FAMILY_PROPERTY_TYPES,
+} from "@/lib/property-types"
 
-// Which PropertySubType values does this feed actually use?
+// What does this feed actually call things?
 //
-// The search filters on exact RESO strings, so a name the feed spells
-// differently matches nothing and the filter looks broken rather than empty —
-// the failure is silent, which is the worst kind. Sample live listings, tally
-// what comes back, and say plainly which of our configured names were seen.
+// The search filters on exact RESO strings, so a name spelled differently
+// matches nothing and the filter reads as broken rather than empty. Two samples
+// are needed, not one: duplexes and triplexes are usually filed under the
+// "Residential Income" PropertyType, and a sample taken only from "Residential"
+// would suggest the feed has none — which is exactly the wrong conclusion that
+// hid this bug.
 //
 // Usage: /api/mls/subtypes  (optionally ?city=Miami&limit=200)
 export async function GET(req: Request) {
@@ -21,35 +27,46 @@ export async function GET(req: Request) {
   const city = searchParams.get("city") || undefined
   const limit = Math.min(Number(searchParams.get("limit")) || 200, 200)
 
-  try {
-    const listings = await searchIdxListings({ city, limit })
-
+  const tally = (listings: any[]) => {
     const counts = new Map<string, number>()
-    for (const l of listings as any[]) {
+    for (const l of listings) {
       const t = l?.PropertySubType
       if (t) counts.set(t, (counts.get(t) || 0) + 1)
     }
-    const seen = Array.from(counts.entries())
+    return Array.from(counts.entries())
       .sort((a, b) => b[1] - a[1])
       .map(([subType, count]) => ({ subType, count }))
-    const seenNames = new Set(counts.keys())
+  }
 
-    const configured = PROPERTY_TYPE_GROUPS.map(g => ({
-      group: g.key,
-      label: g.labelEn,
-      subTypes: g.subTypes.map(t => ({ subType: t, seenInSample: seenNames.has(t) })),
-    }))
+  try {
+    const [residential, income] = await Promise.all([
+      searchIdxListings({ city, limit, propertyTypes: ["Residential"] }),
+      searchIdxListings({ city, limit, propertyTypes: ["Residential Income"] }).catch(() => []),
+    ])
+
+    const residentialSubTypes = tally(residential as any[])
+    const incomeSubTypes = tally(income as any[])
+    const seen = new Set([
+      ...residentialSubTypes.map(r => r.subType),
+      ...incomeSubTypes.map(r => r.subType),
+    ])
 
     return NextResponse.json({
       ok: true,
-      sampled: listings.length,
       city: city || "(no city filter)",
-      subTypesInFeed: seen,
-      configured,
+      residential: { sampled: residential.length, subTypes: residentialSubTypes },
+      residentialIncome: { sampled: income.length, subTypes: incomeSubTypes },
+      configured: PROPERTY_TYPE_GROUPS.map(g => ({
+        group: g.key,
+        label: g.labelEn,
+        propertyTypes: g.propertyTypes ?? ["Residential"],
+        subTypes: g.subTypes.map(t => ({ subType: t, seenInSample: seen.has(t) })),
+      })),
       multiFamily: {
-        configured: MULTI_FAMILY_SUBTYPES,
-        seenInSample: MULTI_FAMILY_SUBTYPES.filter(t => seenNames.has(t)),
-        note: "A configured name missing here is not proof the feed lacks it — this is one sample of active listings, and small-income property is thin on the ground. Re-run with a larger limit or a different city before renaming anything.",
+        searchesUnder: MULTI_FAMILY_PROPERTY_TYPES,
+        configuredSubTypes: MULTI_FAMILY_SUBTYPES,
+        seenInSample: MULTI_FAMILY_SUBTYPES.filter(t => seen.has(t)),
+        note: "If residentialIncome.sampled is 0 the feed may not expose that PropertyType at all, in which case the duplexes live in Residential under their own subtype. A configured name missing from both samples is worth re-checking with a larger limit or another city before renaming it — small income property is thin on the ground.",
       },
     })
   } catch (e: any) {

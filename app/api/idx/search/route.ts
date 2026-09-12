@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
+import { propertyTypesForSubTypes } from "@/lib/property-types"
 import { searchIdxListings, fetchPrimaryPhotos, buildDisplayAddress, idxTotalFromResult } from "@/lib/bridge"
 
 // CORS: allow partner apps (e.g. Easy Rental) to consume this endpoint from the browser
@@ -42,6 +43,10 @@ export async function GET(req: Request) {
     const minStories = storiesSel === "1" ? 1 : storiesSel === "2" ? 2 : storiesSel === "3" ? 3 : undefined
     const maxStories = storiesSel === "1" ? 1 : storiesSel === "2" ? 2 : undefined
 
+    const subTypes = (searchParams.get("type") || "")
+      .split(",").map(s => s.trim()).filter(Boolean)
+    const incomeTypes = propertyTypesForSubTypes(subTypes)
+
     const keyword = searchParams.get("keyword")?.trim() || undefined
     // When keyword is set, skip city/zip — they'd AND together and block MLS# / address results
     const listings = await searchIdxListings({
@@ -54,9 +59,11 @@ export async function GET(req: Request) {
       minBaths: num("minBaths"),
       maxBaths: num("maxBaths"),
       minGarage: num("minGarage"),
-      propertySubTypes: searchParams.get("type")
-        ? searchParams.get("type")!.split(",").map(s => s.trim()).filter(Boolean)
-        : undefined,
+      propertySubTypes: subTypes.length > 0 ? subTypes : undefined,
+      // Multi-family lives under a different RESO PropertyType; without this the
+      // subtype filter is ANDed against PropertyType eq 'Residential' and every
+      // duplex disappears.
+      propertyTypes: incomeTypes.length > 0 ? incomeTypes : undefined,
       mode: searchParams.get("mode") === "rent" ? "rent" : "sale",
       minSqft: num("minSqft"),
       maxSqft: num("maxSqft"),
