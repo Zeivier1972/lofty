@@ -1260,7 +1260,14 @@ function VideoStudio({ toast, campaignKeyword }: { toast: any; campaignKeyword?:
       const res = await fetch("/api/heygen/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ avatarId, voiceId, script, ratio, styleId: styleId !== "none" ? styleId : undefined, broll }),
+        // Say outright whether this is a talking photo. The server used to infer
+        // it from a hardcoded id list, which typed every newly recorded avatar
+        // wrongly and made HeyGen reject it.
+        body: JSON.stringify({
+          avatarId,
+          isTalkingPhoto: avatars.find((a: any) => a.avatar_id === avatarId)?.is_talking_photo ?? undefined,
+          voiceId, script, ratio, styleId: styleId !== "none" ? styleId : undefined, broll,
+        }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
@@ -2223,7 +2230,10 @@ function ListingVideoStudio({ toast }: { toast: any }) {
       const res = await fetch("/api/heygen/listing-video", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ property, photoUrls, avatarId, voiceId, ratio }),
+        body: JSON.stringify({
+          property, photoUrls, avatarId, voiceId, ratio,
+          isTalkingPhoto: avatars.find((a: any) => a.avatar_id === avatarId)?.is_talking_photo ?? undefined,
+        }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
