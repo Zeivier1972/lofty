@@ -77,6 +77,11 @@ const DIMENSIONS: Record<string, { width: number; height: number }> = {
   "1:1":  { width: 1080, height: 1080 },
 }
 
+// Whether an id is a talking photo decides which character block HeyGen expects,
+// and sending the wrong one fails. This list only covers the nine looks that
+// existed when it was written, so a newly recorded avatar was typed wrongly and
+// rejected. The client now states it outright; the list remains a fallback for
+// callers that do not.
 const TALKING_PHOTO_IDS = new Set([
   "ab393d45f3044a89b92fc77d17f321b7",
   "28e35d5f82f64101a2584fb29e841a88",
@@ -106,6 +111,7 @@ export async function POST(req: Request) {
       avatarId,
       voiceId,
       ratio = "9:16",
+      isTalkingPhoto,
     } = await req.json()
 
     if (!avatarId || !voiceId || !property?.trim()) {
@@ -113,7 +119,7 @@ export async function POST(req: Request) {
     }
 
     const dimension = DIMENSIONS[ratio] ?? DIMENSIONS["9:16"]
-    const isTalkingPhoto = TALKING_PHOTO_IDS.has(avatarId)
+    const talkingPhoto = typeof isTalkingPhoto === "boolean" ? isTalkingPhoto : TALKING_PHOTO_IDS.has(avatarId)
     const orientation = ratio === "9:16" ? "portrait" : "landscape"
 
     // Step 1: Generate 10-scene script via Claude
@@ -156,7 +162,7 @@ export async function POST(req: Request) {
     )
 
     // Step 3: Build HeyGen video_inputs using the timeline
-    const character: Record<string, unknown> = isTalkingPhoto
+    const character: Record<string, unknown> = talkingPhoto
       ? { type: "talking_photo", talking_photo_id: avatarId }
       : { type: "avatar", avatar_id: avatarId, avatar_style: "normal" }
 
