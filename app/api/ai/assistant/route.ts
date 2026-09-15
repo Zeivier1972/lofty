@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { buildProjectContext, buildMarketInsightsContext } from "@/lib/preconstruction-context"
+import { buildProjectContext, buildMarketInsightsContext, buildStrMarketContext } from "@/lib/preconstruction-context"
 import Anthropic from "@anthropic-ai/sdk"
 import { sendSMS } from "@/lib/sms"
 import { sendEmail } from "@/lib/email"
@@ -565,7 +565,7 @@ export async function POST(req: Request) {
     buildMarketInsightsContext(),
   ])
   const inventoryBlock = projectLines.length > 0 || marketInsights
-    ? `\n\n━━━ CARTERA Y MERCADO DE CATHERINE ━━━${marketInsights || ""}${projectLines.join("\n")}\n\nCuando Catherine pregunte qué ofrecerle a un lead, parte SIEMPRE de esta cartera antes de sugerir cualquier otra cosa, y cita precios, planes de pago y fechas exactamente como están aquí.`
+    ? `\n\n━━━ CARTERA Y MERCADO DE CATHERINE ━━━\n${buildStrMarketContext()}${marketInsights || ""}${projectLines.join("\n")}\n\nCuando Catherine pregunte qué ofrecerle a un lead, parte SIEMPRE de esta cartera antes de sugerir cualquier otra cosa, y cita precios, planes de pago y fechas exactamente como están aquí.`
     : ""
 
   const systemPrompt = `You are Aria, a world-class AI CRM assistant for Catherine Gomez — a Miami real estate agent and educator who helps Latino families buy smart in Florida. You are the top 0.1% real estate CRM assistant. You think like a seasoned real estate coach, a sharp sales manager, and a trusted advisor all in one.

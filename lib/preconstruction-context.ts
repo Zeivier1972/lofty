@@ -1,9 +1,15 @@
 import { prisma } from "@/lib/prisma"
+import { strMarketContext } from "@/lib/str-market-data"
 
 // Shared between the Investment Advisor and Aria: both are Catherine-facing, so
 // both get the full record including the agent-only fields. Sofía deliberately
 // does not use this — she talks to leads and gets the redacted view built by
 // getMatchingPreConstruction in lib/social-ai-chat.ts.
+
+/** Real ADR/occupancy/appreciation. Always present — it is code, not a setting. */
+export function buildStrMarketContext(): string {
+  return strMarketContext()
+}
 
 export async function buildMarketInsightsContext(): Promise<string | null> {
   try {

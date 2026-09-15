@@ -102,8 +102,8 @@ function calcDefaults(p: Project): CalcState {
     project: p,
     price: String(p.priceMin || ""),
     sqft: "",
-    nightlyRate: "280",
-    occupancyPct: "70",
+    nightlyRate: "",
+    occupancyPct: "",
     downPaymentPct: "40",
     hoaPerSqft: hoa ? hoa[1] : "1.8",
     mortgageRatePct: "6.5",
@@ -528,8 +528,8 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
               {([
                 ["price", "Precio ($)", "540000"],
                 ["sqft", "Superficie (sqft) *", "321"],
-                ["nightlyRate", "Renta por noche ($)", "280"],
-                ["occupancyPct", "Ocupación (%)", "70"],
+                ["nightlyRate", "Renta por noche ($) — vacío = dato real", "auto"],
+                ["occupancyPct", "Ocupación (%) — vacío = dato real", "auto"],
                 ["downPaymentPct", "Inicial (%)", "40"],
                 ["hoaPerSqft", "HOA ($/sqft)", "1.8"],
                 ["mortgageRatePct", "Tasa hipoteca (%)", "6.5"],
@@ -551,8 +551,10 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
             </div>
 
             <p className="text-[11px] text-gray-400 mt-2">
-              * La superficie es obligatoria: sin ella no se puede calcular el HOA. El resto arranca con los
-              supuestos base del modelo y se puede ajustar por proyecto.
+              * La superficie es obligatoria: sin ella no se puede calcular el HOA. Si dejas la renta por noche
+              y la ocupación en blanco, el sistema usa los datos reales del edificio si los tiene, si no los del
+              submercado (Brickell, Miami Beach, Miami, Hollywood, Orlando) y si no la línea base de Florida —
+              y anota la fuente en la hoja de supuestos.
             </p>
 
             {calcErr && (

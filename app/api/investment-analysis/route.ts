@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { Assumptions, DEFAULTS, analyze } from "@/lib/investment-analysis"
 import { buildInvestmentWorkbook } from "@/lib/investment-workbook"
+import { resolveStrAssumptions, lookupAppreciation, isLongTermPlay, lookupLongTermComp, STR_ASOF } from "@/lib/str-market-data"
 
 const num = (v: any): number | undefined => {
   if (v === null || v === undefined || v === "") return undefined
@@ -44,6 +45,13 @@ async function resolve(params: Record<string, any>) {
   if (!price) return { error: "Falta el precio (price) — el proyecto no tiene priceMin y no se envió uno." }
   if (!sqft) return { error: "Falta la superficie en pies cuadrados (sqft). Sin ella no se puede calcular el HOA." }
 
+  // Real numbers for this building, or its submarket, or Florida — in that
+  // order. The generic default is the last resort, never the first choice.
+  const longTerm = isLongTermPlay(project?.propertyType, project?.name || String(params.name || ""))
+  const ltComp = longTerm ? lookupLongTermComp(project?.name || String(params.name || "")) : null
+  const mkt = resolveStrAssumptions(project?.name || params.name, project?.neighborhood, project?.city)
+  const apr = lookupAppreciation(project?.neighborhood, project?.city)
+
   const assumptions: Assumptions = {
     ...DEFAULTS,
     price,
@@ -53,8 +61,9 @@ async function resolve(params: Record<string, any>) {
       ?? hoaFromText(project?.investmentHighlights)
       ?? DEFAULTS.hoaPerSqft,
     downPaymentPct: num(params.downPaymentPct) ?? DEFAULTS.downPaymentPct,
-    nightlyRate: num(params.nightlyRate) ?? DEFAULTS.nightlyRate,
-    occupancyPct: num(params.occupancyPct) ?? DEFAULTS.occupancyPct,
+    nightlyRate: num(params.nightlyRate)
+      ?? (longTerm ? (num(params.monthlyRent) ?? ltComp?.monthlyRent ?? 0) / 30 : mkt.adr),
+    occupancyPct: num(params.occupancyPct) ?? (longTerm ? 100 : mkt.occupancyPct),
     mortgageRatePct: num(params.mortgageRatePct) ?? DEFAULTS.mortgageRatePct,
     mortgageYears: num(params.mortgageYears) ?? DEFAULTS.mortgageYears,
     propertyMgmtPct: num(params.propertyMgmtPct) ?? DEFAULTS.propertyMgmtPct,
@@ -68,6 +77,25 @@ async function resolve(params: Record<string, any>) {
   }
 
   const notes: string[] = []
+  if (longTerm) {
+    const rent = num(params.monthlyRent) ?? ltComp?.monthlyRent
+    if (!rent && !num(params.nightlyRate)) {
+      return { error: "Este proyecto es de renta larga (casa o townhouse). Envía la renta mensual esperada en monthlyRent — una tarifa por noche no aplica." }
+    }
+    notes.push(`Renta LARGA, no corta: se modela con la renta mensual${ltComp ? ` de $${ltComp.monthlyRent.toLocaleString()} (${ltComp.source})` : ""}, no con tarifa por noche. No le apliques ocupación de Airbnb a esta propiedad.`)
+  }
+  const usedMarketDefaults = !longTerm && (num(params.nightlyRate) === undefined || num(params.occupancyPct) === undefined)
+  if (usedMarketDefaults) {
+    const levelLabel = mkt.level === "building"
+      ? "dato del edificio"
+      : mkt.level === "submarket" ? "promedio del submercado" : "línea base del estado"
+    notes.push(`Tarifa y ocupación: ${mkt.label} — $${mkt.adr}/noche al ${mkt.occupancyPct}% (${levelLabel}, ${mkt.source}, datos a ${STR_ASOF})`)
+    if (mkt.note) notes.push(mkt.note)
+  }
+  if (apr) {
+    notes.push(`Valorización de reventa en la zona: ${apr.marketYoYPct}% interanual (${apr.source}). Es distinta del ${DEFAULTS.appreciationPerPeriodPct}% por lista de precios del desarrollador que usa el modelo: ese lo captura el comprador en preconstrucción por haber firmado al precio viejo.`)
+    if (apr.note) notes.push(apr.note)
+  }
   if (project) {
     if (project.developer) notes.push(`Desarrollador: ${project.developer}`)
     if (project.deliveryDate) notes.push(`Entrega: ${project.deliveryDate}`)

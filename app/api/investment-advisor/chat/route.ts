@@ -5,8 +5,9 @@ import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { sendEmail, wrapEmail } from "@/lib/email"
 import { randomUUID } from "crypto"
-import { buildProjectContext, buildMarketInsightsContext } from "@/lib/preconstruction-context"
+import { buildProjectContext, buildMarketInsightsContext, buildStrMarketContext } from "@/lib/preconstruction-context"
 import { DEFAULTS as ANALYSIS_DEFAULTS, analyze as runAnalysis } from "@/lib/investment-analysis"
+import { resolveStrAssumptions, lookupAppreciation, isLongTermPlay, lookupLongTermComp } from "@/lib/str-market-data"
 
 const SSE_HEADERS = {
   "Content-Type": "text/event-stream",
@@ -179,7 +180,7 @@ const ANALYSIS_TOOL = {
   type: "function" as const,
   function: {
     name: "analyze_investment",
-    description: "Run Catherine's 5-indicator investment model (NOI, cash flow, cash on cash, ROI, cap rate) on a project and return the numbers with their rating. Use it whenever Catherine asks what a project returns, or wants to compare two projects with real numbers. Research the nightly rate and occupancy with the web search tool first when you do not know them — the defaults are generic. After returning the numbers, tell Catherine she can download the full Excel with the client script from the Pre-Construction page, using the calculator button on the project card.",
+    description: "Run Catherine's 5-indicator investment model (NOI, cash flow, cash on cash, ROI, cap rate) on a project and return the numbers with their rating. Use it whenever Catherine asks what a project returns, or wants to compare two projects with real numbers. When you omit nightlyRate and occupancyPct it uses the real figures for that building, or failing that its submarket, from the market data in your system context. Prefer those over guessing, and always cite the source and say whether it is a building number or a neighborhood average. After returning the numbers, tell Catherine she can download the full Excel with the client script from the Pre-Construction page, using the calculator button on the project card.",
     parameters: {
       type: "object",
       properties: {
@@ -192,6 +193,7 @@ const ANALYSIS_TOOL = {
         hoaPerSqft: { type: "number", description: "Monthly HOA in USD per square foot." },
         mortgageRatePct: { type: "number", description: "Mortgage rate, e.g. 6.5. Use 7-8 for a foreign national loan if that is the case." },
         appreciationPeriods: { type: "number", description: "How many price-list releases remain before delivery." },
+        monthlyRent: { type: "number", description: "Expected monthly rent in USD. Use this INSTEAD of nightlyRate for houses and townhouses (Lennar, SLB) — those are long-term rental plays and a nightly rate does not apply." },
         copRateAtPurchase: { type: "number", description: "COP per USD at the earlier reference point." },
         copRateToday: { type: "number", description: "COP per USD today." },
       },
@@ -296,6 +298,8 @@ export async function POST(req: Request) {
     } catch {}
   }
 
+  contextLines.push(buildStrMarketContext())
+
   const insights = await buildMarketInsightsContext()
   if (insights) contextLines.push(insights)
   contextLines.push(...await buildProjectContext())
@@ -345,13 +349,22 @@ export async function POST(req: Request) {
         if (!price) return "No pude calcular: falta el precio y el proyecto no tiene uno registrado."
         if (!sqft) return "No pude calcular: falta la superficie en pies cuadrados, sin ella no se puede estimar el HOA."
 
+        // Building comp beats submarket average beats state baseline.
+        const longTerm = isLongTermPlay(projectRecord?.propertyType, projectRecord?.name || args.project)
+        const ltComp = longTerm ? lookupLongTermComp(projectRecord?.name || args.project) : null
+        const monthlyRent = Number(args.monthlyRent) || ltComp?.monthlyRent
+        if (longTerm && !monthlyRent && !Number(args.nightlyRate)) {
+          return "Este proyecto es de renta larga (casa o townhouse). Pásame la renta mensual esperada en monthlyRent — una tarifa por noche no aplica aquí."
+        }
+        const mkt = resolveStrAssumptions(projectRecord?.name || args.project, projectRecord?.neighborhood, projectRecord?.city)
+        const apr = lookupAppreciation(projectRecord?.neighborhood, projectRecord?.city)
         const a = {
           ...ANALYSIS_DEFAULTS,
           price,
           sqft,
           downPaymentPct: Number(args.downPaymentPct) || ANALYSIS_DEFAULTS.downPaymentPct,
-          nightlyRate: Number(args.nightlyRate) || ANALYSIS_DEFAULTS.nightlyRate,
-          occupancyPct: Number(args.occupancyPct) || ANALYSIS_DEFAULTS.occupancyPct,
+          nightlyRate: Number(args.nightlyRate) || (longTerm ? monthlyRent! / 30 : mkt.adr),
+          occupancyPct: Number(args.occupancyPct) || (longTerm ? 100 : mkt.occupancyPct),
           hoaPerSqft: Number(args.hoaPerSqft) || ANALYSIS_DEFAULTS.hoaPerSqft,
           mortgageRatePct: Number(args.mortgageRatePct) || ANALYSIS_DEFAULTS.mortgageRatePct,
           appreciationPeriods: Number(args.appreciationPeriods) || ANALYSIS_DEFAULTS.appreciationPeriods,
@@ -363,6 +376,9 @@ export async function POST(req: Request) {
         return [
           `Análisis de ${projectRecord?.name || "la unidad"} — ${m(price)}, ${sqft} sqft`,
           `Inicial ${m(r.downPayment)} (${(a.downPaymentPct * 100).toFixed(0)}%) · financia ${m(r.financed)}`,
+          longTerm
+            ? `Renta LARGA: $${monthlyRent!.toLocaleString()} al mes${ltComp ? ` (${ltComp.source})` : ""}. No aplica tarifa por noche ni ocupación de Airbnb.`
+            : `Base de mercado (${mkt.level === "building" ? "dato del edificio" : mkt.level === "submarket" ? "submercado" : "línea base de Florida"}): ${mkt.label} — $${mkt.adr}/noche al ${mkt.occupancyPct}% (${mkt.source})${apr ? ` · reventa ${apr.marketYoYPct}% interanual` : ""}`,
           `Renta ${m(r.operatingIncome)}/mes ($${a.nightlyRate}/noche al ${a.occupancyPct}%) · gastos operativos ${m(r.operatingExpenses)} · hipoteca ${m(r.mortgage)}`,
           `1. NOI: ${m(r.noiMonth)}/mes, ${m(r.noiYear)}/año`,
           `2. Cash flow: ${m(r.cashFlowMonth)}/mes, ${m(r.cashFlowYear)}/año`,
