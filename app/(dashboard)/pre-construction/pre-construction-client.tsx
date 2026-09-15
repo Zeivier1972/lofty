@@ -5,9 +5,10 @@ import {
   Building2, Plus, Trash2, Edit, ExternalLink, X, Save, Loader2,
   TrendingUp, MapPin, Calendar, DollarSign, Users, ChevronDown, ChevronUp,
   Search, AlertCircle, RefreshCw, CheckCircle2, Bot, Home, Sparkles,
-  Bed, Bath, Square,
+  Bed, Bath, Square, Upload, FileJson,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import COLOMBIA_EVENT_PROJECTS from "@/data/preconstruction/colombia-event-2026.json"
 
 type Project = {
   id: string
@@ -109,6 +110,49 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
   const [savingMlsId, setSavingMlsId] = useState<string | null>(null)
   const [backfilling, setBackfilling] = useState(false)
   const [backfillMsg, setBackfillMsg] = useState<string | null>(null)
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkText, setBulkText] = useState("")
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkMsg, setBulkMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  // Paste a JSON array of projects (e.g. exported from a developer deck) and
+  // upsert them all at once — matching on id, then on name, so re-importing the
+  // same deck updates instead of duplicating.
+  async function bulkImport() {
+    setBulkBusy(true)
+    setBulkMsg(null)
+    try {
+      let parsed: any
+      try {
+        parsed = JSON.parse(bulkText)
+      } catch {
+        setBulkMsg({ ok: false, text: "El JSON no es válido — revisa comas y comillas." })
+        return
+      }
+      const res = await fetch("/api/pre-construction/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(parsed),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setBulkMsg({ ok: false, text: data.error || `Error ${res.status}` })
+        return
+      }
+      setProjects(data.projects || [])
+      const parts = [
+        data.created ? `${data.created} proyecto(s) agregado(s)` : "",
+        data.updated ? `${data.updated} actualizado(s)` : "",
+        data.skipped?.length ? `${data.skipped.length} omitido(s): ${data.skipped.join(", ")}` : "",
+      ].filter(Boolean)
+      setBulkMsg({ ok: true, text: parts.join(" · ") || "Nada que importar" })
+      setBulkText("")
+    } catch (e: any) {
+      setBulkMsg({ ok: false, text: e?.message || "Error al importar" })
+    } finally {
+      setBulkBusy(false)
+    }
+  }
 
   async function backfillPhotos() {
     setBackfilling(true)
@@ -292,6 +336,13 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
               Fetch missing photos
             </button>
             <button
+              onClick={() => { setBulkOpen(v => !v); setBulkMsg(null) }}
+              title="Import several projects at once from a JSON list"
+              className="flex items-center gap-2 px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 text-sm font-medium"
+            >
+              <Upload className="w-4 h-4" /> Bulk import
+            </button>
+            <button
               onClick={() => setForm({ ...EMPTY_FORM })}
               className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium"
             >
@@ -341,6 +392,75 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
             className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
           />
         </div>
+
+        {/* Bulk import */}
+        {bulkOpen && (
+          <div className="bg-white border border-slate-300 rounded-2xl p-6 mb-6 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <FileJson className="w-4 h-4 text-slate-600" />
+                <h2 className="font-bold text-gray-900">Bulk import projects</h2>
+              </div>
+              <button onClick={() => setBulkOpen(false)} className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">
+              Paste a JSON array of projects. Each one needs at least a <code className="bg-gray-100 px-1 rounded">name</code>;
+              everything else is optional. Projects are matched by name, so importing the same list twice
+              updates them instead of creating duplicates. Everything you import here is what the Investment
+              Advisor and Sofía quote to leads.
+            </p>
+
+            <div className="flex flex-wrap gap-2 mb-3">
+              <button
+                onClick={() => setBulkText(JSON.stringify(COLOMBIA_EVENT_PROJECTS, null, 2))}
+                className="px-3 py-1.5 border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 text-xs font-medium"
+              >
+                Load Colombia event deck ({COLOMBIA_EVENT_PROJECTS.length} projects)
+              </button>
+              {bulkText && (
+                <button
+                  onClick={() => { setBulkText(""); setBulkMsg(null) }}
+                  className="px-3 py-1.5 border border-gray-200 text-gray-500 rounded-lg hover:bg-gray-50 text-xs"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            <textarea
+              value={bulkText}
+              onChange={e => setBulkText(e.target.value)}
+              rows={12}
+              spellCheck={false}
+              placeholder={'[\n  {\n    "name": "Torre Ejemplo",\n    "developer": "Related Group",\n    "neighborhood": "Brickell",\n    "city": "Miami",\n    "priceMin": 500000,\n    "priceMax": 1200000,\n    "bedrooms": "Estudios, 1 rec, 2 rec",\n    "deliveryDate": "2027",\n    "status": "launching",\n    "downPayment": "20% al contrato · 60% al cierre",\n    "investmentHighlights": "Renta corta permitida…",\n    "description": "Amenidades, ubicación…"\n  }\n]'}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-slate-400 resize-y"
+            />
+
+            {bulkMsg && (
+              <div className={cn(
+                "mt-3 flex items-center gap-2 text-xs px-3 py-2 rounded-lg",
+                bulkMsg.ok ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-700"
+              )}>
+                {bulkMsg.ok ? <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" /> : <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />}
+                {bulkMsg.text}
+              </div>
+            )}
+
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={bulkImport}
+                disabled={bulkBusy || !bulkText.trim()}
+                className="flex items-center gap-2 px-5 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 text-sm font-medium disabled:opacity-40"
+              >
+                {bulkBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                Import
+              </button>
+              <button onClick={() => setBulkOpen(false)} className="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 text-sm">Cancel</button>
+            </div>
+          </div>
+        )}
 
         {/* Add/Edit form */}
         {form && (
