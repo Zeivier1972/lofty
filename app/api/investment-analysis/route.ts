@@ -42,8 +42,11 @@ async function resolve(params: Record<string, any>) {
 
   const price = num(params.price) ?? project?.priceMin
   const sqft = num(params.sqft)
+  const hoaMonthly = num(params.hoaMonthly)
   if (!price) return { error: "Falta el precio (price) — el proyecto no tiene priceMin y no se envió uno." }
-  if (!sqft) return { error: "Falta la superficie en pies cuadrados (sqft). Sin ella no se puede calcular el HOA." }
+  if (!sqft && hoaMonthly === undefined) {
+    return { error: "Manda la superficie en pies cuadrados (sqft), o el HOA mensual en dólares (hoaMonthly). Hace falta uno de los dos para calcular los gastos." }
+  }
 
   // Real numbers for this building, or its submarket, or Florida — in that
   // order. The generic default is the last resort, never the first choice.
@@ -56,6 +59,7 @@ async function resolve(params: Record<string, any>) {
     ...DEFAULTS,
     price,
     sqft,
+    hoaMonthly,
     hoaPerSqft: num(params.hoaPerSqft)
       ?? hoaFromText(project?.description)
       ?? hoaFromText(project?.investmentHighlights)
@@ -113,6 +117,13 @@ async function resolve(params: Record<string, any>) {
     name: project?.name || String(params.name || "Análisis de inversión"),
     unitLabel: params.unitLabel ? String(params.unitLabel) : project?.bedrooms,
     paymentSchedule: params.paymentSchedule ? String(params.paymentSchedule) : project?.downPayment,
+    projection: {
+      years: num(params.years) ?? undefined,
+      marketAppreciationPct: num(params.marketAppreciationPct) ?? apr?.marketYoYPct,
+      sellingCostPct: num(params.sellingCostPct) ?? undefined,
+      rentGrowthPct: num(params.rentGrowthPct) ?? undefined,
+      expenseGrowthPct: num(params.expenseGrowthPct) ?? undefined,
+    },
     notes,
     sources,
   }
@@ -153,6 +164,7 @@ async function respond(params: Record<string, any>) {
     unitLabel: r.unitLabel,
     assumptions: r.assumptions!,
     paymentSchedule: r.paymentSchedule,
+    projection: Object.fromEntries(Object.entries(r.projection || {}).filter(([, v]) => v !== undefined)) as any,
     notes: r.notes,
     sources: r.sources,
   })

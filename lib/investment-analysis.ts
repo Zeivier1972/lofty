@@ -5,7 +5,8 @@
 
 export type Assumptions = {
   price: number
-  sqft: number
+  /** Optional — only needed to derive the HOA. Pass hoaMonthly instead when unknown. */
+  sqft?: number
   downPaymentPct: number       // 0.40 = 40%
   nightlyRate: number
   occupancyPct: number         // 70 = 70%
@@ -14,6 +15,8 @@ export type Assumptions = {
   propertyMgmtPct: number      // 0.20
   taxRatePct: number           // 1.8 (annual, % of price)
   hoaPerSqft: number           // 1.8 ($/sqft/month)
+  /** Monthly HOA in dollars. When set it wins over sqft × hoaPerSqft. */
+  hoaMonthly?: number
   insuranceMonthly: number
   closingCostPct: number       // 5.4
   appreciationPerPeriodPct: number // 4 (per price-list release)
@@ -22,7 +25,7 @@ export type Assumptions = {
   copRateToday?: number
 }
 
-export const DEFAULTS: Omit<Assumptions, "price" | "sqft"> = {
+export const DEFAULTS: Omit<Assumptions, "price" | "sqft" | "hoaMonthly"> = {
   downPaymentPct: 0.4,
   nightlyRate: 280,
   occupancyPct: 70,
@@ -91,7 +94,8 @@ export function analyze(a: Assumptions) {
 
   const propertyMgmt = operatingIncome * a.propertyMgmtPct
   const taxes = (a.price * (a.taxRatePct / 100)) / 12
-  const hoa = a.sqft * a.hoaPerSqft
+  // Either the HOA in dollars, or derived from the unit size.
+  const hoa = a.hoaMonthly ?? ((a.sqft || 0) * a.hoaPerSqft)
   const insurance = a.insuranceMonthly
   const operatingExpenses = propertyMgmt + taxes + hoa + insurance
 
