@@ -1,6 +1,7 @@
 import ExcelJS from "exceljs"
 import { Assumptions, analyze, BAND_LEGEND } from "@/lib/investment-analysis"
 import { EXPLAINERS } from "@/lib/investment-explainers"
+import { project, assignmentScenario, PROJECTION_DEFAULTS, ProjectionInputs } from "@/lib/investment-projection"
 
 // Rebuilds Catherine's coaching sheet for any project. Everything downstream of
 // the yellow input cells is a live formula, so she can change the nightly rate
@@ -22,6 +23,7 @@ export type WorkbookInput = {
   paymentSchedule?: string
   notes?: string[]
   sources?: string[]
+  projection?: Partial<ProjectionInputs>
 }
 
 export async function buildInvestmentWorkbook(input: WorkbookInput): Promise<Buffer> {
@@ -35,6 +37,7 @@ export async function buildInvestmentWorkbook(input: WorkbookInput): Promise<Buf
   // Created in reading order: Catherine opens the file on the summary.
   const sum = wb.addWorksheet("Resumen para el cliente")
   const guide = wb.addWorksheet("Cómo explicarlo")
+  const proj = wb.addWorksheet("Proyección y venta")
   const ws = wb.addWorksheet("Análisis")
   const tail = wb.addWorksheet("Supuestos y fuentes")
   ws.columns = [
@@ -64,8 +67,8 @@ export async function buildInvestmentWorkbook(input: WorkbookInput): Promise<Buf
 
   section("B5", "LA UNIDAD")
   label("B6", "Precio");            money("D6", a.price);           input_("D6")
-  label("B7", "SFT");               ws.getCell("D7").value = a.sqft; input_("D7")
-  label("B8", "Mts2");              ws.getCell("D8").value = { formula: "D7*0.093" } as any
+  label("B7", "SFT");               ws.getCell("D7").value = a.sqft ?? ""; input_("D7")
+  label("B8", "Mts2");              ws.getCell("D8").value = a.sqft ? ({ formula: "D7*0.093" } as any) : ""
   ws.getCell("D8").numFmt = "0.00"
   label("B9", "% Down payment");    ws.getCell("D9").value = a.downPaymentPct; ws.getCell("D9").numFmt = "0%"; input_("D9")
   label("B10", "Down Payment");     money("D10", { formula: "D6*D9" })
@@ -86,7 +89,8 @@ export async function buildInvestmentWorkbook(input: WorkbookInput): Promise<Buf
   label("B22", "% Taxes anual");         ws.getCell("D22").value = a.taxRatePct / 100; ws.getCell("D22").numFmt = "0.00%"; input_("D22")
   label("B23", "Taxes");                 money("D23", { formula: "D6*D22/12" })
   label("B24", "HOA $/sqft");            money("D24", a.hoaPerSqft, MONEY2); input_("D24")
-  label("B25", "HOA");                   money("D25", { formula: "D7*D24" })
+  label("B25", "HOA");                   money("D25", a.hoaMonthly ? a.hoaMonthly : { formula: "D7*D24" })
+  if (a.hoaMonthly) input_("D25")
   label("B26", "Insurance");             money("D26", a.insuranceMonthly); input_("D26")
   label("B27", "Operating Expenses", true); money("D27", { formula: "D21+D23+D25+D26" })
   ws.getCell("D27").fill = TOTAL_FILL
@@ -235,7 +239,8 @@ export async function buildInvestmentWorkbook(input: WorkbookInput): Promise<Buf
 
   sHead("LO QUE COMPRA")
   sLine("Precio", money0(a.price))
-  sLine("Superficie", `${a.sqft} sqft (${(a.sqft * 0.093).toFixed(1)} m2)`)
+  if (a.sqft) sLine("Superficie", `${a.sqft} sqft (${(a.sqft * 0.093).toFixed(1)} m2)`)
+  else sLine("HOA", `$${r.hoa.toLocaleString()} al mes`, "Superficie no informada — se usó el HOA en dólares")
   sLine("Inicial que pone el cliente", money0(r.downPayment), `${(a.downPaymentPct * 100).toFixed(0)}% del precio`)
   sLine("Financia el banco", money0(r.financed), `${((1 - a.downPaymentPct) * 100).toFixed(0)}% al ${a.mortgageRatePct}%`)
   if (input.paymentSchedule) sLine("Plan de pagos", "", input.paymentSchedule)
@@ -315,6 +320,66 @@ export async function buildInvestmentWorkbook(input: WorkbookInput): Promise<Buf
     guide.addRow([])
   })
 
+  // ─── Year by year, and what a sale actually nets ──────────────────────────
+  const pin: ProjectionInputs = { ...PROJECTION_DEFAULTS, ...(input.projection || {}) }
+  const years = project(a, pin)
+  const assign = assignmentScenario(a)
+
+  proj.columns = [
+    { width: 7 }, { width: 16 }, { width: 14 }, { width: 14 }, { width: 16 },
+    { width: 16 }, { width: 16 }, { width: 18 }, { width: 14 },
+  ]
+  const pTitle = proj.addRow([`${input.projectName} — proyección a ${pin.years} años`])
+  pTitle.getCell(1).font = { bold: true, size: 14 }
+  proj.addRow([`Valorización de reventa ${pin.marketAppreciationPct}% al año · renta +${pin.rentGrowthPct}% · gastos +${pin.expenseGrowthPct}% · costos de venta ${pin.sellingCostPct}%`])
+    .getCell(1).font = { italic: true, color: { argb: "FF666666" } }
+  proj.addRow([`Inversión inicial del cliente: ${money0(r.downPayment + r.closingCosts)} (inicial ${money0(r.downPayment)} + gastos de cierre ${money0(r.closingCosts)})`])
+    .getCell(1).font = { bold: true }
+  proj.addRow([])
+
+  const ph = proj.addRow(["Año", "Valor propiedad", "Renta anual", "Flujo del año", "Flujo acumulado", "Saldo hipoteca", "Patrimonio", "Si vende, le queda", "Anualizado"])
+  ph.font = { bold: true }
+  ph.eachCell(c => { c.fill = HEAD_FILL })
+
+  years.forEach(y => {
+    const row = proj.addRow([
+      y.year, y.propertyValue, y.grossRent, y.cashFlow, y.cumulativeCashFlow,
+      y.loanBalance, y.equity, y.totalProfitIfSold, y.annualizedReturnPct / 100,
+    ])
+    for (let c = 2; c <= 8; c++) row.getCell(c).numFmt = MONEY
+    row.getCell(9).numFmt = PCT
+    row.getCell(8).font = { bold: true }
+    if (y.totalProfitIfSold > 0) row.getCell(8).font = { bold: true, color: { argb: "FF1E7B34" } }
+    else row.getCell(8).font = { bold: true, color: { argb: "FFB00020" } }
+  })
+
+  proj.addRow([])
+  const note = proj.addRow(["", '"Si vende, le queda" ya descuenta los costos de venta y el saldo de la hipoteca, y suma todo el flujo cobrado hasta ese año, menos lo que el cliente puso al inicio. Es la ganancia neta real de la operación completa.'])
+  note.getCell(2).font = { size: 9, color: { argb: "FF666666" } }
+  note.getCell(2).alignment = { wrapText: true }
+  note.height = 32
+
+  proj.addRow([])
+  const aTitle = proj.addRow(["VENDER EL CONTRATO ANTES DE CERRAR (cesión)"])
+  aTitle.getCell(1).font = { bold: true, size: 12 }
+  aTitle.getCell(1).fill = HEAD_FILL
+  const aRow = (k: string, v: string, n = "") => {
+    const row = proj.addRow([k, v, "", n])
+    row.getCell(2).font = { bold: true }
+    row.getCell(4).font = { size: 9, color: { argb: "FF666666" } }
+  }
+  aRow("Depósitos pagados", money0(assign.depositsPaid), "Lo único que el cliente arriesga")
+  aRow("Precio de contrato", money0(assign.contractPrice))
+  aRow("Valor a la entrega", money0(assign.valueAtDelivery))
+  aRow("Ganancia bruta", money0(assign.grossGain))
+  aRow("Fee de cesión estimado", `- ${money0(assign.assignmentFee)}`)
+  aRow("GANANCIA NETA", money0(assign.netGain))
+  aRow("Retorno sobre los depósitos", `${assign.returnOnDepositsPct.toFixed(1)}%`, "Sin haber cerrado ni pedido hipoteca")
+  const warn2 = proj.addRow(["", assign.caveat])
+  warn2.getCell(2).font = { bold: true, color: { argb: "FFB00020" } }
+  warn2.getCell(2).alignment = { wrapText: true }
+  warn2.height = 32
+
   // ─── Payment schedule, notes, sources ─────────────────────────────────────
   tail.columns = [{ width: 28 }, { width: 110 }]
   const put = (k: string, v: string) => tail.addRow([k, v]).getCell(1).font = { bold: true }
@@ -324,12 +389,12 @@ export async function buildInvestmentWorkbook(input: WorkbookInput): Promise<Buf
   if (input.paymentSchedule) put("Estructura de pagos", input.paymentSchedule)
   tail.addRow([])
   put("Precio", `$${a.price.toLocaleString()}`)
-  put("Superficie", `${a.sqft} sqft`)
+  put("Superficie", a.sqft ? `${a.sqft} sqft` : "no informada")
   put("Renta por noche", `$${a.nightlyRate}`)
   put("Ocupación", `${a.occupancyPct}%`)
   put("Property management", `${(a.propertyMgmtPct * 100).toFixed(0)}%`)
   put("Impuestos", `${a.taxRatePct}% anual`)
-  put("HOA", `$${a.hoaPerSqft}/sqft al mes`)
+  put("HOA", a.hoaMonthly ? `$${a.hoaMonthly} al mes (monto directo)` : `$${a.hoaPerSqft}/sqft al mes`)
   put("Seguro", `$${a.insuranceMonthly} al mes`)
   put("Hipoteca", `${a.mortgageRatePct}% a ${a.mortgageYears} años sobre el ${((1 - a.downPaymentPct) * 100).toFixed(0)}% financiado`)
   put("Gastos de cierre", `${a.closingCostPct}% del precio`)

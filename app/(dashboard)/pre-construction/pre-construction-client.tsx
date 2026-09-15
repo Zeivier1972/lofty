@@ -90,7 +90,8 @@ type ScrapedCommunity = {
 type CalcState = {
   project: Project
   price: string; sqft: string; nightlyRate: string; occupancyPct: string
-  downPaymentPct: string; hoaPerSqft: string; mortgageRatePct: string
+  downPaymentPct: string; hoaPerSqft: string; hoaMonthly: string; mortgageRatePct: string
+  horizonYears: string
   appreciationPeriods: string; copRateAtPurchase: string; copRateToday: string
 }
 
@@ -106,6 +107,8 @@ function calcDefaults(p: Project): CalcState {
     occupancyPct: "",
     downPaymentPct: "40",
     hoaPerSqft: hoa ? hoa[1] : "1.8",
+    hoaMonthly: "",
+    horizonYears: "5",
     mortgageRatePct: "6.5",
     appreciationPeriods: "2",
     copRateAtPurchase: "",
@@ -168,6 +171,8 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
           occupancyPct: calc.occupancyPct,
           downPaymentPct: Number(calc.downPaymentPct) / 100,
           hoaPerSqft: calc.hoaPerSqft,
+          hoaMonthly: calc.hoaMonthly,
+          horizonYears: calc.horizonYears,
           mortgageRatePct: calc.mortgageRatePct,
           appreciationPeriods: calc.appreciationPeriods,
           copRateAtPurchase: calc.copRateAtPurchase,
@@ -528,6 +533,8 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
               {([
                 ["price", "Precio ($)", "540000"],
                 ["sqft", "Superficie (sqft) *", "321"],
+                ["hoaMonthly", "…o HOA al mes ($) *", "580"],
+                ["horizonYears", "Años hasta vender", "5"],
                 ["nightlyRate", "Renta por noche ($) — vacío = dato real", "auto"],
                 ["occupancyPct", "Ocupación (%) — vacío = dato real", "auto"],
                 ["downPaymentPct", "Inicial (%)", "40"],
@@ -551,7 +558,7 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
             </div>
 
             <p className="text-[11px] text-gray-400 mt-2">
-              * La superficie es obligatoria: sin ella no se puede calcular el HOA. Si dejas la renta por noche
+              * Con la superficie O el HOA mensual basta — uno de los dos. Si dejas la renta por noche
               y la ocupación en blanco, el sistema usa los datos reales del edificio si los tiene, si no los del
               submercado (Brickell, Miami Beach, Miami, Hollywood, Orlando) y si no la línea base de Florida —
               y anota la fuente en la hoja de supuestos.
@@ -566,7 +573,7 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
             <div className="flex gap-3 mt-5">
               <button
                 onClick={downloadAnalysis}
-                disabled={calcBusy || !calc.price || !calc.sqft}
+                disabled={calcBusy || !calc.price || (!calc.sqft && !calc.hoaMonthly)}
                 className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium disabled:opacity-40"
               >
                 {calcBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}

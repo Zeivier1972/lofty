@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react"
 import { X, Send, Loader2, ChevronDown, RotateCcw, Plus } from "lucide-react"
 import AriaAvatar from "@/components/aria-avatar"
+import { ChatMarkdown } from "@/components/chat-markdown"
 
 interface Message {
   role: "user" | "assistant"
@@ -20,17 +21,6 @@ const QUICK_PROMPTS = [
   "Draft a follow-up for my hottest lead",
 ]
 
-function renderMarkdown(text: string) {
-  // Bold **text**
-  let html = text.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-  // Bullet lists
-  html = html.replace(/^[•·]\s(.+)$/gm, "<li>$1</li>")
-  html = html.replace(/(<li>[\s\S]*<\/li>)/, "<ul>$1</ul>")
-  // Line breaks
-  html = html.replace(/\n\n/g, "</p><p>").replace(/\n/g, "<br/>")
-  return `<p>${html}</p>`
-}
-
 function MessageBubble({ msg }: { msg: Message }) {
   const isUser = msg.role === "user"
   return (
@@ -46,10 +36,7 @@ function MessageBubble({ msg }: { msg: Message }) {
         {isUser ? (
           <span className="whitespace-pre-wrap">{msg.content}</span>
         ) : (
-          <div
-            className="prose prose-sm max-w-none prose-strong:text-[#1a3a5c] prose-ul:my-1 prose-li:my-0"
-            dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
-          />
+          <ChatMarkdown content={msg.content} accent="text-[#1a3a5c] hover:text-[#12283f]" />
         )}
       </div>
     </div>

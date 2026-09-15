@@ -8,6 +8,8 @@ import { randomUUID } from "crypto"
 import { buildProjectContext, buildMarketInsightsContext, buildStrMarketContext } from "@/lib/preconstruction-context"
 import { DEFAULTS as ANALYSIS_DEFAULTS, analyze as runAnalysis } from "@/lib/investment-analysis"
 import { resolveStrAssumptions, lookupAppreciation, isLongTermPlay, lookupLongTermComp } from "@/lib/str-market-data"
+import { project as runProjection, assignmentScenario, PROJECTION_DEFAULTS } from "@/lib/investment-projection"
+import { compare as compareInvestments, GOAL_LABELS, ClientGoal } from "@/lib/investment-compare"
 
 const SSE_HEADERS = {
   "Content-Type": "text/event-stream",
@@ -71,9 +73,25 @@ PROYECTOS EN EL PORTAFOLIO DE CATHERINE (2024-2025):
 CAPACIDADES ADICIONALES:
 - Genera scripts para WhatsApp listos para copiar y pegar (en español)
 - Crea hooks de anuncio para Facebook/Instagram si se te pide
-- Usa tablas en markdown para comparar proyectos (columnas: precio, ROI, entrega, down payment, pros/contras)
+- Usa tablas en markdown para comparar proyectos
 - Responde en español o inglés según el idioma del usuario
 - Puedes buscar proyectos y precios actuales en preconstruction.miami usando la herramienta de búsqueda web
+
+FORMATO DE RESPUESTA — Catherine le muestra esta pantalla a sus clientes, así que la organización importa tanto como el contenido:
+- Siempre que presentes DOS O MÁS proyectos, hazlo en una tabla de markdown. Nunca como párrafos ni como lista.
+- Columnas por defecto: Proyecto | Zona | Desarrollador | Precio | Entrega | Renta/noche | Ocupación | Cash on cash. Ajusta las columnas a lo que preguntó Catherine, pero nunca dejes una columna llena de guiones: si no tienes el dato para ninguna fila, quita la columna entera.
+- Deja los números limpios y comparables: $540,000 y no 540000; 7.1% y no 0.071.
+- Nunca pongas URLs largas dentro de una celda — rompen la tabla. Las fuentes van debajo, en una línea aparte.
+- Después de la tabla, escribe SIEMPRE una recomendación de una o dos frases: cuál conviene y por qué. La tabla informa; la recomendación es lo que Catherine necesita para vender.
+- Usa negrita solo para el nombre del proyecto que recomiendas y para las cifras clave.
+- Nada de "Siguientes Pasos" genéricos. Si hace falta un paso, que sea uno concreto y accionable.
+- Cuando una herramienta te devuelva un enlace que empiece por /api/, cópialo TAL CUAL en tu respuesta, en su propia línea. Es el Excel del análisis y se renderiza como botón de descarga. No lo reescribas, no lo acortes y no cambies sus parámetros: llevan exactamente los supuestos con los que calculaste.
+
+DE DÓNDE SACAS LOS PROYECTOS — en este orden, sin excepción:
+1. La cartera de Catherine que aparece más abajo en el contexto. Es la fuente autoritativa: son los proyectos que ella vende, con comisión, precios negociados y planes de pago reales.
+2. Solo si la cartera no tiene nada que sirva para lo que pidió Catherine, busca en la web — y dilo explícitamente: "en tu cartera no hay nada que encaje, esto lo encontré en línea".
+NUNCA presentes un proyecto de búsqueda web junto a uno de la cartera sin marcar cuál es cuál. Y nunca escribas "Desarrollador: Desconocido" para un proyecto que sí está en la cartera: si aparece como desconocido, es que estás leyendo la web en vez del contexto.
+Si la cartera aparece vacía, dilo de frente: "no veo proyectos cargados en tu cartera" — no lo disimules buscando en la web.
 
 REGLAS:
 - Habla en el idioma del usuario (español o inglés)
@@ -176,6 +194,39 @@ const SAVE_PROJECT_TOOL = {
   },
 }
 
+const COMPARE_TOOL = {
+  type: "function" as const,
+  function: {
+    name: "compare_investments",
+    description: "Rank several projects from Catherine's portfolio against one client's actual situation and goal, and say which is the better investment FOR THAT CLIENT. Use it whenever Catherine asks which project suits a lead, or to compare two or more projects. A buyer who needs monthly income and one parking capital for five years should get different answers from the same inventory, and this weights the indicators accordingly. Pass the unit size or the monthly HOA for each project — without one of the two a project cannot be scored and will be dropped silently, so say which ones you could not score.",
+    parameters: {
+      type: "object",
+      properties: {
+        goal: { type: "string", enum: ["flujo", "valorizacion", "uso_propio", "balanceado"], description: "What the client is actually after: monthly cash flow, appreciation and exit, personal use with rental income, or balanced." },
+        capitalAvailable: { type: "number", description: "Cash the client has, all in — down payment plus closing costs." },
+        budgetMax: { type: "number", description: "Top price the client will consider." },
+        horizonYears: { type: "number", description: "Years until they expect to sell. Defaults to 5." },
+        candidates: {
+          type: "array",
+          description: "The projects to compare. Include every one worth considering, not just two.",
+          items: {
+            type: "object",
+            properties: {
+              project: { type: "string", description: "Project name as it appears in the portfolio." },
+              sqft: { type: "number", description: "Unit size in square feet." },
+              hoaMonthly: { type: "number", description: "Monthly HOA in USD, if the size is unknown." },
+              price: { type: "number", description: "Unit price, if different from the project's starting price." },
+              monthlyRent: { type: "number", description: "Expected monthly rent, for houses and townhouses." },
+            },
+            required: ["project"],
+          },
+        },
+      },
+      required: ["goal", "candidates"],
+    },
+  },
+}
+
 const ANALYSIS_TOOL = {
   type: "function" as const,
   function: {
@@ -186,7 +237,9 @@ const ANALYSIS_TOOL = {
       properties: {
         project: { type: "string", description: "Project name as it appears in Catherine's portfolio. Omit if you are pricing a unit that is not in the portfolio and pass price instead." },
         price: { type: "number", description: "Unit price in USD. Defaults to the project's priceMin." },
-        sqft: { type: "number", description: "Interior square feet — REQUIRED, the HOA cannot be computed without it." },
+        sqft: { type: "number", description: "Interior square feet. Pass this OR hoaMonthly — one of the two is needed for the expenses." },
+        hoaMonthly: { type: "number", description: "Monthly HOA in USD. Use when the unit size is unknown; it replaces sqft entirely." },
+        horizonYears: { type: "number", description: "Years until the client expects to sell. Defaults to 5." },
         nightlyRate: { type: "number", description: "Estimated nightly short-term rental rate in USD. Research it if unknown." },
         occupancyPct: { type: "number", description: "Occupancy percentage, e.g. 70." },
         downPaymentPct: { type: "number", description: "Down payment as a decimal, e.g. 0.4 for 40%." },
@@ -197,7 +250,7 @@ const ANALYSIS_TOOL = {
         copRateAtPurchase: { type: "number", description: "COP per USD at the earlier reference point." },
         copRateToday: { type: "number", description: "COP per USD today." },
       },
-      required: ["sqft"],
+      required: [],
     },
   },
 }
@@ -313,7 +366,7 @@ export async function POST(req: Request) {
     ...messages.slice(-20),
   ]
 
-  const tools: any[] = [EMAIL_TOOL, SAVE_PROJECT_TOOL, ANALYSIS_TOOL, ...(tavilyKey ? [SEARCH_TOOL] : [])]
+  const tools: any[] = [EMAIL_TOOL, SAVE_PROJECT_TOOL, ANALYSIS_TOOL, COMPARE_TOOL, ...(tavilyKey ? [SEARCH_TOOL] : [])]
 
   const callOpenAI = (msgs: any[], opts: { stream: boolean; withTools: boolean }) =>
     fetch("https://api.openai.com/v1/chat/completions", {
@@ -331,6 +384,62 @@ export async function POST(req: Request) {
 
   async function executeToolCall(tc: any): Promise<string> {
     try {
+      if (tc.function.name === "compare_investments") {
+        const args = JSON.parse(tc.function.arguments || "{}")
+        const row = await prisma.setting.findUnique({ where: { key: "preconstruction_projects" } })
+        let all: any[] = []
+        if (row) { try { all = JSON.parse(row.value) } catch {} }
+
+        const skipped: string[] = []
+        const candidates = (args.candidates || []).map((c: any) => {
+          const q = String(c.project || "").toLowerCase()
+          const rec = all.find(x => x.name.toLowerCase() === q) || all.find(x => x.name.toLowerCase().includes(q))
+          if (!rec) { skipped.push(`${c.project} (no está en la cartera)`); return null }
+          if (!c.sqft && (c.hoaMonthly === undefined || c.hoaMonthly === null)) { skipped.push(`${rec.name} (falta superficie o HOA)`); return null }
+          return { project: rec, sqft: Number(c.sqft) || undefined, hoaMonthly: c.hoaMonthly === undefined || c.hoaMonthly === null ? undefined : Number(c.hoaMonthly), price: Number(c.price) || undefined, monthlyRent: Number(c.monthlyRent) || undefined }
+        }).filter(Boolean)
+
+        if (candidates.length === 0) {
+          return `No pude comparar nada. ${skipped.length ? "Motivos: " + skipped.join(" · ") : ""} Para puntuar un proyecto necesito la superficie de la unidad o el HOA mensual.`
+        }
+
+        const ranked = compareInvestments(candidates as any, {
+          goal: (args.goal || "balanceado") as ClientGoal,
+          capitalAvailable: Number(args.capitalAvailable) || undefined,
+          budgetMax: Number(args.budgetMax) || undefined,
+          horizonYears: Number(args.horizonYears) || 5,
+        })
+
+        const m2 = (n: number) => `$${Math.round(n).toLocaleString()}`
+        const lines = [`COMPARACIÓN — objetivo del cliente: ${GOAL_LABELS[(args.goal || "balanceado") as ClientGoal]}${args.budgetMax ? `, presupuesto hasta ${m2(Number(args.budgetMax))}` : ""}${args.capitalAvailable ? `, efectivo disponible ${m2(Number(args.capitalAvailable))}` : ""}`]
+        ranked.forEach((x, i) => {
+          lines.push([
+            `${i + 1}. ${x.name}${x.neighborhood ? ` (${x.neighborhood})` : ""}${x.fits ? "" : "  ⚠️ NO CUADRA CON SU PRESUPUESTO O EFECTIVO"}`,
+            `   Precio ${m2(x.price)} · efectivo necesario ${m2(x.cashNeeded)} · flujo ${m2(x.cashFlowMonth)}/mes`,
+            `   Cash on cash ${x.cashOnCashPct.toFixed(1)}% · cap rate ${x.capRatePct.toFixed(1)}% · ROI año 1 ${x.roiPct.toFixed(1)}%`,
+            `   Si vende al año ${x.horizonYear}: ${m2(x.profitIfSold)} netos, ${x.annualizedPct.toFixed(1)}% anualizado · cediendo el contrato ${x.assignmentReturnPct.toFixed(0)}% sobre depósitos`,
+            `   Base: ${x.marketLabel} (${x.marketSource})`,
+            x.reasons.length ? `   A favor: ${x.reasons.join(" · ")}` : "",
+            x.warnings.length ? `   Ojo: ${x.warnings.join(" · ")}` : "",
+          ].filter(Boolean).join("\n"))
+        })
+        lines.push("")
+        lines.push("Enlaces para bajar el Excel de cada uno — inclúyelos tal cual, cada uno en su propia línea, debajo de tu recomendación:")
+        ranked.forEach(x => {
+          const c = (candidates as any[]).find(y => y.project.name === x.name)
+          const qs = new URLSearchParams()
+          if (c?.project?.id) qs.set("projectId", c.project.id); else qs.set("name", x.name)
+          qs.set("price", String(Math.round(x.price)))
+          if (c?.sqft) qs.set("sqft", String(c.sqft))
+          if (c?.hoaMonthly !== undefined) qs.set("hoaMonthly", String(c.hoaMonthly))
+          qs.set("years", "10")
+          lines.push(`[Descargar el Excel de ${x.name}](/api/investment-analysis?${qs.toString()})`)
+        })
+        if (skipped.length) lines.push(`No pude puntuar: ${skipped.join(" · ")}`)
+        lines.push("Dale a Catherine una recomendación clara con el porqué en una frase, no solo la tabla. Si el primero no cuadra con el efectivo del cliente, dilo de entrada.")
+        return lines.join("\n")
+      }
+
       if (tc.function.name === "analyze_investment") {
         const args = JSON.parse(tc.function.arguments || "{}")
         let projectRecord: any = null
@@ -345,9 +454,10 @@ export async function POST(req: Request) {
           }
         }
         const price = Number(args.price) || projectRecord?.priceMin
-        const sqft = Number(args.sqft)
+        const sqft = Number(args.sqft) || undefined
+        const hoaMonthly = args.hoaMonthly === undefined || args.hoaMonthly === null ? undefined : Number(args.hoaMonthly)
         if (!price) return "No pude calcular: falta el precio y el proyecto no tiene uno registrado."
-        if (!sqft) return "No pude calcular: falta la superficie en pies cuadrados, sin ella no se puede estimar el HOA."
+        if (!sqft && hoaMonthly === undefined) return "No pude calcular: pásame la superficie en pies cuadrados (sqft) o el HOA mensual en dólares (hoaMonthly). Con cualquiera de los dos me alcanza."
 
         // Building comp beats submarket average beats state baseline.
         const longTerm = isLongTermPlay(projectRecord?.propertyType, projectRecord?.name || args.project)
@@ -362,6 +472,7 @@ export async function POST(req: Request) {
           ...ANALYSIS_DEFAULTS,
           price,
           sqft,
+          hoaMonthly,
           downPaymentPct: Number(args.downPaymentPct) || ANALYSIS_DEFAULTS.downPaymentPct,
           nightlyRate: Number(args.nightlyRate) || (longTerm ? monthlyRent! / 30 : mkt.adr),
           occupancyPct: Number(args.occupancyPct) || (longTerm ? 100 : mkt.occupancyPct),
@@ -386,7 +497,36 @@ export async function POST(req: Request) {
           `4. ROI: ${r.roiPct.toFixed(2)}% — ${r.roiBand} (incluye ${m(r.appreciation)} de valorización y ${m(r.principalYear)} de abono a capital, menos ${m(r.closingCosts)} de cierre)`,
           `5. Cap rate: ${r.capRatePct.toFixed(2)}% — ${r.capRateBand}`,
           r.cop ? `Ventaja por tasa de cambio: ${Math.round(r.cop.gain).toLocaleString()} COP menos, ${r.cop.gainPct.toFixed(1)}%` : "",
-          `Catherine puede descargar el Excel completo, con el guion para explicárselo al cliente, desde el botón de calculadora en la tarjeta del proyecto en la página de Pre-Construction.`,
+          (() => {
+            const h = Math.max(1, Math.min(Number(args.horizonYears) || 5, PROJECTION_DEFAULTS.years))
+            const rows = runProjection(a, { ...PROJECTION_DEFAULTS, marketAppreciationPct: apr?.marketYoYPct ?? PROJECTION_DEFAULTS.marketAppreciationPct })
+            const at = rows[h - 1]
+            const asg = assignmentScenario(a)
+            return [
+              `PROYECCIÓN — si vende al año ${h}: la propiedad valdría ${m(at.propertyValue)}, habría cobrado ${m(at.cumulativeCashFlow)} de flujo acumulado, y le quedarían ${m(at.totalProfitIfSold)} netos después de costos de venta y saldo de hipoteca. Eso es ${at.annualizedReturnPct.toFixed(1)}% anualizado.`,
+              `CEDER EL CONTRATO antes de cerrar: ganancia neta ${m(asg.netGain)} sobre ${m(asg.depositsPaid)} de depósitos = ${asg.returnOnDepositsPct.toFixed(1)}%. ${asg.caveat}`,
+            ].join("\n")
+          })(),
+          // Built here, not by the model, so the workbook always carries the
+          // exact assumptions that produced the numbers just quoted.
+          (() => {
+            const qs = new URLSearchParams()
+            if (projectRecord?.id) qs.set("projectId", projectRecord.id)
+            else qs.set("name", projectRecord?.name || args.project || "Análisis de inversión")
+            qs.set("price", String(a.price))
+            if (a.sqft) qs.set("sqft", String(a.sqft))
+            if (a.hoaMonthly !== undefined) qs.set("hoaMonthly", String(a.hoaMonthly))
+            qs.set("nightlyRate", String(Math.round(a.nightlyRate)))
+            qs.set("occupancyPct", String(a.occupancyPct))
+            qs.set("downPaymentPct", String(a.downPaymentPct))
+            qs.set("mortgageRatePct", String(a.mortgageRatePct))
+            qs.set("appreciationPeriods", String(a.appreciationPeriods))
+            if (apr?.marketYoYPct) qs.set("marketAppreciationPct", String(apr.marketYoYPct))
+            if (Number(args.horizonYears)) qs.set("years", String(Math.max(Number(args.horizonYears), 10)))
+            if (Number(args.copRateAtPurchase)) qs.set("copRateAtPurchase", String(Number(args.copRateAtPurchase)))
+            if (Number(args.copRateToday)) qs.set("copRateToday", String(Number(args.copRateToday)))
+            return `Termina tu respuesta con este enlace tal cual, en su propia línea, para que Catherine baje el Excel con estos mismos números:\n[Descargar el Excel de este análisis](/api/investment-analysis?${qs.toString()})`
+          })(),
         ].filter(Boolean).join("\n")
       }
 
