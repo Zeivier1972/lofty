@@ -1,0 +1,303 @@
+// Real short-term-rental performance by submarket, so the Investment Advisor
+// and Aria stop quoting a generic $280/70% at every project. Every figure
+// carries its source and date — when Catherine is asked "where did that come
+// from?" in front of a client, there has to be an answer.
+//
+// Refresh these roughly every quarter. The PriceLabs index is live via the
+// MCP integration (get_str_index for Florida); the submarket rows come from
+// the public AirDNA / AirROI / Rabbu market reports.
+
+export type StrMarket = {
+  key: string
+  label: string
+  /** Lowercased fragments matched against a project's neighborhood + city. */
+  match: string[]
+  adr: number
+  occupancyPct: number
+  revpar?: number
+  source: string
+  asOf: string
+  note?: string
+  /** Occupancy swing across the year, where the source breaks it out. */
+  seasonality?: { highPct: number; lowPct: number }
+}
+
+export const STR_ASOF = "septiembre 2026"
+
+export const STR_MARKETS: StrMarket[] = [
+  {
+    key: "brickell",
+    label: "Brickell",
+    match: ["brickell"],
+    adr: 287,
+    occupancyPct: 68,
+    source: "AirDNA, Q1 2026",
+    asOf: "Q1 2026",
+    seasonality: { highPct: 80, lowPct: 55 },
+    note: "El mejor submercado de Miami en ocupación. Diciembre a marzo se cobra 30-50% por encima del promedio anual; en verano la ocupación puede bajar de 55%.",
+  },
+  {
+    key: "miami_beach",
+    label: "Miami Beach / North Beach",
+    match: ["miami beach", "north beach", "nobe", "collins", "abbott", "71st", "72"],
+    adr: 366,
+    occupancyPct: 45,
+    source: "AirROI y Rabbu, 2026",
+    asOf: "2026",
+    note: "La tarifa más alta de la zona pero la ocupación más baja: AirROI reporta $393 al 40.1% y Rabbu $366 al 51%. Se usa el punto medio conservador. Mucho inventario compite entre sí.",
+  },
+  {
+    key: "hollywood",
+    label: "Hollywood",
+    match: ["hollywood"],
+    adr: 234,
+    occupancyPct: 59,
+    revpar: 138,
+    source: "AirDNA, 2026",
+    asOf: "2026",
+    note: "2,830 anuncios activos con ingreso promedio de $44,500 al año. En los últimos 12 meses el ingreso subió 55.8% y la ocupación 11.7%, mientras la oferta activa cayó 66.2%.",
+  },
+  {
+    key: "orlando",
+    label: "Orlando",
+    match: ["orlando", "kissimmee", "davenport", "millenia"],
+    adr: 250,
+    occupancyPct: 58,
+    revpar: 125,
+    source: "AirDNA y AirROI, 2026",
+    asOf: "2026",
+    note: "Las fuentes discrepan: AirDNA reporta 53% al $244 y AirROI 63% al $262. Se usa el punto medio. De junio 2025 a junio 2026 el ingreso subió 8.9% y la ocupación 3.2%.",
+  },
+  {
+    key: "miami",
+    label: "Miami (ciudad)",
+    match: ["miami", "downtown", "edgewater", "wynwood", "midtown", "signature district", "health district", "miami river"],
+    adr: 277,
+    occupancyPct: 56,
+    source: "AirDNA y Rabbu, 2026",
+    asOf: "2026",
+    note: "Promedio de toda la ciudad. Edgewater y Wynwood no publican ADR y ocupación por separado con muestra suficiente, así que se usa este número — es conservador para Wynwood y Edgewater, que tienen poca oferta activa.",
+  },
+  {
+    key: "florida",
+    label: "Florida (línea base del estado)",
+    match: [],
+    adr: 295,
+    occupancyPct: 57,
+    revpar: 168,
+    source: "Índice STR de PriceLabs, 12 meses cerrados sep 2025 – ago 2026",
+    asOf: "agosto 2026",
+    seasonality: { highPct: 66, lowPct: 49 },
+    note: "Calculado sobre ~250,000 anuncios activos. Temporada alta (feb-jul) 65.7% de ocupación; temporada baja (ago-ene) 48.5%. Es el respaldo cuando un proyecto no cae en ningún submercado conocido.",
+  },
+]
+
+export const FLORIDA_BASELINE = STR_MARKETS[STR_MARKETS.length - 1]
+
+/** Best submarket for a project, falling back to the Florida baseline. */
+export function lookupStrMarket(neighborhood?: string, city?: string): StrMarket {
+  const hay = `${neighborhood || ""} ${city || ""}`.toLowerCase()
+  if (!hay.trim()) return FLORIDA_BASELINE
+  // Order matters: the city-specific rows are listed before the generic Miami
+  // one, whose "downtown" fragment would otherwise swallow Downtown Hollywood.
+  for (const m of STR_MARKETS) {
+    if (m.match.some(frag => hay.includes(frag))) return m
+  }
+  return FLORIDA_BASELINE
+}
+
+
+// ─── Building-level comps ───────────────────────────────────────────────────
+// A neighborhood average hides a lot: a branded condo-hotel with a rental
+// program and 25,000 sqft of amenities does not perform like the median Airbnb
+// three blocks away. When a real number exists for the building itself — or for
+// the developer's previous building — it beats the submarket average.
+//
+// These come from the developer presentations Catherine collected, so they are
+// the developer's own claims. Labelled as such: quote them as what the
+// developer reports, not as independently verified data.
+
+export type BuildingComp = {
+  label: string
+  /** Lowercased fragments matched against the project name. */
+  match: string[]
+  adr: number
+  occupancyPct: number
+  source: string
+  note?: string
+}
+
+export const BUILDING_COMPS: BuildingComp[] = [
+  {
+    label: "Palma Miami Beach (comp: 72 Park, mismo desarrollador)",
+    match: ["palma"],
+    adr: 280,
+    occupancyPct: 87,
+    source: "Presentación de Lefferts — cifras de 72 Park, su edificio anterior",
+    note: "Los $280 por noche son de TEMPORADA BAJA con 87% de ocupación. Es el comp más fuerte de toda la cartera porque es un edificio ya operando del mismo desarrollador, no una proyección. En temporada alta la tarifa sube.",
+  },
+  {
+    label: "Meliá Residences Miami",
+    match: ["meliá", "melia"],
+    adr: 287,
+    occupancyPct: 80,
+    source: "Presentación de UNCG — ocupación hotelera histórica de la marca Meliá",
+    note: "El 80% es la ocupación hotelera que reporta el operador, muy por encima del 68% de Brickell. Lo sostiene el programa de renta de Meliá y sus 20 millones de miembros de lealtad. La tarifa no la da la presentación, así que se usa la de Brickell.",
+  },
+]
+
+export function lookupBuildingComp(projectName?: string): BuildingComp | null {
+  if (!projectName) return null
+  const hay = projectName.toLowerCase()
+  return BUILDING_COMPS.find(b => b.match.some(f => hay.includes(f))) || null
+}
+
+/**
+ * What to actually model, in order of how much it is worth trusting:
+ * the building's own numbers, then its submarket, then the state.
+ */
+export function resolveStrAssumptions(projectName?: string, neighborhood?: string, city?: string): {
+  adr: number
+  occupancyPct: number
+  label: string
+  source: string
+  level: "building" | "submarket" | "state"
+  note?: string
+} {
+  const b = lookupBuildingComp(projectName)
+  if (b) return { adr: b.adr, occupancyPct: b.occupancyPct, label: b.label, source: b.source, level: "building", note: b.note }
+  const m = lookupStrMarket(neighborhood, city)
+  return {
+    adr: m.adr,
+    occupancyPct: m.occupancyPct,
+    label: m.label,
+    source: m.source,
+    level: m === FLORIDA_BASELINE ? "state" : "submarket",
+    note: m.note,
+  }
+}
+
+// ─── Long-term rental ───────────────────────────────────────────────────────
+// Houses and townhouses in the portfolio are long-term rental plays, not
+// short-term ones. Quoting a nightly rate for a Lennar house in Verdana would
+// be nonsense: nobody Airbnbs it, it rents by the year.
+
+export const LONG_TERM_COMPS = [
+  {
+    label: "Luminara (Lennar), plan 8 de 4 recámaras",
+    match: ["luminara"],
+    monthlyRent: 3200,
+    source: "Presentación de Lennar",
+  },
+  {
+    label: "SLB Home Builders, casa reformada en St. Petersburg",
+    match: ["slb", "port charlotte"],
+    monthlyRent: 3100,
+    source: "Presentación de SLB — rango reportado de $2,600 a $3,600",
+  },
+]
+
+/** True when the project rents by the year, so nightly figures do not apply. */
+export function isLongTermPlay(propertyType?: string, projectName?: string): boolean {
+  const t = (propertyType || "").toLowerCase()
+  if (t.includes("single family") || t.includes("townhouse") || t.includes("villa")) return true
+  const n = (projectName || "").toLowerCase()
+  return n.includes("lennar") || n.includes("slb")
+}
+
+export function lookupLongTermComp(projectName?: string) {
+  if (!projectName) return null
+  const hay = projectName.toLowerCase()
+  return LONG_TERM_COMPS.find(c => c.match.some(f => hay.includes(f))) || null
+}
+
+// ─── Appreciation ───────────────────────────────────────────────────────────
+// Two different numbers that get confused constantly, so they are stored apart:
+// the developer raises its own price list during construction, which is what a
+// preconstruction buyer captures; the resale market moves separately, and right
+// now it is nearly flat.
+
+export type AppreciationRow = {
+  label: string
+  match: string[]
+  marketYoYPct: number
+  source: string
+  asOf: string
+  note?: string
+}
+
+export const DEVELOPER_PRICE_LIST_ESCALATION_PCT = 4
+
+export const APPRECIATION: AppreciationRow[] = [
+  {
+    label: "Brickell",
+    match: ["brickell"],
+    marketYoYPct: 1.8,
+    source: "CondoBlackBook / BrickellSold, 2026",
+    asOf: "2026 año corrido",
+  },
+  {
+    label: "Edgewater",
+    match: ["edgewater"],
+    marketYoYPct: 1.6,
+    source: "CondoBlackBook / BrickellSold, 2026",
+    asOf: "2026 año corrido",
+  },
+  {
+    label: "Miami (condos de lujo)",
+    match: ["miami", "downtown", "wynwood", "miami beach", "north beach"],
+    marketYoYPct: 2.3,
+    source: "CondoBlackBook, Q1 2026",
+    asOf: "Q1 2026",
+    note: "El precio mediano de venta subió 2.3% interanual, pero el precio por pie cuadrado BAJÓ 3.7% en el mismo periodo. O sea: se están vendiendo unidades más grandes, no unidades más caras por pie.",
+  },
+]
+
+export function lookupAppreciation(neighborhood?: string, city?: string): AppreciationRow | null {
+  const hay = `${neighborhood || ""} ${city || ""}`.toLowerCase()
+  if (!hay.trim()) return null
+  for (const row of APPRECIATION) if (row.match.some(f => hay.includes(f))) return row
+  return null
+}
+
+/** The block both Catherine-facing agents get, so neither invents a number. */
+export function strMarketContext(): string {
+  const rows = STR_MARKETS.map(m => {
+    const bits = [
+      `${m.label}: $${m.adr}/noche, ${m.occupancyPct}% de ocupación`,
+      m.revpar ? `RevPAR $${m.revpar}` : "",
+      m.seasonality ? `temporada alta ${m.seasonality.highPct}% / baja ${m.seasonality.lowPct}%` : "",
+      `(${m.source})`,
+    ].filter(Boolean).join(" · ")
+    return `• ${bits}${m.note ? `\n  ${m.note}` : ""}`
+  }).join("\n")
+
+  const comps = BUILDING_COMPS.map(b =>
+    `• ${b.label}: $${b.adr}/noche, ${b.occupancyPct}% de ocupación (${b.source})${b.note ? `\n  ${b.note}` : ""}`
+  ).join("\n")
+
+  const apr = APPRECIATION.map(a =>
+    `• ${a.label}: ${a.marketYoYPct}% interanual (${a.source})${a.note ? `\n  ${a.note}` : ""}`
+  ).join("\n")
+
+  return `
+DATOS REALES DE RENTA CORTA — actualizados a ${STR_ASOF}. Usa SIEMPRE estos números en lugar de inventar una tarifa o una ocupación, y cita la fuente cuando los uses:
+${rows}
+
+DATOS DEL EDIFICIO ESPECÍFICO — mandan sobre el promedio del barrio. Un condo-hotel de marca con programa de renta no rinde como el Airbnb mediano a tres cuadras, así que cuando exista un número del edificio mismo, usa ese y no el del submercado:
+${comps}
+Son cifras que reporta el desarrollador, no verificadas por un tercero. Preséntalas así: "el desarrollador reporta...".
+
+RENTA LARGA — las casas y townhouses de la cartera (Lennar, SLB) NO son renta corta. No les apliques tarifa por noche ni ocupación de Airbnb: se rentan por año. Comps reales que tenemos:
+${LONG_TERM_COMPS.map(c => `• ${c.label}: $${c.monthlyRent.toLocaleString()} al mes (${c.source})`).join("\n")}
+Para esos proyectos el ingreso operativo del modelo es la renta mensual, no tarifa por noche multiplicada por ocupación.
+
+VALORIZACIÓN — hay dos números distintos y no se pueden mezclar:
+1. La lista de precios del desarrollador sube alrededor de ${DEVELOPER_PRICE_LIST_ESCALATION_PCT}% por cada nueva lista durante la construcción. Eso es lo que captura el comprador en preconstrucción y es real: firmó al precio viejo.
+2. La valorización del mercado de reventa es otra cosa y hoy está casi plana:
+${apr}
+
+Cuando le presentes valorización a un cliente, sé explícito sobre cuál de las dos estás citando. Prometer 4% anual de valorización de mercado en Miami hoy sería faltar a la verdad; lo honesto es: "usted compra al precio de hoy y el desarrollador sube la lista mientras construye — esa diferencia es suya. Lo que haga la reventa después es un tema aparte y hoy el mercado está plano."
+
+Si un proyecto no cae en ningún submercado de la lista, usa la línea base de Florida y dilo.`
+}

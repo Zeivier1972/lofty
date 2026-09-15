@@ -5,9 +5,11 @@ import {
   Building2, Plus, Trash2, Edit, ExternalLink, X, Save, Loader2,
   TrendingUp, MapPin, Calendar, DollarSign, Users, ChevronDown, ChevronUp,
   Search, AlertCircle, RefreshCw, CheckCircle2, Bot, Home, Sparkles,
-  Bed, Bath, Square,
+  Bed, Bath, Square, Upload, FileJson, BookOpen, Calculator, Download,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import COLOMBIA_EVENT_PROJECTS from "@/data/preconstruction/colombia-event-2026.json"
+import MARKET_INSIGHT_SEEDS from "@/data/preconstruction/market-insights.json"
 
 type Project = {
   id: string
@@ -85,13 +87,40 @@ type ScrapedCommunity = {
   scrapedAt: string
 }
 
+type CalcState = {
+  project: Project
+  price: string; sqft: string; nightlyRate: string; occupancyPct: string
+  downPaymentPct: string; hoaPerSqft: string; mortgageRatePct: string
+  appreciationPeriods: string; copRateAtPurchase: string; copRateToday: string
+}
+
+// Seed the form from whatever the project record already knows, so Catherine
+// only fills what the deck never captured — square footage and the nightly rate.
+function calcDefaults(p: Project): CalcState {
+  const hoa = (p.description || "").match(/\$\s?(\d+(?:\.\d+)?)\s?(?:por|\/)\s?(?:sqft|sq ?ft|pie|ft)/i)
+  return {
+    project: p,
+    price: String(p.priceMin || ""),
+    sqft: "",
+    nightlyRate: "",
+    occupancyPct: "",
+    downPaymentPct: "40",
+    hoaPerSqft: hoa ? hoa[1] : "1.8",
+    mortgageRatePct: "6.5",
+    appreciationPeriods: "2",
+    copRateAtPurchase: "",
+    copRateToday: "",
+  }
+}
+
 interface Props {
   initialProjects: Project[]
   scrapedCommunities?: ScrapedCommunity[]
   scrapedAt?: string
+  initialMarketInsights?: string
 }
 
-export default function PreConstructionClient({ initialProjects, scrapedCommunities = [], scrapedAt }: Props) {
+export default function PreConstructionClient({ initialProjects, scrapedCommunities = [], scrapedAt, initialMarketInsights = "" }: Props) {
   const [projects, setProjects] = useState<Project[]>(initialProjects)
   const [form, setForm] = useState<Partial<Project> | null>(null)
   const [saving, setSaving] = useState(false)
@@ -109,6 +138,127 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
   const [savingMlsId, setSavingMlsId] = useState<string | null>(null)
   const [backfilling, setBackfilling] = useState(false)
   const [backfillMsg, setBackfillMsg] = useState<string | null>(null)
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkText, setBulkText] = useState("")
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkMsg, setBulkMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [insightsOpen, setInsightsOpen] = useState(false)
+  const [insights, setInsights] = useState(initialMarketInsights)
+  const [insightsBusy, setInsightsBusy] = useState(false)
+  const [insightsMsg, setInsightsMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [calc, setCalc] = useState<CalcState | null>(null)
+  const [calcBusy, setCalcBusy] = useState(false)
+  const [calcErr, setCalcErr] = useState<string | null>(null)
+
+  // Builds the investment workbook for one project and hands it straight to the
+  // browser as a download — the API answers with the .xlsx bytes.
+  async function downloadAnalysis() {
+    if (!calc) return
+    setCalcBusy(true)
+    setCalcErr(null)
+    try {
+      const res = await fetch("/api/investment-analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: calc.project.id,
+          price: calc.price,
+          sqft: calc.sqft,
+          nightlyRate: calc.nightlyRate,
+          occupancyPct: calc.occupancyPct,
+          downPaymentPct: Number(calc.downPaymentPct) / 100,
+          hoaPerSqft: calc.hoaPerSqft,
+          mortgageRatePct: calc.mortgageRatePct,
+          appreciationPeriods: calc.appreciationPeriods,
+          copRateAtPurchase: calc.copRateAtPurchase,
+          copRateToday: calc.copRateToday,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setCalcErr(data.error || `Error ${res.status}`)
+        return
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `Analisis-${calc.project.name.replace(/[^a-z0-9]+/gi, "-")}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      setCalc(null)
+    } catch (e: any) {
+      setCalcErr(e?.message || "No se pudo generar el análisis")
+    } finally {
+      setCalcBusy(false)
+    }
+  }
+
+  // Market-level talking points (city theses, ROI ranges) that the Investment
+  // Advisor argues from. Deliberately not wired into Sofía: she talks to leads
+  // about specific listings, not about whether Orlando beats Miami.
+  async function saveInsights() {
+    setInsightsBusy(true)
+    setInsightsMsg(null)
+    try {
+      const res = await fetch("/api/market-insights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: insights }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setInsightsMsg({ ok: false, text: data.error || `Error ${res.status}` })
+        return
+      }
+      setInsightsMsg({ ok: true, text: insights.trim() ? "Guardado — el Investment Advisor ya lo usa" : "Borrado" })
+    } catch (e: any) {
+      setInsightsMsg({ ok: false, text: e?.message || "Error al guardar" })
+    } finally {
+      setInsightsBusy(false)
+    }
+  }
+
+  // Paste a JSON array of projects (e.g. exported from a developer deck) and
+  // upsert them all at once — matching on id, then on name, so re-importing the
+  // same deck updates instead of duplicating.
+  async function bulkImport() {
+    setBulkBusy(true)
+    setBulkMsg(null)
+    try {
+      let parsed: any
+      try {
+        parsed = JSON.parse(bulkText)
+      } catch {
+        setBulkMsg({ ok: false, text: "El JSON no es válido — revisa comas y comillas." })
+        return
+      }
+      const res = await fetch("/api/pre-construction/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(parsed),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setBulkMsg({ ok: false, text: data.error || `Error ${res.status}` })
+        return
+      }
+      setProjects(data.projects || [])
+      const parts = [
+        data.created ? `${data.created} proyecto(s) agregado(s)` : "",
+        data.updated ? `${data.updated} actualizado(s)` : "",
+        data.skipped?.length ? `${data.skipped.length} omitido(s): ${data.skipped.join(", ")}` : "",
+      ].filter(Boolean)
+      setBulkMsg({ ok: true, text: parts.join(" · ") || "Nada que importar" })
+      setBulkText("")
+    } catch (e: any) {
+      setBulkMsg({ ok: false, text: e?.message || "Error al importar" })
+    } finally {
+      setBulkBusy(false)
+    }
+  }
 
   async function backfillPhotos() {
     setBackfilling(true)
@@ -292,6 +442,20 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
               Fetch missing photos
             </button>
             <button
+              onClick={() => { setInsightsOpen(v => !v); setInsightsMsg(null) }}
+              title="Market talking points the Investment Advisor argues from"
+              className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 text-sm font-medium"
+            >
+              <BookOpen className="w-4 h-4" /> Market notes
+            </button>
+            <button
+              onClick={() => { setBulkOpen(v => !v); setBulkMsg(null) }}
+              title="Import several projects at once from a JSON list"
+              className="flex items-center gap-2 px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 text-sm font-medium"
+            >
+              <Upload className="w-4 h-4" /> Bulk import
+            </button>
+            <button
               onClick={() => setForm({ ...EMPTY_FORM })}
               className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium"
             >
@@ -341,6 +505,218 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
             className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
           />
         </div>
+
+        {/* Investment analysis workbook */}
+        {calc && (
+          <div className="bg-white border border-blue-200 rounded-2xl p-6 mb-6 shadow-sm">
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-2">
+                <Calculator className="w-4 h-4 text-blue-600" />
+                <h2 className="font-bold text-gray-900">Análisis de inversión — {calc.project.name}</h2>
+              </div>
+              <button onClick={() => setCalc(null)} className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mb-4">
+              Genera el Excel con los 5 indicadores (NOI, cash flow, cash on cash, ROI y cap rate), la calificación
+              de cada uno y el guion para explicárselos al cliente. Todo queda como fórmula viva: si cambias un
+              supuesto en Excel, los indicadores se recalculan.
+            </p>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {([
+                ["price", "Precio ($)", "540000"],
+                ["sqft", "Superficie (sqft) *", "321"],
+                ["nightlyRate", "Renta por noche ($) — vacío = dato real", "auto"],
+                ["occupancyPct", "Ocupación (%) — vacío = dato real", "auto"],
+                ["downPaymentPct", "Inicial (%)", "40"],
+                ["hoaPerSqft", "HOA ($/sqft)", "1.8"],
+                ["mortgageRatePct", "Tasa hipoteca (%)", "6.5"],
+                ["appreciationPeriods", "Listas de precio hasta entrega", "2"],
+                ["copRateAtPurchase", "COP/USD antes (opcional)", "4800"],
+                ["copRateToday", "COP/USD hoy (opcional)", "3100"],
+              ] as Array<[keyof CalcState, string, string]>).map(([field, labelText, ph]) => (
+                <div key={field as string}>
+                  <label className="text-xs font-semibold text-gray-600 mb-1 block">{labelText}</label>
+                  <input
+                    type="number"
+                    value={calc[field] as string}
+                    onChange={e => setCalc(prev => prev ? { ...prev, [field]: e.target.value } : prev)}
+                    placeholder={ph}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              ))}
+            </div>
+
+            <p className="text-[11px] text-gray-400 mt-2">
+              * La superficie es obligatoria: sin ella no se puede calcular el HOA. Si dejas la renta por noche
+              y la ocupación en blanco, el sistema usa los datos reales del edificio si los tiene, si no los del
+              submercado (Brickell, Miami Beach, Miami, Hollywood, Orlando) y si no la línea base de Florida —
+              y anota la fuente en la hoja de supuestos.
+            </p>
+
+            {calcErr && (
+              <div className="mt-3 flex items-center gap-2 text-xs px-3 py-2 rounded-lg bg-red-50 text-red-700">
+                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" /> {calcErr}
+              </div>
+            )}
+
+            <div className="flex gap-3 mt-5">
+              <button
+                onClick={downloadAnalysis}
+                disabled={calcBusy || !calc.price || !calc.sqft}
+                className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium disabled:opacity-40"
+              >
+                {calcBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                Descargar Excel
+              </button>
+              <button onClick={() => setCalc(null)} className="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 text-sm">Cancelar</button>
+            </div>
+          </div>
+        )}
+
+        {/* Market knowledge for the Investment Advisor */}
+        {insightsOpen && (
+          <div className="bg-white border border-violet-200 rounded-2xl p-6 mb-6 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <BookOpen className="w-4 h-4 text-violet-600" />
+                <h2 className="font-bold text-gray-900">Market notes for the Investment Advisor</h2>
+              </div>
+              <button onClick={() => setInsightsOpen(false)} className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">
+              City-level arguments and numbers — why Orlando, what ROI a market returns, which trends to cite.
+              The Investment Advisor quotes these alongside your projects. Sofía does not use them: she talks to
+              leads about specific units, not about which city to buy in.
+            </p>
+
+            <div className="flex flex-wrap gap-2 mb-3">
+              {MARKET_INSIGHT_SEEDS.map(seed => {
+                const already = insights.includes(seed.text)
+                return (
+                  <button
+                    key={seed.label}
+                    disabled={already}
+                    onClick={() => setInsights(prev => [prev.trim(), seed.text].filter(Boolean).join("\n\n"))}
+                    className={cn(
+                      "px-3 py-1.5 border rounded-lg text-xs font-medium",
+                      already
+                        ? "border-gray-200 text-gray-400 cursor-default"
+                        : "border-violet-200 text-violet-700 hover:bg-violet-50"
+                    )}
+                  >
+                    {already ? `✓ ${seed.label}` : `+ ${seed.label}`}
+                  </button>
+                )
+              })}
+            </div>
+
+            <textarea
+              value={insights}
+              onChange={e => setInsights(e.target.value)}
+              rows={12}
+              placeholder="Ej: INVERTIR EN ORLANDO — más de 75 millones de visitantes al año, ROI 6-8%…"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 resize-y"
+            />
+            <div className="mt-1 text-[11px] text-gray-400">{insights.length.toLocaleString()} / 20,000 caracteres</div>
+
+            {insightsMsg && (
+              <div className={cn(
+                "mt-3 flex items-center gap-2 text-xs px-3 py-2 rounded-lg",
+                insightsMsg.ok ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-700"
+              )}>
+                {insightsMsg.ok ? <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" /> : <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />}
+                {insightsMsg.text}
+              </div>
+            )}
+
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={saveInsights}
+                disabled={insightsBusy}
+                className="flex items-center gap-2 px-5 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 text-sm font-medium disabled:opacity-40"
+              >
+                {insightsBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Save
+              </button>
+              <button onClick={() => setInsightsOpen(false)} className="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 text-sm">Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {/* Bulk import */}
+        {bulkOpen && (
+          <div className="bg-white border border-slate-300 rounded-2xl p-6 mb-6 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <FileJson className="w-4 h-4 text-slate-600" />
+                <h2 className="font-bold text-gray-900">Bulk import projects</h2>
+              </div>
+              <button onClick={() => setBulkOpen(false)} className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">
+              Paste a JSON array of projects. Each one needs at least a <code className="bg-gray-100 px-1 rounded">name</code>;
+              everything else is optional. Projects are matched by name, so importing the same list twice
+              updates them instead of creating duplicates. Everything you import here is what the Investment
+              Advisor and Sofía quote to leads.
+            </p>
+
+            <div className="flex flex-wrap gap-2 mb-3">
+              <button
+                onClick={() => setBulkText(JSON.stringify(COLOMBIA_EVENT_PROJECTS, null, 2))}
+                className="px-3 py-1.5 border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 text-xs font-medium"
+              >
+                Load Colombia event deck ({COLOMBIA_EVENT_PROJECTS.length} projects)
+              </button>
+              {bulkText && (
+                <button
+                  onClick={() => { setBulkText(""); setBulkMsg(null) }}
+                  className="px-3 py-1.5 border border-gray-200 text-gray-500 rounded-lg hover:bg-gray-50 text-xs"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            <textarea
+              value={bulkText}
+              onChange={e => setBulkText(e.target.value)}
+              rows={12}
+              spellCheck={false}
+              placeholder={'[\n  {\n    "name": "Torre Ejemplo",\n    "developer": "Related Group",\n    "neighborhood": "Brickell",\n    "city": "Miami",\n    "priceMin": 500000,\n    "priceMax": 1200000,\n    "bedrooms": "Estudios, 1 rec, 2 rec",\n    "deliveryDate": "2027",\n    "status": "launching",\n    "downPayment": "20% al contrato · 60% al cierre",\n    "investmentHighlights": "Renta corta permitida…",\n    "description": "Amenidades, ubicación…"\n  }\n]'}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-slate-400 resize-y"
+            />
+
+            {bulkMsg && (
+              <div className={cn(
+                "mt-3 flex items-center gap-2 text-xs px-3 py-2 rounded-lg",
+                bulkMsg.ok ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-700"
+              )}>
+                {bulkMsg.ok ? <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" /> : <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />}
+                {bulkMsg.text}
+              </div>
+            )}
+
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={bulkImport}
+                disabled={bulkBusy || !bulkText.trim()}
+                className="flex items-center gap-2 px-5 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 text-sm font-medium disabled:opacity-40"
+              >
+                {bulkBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                Import
+              </button>
+              <button onClick={() => setBulkOpen(false)} className="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 text-sm">Cancel</button>
+            </div>
+          </div>
+        )}
 
         {/* Add/Edit form */}
         {form && (
@@ -619,6 +995,13 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
                     )}
                     <span className={cn("absolute top-2 left-2 text-xs font-semibold px-2 py-0.5 rounded-full shadow-sm", st.color)}>{st.label}</span>
                     <div className="absolute top-2 right-2 flex gap-1">
+                      <button
+                        onClick={() => { setCalc(calcDefaults(p)); setCalcErr(null) }}
+                        title="Generar análisis de inversión en Excel"
+                        className="p-1.5 bg-white/90 text-gray-500 hover:text-blue-600 rounded-lg shadow-sm transition-colors"
+                      >
+                        <Calculator className="w-4 h-4" />
+                      </button>
                       <button onClick={() => setForm({ ...p })} className="p-1.5 bg-white/90 text-gray-500 hover:text-emerald-600 rounded-lg shadow-sm transition-colors">
                         <Edit className="w-4 h-4" />
                       </button>

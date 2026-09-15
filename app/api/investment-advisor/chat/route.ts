@@ -5,6 +5,9 @@ import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { sendEmail, wrapEmail } from "@/lib/email"
 import { randomUUID } from "crypto"
+import { buildProjectContext, buildMarketInsightsContext, buildStrMarketContext } from "@/lib/preconstruction-context"
+import { DEFAULTS as ANALYSIS_DEFAULTS, analyze as runAnalysis } from "@/lib/investment-analysis"
+import { resolveStrAssumptions, lookupAppreciation, isLongTermPlay, lookupLongTermComp } from "@/lib/str-market-data"
 
 const SSE_HEADERS = {
   "Content-Type": "text/event-stream",
@@ -30,6 +33,24 @@ DATOS DEL MERCADO MIAMI 2024-2025:
 - Down payment extranjeros: 30-50% según banco
 - Condo fees lujo: $500-$2,000/mes
 - Property tax: ~1-1.5% del valor anual
+
+LOS 5 INDICADORES — ASÍ SE EVALÚA UNA INVERSIÓN (metodología de Catherine, del coaching de Álvaro Rojas):
+Cuando analices cualquier propiedad, calcula estos cinco y clasifica cada uno contra su rango. Muéstralos en tabla y di siempre si el número es Bajo, Aceptable, Bueno o Muy Bueno — el cliente necesita saber qué significa la cifra, no solo verla.
+
+1. NOI (Ingreso Operativo Neto) = Ingresos operativos − Gastos operativos. Cuánto produce SIN la deuda.
+2. CASH FLOW = Ingresos operativos − Gastos totales (incluyendo la hipoteca). Cuánto dinero queda después de pagar la deuda.
+3. CASH ON CASH RETURN % = Flujo de caja anual / Capital invertido. Retorno sobre el capital que el cliente realmente puso.
+   Rangos: <6% Bajo · 6-8% Aceptable · 8-10% Bueno · >10% Muy Bueno
+4. ROI % = (Cash Flow anual + Valorización + Pago a capital de la hipoteca − Gastos de cierre) / Down Payment. Qué tan eficiente fue su dinero para generar ganancia.
+   Rangos: <5% Bajo · 5-10% Aceptable · 10-15% Bueno · >15% Muy Bueno
+5. CAP RATE % = NOI anual / Valor de la propiedad. Rendimiento del inmueble sobre su valor — lo que genera si la compra 100% de contado.
+   Rangos: <4% Bajo · 4-6% Aceptable · 6-8% Bueno · >8% Muy Bueno
+
+Supuestos base para modelar preconstrucción en Miami (ajústalos si el proyecto trae los suyos):
+- Gastos operativos mensuales: property management 20% del ingreso · taxes 1.8% anual del precio ÷ 12 · HOA según $/sqft del proyecto · seguro ~$100
+- Gastos de cierre: 5.4% del precio
+- Valorización durante la obra: ~4% por entrega de lista de precios
+- Para el comprador colombiano: calcula también la ganancia por tasa de cambio entre el peso del día de la compra y el de hoy — en el ejemplo base fue de 4,800 a 3,100 COP/USD, un 35% adicional que no aparece en ningún otro indicador.
 
 DESARROLLADORES CLAVE:
 - Related Group, Ugo Colombo/CMC Group, OKO Group, Melo Group, Swire Properties, Fortune International, Chateau Group
@@ -155,6 +176,32 @@ const SAVE_PROJECT_TOOL = {
   },
 }
 
+const ANALYSIS_TOOL = {
+  type: "function" as const,
+  function: {
+    name: "analyze_investment",
+    description: "Run Catherine's 5-indicator investment model (NOI, cash flow, cash on cash, ROI, cap rate) on a project and return the numbers with their rating. Use it whenever Catherine asks what a project returns, or wants to compare two projects with real numbers. When you omit nightlyRate and occupancyPct it uses the real figures for that building, or failing that its submarket, from the market data in your system context. Prefer those over guessing, and always cite the source and say whether it is a building number or a neighborhood average. After returning the numbers, tell Catherine she can download the full Excel with the client script from the Pre-Construction page, using the calculator button on the project card.",
+    parameters: {
+      type: "object",
+      properties: {
+        project: { type: "string", description: "Project name as it appears in Catherine's portfolio. Omit if you are pricing a unit that is not in the portfolio and pass price instead." },
+        price: { type: "number", description: "Unit price in USD. Defaults to the project's priceMin." },
+        sqft: { type: "number", description: "Interior square feet — REQUIRED, the HOA cannot be computed without it." },
+        nightlyRate: { type: "number", description: "Estimated nightly short-term rental rate in USD. Research it if unknown." },
+        occupancyPct: { type: "number", description: "Occupancy percentage, e.g. 70." },
+        downPaymentPct: { type: "number", description: "Down payment as a decimal, e.g. 0.4 for 40%." },
+        hoaPerSqft: { type: "number", description: "Monthly HOA in USD per square foot." },
+        mortgageRatePct: { type: "number", description: "Mortgage rate, e.g. 6.5. Use 7-8 for a foreign national loan if that is the case." },
+        appreciationPeriods: { type: "number", description: "How many price-list releases remain before delivery." },
+        monthlyRent: { type: "number", description: "Expected monthly rent in USD. Use this INSTEAD of nightlyRate for houses and townhouses (Lennar, SLB) — those are long-term rental plays and a nightly rate does not apply." },
+        copRateAtPurchase: { type: "number", description: "COP per USD at the earlier reference point." },
+        copRateToday: { type: "number", description: "COP per USD today." },
+      },
+      required: ["sqft"],
+    },
+  },
+}
+
 async function tavilySearch(query: string, apiKey: string): Promise<string> {
   // Extensive search by default: "advanced" depth + more results. Domains are
   // configurable (comma-separated) so Catherine can add sources without a code
@@ -251,39 +298,11 @@ export async function POST(req: Request) {
     } catch {}
   }
 
-  try {
-    const setting = await prisma.setting.findUnique({ where: { key: "preconstruction_projects" } })
-    if (setting) {
-      const projects: any[] = JSON.parse(setting.value)
-      if (projects.length > 0) {
-        // Catherine's own inventory is AUTHORITATIVE and often includes off-market
-        // projects that are NOT online yet — the advisor can't find these via web
-        // search, so give it the full detail she entered on the Pre-Construction
-        // page and tell it to prioritize + quote these accurately.
-        contextLines.push(`\nPROYECTOS EN CARTERA DE CATHERINE (fuente autoritativa — incluye proyectos exclusivos/off-market que NO están en línea todavía; priorízalos y cita sus datos con exactitud):`)
-        projects.slice(0, 40).forEach(p => {
-          const header = `${p.name}${(p.neighborhood || p.city) ? ` (${[p.neighborhood, p.city].filter(Boolean).join(", ")})` : ""}`
-          const priceRange = (p.priceMin || p.priceMax)
-            ? `Precio: ${p.priceMin ? `$${Number(p.priceMin).toLocaleString()}` : "?"}${p.priceMax ? ` – $${Number(p.priceMax).toLocaleString()}` : "+"}`
-            : ""
-          const details = [
-            p.developer ? `Desarrollador: ${p.developer}` : "",
-            priceRange,
-            p.bedrooms ? `Recámaras: ${p.bedrooms}` : "",
-            p.propertyType ? `Tipo: ${p.propertyType}` : "",
-            p.deliveryDate ? `Entrega: ${p.deliveryDate}` : "",
-            p.estimatedROI ? `ROI estimado: ${p.estimatedROI}` : "",
-            p.downPayment ? `Down payment: ${p.downPayment}` : "",
-            p.status ? `Estado: ${p.status}` : "",
-            p.investmentHighlights ? `Puntos clave: ${p.investmentHighlights}` : "",
-            p.description ? `Descripción: ${p.description}` : "",
-            (Array.isArray(p.photos) && p.photos[0]) ? `Foto: ${p.photos[0]}` : "",
-          ].filter(Boolean).join(" · ")
-          contextLines.push(`\n• ${header}\n  ${details}`)
-        })
-      }
-    }
-  } catch {}
+  contextLines.push(buildStrMarketContext())
+
+  const insights = await buildMarketInsightsContext()
+  if (insights) contextLines.push(insights)
+  contextLines.push(...await buildProjectContext())
 
   const systemContent = contextLines.length > 0
     ? `${SYSTEM_PROMPT}\n\n---\nCONTEXTO ACTUAL:\n${contextLines.join("\n")}`
@@ -294,7 +313,7 @@ export async function POST(req: Request) {
     ...messages.slice(-20),
   ]
 
-  const tools: any[] = [EMAIL_TOOL, SAVE_PROJECT_TOOL, ...(tavilyKey ? [SEARCH_TOOL] : [])]
+  const tools: any[] = [EMAIL_TOOL, SAVE_PROJECT_TOOL, ANALYSIS_TOOL, ...(tavilyKey ? [SEARCH_TOOL] : [])]
 
   const callOpenAI = (msgs: any[], opts: { stream: boolean; withTools: boolean }) =>
     fetch("https://api.openai.com/v1/chat/completions", {
@@ -312,6 +331,65 @@ export async function POST(req: Request) {
 
   async function executeToolCall(tc: any): Promise<string> {
     try {
+      if (tc.function.name === "analyze_investment") {
+        const args = JSON.parse(tc.function.arguments || "{}")
+        let projectRecord: any = null
+        if (args.project) {
+          const row = await prisma.setting.findUnique({ where: { key: "preconstruction_projects" } })
+          if (row) {
+            try {
+              const all: any[] = JSON.parse(row.value)
+              const q = String(args.project).toLowerCase()
+              projectRecord = all.find(x => x.name.toLowerCase() === q) || all.find(x => x.name.toLowerCase().includes(q)) || null
+            } catch {}
+          }
+        }
+        const price = Number(args.price) || projectRecord?.priceMin
+        const sqft = Number(args.sqft)
+        if (!price) return "No pude calcular: falta el precio y el proyecto no tiene uno registrado."
+        if (!sqft) return "No pude calcular: falta la superficie en pies cuadrados, sin ella no se puede estimar el HOA."
+
+        // Building comp beats submarket average beats state baseline.
+        const longTerm = isLongTermPlay(projectRecord?.propertyType, projectRecord?.name || args.project)
+        const ltComp = longTerm ? lookupLongTermComp(projectRecord?.name || args.project) : null
+        const monthlyRent = Number(args.monthlyRent) || ltComp?.monthlyRent
+        if (longTerm && !monthlyRent && !Number(args.nightlyRate)) {
+          return "Este proyecto es de renta larga (casa o townhouse). Pásame la renta mensual esperada en monthlyRent — una tarifa por noche no aplica aquí."
+        }
+        const mkt = resolveStrAssumptions(projectRecord?.name || args.project, projectRecord?.neighborhood, projectRecord?.city)
+        const apr = lookupAppreciation(projectRecord?.neighborhood, projectRecord?.city)
+        const a = {
+          ...ANALYSIS_DEFAULTS,
+          price,
+          sqft,
+          downPaymentPct: Number(args.downPaymentPct) || ANALYSIS_DEFAULTS.downPaymentPct,
+          nightlyRate: Number(args.nightlyRate) || (longTerm ? monthlyRent! / 30 : mkt.adr),
+          occupancyPct: Number(args.occupancyPct) || (longTerm ? 100 : mkt.occupancyPct),
+          hoaPerSqft: Number(args.hoaPerSqft) || ANALYSIS_DEFAULTS.hoaPerSqft,
+          mortgageRatePct: Number(args.mortgageRatePct) || ANALYSIS_DEFAULTS.mortgageRatePct,
+          appreciationPeriods: Number(args.appreciationPeriods) || ANALYSIS_DEFAULTS.appreciationPeriods,
+          copRateAtPurchase: Number(args.copRateAtPurchase) || undefined,
+          copRateToday: Number(args.copRateToday) || undefined,
+        }
+        const r = runAnalysis(a)
+        const m = (n: number) => `$${Math.round(n).toLocaleString()}`
+        return [
+          `Análisis de ${projectRecord?.name || "la unidad"} — ${m(price)}, ${sqft} sqft`,
+          `Inicial ${m(r.downPayment)} (${(a.downPaymentPct * 100).toFixed(0)}%) · financia ${m(r.financed)}`,
+          longTerm
+            ? `Renta LARGA: $${monthlyRent!.toLocaleString()} al mes${ltComp ? ` (${ltComp.source})` : ""}. No aplica tarifa por noche ni ocupación de Airbnb.`
+            : `Base de mercado (${mkt.level === "building" ? "dato del edificio" : mkt.level === "submarket" ? "submercado" : "línea base de Florida"}): ${mkt.label} — $${mkt.adr}/noche al ${mkt.occupancyPct}% (${mkt.source})${apr ? ` · reventa ${apr.marketYoYPct}% interanual` : ""}`,
+          `Renta ${m(r.operatingIncome)}/mes ($${a.nightlyRate}/noche al ${a.occupancyPct}%) · gastos operativos ${m(r.operatingExpenses)} · hipoteca ${m(r.mortgage)}`,
+          `1. NOI: ${m(r.noiMonth)}/mes, ${m(r.noiYear)}/año`,
+          `2. Cash flow: ${m(r.cashFlowMonth)}/mes, ${m(r.cashFlowYear)}/año`,
+          `3. Cash on cash: ${r.cashOnCashPct.toFixed(2)}% — ${r.cashOnCashBand}`,
+          `4. ROI: ${r.roiPct.toFixed(2)}% — ${r.roiBand} (incluye ${m(r.appreciation)} de valorización y ${m(r.principalYear)} de abono a capital, menos ${m(r.closingCosts)} de cierre)`,
+          `5. Cap rate: ${r.capRatePct.toFixed(2)}% — ${r.capRateBand}`,
+          r.cop ? `Ventaja por tasa de cambio: ${Math.round(r.cop.gain).toLocaleString()} COP menos, ${r.cop.gainPct.toFixed(1)}%` : "",
+          `Catherine puede descargar el Excel completo, con el guion para explicárselo al cliente, desde el botón de calculadora en la tarjeta del proyecto en la página de Pre-Construction.`,
+        ].filter(Boolean).join("\n")
+      }
+
       if (tc.function.name === "save_project") {
         const p = JSON.parse(tc.function.arguments || "{}")
         if (!p.name?.trim()) return "No pude guardar: falta el nombre del proyecto."

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { buildProjectContext, buildMarketInsightsContext, buildStrMarketContext } from "@/lib/preconstruction-context"
 import Anthropic from "@anthropic-ai/sdk"
 import { sendSMS } from "@/lib/sms"
 import { sendEmail } from "@/lib/email"
@@ -555,6 +556,18 @@ export async function POST(req: Request) {
       prisma.contact.count({ where: { isArchived: false } }),
     ])
 
+  // Catherine's own pre-construction inventory and market notes. Aria is the
+  // assistant she asks "what do I pitch this lead?", so she needs the same
+  // authoritative project detail the Investment Advisor has — otherwise Aria
+  // answers from the model's general knowledge of Miami, not from the deck.
+  const [projectLines, marketInsights] = await Promise.all([
+    buildProjectContext(),
+    buildMarketInsightsContext(),
+  ])
+  const inventoryBlock = projectLines.length > 0 || marketInsights
+    ? `\n\n━━━ CARTERA Y MERCADO DE CATHERINE ━━━\n${buildStrMarketContext()}${marketInsights || ""}${projectLines.join("\n")}\n\nCuando Catherine pregunte qué ofrecerle a un lead, parte SIEMPRE de esta cartera antes de sugerir cualquier otra cosa, y cita precios, planes de pago y fechas exactamente como están aquí.`
+    : ""
+
   const systemPrompt = `You are Aria, a world-class AI CRM assistant for Catherine Gomez — a Miami real estate agent and educator who helps Latino families buy smart in Florida. You are the top 0.1% real estate CRM assistant. You think like a seasoned real estate coach, a sharp sales manager, and a trusted advisor all in one.
 
 Today: ${now.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
@@ -588,7 +601,7 @@ Follow-up cadence: New lead → contact within 5 min. Day 1, 3, 7, 14, 30 for nu
 
 Lead temperature: 🔴 Hot (engaged last 48h, high score, active search) · 🟡 Warm (engaged last week) · ⚪ Cold (7+ days silent) · 🧊 Frozen (30+ days, needs reactivation).
 
-Respond in English or Spanish based on what the user writes. Be direct, sharp, and specific. Use bullet points for lists. Bold key names and numbers. When you recommend an action, offer to execute it with your tools.`
+Respond in English or Spanish based on what the user writes. Be direct, sharp, and specific. Use bullet points for lists. Bold key names and numbers. When you recommend an action, offer to execute it with your tools.${inventoryBlock}`
 
   // Multi-turn tool use loop
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || "" })
