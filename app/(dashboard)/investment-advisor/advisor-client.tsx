@@ -6,7 +6,7 @@ import {
   ChevronDown, X, Sparkles, Calculator, MapPin, Building2, AlertTriangle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { AdvisorMessageContent } from "@/components/advisor-message-content"
+import { ChatMarkdown } from "@/components/chat-markdown"
 
 interface Contact {
   id: string
@@ -319,7 +319,7 @@ export default function AdvisorClient({ contacts, allTags = [] }: Props) {
                     <span className="text-xs">Analyzing…</span>
                   </div>
                 ) : (
-                  <AdvisorMessageContent content={msg.content} />
+                  <ChatMarkdown content={msg.content} />
                 )}
               </div>
             </div>

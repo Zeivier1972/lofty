@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react"
 import { TrendingUp, Send, Loader2, ChevronDown, ChevronUp, Calculator, MapPin, Building2, AlertTriangle, Check, NotebookPen } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { AdvisorMessageContent } from "@/components/advisor-message-content"
+import { ChatMarkdown } from "@/components/chat-markdown"
 
 interface Message {
   role: "user" | "assistant"
@@ -157,7 +157,7 @@ export default function InvestorAdvisorPanel({ contactId, contactName, onNoteSav
                     {msg.content === "" && msg.role === "assistant" ? (
                       <div className="flex items-center gap-2 text-gray-400"><Loader2 className="w-3.5 h-3.5 animate-spin" /><span className="text-xs">Analizando…</span></div>
                     ) : (
-                      <AdvisorMessageContent content={msg.content} />
+                      <ChatMarkdown content={msg.content} />
                     )}
                   </div>
                   {msg.role === "assistant" && msg.content && !(msg.content === "") && (
