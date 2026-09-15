@@ -450,12 +450,24 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
             </p>
 
             <div className="flex flex-wrap gap-2 mb-3">
-              <button
-                onClick={() => setInsights(prev => prev.includes(MARKET_INSIGHT_SEEDS.orlando) ? prev : [prev.trim(), MARKET_INSIGHT_SEEDS.orlando].filter(Boolean).join("\n\n"))}
-                className="px-3 py-1.5 border border-violet-200 text-violet-700 rounded-lg hover:bg-violet-50 text-xs font-medium"
-              >
-                Add the Orlando thesis
-              </button>
+              {MARKET_INSIGHT_SEEDS.map(seed => {
+                const already = insights.includes(seed.text)
+                return (
+                  <button
+                    key={seed.label}
+                    disabled={already}
+                    onClick={() => setInsights(prev => [prev.trim(), seed.text].filter(Boolean).join("\n\n"))}
+                    className={cn(
+                      "px-3 py-1.5 border rounded-lg text-xs font-medium",
+                      already
+                        ? "border-gray-200 text-gray-400 cursor-default"
+                        : "border-violet-200 text-violet-700 hover:bg-violet-50"
+                    )}
+                  >
+                    {already ? `✓ ${seed.label}` : `+ ${seed.label}`}
+                  </button>
+                )
+              })}
             </div>
 
             <textarea

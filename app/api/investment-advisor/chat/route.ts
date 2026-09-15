@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { sendEmail, wrapEmail } from "@/lib/email"
 import { randomUUID } from "crypto"
+import { buildProjectContext, buildMarketInsightsContext } from "@/lib/preconstruction-context"
 
 const SSE_HEADERS = {
   "Content-Type": "text/event-stream",
@@ -251,48 +252,9 @@ export async function POST(req: Request) {
     } catch {}
   }
 
-  try {
-    const row = await prisma.setting.findUnique({ where: { key: "market_insights" } })
-    if (row?.value?.trim()) {
-      // Catherine's own market thesis — city-level arguments and numbers she
-      // presents at events. Not inventory; these are the talking points.
-      contextLines.push(`\nCONOCIMIENTO DE MERCADO DE CATHERINE (úsalo como argumento de venta y cita sus números con exactitud):\n${row.value.trim()}`)
-    }
-  } catch {}
-
-  try {
-    const setting = await prisma.setting.findUnique({ where: { key: "preconstruction_projects" } })
-    if (setting) {
-      const projects: any[] = JSON.parse(setting.value)
-      if (projects.length > 0) {
-        // Catherine's own inventory is AUTHORITATIVE and often includes off-market
-        // projects that are NOT online yet — the advisor can't find these via web
-        // search, so give it the full detail she entered on the Pre-Construction
-        // page and tell it to prioritize + quote these accurately.
-        contextLines.push(`\nPROYECTOS EN CARTERA DE CATHERINE (fuente autoritativa — incluye proyectos exclusivos/off-market que NO están en línea todavía; priorízalos y cita sus datos con exactitud):`)
-        projects.slice(0, 40).forEach(p => {
-          const header = `${p.name}${(p.neighborhood || p.city) ? ` (${[p.neighborhood, p.city].filter(Boolean).join(", ")})` : ""}`
-          const priceRange = (p.priceMin || p.priceMax)
-            ? `Precio: ${p.priceMin ? `$${Number(p.priceMin).toLocaleString()}` : "?"}${p.priceMax ? ` – $${Number(p.priceMax).toLocaleString()}` : "+"}`
-            : ""
-          const details = [
-            p.developer ? `Desarrollador: ${p.developer}` : "",
-            priceRange,
-            p.bedrooms ? `Recámaras: ${p.bedrooms}` : "",
-            p.propertyType ? `Tipo: ${p.propertyType}` : "",
-            p.deliveryDate ? `Entrega: ${p.deliveryDate}` : "",
-            p.estimatedROI ? `ROI estimado: ${p.estimatedROI}` : "",
-            p.downPayment ? `Down payment: ${p.downPayment}` : "",
-            p.status ? `Estado: ${p.status}` : "",
-            p.investmentHighlights ? `Puntos clave: ${p.investmentHighlights}` : "",
-            p.description ? `Descripción: ${p.description}` : "",
-            (Array.isArray(p.photos) && p.photos[0]) ? `Foto: ${p.photos[0]}` : "",
-          ].filter(Boolean).join(" · ")
-          contextLines.push(`\n• ${header}\n  ${details}`)
-        })
-      }
-    }
-  } catch {}
+  const insights = await buildMarketInsightsContext()
+  if (insights) contextLines.push(insights)
+  contextLines.push(...await buildProjectContext())
 
   const systemContent = contextLines.length > 0
     ? `${SYSTEM_PROMPT}\n\n---\nCONTEXTO ACTUAL:\n${contextLines.join("\n")}`
