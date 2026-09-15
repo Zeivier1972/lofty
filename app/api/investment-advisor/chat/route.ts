@@ -252,6 +252,15 @@ export async function POST(req: Request) {
   }
 
   try {
+    const row = await prisma.setting.findUnique({ where: { key: "market_insights" } })
+    if (row?.value?.trim()) {
+      // Catherine's own market thesis — city-level arguments and numbers she
+      // presents at events. Not inventory; these are the talking points.
+      contextLines.push(`\nCONOCIMIENTO DE MERCADO DE CATHERINE (úsalo como argumento de venta y cita sus números con exactitud):\n${row.value.trim()}`)
+    }
+  } catch {}
+
+  try {
     const setting = await prisma.setting.findUnique({ where: { key: "preconstruction_projects" } })
     if (setting) {
       const projects: any[] = JSON.parse(setting.value)

@@ -8,9 +8,10 @@ export default async function PreConstructionPage() {
   let scrapedCommunities: any[] = []
   let scrapedAt: string | undefined
 
-  const [manualRow, scrapedRow] = await Promise.all([
+  const [manualRow, scrapedRow, insightsRow] = await Promise.all([
     prisma.setting.findUnique({ where: { key: "preconstruction_projects" } }).catch(() => null),
     prisma.setting.findUnique({ where: { key: "preconstruction_scraped" } }).catch(() => null),
+    prisma.setting.findUnique({ where: { key: "market_insights" } }).catch(() => null),
   ])
 
   try { if (manualRow) projects = JSON.parse(manualRow.value) } catch {}
@@ -27,6 +28,7 @@ export default async function PreConstructionPage() {
       initialProjects={JSON.parse(JSON.stringify(projects))}
       scrapedCommunities={JSON.parse(JSON.stringify(scrapedCommunities))}
       scrapedAt={scrapedAt}
+      initialMarketInsights={insightsRow?.value || ""}
     />
   )
 }
