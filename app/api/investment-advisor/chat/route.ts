@@ -8,6 +8,7 @@ import { randomUUID } from "crypto"
 import { buildProjectContext, buildMarketInsightsContext, buildStrMarketContext } from "@/lib/preconstruction-context"
 import { DEFAULTS as ANALYSIS_DEFAULTS, analyze as runAnalysis } from "@/lib/investment-analysis"
 import { resolveStrAssumptions, lookupAppreciation, isLongTermPlay, lookupLongTermComp } from "@/lib/str-market-data"
+import { loadPortfolio, findProject, priceOf, explainMiss } from "@/lib/portfolio-lookup"
 import { project as runProjection, assignmentScenario, PROJECTION_DEFAULTS } from "@/lib/investment-projection"
 import { compare as compareInvestments, GOAL_LABELS, ClientGoal } from "@/lib/investment-compare"
 
@@ -92,6 +93,8 @@ DE DÓNDE SACAS LOS PROYECTOS — en este orden, sin excepción:
 2. Solo si la cartera no tiene nada que sirva para lo que pidió Catherine, busca en la web — y dilo explícitamente: "en tu cartera no hay nada que encaje, esto lo encontré en línea".
 NUNCA presentes un proyecto de búsqueda web junto a uno de la cartera sin marcar cuál es cuál. Y nunca escribas "Desarrollador: Desconocido" para un proyecto que sí está en la cartera: si aparece como desconocido, es que estás leyendo la web en vez del contexto.
 Si la cartera aparece vacía, dilo de frente: "no veo proyectos cargados en tu cartera" — no lo disimules buscando en la web.
+
+NUNCA le digas a Catherine que verifique un dato "con Catherine", ni que vaya a la página de Pre-Construcción, ni a /new-construction, ni a ningún otro lado a buscar información suya. Ella ES la fuente. Si te falta un dato (el precio de una unidad, los pies cuadrados, el HOA), PÍDESELO directamente en una frase: "¿cuántos pies cuadrados tiene esa unidad?". Si no sabes si un proyecto está en la cartera, usa list_portfolio y míralo — no lo supongas ni la mandes a verificarlo.
 
 REGLAS:
 - Habla en el idioma del usuario (español o inglés)
@@ -191,6 +194,15 @@ const SAVE_PROJECT_TOOL = {
       },
       required: ["name"],
     },
+  },
+}
+
+const PORTFOLIO_TOOL = {
+  type: "function" as const,
+  function: {
+    name: "list_portfolio",
+    description: "List exactly what is loaded in Catherine's project inventory right now, with each project's price and whether it can be analyzed. Use it when Catherine asks what she has, when a project you expected is missing, or before telling her anything is not in her portfolio — answer from this, never from memory or from the web.",
+    parameters: { type: "object", properties: {}, required: [] },
   },
 }
 
@@ -366,7 +378,7 @@ export async function POST(req: Request) {
     ...messages.slice(-20),
   ]
 
-  const tools: any[] = [EMAIL_TOOL, SAVE_PROJECT_TOOL, ANALYSIS_TOOL, COMPARE_TOOL, ...(tavilyKey ? [SEARCH_TOOL] : [])]
+  const tools: any[] = [EMAIL_TOOL, SAVE_PROJECT_TOOL, ANALYSIS_TOOL, COMPARE_TOOL, PORTFOLIO_TOOL, ...(tavilyKey ? [SEARCH_TOOL] : [])]
 
   const callOpenAI = (msgs: any[], opts: { stream: boolean; withTools: boolean }) =>
     fetch("https://api.openai.com/v1/chat/completions", {
@@ -384,23 +396,42 @@ export async function POST(req: Request) {
 
   async function executeToolCall(tc: any): Promise<string> {
     try {
+      if (tc.function.name === "list_portfolio") {
+        const all = await loadPortfolio()
+        if (all.length === 0) return explainMiss(undefined, { project: null, near: [], portfolioSize: 0, ambiguous: false })
+        const lines = [`La cartera de Catherine tiene ${all.length} proyecto(s):`]
+        all.forEach(p => {
+          const price = priceOf(p)
+          lines.push([
+            `• ${p.name}`,
+            p.neighborhood || p.city ? `(${[p.neighborhood, p.city].filter(Boolean).join(", ")})` : "",
+            price ? `desde $${price.toLocaleString()}` : "SIN PRECIO REGISTRADO",
+            p.deliveryDate ? `entrega ${p.deliveryDate}` : "",
+          ].filter(Boolean).join(" · "))
+        })
+        const noPrice = all.filter(p => !priceOf(p))
+        if (noPrice.length) lines.push(`Sin precio y por lo tanto no analizables: ${noPrice.map(p => p.name).join(", ")}. Pídele el precio a Catherine.`)
+        return lines.join("\n")
+      }
+
       if (tc.function.name === "compare_investments") {
         const args = JSON.parse(tc.function.arguments || "{}")
-        const row = await prisma.setting.findUnique({ where: { key: "preconstruction_projects" } })
-        let all: any[] = []
-        if (row) { try { all = JSON.parse(row.value) } catch {} }
+        const all = await loadPortfolio()
+        if (all.length === 0) return explainMiss(undefined, { project: null, near: [], portfolioSize: 0, ambiguous: false })
 
         const skipped: string[] = []
         const candidates = (args.candidates || []).map((c: any) => {
-          const q = String(c.project || "").toLowerCase()
-          const rec = all.find(x => x.name.toLowerCase() === q) || all.find(x => x.name.toLowerCase().includes(q))
-          if (!rec) { skipped.push(`${c.project} (no está en la cartera)`); return null }
-          if (!c.sqft && (c.hoaMonthly === undefined || c.hoaMonthly === null)) { skipped.push(`${rec.name} (falta superficie o HOA)`); return null }
-          return { project: rec, sqft: Number(c.sqft) || undefined, hoaMonthly: c.hoaMonthly === undefined || c.hoaMonthly === null ? undefined : Number(c.hoaMonthly), price: Number(c.price) || undefined, monthlyRent: Number(c.monthlyRent) || undefined }
+          const m = findProject(all, c.project)
+          const rec = m.project
+          if (rec && m.ambiguous) { skipped.push(`${c.project}: encaja con ${[rec.name, ...m.near.map((x: any) => x.name)].join(" o ")} — pregúntale a Catherine cuál`); return null }
+          if (!rec) { skipped.push(`${c.project}: ${m.near.length ? `no está exacto, ¿será ${m.near.map(p => p.name).join(" o ")}?` : "no está en la cartera"}`); return null }
+          if (!priceOf(rec) && !Number(c.price)) { skipped.push(`${rec.name}: está en la cartera pero sin precio — pídeselo a Catherine`); return null }
+          if (!c.sqft && (c.hoaMonthly === undefined || c.hoaMonthly === null)) { skipped.push(`${rec.name}: falta el tamaño en pies cuadrados o el HOA mensual`); return null }
+          return { project: rec, sqft: Number(c.sqft) || undefined, hoaMonthly: c.hoaMonthly === undefined || c.hoaMonthly === null ? undefined : Number(c.hoaMonthly), price: Number(c.price) || priceOf(rec), monthlyRent: Number(c.monthlyRent) || undefined }
         }).filter(Boolean)
 
         if (candidates.length === 0) {
-          return `No pude comparar nada. ${skipped.length ? "Motivos: " + skipped.join(" · ") : ""} Para puntuar un proyecto necesito la superficie de la unidad o el HOA mensual.`
+          return `No pude comparar ninguno. ${skipped.join(" · ")}. Pídele a Catherine lo que falta — son datos suyos, no la mandes a buscarlos.`
         }
 
         const ranked = compareInvestments(candidates as any, {
@@ -442,22 +473,28 @@ export async function POST(req: Request) {
 
       if (tc.function.name === "analyze_investment") {
         const args = JSON.parse(tc.function.arguments || "{}")
-        let projectRecord: any = null
-        if (args.project) {
-          const row = await prisma.setting.findUnique({ where: { key: "preconstruction_projects" } })
-          if (row) {
-            try {
-              const all: any[] = JSON.parse(row.value)
-              const q = String(args.project).toLowerCase()
-              projectRecord = all.find(x => x.name.toLowerCase() === q) || all.find(x => x.name.toLowerCase().includes(q)) || null
-            } catch {}
-          }
+        const all = await loadPortfolio()
+        const match = findProject(all, args.project)
+        const projectRecord = match.project
+
+        // Every refusal names what the tool actually found, so the model never
+        // has to guess why — and never tells Catherine to verify her own data.
+        if (args.project && !projectRecord) return explainMiss(args.project, match)
+        if (match.ambiguous && projectRecord) {
+          return `"${args.project}" encaja con más de un proyecto: ${[projectRecord.name, ...match.near.map((x: any) => x.name)].join(" · ")}. Pregúntale a Catherine cuál quiere antes de calcular — son proyectos distintos con precios y planes de pago distintos.`
         }
-        const price = Number(args.price) || projectRecord?.priceMin
+
+        const price = Number(args.price) || (projectRecord ? priceOf(projectRecord) : undefined)
         const sqft = Number(args.sqft) || undefined
         const hoaMonthly = args.hoaMonthly === undefined || args.hoaMonthly === null ? undefined : Number(args.hoaMonthly)
-        if (!price) return "No pude calcular: falta el precio y el proyecto no tiene uno registrado."
-        if (!sqft && hoaMonthly === undefined) return "No pude calcular: pásame la superficie en pies cuadrados (sqft) o el HOA mensual en dólares (hoaMonthly). Con cualquiera de los dos me alcanza."
+        if (!price) {
+          return projectRecord
+            ? `${projectRecord.name} está en la cartera pero NO tiene precio registrado. Pídele a Catherine el precio de la unidad y vuelve a llamarme pasándolo en price — no la mandes a buscarlo a otra página, ella es la dueña de estos datos.`
+            : "Falta el precio. Pregúntale a Catherine el precio de la unidad y pásamelo en price."
+        }
+        if (!sqft && hoaMonthly === undefined) {
+          return `Tengo el precio de ${projectRecord?.name || "la unidad"} ($${Number(price).toLocaleString()}), pero me falta el tamaño. Pregúntale a Catherine los pies cuadrados de la unidad (sqft) o el HOA mensual en dólares (hoaMonthly) — con cualquiera de los dos calculo. Es un dato que el deck no trae, así que pregúntaselo directamente en vez de decirle que lo busque.`
+        }
 
         // Building comp beats submarket average beats state baseline.
         const longTerm = isLongTermPlay(projectRecord?.propertyType, projectRecord?.name || args.project)
