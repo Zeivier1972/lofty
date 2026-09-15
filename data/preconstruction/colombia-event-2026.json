@@ -1,7 +1,7 @@
 [
   {
     "name": "14 Roc",
-    "developer": "",
+    "developer": "GFO Investments",
     "neighborhood": "Downtown Miami (Signature District)",
     "city": "Miami",
     "status": "launching",
@@ -13,26 +13,12 @@
     "units": 283,
     "downPayment": "20% al contrato · 10% en junio · 10% en enero · 60% al cierre",
     "investmentHighlights": "Renta corta (short-term rental) permitida. Unidades entregadas amuebladas y equipadas. HOA baja. Ubicado en el nuevo Signature District, junto al Signature Bridge y el Underdeck con 33 acres de espacio verde, a pasos de Bayfront Park, el Pérez Art Museum (PAMM) y el Adrienne Arsht Center. Entrega 2027.",
-    "description": "Torre de 32 pisos con 283 residencias, arquitectura de RSP Architects. Lista de precios por tipo de unidad: estudios $498,000–$590,000 · 1 recámara $590,000–$715,000 · 1 recámara + home office $685,000–$790,000 · 2 recámaras $910,000–$1,200,000. Amenidades: recepción 24 horas, 25,000 sqft de amenidades, piscina en rooftop, bar, área de parrillas, yoga lounge, karaoke, sala de cine. Acabados con gabinetes europeos."
-  },
-  {
-    "name": "Domus Brickell Park / Center",
-    "developer": "North Development + Oak Capital",
-    "neighborhood": "Brickell",
-    "city": "Miami",
-    "status": "launching",
-    "propertyType": "Condominium",
-    "priceMin": 500000,
-    "bedrooms": "Estudios, 1 rec, 2 rec",
-    "units": 579,
-    "downPayment": "Torre 1: 10% al contrato · 10% en diciembre · 10% en enero · 70% al cierre. Torre 2: 10% al contrato · 5% en diciembre · 5% mensual hasta llegar al 35% · 65% al cierre",
-    "investmentHighlights": "Sin restricciones de renta — renta corta y larga permitidas. Corazón de Brickell, el distrito financiero de Miami. Dos torres con esquemas de pago distintos: Torre 2 desde ~$500,000 y Torre 1 (estudios) desde $630,000.",
-    "description": "Proyecto de dos torres en Brickell desarrollado por North Development junto a Oak Capital. La Torre 2 tiene 35 pisos y 579 unidades. Inventario de estudios, 1 y 2 recámaras. Amenidades: piscina en rooftop, bar, área de parrillas, lounge, lobby de 4,000 sqft, pet friendly, cargadores para vehículos eléctricos, sistema especial de filtración de aire, agua filtrada con luz ultravioleta y balcones en las unidades."
+    "description": "Torre de 32 pisos con 283 residencias en 125 NE 14th St, Downtown Miami, con interiores de March and White Design. Lista de precios por tipo de unidad: estudios $498,000–$590,000 · 1 recámara $590,000–$715,000 · 1 recámara + home office $685,000–$790,000 · 2 recámaras $910,000–$1,200,000. Amenidades: recepción 24 horas, 25,000 sqft de amenidades, piscina en rooftop, bar, área de parrillas, yoga lounge, karaoke, sala de cine. Acabados con gabinetes europeos."
   },
   {
     "name": "Meliá Residences Miami",
-    "developer": "UNCG (por confirmar)",
-    "neighborhood": "Brickell",
+    "developer": "Urban Network Capital Group (UNCG)",
+    "neighborhood": "Brickell (1136 SW 3rd Ave)",
     "city": "Miami",
     "status": "under_construction",
     "propertyType": "Condominium",
@@ -44,12 +30,12 @@
     "estimatedROI": "7% de retorno",
     "downPayment": "20% al contrato · 10% a los 60 días · 10% a los 120 días · 60% al cierre (Q1 2027)",
     "investmentHighlights": "Residencias de marca hotelera operadas por Meliá Hotels, con más de 20 millones de miembros en su programa global de lealtad. Renta corta permitida y ocupación hotelera histórica cercana al 80%. NO es tiempo compartido: el comprador es dueño de su unidad, con 30 días de uso propio al año. Solo 110 unidades. Retorno estimado del 7%. El proyecto ya llegó a top-off.",
-    "description": "Residencias de marca en Brickell, zona de alta demanda, caminable y centro financiero de Miami. Interiores y amenidades diseñadas por Adriana Hoyos. Junior 1 recámara desde $540,000 y 1 recámara desde $650,000; metrajes desde ~321 sqft hasta 540+ sqft. Programa de wellness y biohacking: terapia Brain Tap, iluminación circadiana, cold plunge y sauna infrarrojo, tecnología de sueño y salud, más amenidades de hotel 5 estrellas. Administración del 26% incluyendo HOA de $1.80/sqft; HOA con tope de $2,500."
+    "description": "Residencias de marca en 1136 SW 3rd Ave, Brickell (antes conocido como Visions at Brickell Station), zona de alta demanda, caminable y centro financiero de Miami. Interiores y amenidades diseñadas por Adriana Hoyos. Junior 1 recámara desde $540,000 y 1 recámara desde $650,000; metrajes desde ~321 sqft hasta 540+ sqft. Programa de wellness y biohacking: terapia Brain Tap, iluminación circadiana, cold plunge y sauna infrarrojo, tecnología de sueño y salud, más amenidades de hotel 5 estrellas. Administración del 26% incluyendo HOA de $1.80/sqft; HOA con tope de $2,500."
   },
   {
-    "name": "Elle Residences Edgewater",
-    "developer": "",
-    "neighborhood": "Edgewater",
+    "name": "ELLE Residences Miami",
+    "developer": "Vertical Developments + Urban Network Capital Group (UNCG)",
+    "neighborhood": "Edgewater (3618 NE 5th Ave)",
     "city": "Miami",
     "status": "pre_launch",
     "propertyType": "Condominium",
@@ -58,12 +44,13 @@
     "bedrooms": "1 y 2 recámaras (~450–620 sqft)",
     "downPayment": "10% al contrato · 10% a los 90 días · 10% al inicio de obra · 10% al top-off · 60% al cierre",
     "investmentHighlights": "Primeras residencias de marca ELLE en el mundo. Condo-hotel / branded residences con renta corta permitida. Unidades completamente amuebladas en estilo ELLE Decor, listas para rentar desde el día uno. Edgewater es una de las zonas de mayor apreciación de Miami, cerca del Design District, Wynwood y Brickell.",
-    "description": "Lujo contemporáneo con diseño francés en Edgewater, Miami. Unidades de 1 y 2 recámaras de aproximadamente 450 a 620 sqft, amuebladas y listas para rentar, con precios de $585,000 a $914,000. Amenidades: piscina, spa, gimnasio, rooftop, cine, sala de música, bar, coworking y bicicletas para los residentes. Cuota de asociación de $1.20/sqft."
+    "description": "Lujo contemporáneo con diseño francés en Edgewater, Miami. Unidades de 1 y 2 recámaras de aproximadamente 450 a 620 sqft, amuebladas y listas para rentar, con precios de $585,000 a $914,000. Amenidades: piscina, spa, gimnasio, rooftop, cine, sala de música, bar, coworking y bicicletas para los residentes. Cuota de asociación de $1.20/sqft.",
+    "units": 180
   },
   {
-    "name": "Nobe Parc",
-    "developer": "Robert Firnburg",
-    "neighborhood": "North Beach (Calle 72 y Collins)",
+    "name": "NoBe Parc Residences",
+    "developer": "Robert Finvarb Companies",
+    "neighborhood": "North Beach (7140 Abbott Ave, con frente por la calle 72)",
     "city": "Miami Beach",
     "status": "pre_launch",
     "propertyType": "Condominium",
@@ -74,7 +61,7 @@
     "units": 232,
     "downPayment": "40% durante la construcción — 20% al contrato · 10% al inicio de obra (abril 2027) · 10% al top-off (octubre 2028) · 60% al cierre (Q3 2028)",
     "investmentHighlights": "A dos cuadras del mar en Miami Beach, con vistas al océano. Uso residencial con renta corta permitida — es el último proyecto de la zona con esa aprobación — y también habitable todo el año. Lista de precios lanzada hace dos meses. Frente al Miami Beach Aquatic Center y al parque; vecino de Elle, 72 Park y 7200. Airbnb permitido, incluso en los pisos bajos (2, 3 y 4) que tienen vistas al complejo.",
-    "description": "15 pisos y 232 residencias, de estudios a 3 recámaras, entregadas amuebladas, con retail en planta baja operado por el desarrollador. Precios: estudios $545,000 · 1 recámara $850,000 · 1 recámara / 2 baños + den $857,000 · 2 recámaras $1,700,000 · 3 recámaras $2,200,000. Tres niveles de amenidades (pisos 1, 5 y 15): beach club, valet parking con un espacio por unidad, gimnasio, piscinas, coworking, rooftop y mobiliario Crate and Barrel. HOA aproximado de $2/sqft."
+    "description": "15 pisos y 232 residencias, de estudios a 3 recámaras, entregadas amuebladas, con retail en planta baja operado por el desarrollador. Precios: estudios $545,000 · 1 recámara $850,000 · 1 recámara / 2 baños + den $857,000 · 2 recámaras $1,700,000 · 3 recámaras $2,200,000. Tres niveles de amenidades (pisos 1, 5 y 15): beach club, valet parking con un espacio por unidad, gimnasio, piscinas, coworking, rooftop y mobiliario Crate & Barrel, interiores de V Starr y diseño de Arquitectonica. HOA aproximado de $2/sqft."
   },
   {
     "name": "Palma Miami Beach",
@@ -90,12 +77,12 @@
     "units": 121,
     "downPayment": "40% durante la construcción — 20% al contrato · 10% en diciembre · 10% en marzo 2027 · 60% al cierre",
     "investmentHighlights": "Sin restricción de renta mínima — renta corta permitida y también se puede vivir. Unidades totalmente terminadas y amuebladas, con sofá cama para 2 personas adicionales. Desarrollador Lefferts, 25 años de experiencia: construyó 72 Park, que hoy opera con 87% de ocupación y renta promedio de $280 por noche en temporada baja. Zona en desarrollo, con programa fly and buy. Ya está en construcción, entrega Q4 2027.",
-    "description": "Edificio boutique de 14 pisos con 121 residencias en 600 71st St, Miami Beach. Precios: estudios $630,000 · 1 recámara $745,000 (572 sqft) · 2 recámaras desde $1,000,000 (616 sqft). Amenidades: piscina estilo resort, cabañas, cocina exterior, bar, lounge, gimnasio Technogym, jacuzzi, plunge pools frías, lobby de doble altura, seguridad 24/7, tecnología smart, servicio de playa para residentes y valet parking. HOA de $1.90/sqft incluyendo agua y seguro exterior. Cerca de Bal Harbour Shops, restaurantes con estrella Michelin y Mount Sinai."
+    "description": "Edificio boutique de 14 pisos con 121 residencias en 600 71st St, North Beach, Miami Beach, diseñado por Built Form con interiores de Studio Ramirez. Precios: estudios $630,000 · 1 recámara $745,000 (572 sqft) · 2 recámaras desde $1,000,000 (616 sqft). Amenidades: piscina estilo resort, cabañas, cocina exterior, bar, lounge, gimnasio Technogym, jacuzzi, plunge pools frías, lobby de doble altura, seguridad 24/7, tecnología smart, servicio de playa para residentes y valet parking. HOA de $1.90/sqft incluyendo agua y seguro exterior. Cerca de Bal Harbour Shops, restaurantes con estrella Michelin y Mount Sinai."
   },
   {
-    "name": "One Hollywood",
-    "developer": "Star Development",
-    "neighborhood": "Downtown Hollywood",
+    "name": "One Hollywood Residences",
+    "developer": "Star Developers Group",
+    "neighborhood": "Downtown Hollywood (1817 Taylor St)",
     "city": "Hollywood",
     "status": "pre_launch",
     "propertyType": "Condominium",
@@ -110,7 +97,7 @@
   },
   {
     "name": "Delano Residences Miami",
-    "developer": "PMG en alianza con Ennismore/Accor",
+    "developer": "PMG (Property Markets Group) + Ennismore/Accor",
     "neighborhood": "Downtown Miami (400 Biscayne Boulevard)",
     "city": "Miami",
     "status": "pre_launch",
@@ -120,12 +107,12 @@
     "units": 421,
     "downPayment": "10% a la reserva · 10% al contrato · 10% en cada etapa de obra · 60% al cierre",
     "investmentHighlights": "Primeras residencias de marca Delano en el mundo, en alianza con PMG y Ennismore/Accor. Torre supertall de 90 pisos que será un ícono del skyline de Miami. Parte del edificio opera renta corta y otra parte es residencia full-time / largo plazo, así que sirve tanto para inversión como para vivir. Nivel ultra-luxury con administración hotelera 5 estrellas del 30-50%.",
-    "description": "Torre de 90 pisos con 421 residencias en 400 Biscayne Boulevard, Downtown Miami, junto a Bayfront y cerca de Brickell y Worldcenter. Precios desde: estudios $754,000 · estudios + den $806,000 · 1 recámara $959,000; también hay 2 recámaras + den, 3 recámaras y estudio con oficina. Amenidades: piso de observación con glass deck en altura, sky pool, Rose Bar, restaurante signature y un fuerte componente de wellness y spa."
+    "description": "Torre de 90 pisos con 421 residencias en 400 Biscayne Boulevard, Downtown Miami, junto a Bayfront y cerca de Brickell y Worldcenter. Precios desde: estudios $754,000 · estudios + den $806,000 · 1 recámara $959,000; también hay 2 recámaras + den, 3 recámaras y estudio con oficina. Diseñada por Carlos Ott con CUBE3 como arquitecto de registro e interiores de Meyer Davis; 985 pies de altura. Amenidades: el primer piso de observación del sureste de Estados Unidos a unos 850 pies de altura con glass deck en altura, sky pool, Rose Bar, restaurante signature y un fuerte componente de wellness y spa."
   },
   {
     "name": "House of Wellness",
-    "developer": "North Development (Domus)",
-    "neighborhood": "Brickell",
+    "developer": "North Development (Oak Capital + Edifica)",
+    "neighborhood": "Brickell (152 SW 9th St, junto a The Underline)",
     "city": "Miami",
     "status": "pre_launch",
     "propertyType": "Condominium",
@@ -156,7 +143,7 @@
   {
     "name": "The Standard Residences Brickell",
     "developer": "Newgard Development Group y Two Roads Development",
-    "neighborhood": "Brickell (sobre el río de Miami)",
+    "neighborhood": "Brickell (690 SW 1st Ave, dentro de One Brickell Riverfront)",
     "city": "Miami",
     "status": "under_construction",
     "propertyType": "Condominium",
@@ -164,12 +151,12 @@
     "units": 422,
     "downPayment": "20% al contrato · 5% a los 90 días · 10% a los 180 días de la firma · 65% al cierre (diciembre 2027)",
     "investmentHighlights": "Edificio de marca: los proyectos branded se venden en promedio 30% por encima de los edificios normales. Asociado con Hyatt, que suma 30 hoteles más en un año, con descuento de membresía para propietarios. Ya está en construcción y se puede seguir el avance por cámara en vivo. Acepta préstamo de construcción. En el corazón de Brickell, a 15 minutos del aeropuerto, junto al downtown, con metro y Brightline, cerca del Miami Freedom Park y sobre el río de Miami.",
-    "description": "Torre de 46 pisos con 422 residencias y amenidades de hotel: 60,000 pies cuadrados de amenidades, spa y wellness. Precio de referencia $570 por pie cuadrado con acceso al área de amenidades. Administración hotelera 5 estrellas del 30-50%. HOA de $1.33/sqft. Desarrollado por Newgard y Two Roads."
+    "description": "Torre de 46 pisos con 422 residencias y amenidades de hotel: 60,000 pies cuadrados de amenidades, spa y wellness. Precio de referencia $570 por pie cuadrado con acceso al área de amenidades. Administración hotelera 5 estrellas del 30-50%. HOA de $1.33/sqft. Diseñado por Arquitectonica con interiores de GOOD.RICH junto al estudio de diseño de The Standard. Forma parte de One Brickell Riverfront, el desarrollo de tres torres de Newgard y Two Roads."
   },
   {
-    "name": "ParkSide Brickell",
-    "developer": "BI Group",
-    "neighborhood": "Brickell",
+    "name": "Parkside Residences at Brickell",
+    "developer": "Habitat Group (Miami) + BI Group (Kazajistán)",
+    "neighborhood": "Brickell (1741 SW 2nd Ave, frente a Simpson Park)",
     "city": "Miami",
     "status": "under_construction",
     "propertyType": "Condominium",
@@ -180,12 +167,12 @@
     "units": 187,
     "downPayment": "20% al contrato · 10% al top-off en enero · 10% en abril 2027 · 65% al cierre (marzo 2028)",
     "investmentHighlights": "Licencia de renta corta, en Brickell central. Operador Wello: los primeros 2 años sin tarifa de administración y después 20-25%, o el dueño queda libre de elegir otro operador. Los dueños no pagan valet. Ya está en construcción, va por el primer piso. Desarrollador BI Group, con más de 400 proyectos, hoteles 5 estrellas y residencias en Houston, Miami y Dubái.",
-    "description": "Edificio boutique de 8 pisos con 187 residencias en Brickell, con una escuela de inteligencia artificial al lado. Estudios, 1 y 2 recámaras entregadas amuebladas, con sofá cama para 2 personas adicionales, cocinas Italcraft, lavadora y secadora, balcones con piso de cerámica y diseños amplios. Precios: desde $450,000 · junior suites $620,000 · 1 recámara $670,000 · 2 recámaras $1,000,000. Amenidades en el nivel 8: gimnasio, spa con cold plunge y salt bath, yoga, spinning, coworking, cafetería, jardín y piscina con sol todo el día. HOA de $1.70/sqft."
+    "description": "Edificio boutique de 8 pisos con 187 residencias en 1741 SW 2nd Ave, frente a Simpson Park en Brickell, diseñado por Kobi Karp — 164 unidades condo-hotel y 21 residencias privadas. Tiene una escuela de inteligencia artificial al lado. Estudios, 1 y 2 recámaras entregadas amuebladas, con sofá cama para 2 personas adicionales, cocinas Italcraft, lavadora y secadora, balcones con piso de cerámica y diseños amplios. Precios: desde $450,000 · junior suites $620,000 · 1 recámara $670,000 · 2 recámaras $1,000,000. Amenidades en el nivel 8: gimnasio, spa con cold plunge y salt bath, yoga, spinning, coworking, cafetería, jardín y piscina con sol todo el día. HOA de $1.70/sqft."
   },
   {
-    "name": "The Rider Wynwood",
-    "developer": "Rilea Group",
-    "neighborhood": "Wynwood (calle 29)",
+    "name": "The Rider Residences",
+    "developer": "Ciprés + Rilea Group",
+    "neighborhood": "Wynwood (94 NE 29th St)",
     "city": "Miami",
     "status": "under_construction",
     "propertyType": "Condominium",
@@ -196,10 +183,10 @@
     "units": 152,
     "downPayment": "20% al contrato · 10% a los 60 días del contrato · 10% a los 6 meses del contrato · 60% al cierre (Q3 2027)",
     "investmentHighlights": "Las unidades tienen lockouts — 2 o 3 entradas independientes — así que una misma unidad se puede rentar como varias, subiendo el ingreso por renta corta. Administración in-house o externa, a elección del dueño. Acepta cripto. Ya está en construcción, en top-off, y va 55% vendido. Wynwood junto a Midtown Park, Whole Foods y Amazon, a 10 minutos de Miami Beach, Brickell y el aeropuerto, y al lado del Design District. Impuestos de 1.8% a 2%. Desarrollador Rilea Group, con varios proyectos en Miami.",
-    "description": "Proyecto boutique de 12 pisos con 152 apartamentos en la calle 29 de Wynwood, amueblados por Adriana Hoyos, con lanais y terrazas en 5 unidades, estilo New York y obras de arte de los años 70 y 80. Precios de $550,000 a $2,200,000. Amenidades: The Leopard Room, salón terraza, sauna de infrarrojos, spa hammam con piedras de Turquía, gimnasio, simulador de golf, piscina, pet spa, toybox, renta de motos, club de playa y valet. HOA de $1.42/sqft."
+    "description": "Proyecto boutique de 12 pisos con 152 apartamentos en 94 NE 29th St, en el cruce de Wynwood, Midtown, Edgewater y el Design District, amueblados por Adriana Hoyos, con lanais y terrazas en 5 unidades, estilo New York y obras de arte de los años 70 y 80. Precios de $550,000 a $2,200,000. Amenidades: The Leopard Room, salón terraza, sauna de infrarrojos, spa hammam con piedras de Turquía, gimnasio, simulador de golf, piscina, pet spa, toybox, renta de motos, club de playa y valet. HOA de $1.42/sqft."
   },
   {
-    "name": "One Twenty Brickell",
+    "name": "One Twenty Brickell Signature Residences",
     "developer": "PMG",
     "neighborhood": "Brickell",
     "city": "Miami",
@@ -211,7 +198,37 @@
     "deliveryDate": "Verano 2028",
     "units": 467,
     "downPayment": "10% al contrato · 10% en octubre 2026 · 10% al top-off en junio 2027 · 70% al cierre (verano 2028)",
-    "investmentHighlights": "Renta por día, semana o año, sin ninguna restricción, y también se puede vivir. Concepto live here / work here: dos propiedades en una, apartamento más oficina, con oficinas que se rentan por 6 meses. Se vendió 15% en las primeras 2 semanas. Paquete de muebles incluido en el precio, igual que cocinas, pisos y luces — listo para rentar. Desarrollador PMG.",
-    "description": "Torre de 40 pisos con 467 residencias en Brickell, de estudio hasta 3 recámaras, todas con oficina y balcón. Precios: estudios desde $700,000 · junior suites $800,000 · 1 recámara $860,000 · hasta 2 recámaras $1,200,000. 50,000 pies cuadrados de amenidades: gimnasio, spa, wellness, masajes, coffee y juice bar, y club de playa en Miami Beach junto a Nikki Beach. HOA de $1.75/sqft."
+    "investmentHighlights": "Renta por día, semana o año, sin ninguna restricción, y también se puede vivir. Concepto live here / work here: dos propiedades en una, apartamento más oficina, con oficinas que se rentan por 6 meses. Se vendió 15% en las primeras 2 semanas. Paquete de muebles incluido en el precio, igual que cocinas, pisos y luces — listo para rentar. Cada residencia incluye una oficina privada con cerramiento de vidrio, escriturada aparte, en un ala dedicada del edificio. Desarrollador PMG, que ya vendió por completo la primera torre del proyecto.",
+    "description": "Torre de 40 pisos con 467 residencias en Brickell — la segunda fase de PMG, lanzada después de que se agotara la primera torre en 120 SW 8th St. Unidades de estudio hasta 3 recámaras, todas con oficina y balcón. Precios: estudios desde $700,000 · junior suites $800,000 · 1 recámara $860,000 · hasta 2 recámaras $1,200,000. 50,000 pies cuadrados de amenidades: gimnasio, spa, wellness, masajes, coffee y juice bar, y club de playa en Miami Beach junto a Nikki Beach. HOA de $1.75/sqft."
+  },
+  {
+    "name": "Domus Brickell Park",
+    "developer": "North Development (Oak Capital de Ricardo Dunin + Edifica de Juan Carlos Tassara)",
+    "neighborhood": "Brickell (1611 SW 2nd Ave)",
+    "city": "Miami",
+    "status": "launching",
+    "propertyType": "Condominium",
+    "priceMin": 630000,
+    "bedrooms": "Estudios, 1 rec, 2 rec",
+    "deliveryDate": "Entregado — el edificio ya abrió y está operando",
+    "units": 171,
+    "downPayment": "10% al contrato · 10% en diciembre · 10% en enero · 70% al cierre",
+    "investmentHighlights": "Sin restricciones de renta — renta corta y larga permitidas, con programa de renta operado por North Management. El edificio YA ESTÁ ENTREGADO y operando, así que genera ingresos desde el cierre sin esperar obra. Es el primer proyecto Domus terminado de North Development. Estudios desde $630,000.",
+    "description": "Edificio de 12 pisos con 171 FLATS totalmente amueblados en 1611 SW 2nd Ave, en pleno Brickell Financial District. Amenidades: piscina en rooftop, bar, área de parrillas, lounge, lobby de 4,000 sqft, pet friendly, cargadores para vehículos eléctricos, filtración especial de aire, agua filtrada con luz ultravioleta y balcones en las unidades."
+  },
+  {
+    "name": "Domus Brickell Center",
+    "developer": "North Development (Oak Capital de Ricardo Dunin + Edifica de Juan Carlos Tassara)",
+    "neighborhood": "Brickell (1034 SW 2nd Ave)",
+    "city": "Miami",
+    "status": "under_construction",
+    "propertyType": "Condominium",
+    "priceMin": 500000,
+    "bedrooms": "Estudios, 1 rec, 2 rec",
+    "deliveryDate": "2027",
+    "units": 579,
+    "downPayment": "10% al contrato · 5% en diciembre · 5% mensual hasta llegar al 35% · 65% al cierre",
+    "investmentHighlights": "Sin restricciones de renta — renta corta y larga permitidas, con programa de renta operado por North Management. Esquema de pago mensual que permite entrar con menos capital de golpe. Ya rompió tierra, entrega 2027. Es la torre hermana de Domus Brickell Park, que ya está entregada y operando — o sea que el modelo ya está probado.",
+    "description": "Torre de 35 pisos con 579 FLATS totalmente amueblados en 1034 SW 2nd Ave, Brickell. Estudios, 1 y 2 recámaras desde aproximadamente $500,000. Amenidades: piscina en rooftop, wellness, coworking, retail en planta baja, lobby con café, pet friendly, cargadores para vehículos eléctricos, filtración especial de aire y agua filtrada con luz ultravioleta. Electrodomésticos Bosch, encimeras de piedra, lavadora y secadora en unidad y cerraduras smart."
   }
 ]
