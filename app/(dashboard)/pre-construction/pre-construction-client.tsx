@@ -5,7 +5,7 @@ import {
   Building2, Plus, Trash2, Edit, ExternalLink, X, Save, Loader2,
   TrendingUp, MapPin, Calendar, DollarSign, Users, ChevronDown, ChevronUp,
   Search, AlertCircle, RefreshCw, CheckCircle2, Bot, Home, Sparkles,
-  Bed, Bath, Square, Upload, FileJson, BookOpen,
+  Bed, Bath, Square, Upload, FileJson, BookOpen, Calculator, Download,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import COLOMBIA_EVENT_PROJECTS from "@/data/preconstruction/colombia-event-2026.json"
@@ -87,6 +87,32 @@ type ScrapedCommunity = {
   scrapedAt: string
 }
 
+type CalcState = {
+  project: Project
+  price: string; sqft: string; nightlyRate: string; occupancyPct: string
+  downPaymentPct: string; hoaPerSqft: string; mortgageRatePct: string
+  appreciationPeriods: string; copRateAtPurchase: string; copRateToday: string
+}
+
+// Seed the form from whatever the project record already knows, so Catherine
+// only fills what the deck never captured — square footage and the nightly rate.
+function calcDefaults(p: Project): CalcState {
+  const hoa = (p.description || "").match(/\$\s?(\d+(?:\.\d+)?)\s?(?:por|\/)\s?(?:sqft|sq ?ft|pie|ft)/i)
+  return {
+    project: p,
+    price: String(p.priceMin || ""),
+    sqft: "",
+    nightlyRate: "280",
+    occupancyPct: "70",
+    downPaymentPct: "40",
+    hoaPerSqft: hoa ? hoa[1] : "1.8",
+    mortgageRatePct: "6.5",
+    appreciationPeriods: "2",
+    copRateAtPurchase: "",
+    copRateToday: "",
+  }
+}
+
 interface Props {
   initialProjects: Project[]
   scrapedCommunities?: ScrapedCommunity[]
@@ -120,6 +146,55 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
   const [insights, setInsights] = useState(initialMarketInsights)
   const [insightsBusy, setInsightsBusy] = useState(false)
   const [insightsMsg, setInsightsMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [calc, setCalc] = useState<CalcState | null>(null)
+  const [calcBusy, setCalcBusy] = useState(false)
+  const [calcErr, setCalcErr] = useState<string | null>(null)
+
+  // Builds the investment workbook for one project and hands it straight to the
+  // browser as a download — the API answers with the .xlsx bytes.
+  async function downloadAnalysis() {
+    if (!calc) return
+    setCalcBusy(true)
+    setCalcErr(null)
+    try {
+      const res = await fetch("/api/investment-analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: calc.project.id,
+          price: calc.price,
+          sqft: calc.sqft,
+          nightlyRate: calc.nightlyRate,
+          occupancyPct: calc.occupancyPct,
+          downPaymentPct: Number(calc.downPaymentPct) / 100,
+          hoaPerSqft: calc.hoaPerSqft,
+          mortgageRatePct: calc.mortgageRatePct,
+          appreciationPeriods: calc.appreciationPeriods,
+          copRateAtPurchase: calc.copRateAtPurchase,
+          copRateToday: calc.copRateToday,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setCalcErr(data.error || `Error ${res.status}`)
+        return
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `Analisis-${calc.project.name.replace(/[^a-z0-9]+/gi, "-")}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      setCalc(null)
+    } catch (e: any) {
+      setCalcErr(e?.message || "No se pudo generar el análisis")
+    } finally {
+      setCalcBusy(false)
+    }
+  }
 
   // Market-level talking points (city theses, ROI ranges) that the Investment
   // Advisor argues from. Deliberately not wired into Sofía: she talks to leads
@@ -430,6 +505,75 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
             className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
           />
         </div>
+
+        {/* Investment analysis workbook */}
+        {calc && (
+          <div className="bg-white border border-blue-200 rounded-2xl p-6 mb-6 shadow-sm">
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-2">
+                <Calculator className="w-4 h-4 text-blue-600" />
+                <h2 className="font-bold text-gray-900">Análisis de inversión — {calc.project.name}</h2>
+              </div>
+              <button onClick={() => setCalc(null)} className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mb-4">
+              Genera el Excel con los 5 indicadores (NOI, cash flow, cash on cash, ROI y cap rate), la calificación
+              de cada uno y el guion para explicárselos al cliente. Todo queda como fórmula viva: si cambias un
+              supuesto en Excel, los indicadores se recalculan.
+            </p>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {([
+                ["price", "Precio ($)", "540000"],
+                ["sqft", "Superficie (sqft) *", "321"],
+                ["nightlyRate", "Renta por noche ($)", "280"],
+                ["occupancyPct", "Ocupación (%)", "70"],
+                ["downPaymentPct", "Inicial (%)", "40"],
+                ["hoaPerSqft", "HOA ($/sqft)", "1.8"],
+                ["mortgageRatePct", "Tasa hipoteca (%)", "6.5"],
+                ["appreciationPeriods", "Listas de precio hasta entrega", "2"],
+                ["copRateAtPurchase", "COP/USD antes (opcional)", "4800"],
+                ["copRateToday", "COP/USD hoy (opcional)", "3100"],
+              ] as Array<[keyof CalcState, string, string]>).map(([field, labelText, ph]) => (
+                <div key={field as string}>
+                  <label className="text-xs font-semibold text-gray-600 mb-1 block">{labelText}</label>
+                  <input
+                    type="number"
+                    value={calc[field] as string}
+                    onChange={e => setCalc(prev => prev ? { ...prev, [field]: e.target.value } : prev)}
+                    placeholder={ph}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              ))}
+            </div>
+
+            <p className="text-[11px] text-gray-400 mt-2">
+              * La superficie es obligatoria: sin ella no se puede calcular el HOA. El resto arranca con los
+              supuestos base del modelo y se puede ajustar por proyecto.
+            </p>
+
+            {calcErr && (
+              <div className="mt-3 flex items-center gap-2 text-xs px-3 py-2 rounded-lg bg-red-50 text-red-700">
+                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" /> {calcErr}
+              </div>
+            )}
+
+            <div className="flex gap-3 mt-5">
+              <button
+                onClick={downloadAnalysis}
+                disabled={calcBusy || !calc.price || !calc.sqft}
+                className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium disabled:opacity-40"
+              >
+                {calcBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                Descargar Excel
+              </button>
+              <button onClick={() => setCalc(null)} className="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 text-sm">Cancelar</button>
+            </div>
+          </div>
+        )}
 
         {/* Market knowledge for the Investment Advisor */}
         {insightsOpen && (
@@ -849,6 +993,13 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
                     )}
                     <span className={cn("absolute top-2 left-2 text-xs font-semibold px-2 py-0.5 rounded-full shadow-sm", st.color)}>{st.label}</span>
                     <div className="absolute top-2 right-2 flex gap-1">
+                      <button
+                        onClick={() => { setCalc(calcDefaults(p)); setCalcErr(null) }}
+                        title="Generar análisis de inversión en Excel"
+                        className="p-1.5 bg-white/90 text-gray-500 hover:text-blue-600 rounded-lg shadow-sm transition-colors"
+                      >
+                        <Calculator className="w-4 h-4" />
+                      </button>
                       <button onClick={() => setForm({ ...p })} className="p-1.5 bg-white/90 text-gray-500 hover:text-emerald-600 rounded-lg shadow-sm transition-colors">
                         <Edit className="w-4 h-4" />
                       </button>
