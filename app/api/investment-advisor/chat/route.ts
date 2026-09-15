@@ -85,6 +85,7 @@ FORMATO DE RESPUESTA — Catherine le muestra esta pantalla a sus clientes, así
 - Después de la tabla, escribe SIEMPRE una recomendación de una o dos frases: cuál conviene y por qué. La tabla informa; la recomendación es lo que Catherine necesita para vender.
 - Usa negrita solo para el nombre del proyecto que recomiendas y para las cifras clave.
 - Nada de "Siguientes Pasos" genéricos. Si hace falta un paso, que sea uno concreto y accionable.
+- Cuando una herramienta te devuelva un enlace que empiece por /api/, cópialo TAL CUAL en tu respuesta, en su propia línea. Es el Excel del análisis y se renderiza como botón de descarga. No lo reescribas, no lo acortes y no cambies sus parámetros: llevan exactamente los supuestos con los que calculaste.
 
 DE DÓNDE SACAS LOS PROYECTOS — en este orden, sin excepción:
 1. La cartera de Catherine que aparece más abajo en el contexto. Es la fuente autoritativa: son los proyectos que ella vende, con comisión, precios negociados y planes de pago reales.
@@ -422,6 +423,18 @@ export async function POST(req: Request) {
             x.warnings.length ? `   Ojo: ${x.warnings.join(" · ")}` : "",
           ].filter(Boolean).join("\n"))
         })
+        lines.push("")
+        lines.push("Enlaces para bajar el Excel de cada uno — inclúyelos tal cual, cada uno en su propia línea, debajo de tu recomendación:")
+        ranked.forEach(x => {
+          const c = (candidates as any[]).find(y => y.project.name === x.name)
+          const qs = new URLSearchParams()
+          if (c?.project?.id) qs.set("projectId", c.project.id); else qs.set("name", x.name)
+          qs.set("price", String(Math.round(x.price)))
+          if (c?.sqft) qs.set("sqft", String(c.sqft))
+          if (c?.hoaMonthly !== undefined) qs.set("hoaMonthly", String(c.hoaMonthly))
+          qs.set("years", "10")
+          lines.push(`[Descargar el Excel de ${x.name}](/api/investment-analysis?${qs.toString()})`)
+        })
         if (skipped.length) lines.push(`No pude puntuar: ${skipped.join(" · ")}`)
         lines.push("Dale a Catherine una recomendación clara con el porqué en una frase, no solo la tabla. Si el primero no cuadra con el efectivo del cliente, dilo de entrada.")
         return lines.join("\n")
@@ -494,7 +507,26 @@ export async function POST(req: Request) {
               `CEDER EL CONTRATO antes de cerrar: ganancia neta ${m(asg.netGain)} sobre ${m(asg.depositsPaid)} de depósitos = ${asg.returnOnDepositsPct.toFixed(1)}%. ${asg.caveat}`,
             ].join("\n")
           })(),
-          `Catherine puede descargar el Excel completo, con la proyección año por año y el guion para explicárselo al cliente, desde el botón de calculadora en la tarjeta del proyecto en la página de Pre-Construction.`,
+          // Built here, not by the model, so the workbook always carries the
+          // exact assumptions that produced the numbers just quoted.
+          (() => {
+            const qs = new URLSearchParams()
+            if (projectRecord?.id) qs.set("projectId", projectRecord.id)
+            else qs.set("name", projectRecord?.name || args.project || "Análisis de inversión")
+            qs.set("price", String(a.price))
+            if (a.sqft) qs.set("sqft", String(a.sqft))
+            if (a.hoaMonthly !== undefined) qs.set("hoaMonthly", String(a.hoaMonthly))
+            qs.set("nightlyRate", String(Math.round(a.nightlyRate)))
+            qs.set("occupancyPct", String(a.occupancyPct))
+            qs.set("downPaymentPct", String(a.downPaymentPct))
+            qs.set("mortgageRatePct", String(a.mortgageRatePct))
+            qs.set("appreciationPeriods", String(a.appreciationPeriods))
+            if (apr?.marketYoYPct) qs.set("marketAppreciationPct", String(apr.marketYoYPct))
+            if (Number(args.horizonYears)) qs.set("years", String(Math.max(Number(args.horizonYears), 10)))
+            if (Number(args.copRateAtPurchase)) qs.set("copRateAtPurchase", String(Number(args.copRateAtPurchase)))
+            if (Number(args.copRateToday)) qs.set("copRateToday", String(Number(args.copRateToday)))
+            return `Termina tu respuesta con este enlace tal cual, en su propia línea, para que Catherine baje el Excel con estos mismos números:\n[Descargar el Excel de este análisis](/api/investment-analysis?${qs.toString()})`
+          })(),
         ].filter(Boolean).join("\n")
       }
 

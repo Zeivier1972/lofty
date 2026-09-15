@@ -8,7 +8,9 @@ import React from "react"
 // so model output can never inject markup.
 
 const IMG_RE = /!\[[^\]]*\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s)]+\.(?:png|jpe?g|webp|gif)(?:\?[^\s)]*)?)/i
-const LINK_RE = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/
+const LINK_RE = /\[([^\]]+)\]\(((?:https?:\/\/|\/)[^\s)]+)\)/
+// Links the agents emit for a generated file — rendered as a button, not a link.
+const DOWNLOAD_PREFIX = "/api/investment-analysis"
 const BOLD_RE = /\*\*([^*]+)\*\*/
 const ITALIC_RE = /(?<!\*)\*([^*]+)\*(?!\*)/
 const CODE_RE = /`([^`]+)`/
@@ -35,10 +37,29 @@ function inline(text: string, keyBase = "i", accent = ACCENT_DEFAULT): React.Rea
     }
     const link = LINK_RE.exec(rest)
     if (link) {
+      const href = link[2]
+      const isDownload = href.startsWith(DOWNLOAD_PREFIX)
       candidates.push({
         index: link.index, length: link[0].length,
-        node: <a key={`${keyBase}-a-${k}`} href={link[2]} target="_blank" rel="noopener noreferrer"
-          className={`${accent} underline underline-offset-2`}>{inline(link[1], `${keyBase}-a-${k}`, accent)}</a>,
+        node: isDownload ? (
+          // Content-Disposition on the route makes this download rather than
+          // navigate, so it deliberately has no target.
+          <a key={`${keyBase}-dl-${k}`} href={href}
+            className="my-2 inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white no-underline hover:bg-emerald-700">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+              strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            {link[1]}
+          </a>
+        ) : (
+          <a key={`${keyBase}-a-${k}`} href={href}
+            target={href.startsWith("/") ? undefined : "_blank"}
+            rel={href.startsWith("/") ? undefined : "noopener noreferrer"}
+            className={`${accent} underline underline-offset-2`}>{inline(link[1], `${keyBase}-a-${k}`, accent)}</a>
+        ),
       })
     }
     const bold = BOLD_RE.exec(rest)
