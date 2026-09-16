@@ -77,6 +77,23 @@ const check = (name, cond, detail = "") => {
   const loaded = await loadPortfolio()
   check(`carga ${deck.length} proyectos desde la base`, loaded.length === deck.length, `leídos ${loaded.length}`)
 
+  console.log("\n=== 1b. CARTERA VACÍA ===")
+  // La falla que dejó a Catherine sin House of Wellness: sin proyectos cargados
+  // el contexto iba vacío, el modelo nunca supo que existía una cartera, y
+  // contestó "no está en la cartera" sobre algo que nunca miró.
+  await prisma.setting.delete({ where: { key: "preconstruction_projects" } }).catch(() => {})
+  const emptyCtx = (await buildProjectContext()).join("\n")
+  check("con la cartera vacía el contexto NO va vacío", emptyCtx.trim().length > 0)
+  check("dice explícitamente que está vacía", /VAC[IÍ]A/i.test(emptyCtx))
+  check("prohíbe afirmar que un proyecto concreto no está", /NUNCA digas/i.test(emptyCtx))
+  check("manda al Bulk import", /Bulk import/i.test(emptyCtx))
+  // Restaurar para el resto de las pruebas.
+  await prisma.setting.upsert({
+    where: { key: "preconstruction_projects" },
+    update: { value: JSON.stringify(withIds) },
+    create: { key: "preconstruction_projects", value: JSON.stringify(withIds) },
+  })
+
   console.log("\n=== 2. BÚSQUEDA (el bug de la captura) ===")
   const cases = [
     ["Domus Brickell Center", "Domus Brickell Center", 500000],
