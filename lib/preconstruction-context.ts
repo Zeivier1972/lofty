@@ -19,40 +19,62 @@ export async function buildMarketInsightsContext(): Promise<string | null> {
   } catch { return null }
 }
 
-export async function buildProjectContext(limit = 40): Promise<string[]> {
+/**
+ * A compact line per project — enough to decide which ones to discuss, and no
+ * more. The full record is a tool call away (`get_project_details`), because
+ * sending every description on every request put one question over the whole
+ * per-minute token budget.
+ */
+export async function buildProjectContext(limit = 60): Promise<string[]> {
   try {
     const setting = await prisma.setting.findUnique({ where: { key: "preconstruction_projects" } })
     if (!setting) return []
     const projects: any[] = JSON.parse(setting.value)
     if (projects.length === 0) return []
 
-    // Catherine's own inventory is AUTHORITATIVE and often includes off-market
-    // projects that are NOT online yet — neither agent can find these via web
-    // search, so give them the full detail she entered on the Pre-Construction
-    // page and tell them to prioritize + quote these accurately.
-    const lines = [`\nPROYECTOS EN CARTERA DE CATHERINE (fuente autoritativa — incluye proyectos exclusivos/off-market que NO están en línea todavía; priorízalos y cita sus datos con exactitud):`]
+    const lines = [`\nCARTERA DE CATHERINE — ${projects.length} proyecto(s). Es la fuente autoritativa e incluye proyectos exclusivos que NO están en línea; priorízalos siempre sobre la web. Esta es la vista resumida: para amenidades, plan de pagos completo, descripción o puntos de venta de un proyecto, llama a get_project_details con su nombre.`]
 
     projects.slice(0, limit).forEach(p => {
-      const header = `${p.name}${(p.neighborhood || p.city) ? ` (${[p.neighborhood, p.city].filter(Boolean).join(", ")})` : ""}`
-      const priceRange = (p.priceMin || p.priceMax)
-        ? `Precio: ${p.priceMin ? `$${Number(p.priceMin).toLocaleString()}` : "?"}${p.priceMax ? ` – $${Number(p.priceMax).toLocaleString()}` : "+"}`
-        : ""
-      const details = [
-        p.developer ? `Desarrollador: ${p.developer}` : "",
-        priceRange,
-        p.bedrooms ? `Recámaras: ${p.bedrooms}` : "",
-        p.propertyType ? `Tipo: ${p.propertyType}` : "",
-        p.deliveryDate ? `Entrega: ${p.deliveryDate}` : "",
-        p.estimatedROI ? `ROI estimado: ${p.estimatedROI}` : "",
-        p.downPayment ? `Down payment: ${p.downPayment}` : "",
-        p.status ? `Estado: ${p.status}` : "",
-        p.investmentHighlights ? `Puntos clave: ${p.investmentHighlights}` : "",
-        p.description ? `Descripción: ${p.description}` : "",
-        (Array.isArray(p.photos) && p.photos[0]) ? `Foto: ${p.photos[0]}` : "",
-      ].filter(Boolean).join(" · ")
-      lines.push(`\n• ${header}\n  ${details}`)
+      const price = (p.priceMin || p.priceMax)
+        ? `${p.priceMin ? `$${Number(p.priceMin).toLocaleString()}` : "?"}${p.priceMax ? `–$${Number(p.priceMax).toLocaleString()}` : "+"}`
+        : "SIN PRECIO"
+      lines.push(`• ${p.name} | ${[p.neighborhood, p.city].filter(Boolean).join(", ") || "?"} | ${p.developer || "sin desarrollador"} | ${price}${p.bedrooms ? ` | ${p.bedrooms}` : ""}${p.deliveryDate ? ` | entrega ${p.deliveryDate}` : ""}${p.estimatedROI ? ` | ROI declarado ${p.estimatedROI}` : ""}`)
     })
+    if (projects.length > limit) lines.push(`(y ${projects.length - limit} más — usa list_portfolio para verlos todos)`)
 
     return lines
   } catch { return [] }
+}
+
+/** The full stored record, for when the advisor is discussing one project. */
+export async function getProjectDetail(names: string[]): Promise<string> {
+  const { loadPortfolio, findProject, explainMiss } = await import("@/lib/portfolio-lookup")
+  const all = await loadPortfolio()
+  if (all.length === 0) return explainMiss(undefined, { project: null, near: [], portfolioSize: 0, ambiguous: false })
+
+  const out: string[] = []
+  for (const name of names.slice(0, 6)) {
+    const m = findProject(all, name)
+    if (!m.project) { out.push(explainMiss(name, m)); continue }
+    const p = m.project
+    if (m.ambiguous) {
+      out.push(`"${name}" encaja con ${[p.name, ...m.near.map((x: any) => x.name)].join(" o ")} — pregúntale a Catherine cuál.`)
+      continue
+    }
+    out.push([
+      `${p.name}${(p.neighborhood || p.city) ? ` (${[p.neighborhood, p.city].filter(Boolean).join(", ")})` : ""}`,
+      p.developer ? `Desarrollador: ${p.developer}` : "",
+      (p.priceMin || p.priceMax) ? `Precio: ${p.priceMin ? `$${Number(p.priceMin).toLocaleString()}` : "?"}${p.priceMax ? ` – $${Number(p.priceMax).toLocaleString()}` : "+"}` : "SIN PRECIO REGISTRADO",
+      p.bedrooms ? `Recámaras: ${p.bedrooms}` : "",
+      p.propertyType ? `Tipo: ${p.propertyType}` : "",
+      p.units ? `Unidades: ${p.units}` : "",
+      p.deliveryDate ? `Entrega: ${p.deliveryDate}` : "",
+      p.status ? `Estado: ${p.status}` : "",
+      p.estimatedROI ? `ROI declarado: ${p.estimatedROI}` : "",
+      p.downPayment ? `Plan de pagos: ${p.downPayment}` : "",
+      p.investmentHighlights ? `Puntos clave: ${p.investmentHighlights}` : "",
+      p.description ? `Descripción: ${p.description}` : "",
+    ].filter(Boolean).join("\n  "))
+  }
+  return out.join("\n\n")
 }

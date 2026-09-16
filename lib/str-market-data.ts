@@ -260,44 +260,58 @@ export function lookupAppreciation(neighborhood?: string, city?: string): Apprec
   return null
 }
 
-/** The block both Catherine-facing agents get, so neither invents a number. */
+/**
+ * The block both Catherine-facing agents get, so neither invents a number.
+ * Deliberately terse: it rides on every request, and the verbose per-market
+ * notes are available through `str_market_detail` when a number needs context.
+ */
 export function strMarketContext(): string {
-  const rows = STR_MARKETS.map(m => {
-    const bits = [
-      `${m.label}: $${m.adr}/noche, ${m.occupancyPct}% de ocupación`,
-      m.revpar ? `RevPAR $${m.revpar}` : "",
-      m.seasonality ? `temporada alta ${m.seasonality.highPct}% / baja ${m.seasonality.lowPct}%` : "",
-      `(${m.source})`,
-    ].filter(Boolean).join(" · ")
-    return `• ${bits}${m.note ? `\n  ${m.note}` : ""}`
-  }).join("\n")
+  const rows = STR_MARKETS.map(m =>
+    `• ${m.label}: $${m.adr}/noche, ${m.occupancyPct}% ocupación (${m.source})`
+  ).join("\n")
 
   const comps = BUILDING_COMPS.map(b =>
-    `• ${b.label}: $${b.adr}/noche, ${b.occupancyPct}% de ocupación (${b.source})${b.note ? `\n  ${b.note}` : ""}`
+    `• ${b.label}: $${b.adr}/noche, ${b.occupancyPct}% (${b.source})`
+  ).join("\n")
+
+  const lt = LONG_TERM_COMPS.map(c => `• ${c.label}: $${c.monthlyRent.toLocaleString()}/mes`).join("\n")
+
+  const apr = APPRECIATION.map(a => `• ${a.label}: ${a.marketYoYPct}% interanual`).join("\n")
+
+  return `
+RENTA CORTA — datos reales a ${STR_ASOF}. Úsalos siempre en vez de inventar una tarifa u ocupación, y cita la fuente:
+${rows}
+
+DATOS DEL EDIFICIO — mandan sobre el promedio del barrio. Son cifras que reporta el desarrollador, preséntalas como tal:
+${comps}
+
+RENTA LARGA — las casas y townhouses (Lennar, SLB) NO son renta corta: se rentan por año, no les apliques tarifa por noche ni ocupación de Airbnb.
+${lt}
+
+VALORIZACIÓN — son DOS números distintos y no se mezclan:
+1. La lista de precios del desarrollador sube ~${DEVELOPER_PRICE_LIST_ESCALATION_PCT}% en cada nueva lista durante la obra. Eso sí lo captura el comprador en preconstrucción, porque firmó al precio viejo.
+2. La reventa va aparte y hoy está casi plana:
+${apr}
+Di siempre cuál de las dos estás citando. Prometer 4% anual de valorización de mercado en Miami hoy sería faltar a la verdad.
+
+Si un proyecto no cae en ningún submercado, usa la línea base de Florida y dilo. Para el contexto completo de un mercado (estacionalidad, advertencias, cómo se calculó), llama a str_market_detail.`
+}
+
+/** The full notes behind each figure, for when a number needs explaining. */
+export function strMarketDetail(): string {
+  const rows = STR_MARKETS.map(m => [
+    `${m.label}: $${m.adr}/noche, ${m.occupancyPct}% de ocupación${m.revpar ? `, RevPAR $${m.revpar}` : ""} (${m.source})`,
+    m.seasonality ? `  Temporada alta ${m.seasonality.highPct}% / baja ${m.seasonality.lowPct}%` : "",
+    m.note ? `  ${m.note}` : "",
+  ].filter(Boolean).join("\n")).join("\n")
+
+  const comps = BUILDING_COMPS.map(b =>
+    `${b.label}: $${b.adr}/noche, ${b.occupancyPct}% (${b.source})${b.note ? `\n  ${b.note}` : ""}`
   ).join("\n")
 
   const apr = APPRECIATION.map(a =>
-    `• ${a.label}: ${a.marketYoYPct}% interanual (${a.source})${a.note ? `\n  ${a.note}` : ""}`
+    `${a.label}: ${a.marketYoYPct}% interanual (${a.source}, ${a.asOf})${a.note ? `\n  ${a.note}` : ""}`
   ).join("\n")
 
-  return `
-DATOS REALES DE RENTA CORTA — actualizados a ${STR_ASOF}. Usa SIEMPRE estos números en lugar de inventar una tarifa o una ocupación, y cita la fuente cuando los uses:
-${rows}
-
-DATOS DEL EDIFICIO ESPECÍFICO — mandan sobre el promedio del barrio. Un condo-hotel de marca con programa de renta no rinde como el Airbnb mediano a tres cuadras, así que cuando exista un número del edificio mismo, usa ese y no el del submercado:
-${comps}
-Son cifras que reporta el desarrollador, no verificadas por un tercero. Preséntalas así: "el desarrollador reporta...".
-
-RENTA LARGA — las casas y townhouses de la cartera (Lennar, SLB) NO son renta corta. No les apliques tarifa por noche ni ocupación de Airbnb: se rentan por año. Comps reales que tenemos:
-${LONG_TERM_COMPS.map(c => `• ${c.label}: $${c.monthlyRent.toLocaleString()} al mes (${c.source})`).join("\n")}
-Para esos proyectos el ingreso operativo del modelo es la renta mensual, no tarifa por noche multiplicada por ocupación.
-
-VALORIZACIÓN — hay dos números distintos y no se pueden mezclar:
-1. La lista de precios del desarrollador sube alrededor de ${DEVELOPER_PRICE_LIST_ESCALATION_PCT}% por cada nueva lista durante la construcción. Eso es lo que captura el comprador en preconstrucción y es real: firmó al precio viejo.
-2. La valorización del mercado de reventa es otra cosa y hoy está casi plana:
-${apr}
-
-Cuando le presentes valorización a un cliente, sé explícito sobre cuál de las dos estás citando. Prometer 4% anual de valorización de mercado en Miami hoy sería faltar a la verdad; lo honesto es: "usted compra al precio de hoy y el desarrollador sube la lista mientras construye — esa diferencia es suya. Lo que haga la reventa después es un tema aparte y hoy el mercado está plano."
-
-Si un proyecto no cae en ningún submercado de la lista, usa la línea base de Florida y dilo.`
+  return [`SUBMERCADOS\n${rows}`, `EDIFICIOS\n${comps}`, `VALORIZACIÓN DE REVENTA\n${apr}`].join("\n\n")
 }
