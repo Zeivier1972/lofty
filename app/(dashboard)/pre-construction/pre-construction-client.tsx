@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import {
   Building2, Plus, Trash2, Edit, ExternalLink, X, Save, Loader2,
   TrendingUp, MapPin, Calendar, DollarSign, Users, ChevronDown, ChevronUp,
@@ -150,6 +150,10 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
   const [insightsBusy, setInsightsBusy] = useState(false)
   const [insightsMsg, setInsightsMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [calc, setCalc] = useState<CalcState | null>(null)
+  // El panel se dibuja arriba de la grilla, y el botón que lo abre está en la
+  // tarjeta del proyecto, bastante más abajo. Sin esto el panel abre fuera de
+  // pantalla y desde la silla de Catherine el botón parece no hacer nada.
+  const calcRef = useRef<HTMLDivElement | null>(null)
   const [calcBusy, setCalcBusy] = useState(false)
   const [calcErr, setCalcErr] = useState<string | null>(null)
 
@@ -513,7 +517,7 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
 
         {/* Investment analysis workbook */}
         {calc && (
-          <div className="bg-white border border-blue-200 rounded-2xl p-6 mb-6 shadow-sm">
+          <div ref={calcRef} className="bg-white border border-blue-200 rounded-2xl p-6 mb-6 shadow-sm">
             <div className="flex items-center justify-between mb-1">
               <div className="flex items-center gap-2">
                 <Calculator className="w-4 h-4 text-blue-600" />
@@ -1003,7 +1007,13 @@ export default function PreConstructionClient({ initialProjects, scrapedCommunit
                     <span className={cn("absolute top-2 left-2 text-xs font-semibold px-2 py-0.5 rounded-full shadow-sm", st.color)}>{st.label}</span>
                     <div className="absolute top-2 right-2 flex gap-1">
                       <button
-                        onClick={() => { setCalc(calcDefaults(p)); setCalcErr(null) }}
+                        onClick={() => {
+                          setCalc(calcDefaults(p))
+                          setCalcErr(null)
+                          // Después de pintar, para que el panel ya exista.
+                          requestAnimationFrame(() =>
+                            calcRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }))
+                        }}
                         title="Generar análisis de inversión en Excel"
                         className="p-1.5 bg-white/90 text-gray-500 hover:text-blue-600 rounded-lg shadow-sm transition-colors"
                       >
