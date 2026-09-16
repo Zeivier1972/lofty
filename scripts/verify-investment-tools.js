@@ -193,21 +193,75 @@ const check = (name, cond, detail = "") => {
   check("la primera hoja es el resumen", sheets[0] === "Resumen para el cliente", sheets[0])
   const guide = book.getWorksheet("Cómo explicarlo")
   let guideText = ""; guide.eachRow(r => { guideText += String(r.getCell(2).value || "") + "\n" })
-  check("el guion usa el down payment real", guideText.includes(`$${Math.round(r.downPayment).toLocaleString()}`), "busca " + Math.round(r.downPayment))
-  // Las cifras del ejemplo original de la hoja de coaching: si aparecen, la
-  // sustitución de tokens falló. Se prueba con un proyecto cuyo down payment
-  // NO es $200,000, para que la coincidencia no pueda ser casual.
+  // El guion pasó a ser fórmula viva, así que buscar el número impreso ya no
+  // prueba nada: lo que hay que comprobar es que apunte a la celda correcta.
+  const guideRows = []
+  guide.eachRow(row => guideRows.push(row.getCell(2).value))
+  const guideFormulas = guideRows.filter(v => v && typeof v === "object" && "formula" in v).map(v => String(v.formula))
+  check("el guion trae frases como fórmula", guideFormulas.length >= 1, `${guideFormulas.length} frases`)
+  check("la frase del cash on cash cita el down payment ($D$10)", guideFormulas.some(f => f.includes("$D$10")))
+  check("la frase del cash on cash cita el flujo anual ($D$35)", guideFormulas.some(f => f.includes("$D$35")))
+  check("la frase del cash on cash cita el indicador ($G$13)", guideFormulas.some(f => f.includes("$G$13")))
+  // Ningún resto del ejemplo de la hoja original debe quedar impreso: las
+  // cifras del guion viven en fórmulas, así que cualquier número fijo en esas
+  // frases sería texto que ya no se recalcula.
   const palmaA = { ...DEFAULTS, price: 745000, sqft: 572, hoaPerSqft: 1.9, nightlyRate: 280, occupancyPct: 87 }
-  const palmaR = analyze(palmaA)
   const wb2 = await buildInvestmentWorkbook({ projectName: "Palma Miami Beach", assumptions: palmaA })
   const book2 = new ExcelJS.Workbook(); await book2.xlsx.load(wb2)
-  let g2 = ""; book2.getWorksheet("Cómo explicarlo").eachRow(r2 => { g2 += String(r2.getCell(2).value || "") + "\n" })
-  check("el guion NO trae las cifras del ejemplo de la hoja original",
+  let g2 = ""
+  book2.getWorksheet("Cómo explicarlo").eachRow(r2 => {
+    const v = r2.getCell(2).value
+    g2 += (v && typeof v === "object" && "formula" in v ? String(v.formula) : String(v || "")) + "\n"
+  })
+  check("el guion no conserva las cifras del ejemplo original",
     !g2.includes("$14,220") && !g2.includes("7.1%") && !g2.includes("$200,000"))
-  check("el guion SÍ trae el down payment real de Palma ($298,000)",
-    g2.includes(`$${Math.round(palmaR.downPayment).toLocaleString()}`), "esperaba " + Math.round(palmaR.downPayment))
-  check("el guion trae el cash on cash real de Palma",
-    g2.includes(`${palmaR.cashOnCashPct.toFixed(2)}%`), "esperaba " + palmaR.cashOnCashPct.toFixed(2) + "%")
+
+  console.log("\n=== 8b. TODO EL LIBRO SE RECALCULA DESDE UNA SOLA HOJA ===")
+  // Las cifras del resumen, la proyección y el guion tienen que ser FÓRMULAS
+  // que apunten a "Análisis". Si alguna se convierte en número fijo, cambiar un
+  // supuesto deja el libro a medio recalcular, que es peor que no recalcular.
+  const isFormula = c => c && typeof c.value === "object" && c.value !== null && "formula" in c.value
+  const refsModel = c => isFormula(c) && String(c.value.formula).includes("Análisis")
+
+  const sumSheet = book.getWorksheet("Resumen para el cliente")
+  const labelRow = name => {
+    let found = null
+    sumSheet.eachRow((row, i) => { if (String(row.getCell(1).value || "").trim() === name) found = i })
+    return found
+  }
+  for (const label of ["Precio", "Renta estimada", "LE QUEDA EN EL BOLSILLO", "3. Cash on Cash", "4. ROI"]) {
+    const rowNum = labelRow(label)
+    check(`resumen: "${label}" es fórmula hacia Análisis`,
+      rowNum !== null && refsModel(sumSheet.getCell(rowNum, 2)), rowNum === null ? "fila no encontrada" : "")
+  }
+  const cocRow = labelRow("3. Cash on Cash")
+  check("el guion del resumen también es fórmula viva",
+    cocRow !== null && refsModel(sumSheet.getCell(cocRow, 4)))
+
+  const projSheet = book.getWorksheet("Proyección y venta")
+  let projFormulas = 0, projLiterals = 0, rowsRefModel = 0, yearRows = 0
+  projSheet.eachRow(row => {
+    if (typeof row.getCell(1).value !== "number") return   // solo las filas de años
+    yearRows++
+    let rowRefs = false
+    for (let c = 2; c <= 10; c++) {
+      const cell = row.getCell(c)
+      // Una celda como SUM($E$6:E6) o B6-G6 no nombra la hoja modelo, pero
+      // sigue siendo viva: sus entradas sí la referencian.
+      if (isFormula(cell)) { projFormulas++; if (refsModel(cell)) rowRefs = true }
+      else if (cell.value !== null && cell.value !== undefined) projLiterals++
+    }
+    if (rowRefs) rowsRefModel++
+  })
+  check("la proyección entera son fórmulas, sin números fijos",
+    projFormulas > 0 && projLiterals === 0, `${projFormulas} fórmulas, ${projLiterals} literales`)
+  check("cada año de la proyección se alimenta de Análisis",
+    yearRows > 0 && rowsRefModel === yearRows, `${rowsRefModel} de ${yearRows} filas`)
+
+  const guideSheet = book.getWorksheet("Cómo explicarlo")
+  let liveSentences = 0
+  guideSheet.eachRow(row => { if (refsModel(row.getCell(2))) liveSentences++ })
+  check("el guion trae frases vivas que citan la hoja", liveSentences >= 1, `${liveSentences} frases`)
 
   console.log("\n=== 9. NOTAS DE MERCADO ===")
   const seeds = require(path.join(ROOT, "data/preconstruction/market-insights.json"))
