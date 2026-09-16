@@ -102,6 +102,8 @@ const check = (name, cond, detail = "") => {
 
   console.log("\n=== 3. CONTEXTO QUE VEN EL ADVISOR Y ARIA ===")
   const ctx = (await buildProjectContext()).join("\n")
+  check("la cartera va resumida, no completa (presupuesto de tokens)", ctx.length < 8000, `${ctx.length} caracteres`)
+  check("el resumen apunta a get_project_details para el detalle", ctx.includes("get_project_details"))
   check("el contexto nombra Domus Brickell Center", ctx.includes("Domus Brickell Center"))
   check("el contexto trae su precio $500,000", ctx.includes("$500,000"))
   check("el contexto trae el desarrollador correcto", ctx.includes("North Development"))
@@ -109,7 +111,12 @@ const check = (name, cond, detail = "") => {
   const strCtx = buildStrMarketContext()
   check("datos de renta: Brickell 68%", strCtx.includes("68%"))
   check("datos de renta: comp del edificio Palma 87%", strCtx.includes("87%"))
-  check("valorización separa lista vs reventa", strCtx.includes("1.8%") && strCtx.includes("lista de precios"))
+  // Comprueba el concepto, no una frase exacta: que estén los dos números y que
+  // se diga explícitamente que son distintos.
+  check("valorización separa lista del desarrollador vs reventa",
+    strCtx.includes("1.8%") && /lista de precios/i.test(strCtx) && /dos números distintos/i.test(strCtx))
+  check("el contexto compacto cabe en el presupuesto de tokens",
+    strCtx.length < 2500, `${strCtx.length} caracteres`)
 
   console.log("\n=== 4. ANÁLISIS (el que falló en la captura) ===")
   const dbc = findProject(loaded, "Domus Brickell Center").project

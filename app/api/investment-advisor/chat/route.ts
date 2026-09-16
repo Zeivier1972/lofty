@@ -5,12 +5,30 @@ import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { sendEmail, wrapEmail } from "@/lib/email"
 import { randomUUID } from "crypto"
-import { buildProjectContext, buildMarketInsightsContext, buildStrMarketContext } from "@/lib/preconstruction-context"
+import { buildProjectContext, buildMarketInsightsContext, buildStrMarketContext, getProjectDetail } from "@/lib/preconstruction-context"
 import { DEFAULTS as ANALYSIS_DEFAULTS, analyze as runAnalysis } from "@/lib/investment-analysis"
-import { resolveStrAssumptions, lookupAppreciation, isLongTermPlay, lookupLongTermComp } from "@/lib/str-market-data"
+import { resolveStrAssumptions, lookupAppreciation, isLongTermPlay, lookupLongTermComp, strMarketDetail } from "@/lib/str-market-data"
 import { loadPortfolio, findProject, priceOf, explainMiss } from "@/lib/portfolio-lookup"
 import { project as runProjection, assignmentScenario, PROJECTION_DEFAULTS } from "@/lib/investment-projection"
 import { compare as compareInvestments, GOAL_LABELS, ClientGoal } from "@/lib/investment-compare"
+
+/** Name the actual failure. "Check your API key" sent Catherine chasing the
+ *  wrong thing when the real answer was a per-minute token limit. */
+function describeOpenAIError(status: number, body: string): string {
+  const code = body.match(/"code":\s*"([^"]+)"/)?.[1] || ""
+  const message = body.match(/"message":\s*"([^"]+)"/)?.[1] || ""
+  if (status === 429 || code === "rate_limit_exceeded") {
+    return `OpenAI limitó la petición por exceso de tokens por minuto y los reintentos no alcanzaron. Espera un minuto y vuelve a preguntar. Si pasa seguido, sube el tier de la cuenta de OpenAI: el límite actual de la organización es muy bajo para conversaciones largas. Detalle: ${message || "rate limit"}`
+  }
+  if (status === 401) return "La OPENAI_API_KEY de Railway no es válida o fue revocada. Cámbiala en las variables de entorno de Railway."
+  if (status === 402 || /quota|billing/i.test(message)) {
+    return `La cuenta de OpenAI no tiene saldo o superó su cuota. Revisa la facturación en platform.openai.com. Detalle: ${message}`
+  }
+  if (status === 404 || /model/i.test(message)) {
+    return `OpenAI no reconoció el modelo solicitado. Detalle: ${message}`
+  }
+  return `OpenAI devolvió un error ${status}. Detalle: ${message || "sin mensaje"}`
+}
 
 const SSE_HEADERS = {
   "Content-Type": "text/event-stream",
@@ -197,6 +215,30 @@ const SAVE_PROJECT_TOOL = {
   },
 }
 
+const DETAIL_TOOL = {
+  type: "function" as const,
+  function: {
+    name: "get_project_details",
+    description: "Full stored record for one or more projects: amenities, the complete payment schedule, the description and the selling points. The portfolio in your context is a summary — call this before describing a project in depth, quoting its payment plan, or writing anything a client will read about it. Never describe amenities or terms from memory.",
+    parameters: {
+      type: "object",
+      properties: {
+        projects: { type: "array", items: { type: "string" }, description: "Project names, as they appear in the portfolio. Up to 6." },
+      },
+      required: ["projects"],
+    },
+  },
+}
+
+const MARKET_DETAIL_TOOL = {
+  type: "function" as const,
+  function: {
+    name: "str_market_detail",
+    description: "The full notes behind the rental figures: seasonality, how each number was measured, caveats, and where the appreciation rates come from. Call it when Catherine asks why a number is what it is, or when a figure needs context before you put it in front of a client.",
+    parameters: { type: "object", properties: {}, required: [] },
+  },
+}
+
 const PORTFOLIO_TOOL = {
   type: "function" as const,
   function: {
@@ -378,7 +420,7 @@ export async function POST(req: Request) {
     ...messages.slice(-20),
   ]
 
-  const tools: any[] = [EMAIL_TOOL, SAVE_PROJECT_TOOL, ANALYSIS_TOOL, COMPARE_TOOL, PORTFOLIO_TOOL, ...(tavilyKey ? [SEARCH_TOOL] : [])]
+  const tools: any[] = [EMAIL_TOOL, SAVE_PROJECT_TOOL, ANALYSIS_TOOL, COMPARE_TOOL, PORTFOLIO_TOOL, DETAIL_TOOL, MARKET_DETAIL_TOOL, ...(tavilyKey ? [SEARCH_TOOL] : [])]
 
   const callOpenAI = (msgs: any[], opts: { stream: boolean; withTools: boolean }) =>
     fetch("https://api.openai.com/v1/chat/completions", {
@@ -396,6 +438,15 @@ export async function POST(req: Request) {
 
   async function executeToolCall(tc: any): Promise<string> {
     try {
+      if (tc.function.name === "get_project_details") {
+        const args = JSON.parse(tc.function.arguments || "{}")
+        const names = Array.isArray(args.projects) ? args.projects.map(String) : []
+        if (names.length === 0) return "Dime qué proyecto quieres. Si no sabes cuáles hay, usa list_portfolio."
+        return getProjectDetail(names)
+      }
+
+      if (tc.function.name === "str_market_detail") return strMarketDetail()
+
       if (tc.function.name === "list_portfolio") {
         const all = await loadPortfolio()
         if (all.length === 0) return explainMiss(undefined, { project: null, near: [], portfolioSize: 0, ambiguous: false })
@@ -633,17 +684,32 @@ export async function POST(req: Request) {
   }
 
   // Multi-round tool loop: let the model search, read results, and search AGAIN
+  // A rate limit is transient and OpenAI tells us how long to wait, so waiting
+  // is strictly better than handing Catherine an error she cannot act on.
+  const callOpenAIWithRetry = async (msgs: any[], opts: { stream: boolean; withTools: boolean }) => {
+    let resp = await callOpenAI(msgs, opts)
+    for (let attempt = 0; attempt < 2 && resp.status === 429; attempt++) {
+      const body = await resp.clone().text().catch(() => "")
+      const suggested = Number(body.match(/try again in ([\d.]+)s/i)?.[1])
+      const waitMs = Math.min(Math.max((Number.isFinite(suggested) ? suggested : 2 ** attempt) * 1000 + 500, 1000), 15000)
+      console.warn(`[Investment Advisor] 429 de OpenAI, reintentando en ${Math.round(waitMs)}ms`)
+      await new Promise(r => setTimeout(r, waitMs))
+      resp = await callOpenAI(msgs, opts)
+    }
+    return resp
+  }
+
   // (e.g. several neighborhoods / price bands / developers) before writing its
   // answer, so it surfaces as many projects as possible. Bounded to cap cost.
-  const MAX_TOOL_ROUNDS = Number(process.env.ADVISOR_MAX_TOOL_ROUNDS || 3)
+  const MAX_TOOL_ROUNDS = Number(process.env.ADVISOR_MAX_TOOL_ROUNDS || 2)
   const convo: any[] = [...openaiMessages]
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const resp = await callOpenAI(convo, { stream: false, withTools: tools.length > 0 })
+    const resp = await callOpenAIWithRetry(convo, { stream: false, withTools: tools.length > 0 })
     if (!resp.ok) {
       const errText = await resp.text().catch(() => "")
       console.error("[Investment Advisor] OpenAI error:", errText)
-      return NextResponse.json({ error: "OpenAI API error — check OPENAI_API_KEY in Railway" }, { status: 500 })
+      return NextResponse.json({ error: describeOpenAIError(resp.status, errText) }, { status: 502 })
     }
     const data = await resp.json()
     const choice = data.choices?.[0]
@@ -663,9 +729,11 @@ export async function POST(req: Request) {
 
   // Tool budget exhausted while still searching — force a final written answer
   // (streaming, tools off) from everything gathered so far.
-  const finalResp = await callOpenAI(convo, { stream: true, withTools: false })
+  const finalResp = await callOpenAIWithRetry(convo, { stream: true, withTools: false })
   if (!finalResp.ok) {
-    return NextResponse.json({ error: "OpenAI API error on final pass" }, { status: 500 })
+    const errText = await finalResp.text().catch(() => "")
+    console.error("[Investment Advisor] OpenAI error on final pass:", errText)
+    return NextResponse.json({ error: describeOpenAIError(finalResp.status, errText) }, { status: 502 })
   }
   return new Response(finalResp.body, { headers: SSE_HEADERS })
 }
