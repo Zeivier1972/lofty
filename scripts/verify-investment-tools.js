@@ -263,6 +263,55 @@ const check = (name, cond, detail = "") => {
   guideSheet.eachRow(row => { if (refsModel(row.getCell(2))) liveSentences++ })
   check("el guion trae frases vivas que citan la hoja", liveSentences >= 1, `${liveSentences} frases`)
 
+  console.log("\n=== 8c. NINGUNA FÓRMULA LLEGA VACÍA AL ABRIR ===")
+  // Excel en Vista Protegida NO recalcula: muestra el último valor que el
+  // archivo trae guardado. Una fórmula sin ese valor sale como celda VACÍA,
+  // que fue exactamente lo que le pasó a Catherine al abrir el libro. Cada
+  // fórmula tiene que viajar con su resultado ya calculado dentro.
+  const cachedAudit = b => {
+    let withCache = 0
+    const empties = []
+    b.eachSheet(ws => {
+      ws.eachRow(row => {
+        row.eachCell({ includeEmpty: false }, cell => {
+          const v = cell.value
+          if (!v || typeof v !== "object" || !("formula" in v || "sharedFormula" in v)) return
+          if (v.result === undefined || v.result === null || v.result === "") {
+            empties.push(`${ws.name}!${cell.address}`)
+          } else withCache++
+        })
+      })
+    })
+    return { withCache, empties }
+  }
+  for (const [label, b] of [["libro del análisis", book], ["libro de Palma", book2]]) {
+    const { withCache, empties } = cachedAudit(b)
+    check(`${label}: toda fórmula trae su valor guardado`,
+      withCache > 0 && empties.length === 0,
+      `${withCache} con valor, ${empties.length} vacías${empties.length ? ": " + empties.slice(0, 6).join(", ") : ""}`)
+  }
+  // Y el libro sigue pidiendo recálculo completo, para que al habilitar la
+  // edición los números se actualicen solos al cambiar un supuesto. ExcelJS no
+  // devuelve calcProperties al releer, así que hay que mirar el XML del .xlsx.
+  const workbookXml = await require("jszip").loadAsync(wb).then(z => z.file("xl/workbook.xml").async("string"))
+  check("el libro pide recalcular al abrirlo",
+    /<calcPr[^>]*fullCalcOnLoad="1"/.test(workbookXml),
+    (workbookXml.match(/<calcPr[^>]*>/) || ["sin calcPr"])[0])
+  // Las filas que el cliente mira primero no pueden salir en blanco.
+  const shownValue = (ws, label, col) => {
+    let out
+    ws.eachRow(row => {
+      if (String(row.getCell(1).value || "").trim() !== label) return
+      const v = row.getCell(col).value
+      out = v && typeof v === "object" && "result" in v ? v.result : v
+    })
+    return out
+  }
+  for (const label of ["Precio", "Inicial que pone el cliente", "Renta estimada", "LE QUEDA EN EL BOLSILLO", "3. Cash on Cash"]) {
+    const v = shownValue(book.getWorksheet("Resumen para el cliente"), label, 2)
+    check(`resumen: "${label}" se ve al abrir`, v !== undefined && v !== null && v !== "", String(v))
+  }
+
   console.log("\n=== 9. NOTAS DE MERCADO ===")
   const seeds = require(path.join(ROOT, "data/preconstruction/market-insights.json"))
   await prisma.setting.upsert({
