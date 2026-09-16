@@ -127,7 +127,7 @@ const check = (name, cond, detail = "") => {
   check("el contexto trae el desarrollador correcto", ctx.includes("North Development"))
   check("el contexto NO dice Desconocido", !ctx.includes("Desconocido"))
   const strCtx = buildStrMarketContext()
-  check("datos de renta: Brickell 68%", strCtx.includes("68%"))
+  check("datos de renta: Brickell 64.5%", strCtx.includes("64.5%"))
   check("datos de renta: comp del edificio Palma 87%", strCtx.includes("87%"))
   // Comprueba el concepto, no una frase exacta: que estén los dos números y que
   // se diga explícitamente que son distintos.
@@ -143,19 +143,51 @@ const check = (name, cond, detail = "") => {
   const r = analyze(a)
   check("calcula sin error", Number.isFinite(r.cashOnCashPct) && Number.isFinite(r.roiPct))
   // Domus Brickell Center está EN Brickell, así que lo correcto es el submercado
-  // de Brickell ($287/68%), no el promedio genérico de Miami.
-  check("usa el submercado Brickell ($287/68%), no el genérico de Miami", mkt.adr === 287 && mkt.occupancyPct === 68 && mkt.level === "submarket", `${mkt.adr}/${mkt.occupancyPct} ${mkt.level}`)
+  // de Brickell, no el promedio genérico de Miami. Las cifras son las que mide
+  // PriceLabs para el zip 33131, no las estimaciones que traía la tabla antes.
+  check("usa el submercado Brickell ($278/64.5%), no el genérico de Miami", mkt.adr === 278 && mkt.occupancyPct === 64.5 && mkt.level === "submarket", `${mkt.adr}/${mkt.occupancyPct} ${mkt.level}`)
   console.log(`         precio $${a.price.toLocaleString()} · flujo $${Math.round(r.cashFlowMonth)}/mes · CoC ${r.cashOnCashPct.toFixed(1)}% · cap ${r.capRatePct.toFixed(1)}%`)
 
   console.log("\n=== 5. COMP DE EDIFICIO Y RENTA LARGA ===")
   const palma = findProject(loaded, "Palma").project
   const pm = resolveStrAssumptions(palma.name, palma.neighborhood, palma.city)
-  check("Palma usa el 87% de 72 Park, no el 45% de Miami Beach", pm.occupancyPct === 87 && pm.level === "building", `${pm.occupancyPct}% ${pm.level}`)
+  check("Palma usa el 87% de 72 Park, no el 52.5% de Miami Beach", pm.occupancyPct === 87 && pm.level === "building", `${pm.occupancyPct}% ${pm.level}`)
   const verdana = findProject(loaded, "Verdana").project
   check("Verdana se detecta como renta larga", isLongTermPlay(verdana.propertyType, verdana.name))
   const hollywood = findProject(loaded, "One Hollywood").project
   const hm = resolveStrAssumptions(hollywood.name, hollywood.neighborhood, hollywood.city)
-  check("One Hollywood usa Hollywood ($234), no Miami", hm.adr === 234, `$${hm.adr} ${hm.label}`)
+  check("One Hollywood usa Hollywood ($285), no Miami", hm.adr === 285, `$${hm.adr} ${hm.label}`)
+
+  console.log("\n=== 5b. LAS CIFRAS DE MERCADO SON LAS DE PRICELABS ===")
+  // Los números de la tabla salían de estimaciones de AirDNA/AirROI/Rabbu y
+  // algunos estaban lejos: Orlando 22% arriba, Hollywood 22% abajo. Ahora todos
+  // vienen del índice STR de PriceLabs medido por zip. Si alguno se mueve sin
+  // actualizar la fuente, esta prueba lo caza.
+  const ESPERADO = {
+    brickell:    { adr: 278, occ: 64.5 },
+    miami_beach: { adr: 333, occ: 52.5 },
+    hollywood:   { adr: 285, occ: 58.9 },
+    orlando:     { adr: 205, occ: 55.3 },
+    miami:       { adr: 247, occ: 59.1 },
+  }
+  const { STR_MARKETS, BUILDING_COMPS } = load("str-market-data")
+  for (const [key, want] of Object.entries(ESPERADO)) {
+    const row = STR_MARKETS.find(m => m.key === key)
+    check(`${key}: $${want.adr}/${want.occ}% medidos por PriceLabs`,
+      row && row.adr === want.adr && row.occupancyPct === want.occ,
+      row ? `${row.adr}/${row.occupancyPct}` : "fila no encontrada")
+  }
+  check("toda fila de mercado cita su fuente PriceLabs",
+    STR_MARKETS.every(m => /PriceLabs/i.test(m.source)),
+    STR_MARKETS.filter(m => !/PriceLabs/i.test(m.source)).map(m => m.key).join(", ") || "todas")
+
+  // Las cifras de los desarrolladores se conservan, pero no pueden viajar solas:
+  // Catherine las va a decir en voz alta frente a un inversionista.
+  for (const comp of BUILDING_COMPS) {
+    check(`comp "${comp.label.slice(0, 28)}…" contrasta contra el mercado`,
+      /PriceLabs/i.test(comp.note || "") && /(52\.5|64\.5)/.test(comp.note || ""),
+      (comp.note || "").slice(0, 60))
+  }
 
   console.log("\n=== 6. PROYECCIÓN Y SALIDA ===")
   const years = projectYears(a)
