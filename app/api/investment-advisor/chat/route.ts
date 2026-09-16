@@ -131,7 +131,7 @@ const EMAIL_TOOL = {
   type: "function" as const,
   function: {
     name: "send_email",
-    description: "Send an email to the selected lead or a specified address with investment information, project details, ROI summaries, or any content from this conversation",
+    description: "Send an email to the selected lead or a specified address with investment information, project details, ROI summaries, or any content from this conversation. This tool CANNOT attach files — it sends text only. Never write \"attached\", \"adjunto\", \"please find enclosed\" or anything implying a file travels with the message; put the actual numbers in the body instead. Do not use this tool to hand Catherine something she asked to see here: answer her in the chat. Email is for writing to a client.",
     parameters: {
       type: "object",
       properties: {
@@ -268,7 +268,7 @@ const ANALYSIS_TOOL = {
   type: "function" as const,
   function: {
     name: "analyze_investment",
-    description: "Run Catherine's 5-indicator investment model (NOI, cash flow, cash on cash, ROI, cap rate) on a project and return the numbers with their rating. Use it whenever Catherine asks what a project returns, or wants to compare two projects with real numbers. When you omit nightlyRate and occupancyPct it uses the real figures for that building, or failing that its submarket, from the market data in your system context. Prefer those over guessing, and always cite the source and say whether it is a building number or a neighborhood average. After returning the numbers, tell Catherine she can download the full Excel with the client script from the Pre-Construction page, using the calculator button on the project card.",
+    description: "Run Catherine's 5-indicator investment model (NOI, cash flow, cash on cash, ROI, cap rate) on a project and return the numbers with their rating. Use it whenever Catherine asks what a project returns, or wants to compare two projects with real numbers. When you omit nightlyRate and occupancyPct it uses the real figures for that building, or failing that its submarket, from the market data in your system context. Never guess these: omit them and the tool uses real measured market data, and cite the source it returns, saying whether it is a building number or a neighborhood average. The tool hands you a download link for the Excel at the end of its output — end your answer with that link exactly as given. Do not tell Catherine to go find a button anywhere; the link is how she gets the file.",
     parameters: {
       type: "object",
       properties: {
@@ -277,8 +277,8 @@ const ANALYSIS_TOOL = {
         sqft: { type: "number", description: "Interior square feet. Pass this OR hoaMonthly — one of the two is needed for the expenses." },
         hoaMonthly: { type: "number", description: "Monthly HOA in USD. Use when the unit size is unknown; it replaces sqft entirely." },
         horizonYears: { type: "number", description: "Years until the client expects to sell. Defaults to 5." },
-        nightlyRate: { type: "number", description: "Estimated nightly short-term rental rate in USD. Research it if unknown." },
-        occupancyPct: { type: "number", description: "Occupancy percentage, e.g. 70." },
+        nightlyRate: { type: "number", description: "ONLY pass this when Catherine states a nightly rate herself, or asks for a what-if at a specific rate. Never estimate, research or infer it: leaving it out makes the tool use the real measured rate for that building or submarket, which is what the numbers must be built on. A rate you supplied is flagged as a manual assumption in the output." },
+        occupancyPct: { type: "number", description: "ONLY pass this when Catherine states an occupancy herself, or asks for a what-if at a specific number. Never estimate it and never borrow another project's figure: leaving it out makes the tool use the real measured occupancy for that building or submarket. A number you supplied is flagged as a manual assumption in the output." },
         downPaymentPct: { type: "number", description: "Down payment as a decimal, e.g. 0.4 for 40%." },
         hoaPerSqft: { type: "number", description: "Monthly HOA in USD per square foot." },
         mortgageRatePct: { type: "number", description: "Mortgage rate, e.g. 6.5. Use 7-8 for a foreign national loan if that is the case." },
@@ -539,6 +539,10 @@ export async function POST(req: Request) {
         }
         const mkt = resolveStrAssumptions(projectRecord?.name || args.project, projectRecord?.neighborhood, projectRecord?.city)
         const apr = lookupAppreciation(projectRecord?.neighborhood, projectRecord?.city)
+        // Whether the model handed us its own rent assumptions instead of using
+        // the measured ones. The output has to say so where it happens.
+        const rateOverridden = !longTerm && Number(args.nightlyRate) > 0
+        const occOverridden = !longTerm && Number(args.occupancyPct) > 0
         const a = {
           ...ANALYSIS_DEFAULTS,
           price,
@@ -561,6 +565,12 @@ export async function POST(req: Request) {
           longTerm
             ? `Renta LARGA: $${monthlyRent!.toLocaleString()} al mes${ltComp ? ` (${ltComp.source})` : ""}. No aplica tarifa por noche ni ocupación de Airbnb.`
             : `Base de mercado (${mkt.level === "building" ? "dato del edificio" : mkt.level === "submarket" ? "submercado" : "línea base de Florida"}): ${mkt.label} — $${mkt.adr}/noche al ${mkt.occupancyPct}% (${mkt.source})${apr ? ` · reventa ${apr.marketYoYPct}% interanual` : ""}`,
+          // A supplied rate or occupancy silently replaced the measured one and
+          // the numbers below were built on it. Catherine reads these figures to
+          // an investor, so an assumption can never look like a measurement.
+          !longTerm && (rateOverridden || occOverridden)
+            ? `⚠️ SUPUESTO MANUAL, NO DATO DE MERCADO: este análisis NO usa ${rateOverridden && occOverridden ? "la tarifa ni la ocupación medidas" : rateOverridden ? "la tarifa medida" : "la ocupación medida"}. Se calculó con ${rateOverridden ? `$${a.nightlyRate}/noche` : `$${a.nightlyRate}/noche (medido)`} al ${a.occupancyPct}%${occOverridden ? "" : " (medido)"}, contra ${mkt.label} que mide $${mkt.adr}/noche al ${mkt.occupancyPct}%. Dile a Catherine de forma explícita que estas cifras son un supuesto y de dónde salió, y ofrécele correrlo con el dato real. Si el supuesto no salió de ella, vuelve a correrlo sin él.`
+            : "",
           `Renta ${m(r.operatingIncome)}/mes ($${a.nightlyRate}/noche al ${a.occupancyPct}%) · gastos operativos ${m(r.operatingExpenses)} · hipoteca ${m(r.mortgage)}`,
           `1. NOI: ${m(r.noiMonth)}/mes, ${m(r.noiYear)}/año`,
           `2. Cash flow: ${m(r.cashFlowMonth)}/mes, ${m(r.cashFlowYear)}/año`,

@@ -370,6 +370,44 @@ const check = (name, cond, detail = "") => {
   check("la key inválida sigue apuntando a Railway",
     describeOpenAIError(401, '{"error":{"code":"invalid_api_key"}}').includes("OPENAI_API_KEY"))
 
+  console.log("\n=== 8e. EL ADVISOR NO PUEDE INVENTAR LA RENTA NI MENTIR SOBRE ADJUNTOS ===")
+  // El advisor mandó un análisis de The Rider (Wynwood) calculado al 87% de
+  // ocupación — la cifra de 72 Park, que no tiene nada que ver. Wynwood mide
+  // 59.1%. Al 87% el negocio da +$1,067/mes; al real da -$587/mes. O sea, un
+  // supuesto inventado convirtió una pérdida en una ganancia.
+  const routeSrc = fs.readFileSync(path.join(ROOT, "app/api/investment-advisor/chat/route.ts"), "utf8")
+  const between = (from, to) => {
+    const i = routeSrc.indexOf(from)
+    return i < 0 ? "" : routeSrc.slice(i, routeSrc.indexOf(to, i) + to.length)
+  }
+  const nightlyDesc = between("nightlyRate: { type:", "},")
+  const occDesc = between("occupancyPct: { type:", "},")
+  check("nightlyRate le prohíbe estimar al modelo",
+    /ONLY pass this when Catherine/.test(nightlyDesc) && /Never estimate/i.test(nightlyDesc), nightlyDesc.slice(0, 70))
+  check("occupancyPct le prohíbe estimar y copiar de otro proyecto",
+    /ONLY pass this when Catherine/.test(occDesc) && /never borrow another project/i.test(occDesc), occDesc.slice(0, 70))
+  check("un supuesto manual sale marcado como tal en la respuesta",
+    routeSrc.includes("SUPUESTO MANUAL, NO DATO DE MERCADO") &&
+    routeSrc.includes("const rateOverridden") && routeSrc.includes("const occOverridden"))
+
+  // El correo decía "Attached is the detailed investment analysis" y no había
+  // ningún adjunto: la herramienta no puede adjuntar archivos.
+  const emailDesc = between('name: "send_email"', "parameters:")
+  check("send_email dice que no puede adjuntar archivos", /CANNOT attach files/i.test(emailDesc))
+  check("send_email prohíbe escribir \"adjunto\"", /Never write/i.test(emailDesc) && /adjunto/i.test(emailDesc))
+
+  // La descripción mandaba al botón de la calculadora en vez del enlace que la
+  // propia herramienta construye — por eso Catherine terminó buscando un botón.
+  const analyzeDesc = between("Run Catherine's 5-indicator investment model", "parameters:")
+  check("el análisis ya no manda a buscar el botón de la calculadora",
+    !/calculator button/i.test(analyzeDesc) && /end your answer with that link/i.test(analyzeDesc))
+
+  // Y el botón, cuando se usa, tiene que traer el panel a la vista: se dibuja
+  // arriba de la grilla y el botón vive en la tarjeta, mucho más abajo.
+  const pcSrc = fs.readFileSync(path.join(ROOT, "app/(dashboard)/pre-construction/pre-construction-client.tsx"), "utf8")
+  check("el panel de la calculadora se trae a la vista al abrirlo",
+    pcSrc.includes("calcRef") && pcSrc.includes("scrollIntoView") && /ref=\{calcRef\}/.test(pcSrc))
+
   console.log("\n=== 9. NOTAS DE MERCADO ===")
   const seeds = require(path.join(ROOT, "data/preconstruction/market-insights.json"))
   await prisma.setting.upsert({
