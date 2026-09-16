@@ -564,6 +564,7 @@ export async function POST(req: Request) {
     buildProjectContext(),
     buildMarketInsightsContext(),
   ])
+  // projectLines is never empty now: an empty portfolio returns an explicit notice.
   const inventoryBlock = projectLines.length > 0 || marketInsights
     ? `\n\n━━━ CARTERA Y MERCADO DE CATHERINE ━━━\n${buildStrMarketContext()}${marketInsights || ""}${projectLines.join("\n")}\n\nCuando Catherine pregunte qué ofrecerle a un lead, parte SIEMPRE de esta cartera antes de sugerir cualquier otra cosa, y cita precios, planes de pago y fechas exactamente como están aquí.`
     : ""

@@ -28,9 +28,16 @@ export async function buildMarketInsightsContext(): Promise<string | null> {
 export async function buildProjectContext(limit = 60): Promise<string[]> {
   try {
     const setting = await prisma.setting.findUnique({ where: { key: "preconstruction_projects" } })
-    if (!setting) return []
-    const projects: any[] = JSON.parse(setting.value)
-    if (projects.length === 0) return []
+    let projects: any[] = []
+    try { if (setting) projects = JSON.parse(setting.value) } catch {}
+
+    // An empty portfolio has to be stated, not left out. Sending nothing means
+    // the model never learns a portfolio exists, so it quietly searches the web
+    // and answers as though it had looked — which is how Catherine was told a
+    // project she had just given us was "not in the portfolio".
+    if (!Array.isArray(projects) || projects.length === 0) {
+      return [`\nLA CARTERA DE CATHERINE ESTÁ VACÍA — no hay NINGÚN proyecto cargado en el CRM. No es que falte uno: no hay ninguno. Si Catherine pregunta por cualquier proyecto, dile exactamente esto: "todavía no tienes proyectos cargados en la cartera; ve a la página de Pre-Construction y usa el botón Bulk import para cargarlos". NO busques en la web como si fuera lo mismo, y NUNCA digas que un proyecto concreto "no está en la cartera" — no puedes saberlo, porque la cartera no tiene nada.`]
+    }
 
     const lines = [`\nCARTERA DE CATHERINE — ${projects.length} proyecto(s). Es la fuente autoritativa e incluye proyectos exclusivos que NO están en línea; priorízalos siempre sobre la web. Esta es la vista resumida: para amenidades, plan de pagos completo, descripción o puntos de venta de un proyecto, llama a get_project_details con su nombre.`]
 
