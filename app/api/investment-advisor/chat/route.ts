@@ -11,24 +11,7 @@ import { resolveStrAssumptions, lookupAppreciation, isLongTermPlay, lookupLongTe
 import { loadPortfolio, findProject, priceOf, explainMiss } from "@/lib/portfolio-lookup"
 import { project as runProjection, assignmentScenario, PROJECTION_DEFAULTS } from "@/lib/investment-projection"
 import { compare as compareInvestments, GOAL_LABELS, ClientGoal } from "@/lib/investment-compare"
-
-/** Name the actual failure. "Check your API key" sent Catherine chasing the
- *  wrong thing when the real answer was a per-minute token limit. */
-function describeOpenAIError(status: number, body: string): string {
-  const code = body.match(/"code":\s*"([^"]+)"/)?.[1] || ""
-  const message = body.match(/"message":\s*"([^"]+)"/)?.[1] || ""
-  if (status === 429 || code === "rate_limit_exceeded") {
-    return `OpenAI limitó la petición por exceso de tokens por minuto y los reintentos no alcanzaron. Espera un minuto y vuelve a preguntar. Si pasa seguido, sube el tier de la cuenta de OpenAI: el límite actual de la organización es muy bajo para conversaciones largas. Detalle: ${message || "rate limit"}`
-  }
-  if (status === 401) return "La OPENAI_API_KEY de Railway no es válida o fue revocada. Cámbiala en las variables de entorno de Railway."
-  if (status === 402 || /quota|billing/i.test(message)) {
-    return `La cuenta de OpenAI no tiene saldo o superó su cuota. Revisa la facturación en platform.openai.com. Detalle: ${message}`
-  }
-  if (status === 404 || /model/i.test(message)) {
-    return `OpenAI no reconoció el modelo solicitado. Detalle: ${message}`
-  }
-  return `OpenAI devolvió un error ${status}. Detalle: ${message || "sin mensaje"}`
-}
+import { describeOpenAIError, isOutOfCredit, parseOpenAIError } from "@/lib/openai-errors"
 
 const SSE_HEADERS = {
   "Content-Type": "text/event-stream",
@@ -690,6 +673,13 @@ export async function POST(req: Request) {
     let resp = await callOpenAI(msgs, opts)
     for (let attempt = 0; attempt < 2 && resp.status === 429; attempt++) {
       const body = await resp.clone().text().catch(() => "")
+      // Un 429 por falta de saldo no se arregla esperando: reintentarlo solo
+      // le cuesta a Catherine media hora de reloj antes del mismo error.
+      const { code, message } = parseOpenAIError(body)
+      if (isOutOfCredit(resp.status, code, message)) {
+        console.error("[Investment Advisor] OpenAI sin saldo — no se reintenta")
+        break
+      }
       const suggested = Number(body.match(/try again in ([\d.]+)s/i)?.[1])
       const waitMs = Math.min(Math.max((Number.isFinite(suggested) ? suggested : 2 ** attempt) * 1000 + 500, 1000), 15000)
       console.warn(`[Investment Advisor] 429 de OpenAI, reintentando en ${Math.round(waitMs)}ms`)

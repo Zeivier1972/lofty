@@ -26,7 +26,7 @@ const OUT = path.join(ROOT, "node_modules", ".verify-investment")
 const LIBS = [
   "prisma", "portfolio-lookup", "investment-analysis", "investment-explainers",
   "str-market-data", "investment-projection", "investment-compare",
-  "investment-workbook", "preconstruction-context",
+  "investment-workbook", "preconstruction-context", "openai-errors",
 ]
 fs.rmSync(OUT, { recursive: true, force: true })
 // tsc exits non-zero because the "@/lib/..." aliases do not resolve under this
@@ -57,6 +57,7 @@ const { project: projectYears, assignmentScenario } = load("investment-projectio
 const { compare } = load("investment-compare")
 const { buildInvestmentWorkbook } = load("investment-workbook")
 const { buildProjectContext, buildMarketInsightsContext, buildStrMarketContext } = load("preconstruction-context")
+const { describeOpenAIError, isOutOfCredit } = load("openai-errors")
 const deck = require(path.join(ROOT, "data/preconstruction/colombia-event-2026.json"))
 
 let pass = 0, fail = 0
@@ -311,6 +312,31 @@ const check = (name, cond, detail = "") => {
     const v = shownValue(book.getWorksheet("Resumen para el cliente"), label, 2)
     check(`resumen: "${label}" se ve al abrir`, v !== undefined && v !== null && v !== "", String(v))
   }
+
+  console.log("\n=== 8d. EL ERROR DICE LO QUE HAY QUE ARREGLAR ===")
+  // Dos veces hoy el mensaje mandó a Catherine a arreglar lo que no estaba
+  // roto. OpenAI usa 429 tanto para "te pasaste de tokens este minuto" como
+  // para "no tienes saldo", y esperar solo sirve para el primero.
+  const sinSaldo = JSON.stringify({ error: {
+    message: "You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.",
+    type: "insufficient_quota", code: "insufficient_quota" } })
+  const porMinuto = JSON.stringify({ error: {
+    message: "Rate limit reached for gpt-4o in organization org-x on tokens per min (TPM): Limit 30000, Used 19146, Requested 13930. Please try again in 6.152s.",
+    type: "tokens", code: "rate_limit_exceeded" } })
+
+  const msgSaldo = describeOpenAIError(429, sinSaldo)
+  check("sin saldo se reconoce aunque venga como 429", isOutOfCredit(429, "insufficient_quota", ""))
+  check("sin saldo dice que hay que recargar", /sin saldo/i.test(msgSaldo) && msgSaldo.includes("billing"))
+  check("sin saldo NO manda a subir el tier ni a esperar",
+    !/sube el tier/i.test(msgSaldo) && !/Espera un minuto/i.test(msgSaldo), msgSaldo.slice(0, 90))
+
+  const msgMinuto = describeOpenAIError(429, porMinuto)
+  check("el rate limit real sigue diciendo que espere", /Espera un minuto/i.test(msgMinuto))
+  check("el rate limit real no se confunde con falta de saldo",
+    !isOutOfCredit(429, "rate_limit_exceeded", "Rate limit reached for gpt-4o on tokens per min (TPM)"))
+
+  check("la key inválida sigue apuntando a Railway",
+    describeOpenAIError(401, '{"error":{"code":"invalid_api_key"}}').includes("OPENAI_API_KEY"))
 
   console.log("\n=== 9. NOTAS DE MERCADO ===")
   const seeds = require(path.join(ROOT, "data/preconstruction/market-insights.json"))
