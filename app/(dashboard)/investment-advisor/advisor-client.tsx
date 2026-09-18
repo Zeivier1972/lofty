@@ -25,6 +25,15 @@ interface Message {
   content: string
 }
 
+// Cada respuesta del advisor cuesta tokens de OpenAI. Sin esto, salir de la
+// página borraba el análisis y había que volver a pedirlo y volver a pagarlo.
+// Mismo mecanismo que usa el chat de Sofía, para no inventar uno nuevo.
+const STORE_KEY = "investment_advisor_chat_v1"
+const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
+// La ruta ya solo manda los últimos 20 mensajes a OpenAI, así que guardar más
+// que esto no cambia lo que el modelo ve — es solo el historial que ella lee.
+const MAX_STORED = 60
+
 const QUICK_PROMPTS = [
   { icon: Calculator, label: "Calcular ROI Airbnb", prompt: "Calcula el ROI estimado para un condo de $500,000 en Brickell usado como Airbnb. Incluye condo fees, property tax, management fee y ocupación esperada." },
   { icon: MapPin, label: "Comparar vecindarios", prompt: "Compara Brickell, Edgewater y Doral para un inversionista colombiano que quiere máximo retorno. Incluye precio por sqft, potencial Airbnb y apreciación esperada." },
@@ -46,8 +55,52 @@ export default function AdvisorClient({ contacts, allTags = [] }: Props) {
   const [contactSearch, setContactSearch] = useState("")
   const [tagFilter, setTagFilter] = useState("all")
   const [hasApiKey, setHasApiKey] = useState(true)
+  const [restored, setRestored] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  // Hasta no haber intentado leer lo guardado no se debe escribir, o el primer
+  // render con [] pisaría la conversación que estamos a punto de restaurar.
+  const loadedRef = useRef(false)
+
+  // Restaurar lo que haya quedado de la sesión anterior.
+  useEffect(() => {
+    if (loadedRef.current) return
+    try {
+      const raw = localStorage.getItem(STORE_KEY)
+      if (raw) {
+        const saved = JSON.parse(raw)
+        if (saved && Array.isArray(saved.messages) && saved.ts && Date.now() - saved.ts < MAX_AGE_MS) {
+          if (saved.messages.length) {
+            setMessages(saved.messages)
+            setRestored(true)
+          }
+          // El contacto se vuelve a resolver contra la lista actual: guardar el
+          // objeto entero dejaría datos viejos del lead en pantalla.
+          if (saved.contactId) {
+            const c = contacts.find(x => x.id === saved.contactId)
+            if (c) setSelectedContact(c)
+          }
+        } else {
+          localStorage.removeItem(STORE_KEY)
+        }
+      }
+    } catch { /* noop */ }
+    loadedRef.current = true
+  }, [contacts])
+
+  // Guardar en cada cambio.
+  useEffect(() => {
+    if (!loadedRef.current) return
+    try {
+      if (messages.length) {
+        localStorage.setItem(STORE_KEY, JSON.stringify({
+          messages: messages.slice(-MAX_STORED),
+          contactId: selectedContact?.id ?? null,
+          ts: Date.now(),
+        }))
+      }
+    } catch { /* cuota llena o almacenamiento bloqueado — no vale romper el chat por esto */ }
+  }, [messages, selectedContact])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -62,6 +115,7 @@ export default function AdvisorClient({ contacts, allTags = [] }: Props) {
 
   async function sendMessage(content: string) {
     if (!content.trim() || loading) return
+    setRestored(false)
     const userMsg: Message = { role: "user", content: content.trim() }
     const newMessages = [...messages, userMsg]
     setMessages(newMessages)
@@ -128,9 +182,14 @@ export default function AdvisorClient({ contacts, allTags = [] }: Props) {
   }
 
   function startNewChat() {
+    // Ahora que la conversación sobrevive al salir de la página, este botón sí
+    // destruye trabajo — y ese trabajo costó tokens. Por eso pregunta.
+    if (messages.length && !confirm("Esto borra la conversación guardada y empiezas de cero. ¿Seguro?")) return
     setMessages([])
     setSelectedContact(null)
     setInput("")
+    setRestored(false)
+    try { localStorage.removeItem(STORE_KEY) } catch { /* noop */ }
   }
 
   return (
@@ -153,6 +212,13 @@ export default function AdvisorClient({ contacts, allTags = [] }: Props) {
           >
             <Plus className="w-4 h-4" /> New Conversation
           </button>
+          <p className="mt-2 text-[11px] leading-snug text-gray-500">
+            {messages.length
+              ? restored
+                ? "Conversación recuperada. Se guarda sola — puedes salir y volver."
+                : "Se guarda sola en este navegador. Puedes salir y volver sin perderla."
+              : "La conversación se guarda en este navegador al salir de la página."}
+          </p>
         </div>
 
         {/* Contact context */}
