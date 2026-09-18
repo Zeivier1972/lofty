@@ -408,6 +408,28 @@ const check = (name, cond, detail = "") => {
   check("el panel de la calculadora se trae a la vista al abrirlo",
     pcSrc.includes("calcRef") && pcSrc.includes("scrollIntoView") && /ref=\{calcRef\}/.test(pcSrc))
 
+  console.log("\n=== 8f. LA CONVERSACIÓN DEL ADVISOR SOBREVIVE AL SALIR ===")
+  // Cada respuesta cuesta tokens de OpenAI. Salir de la página borraba el
+  // análisis y había que volver a pedirlo y volver a pagarlo.
+  const advSrc = fs.readFileSync(path.join(ROOT, "app/(dashboard)/investment-advisor/advisor-client.tsx"), "utf8")
+  check("la conversación se guarda en el navegador",
+    advSrc.includes('STORE_KEY = "investment_advisor_chat_v1"') &&
+    advSrc.includes("localStorage.setItem(STORE_KEY"))
+  check("se restaura al volver a entrar", advSrc.includes("localStorage.getItem(STORE_KEY)"))
+  // Sin este guard, el primer render con [] pisa lo guardado antes de leerlo.
+  check("no se escribe antes de haber leído lo guardado",
+    advSrc.includes("if (!loadedRef.current) return"))
+  // Y si `contacts` cambia de identidad, restaurar otra vez borraría lo escrito.
+  check("solo se restaura una vez", advSrc.includes("if (loadedRef.current) return"))
+  // El botón de reset ya existía; lo que faltaba es que borrara la copia.
+  check("empezar de cero borra también la copia guardada",
+    advSrc.includes("localStorage.removeItem(STORE_KEY)"))
+  check("y pregunta antes, porque ahora sí destruye trabajo pagado",
+    /confirm\(/.test(advSrc.slice(advSrc.indexOf("function startNewChat"), advSrc.indexOf("function startNewChat") + 400)))
+  // Guardar el objeto del contacto dejaría datos viejos del lead en pantalla.
+  check("guarda el id del contacto, no el contacto entero",
+    advSrc.includes("contactId: selectedContact?.id") && advSrc.includes("contacts.find(x => x.id === saved.contactId)"))
+
   console.log("\n=== 9. NOTAS DE MERCADO ===")
   const seeds = require(path.join(ROOT, "data/preconstruction/market-insights.json"))
   await prisma.setting.upsert({
