@@ -26,7 +26,7 @@ const OUT = path.join(ROOT, "node_modules", ".verify-investment")
 const LIBS = [
   "prisma", "portfolio-lookup", "investment-analysis", "investment-explainers",
   "str-market-data", "investment-projection", "investment-compare",
-  "investment-workbook", "preconstruction-context", "openai-errors", "cop-exchange",
+  "investment-workbook", "preconstruction-context", "openai-errors", "cop-exchange", "sofia-metrics",
 ]
 fs.rmSync(OUT, { recursive: true, force: true })
 // tsc exits non-zero because the "@/lib/..." aliases do not resolve under this
@@ -59,6 +59,7 @@ const { buildInvestmentWorkbook } = load("investment-workbook")
 const { buildProjectContext, buildMarketInsightsContext, buildStrMarketContext } = load("preconstruction-context")
 const { describeOpenAIError, isOutOfCredit } = load("openai-errors")
 const { compareCop, cop, copShort, COP_TODAY, COP_PEAK } = load("cop-exchange")
+const sofia = load("sofia-metrics")
 const deck = require(path.join(ROOT, "data/preconstruction/colombia-event-2026.json"))
 
 let pass = 0, fail = 0
@@ -473,6 +474,61 @@ const check = (name, cond, detail = "") => {
   // El prompt tenía 3,100 escrito a mano y ya estaba viejo.
   check("el prompt ya no lleva una tasa escrita a mano",
     !rSrc.includes("de 4,800 a 3,100 COP/USD") && rSrc.includes("usa la herramienta convert_to_pesos"))
+
+  console.log("\n=== 8h. MEDICIÓN DE SOFÍA ===")
+  // "No veo citas" esconde tres problemas distintos que se arreglan distinto:
+  // que nadie le escriba, que escriban y no dejen datos, o que dejen datos y
+  // no agenden. La lectura tiene que distinguirlos, no solo mostrar números.
+  await prisma.setting.deleteMany({ where: { key: "sofia_metrics" } })
+
+  let f = await sofia.buildSofiaFunnel(30)
+  check("sin datos, dice que la medición aún no empezó",
+    f.instrumentadoDesde === null && /no hay contadores/i.test(sofia.readFunnel(f)), sofia.readFunnel(f).slice(0, 60))
+
+  await sofia.recordSofiaEvent("conversation")
+  await sofia.recordSofiaEvent("conversation")
+  await sofia.recordSofiaEvent("conversation")
+  f = await sofia.buildSofiaFunnel(30)
+  check("cuenta las conversaciones", f.counters.conversation === 3, String(f.counters.conversation))
+  check("3 conversaciones y 0 capturas se lee como la fuga",
+    /CERO dejaron correo/i.test(sofia.readFunnel(f)) && /se pierden enteras/i.test(sofia.readFunnel(f)),
+    sofia.readFunnel(f).slice(0, 80))
+
+  await sofia.recordSofiaEvent("captured")
+  f = await sofia.buildSofiaFunnel(30)
+  check("captura bien pero nadie agenda se lee distinto",
+    /ninguna pidió agendar/i.test(sofia.readFunnel(f)), sofia.readFunnel(f).slice(0, 80))
+
+  await sofia.recordSofiaEvent("wantedBooking")
+  f = await sofia.buildSofiaFunnel(30)
+  check("con el embudo completo, compara contra las citas del CRM",
+    /pidieron agendar/i.test(sofia.readFunnel(f)) && /citas del CRM/i.test(sofia.readFunnel(f)),
+    sofia.readFunnel(f).slice(0, 90))
+  check("el embudo trae los cinco contadores",
+    f.counters.conversation === 3 && f.counters.captured === 1 && f.counters.wantedBooking === 1 &&
+    typeof f.counters.sawListings === "number" && typeof f.counters.message === "number")
+
+  // Medir no puede tumbar la conversación que mide.
+  const antes = await prisma.setting.findUnique({ where: { key: "sofia_metrics" } })
+  await prisma.setting.update({ where: { key: "sofia_metrics" }, data: { value: "esto no es JSON" } })
+  f = await sofia.buildSofiaFunnel(30)
+  check("un contador corrupto no revienta el embudo", f && f.counters.conversation === 0)
+  await sofia.recordSofiaEvent("conversation")
+  f = await sofia.buildSofiaFunnel(30)
+  check("y se recupera solo en el siguiente evento", f.counters.conversation === 1)
+  if (antes) await prisma.setting.update({ where: { key: "sofia_metrics" }, data: { value: antes.value } })
+
+  // La instrumentación tiene que contar al visitante ANÓNIMO que pide agendar:
+  // ese es exactamente el que hoy no deja ningún rastro.
+  const siteSrc = fs.readFileSync(path.join(ROOT, "app/api/site/chat/route.ts"), "utf8")
+  check("cuenta a quien pide agendar aunque no haya dejado datos",
+    /if \(wantsCatherine\) void recordSofiaEvent\("wantedBooking"\)/.test(siteSrc))
+  check("cuenta la conversación desde el primer mensaje",
+    siteSrc.includes('recordSofiaEvent("conversation")') && siteSrc.includes('m.role === "user").length === 1'))
+  // Registrar cada conversación como Activity le taparía a Catherine el feed,
+  // que muestra las últimas 30 SIN filtrar por tipo.
+  check("no ensucia el feed de actividad de Catherine",
+    !/activity\.create[\s\S]{0,120}SOFIA/.test(fs.readFileSync(path.join(ROOT, "lib/sofia-metrics.ts"), "utf8")))
 
   console.log("\n=== 9. NOTAS DE MERCADO ===")
   const seeds = require(path.join(ROOT, "data/preconstruction/market-insights.json"))
