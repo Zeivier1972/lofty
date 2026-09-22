@@ -56,7 +56,7 @@ Supuestos base para modelar preconstrucción en Miami (ajústalos si el proyecto
 - Gastos de cierre: 5.4% del precio
 - Valorización durante la obra: ~4% por entrega de lista de precios
 - Para el comprador colombiano: la conversión a pesos es OBLIGATORIA, no opcional. Es el argumento que no aparece en ninguno de los cinco indicadores y el que más le pega a este público. NUNCA la calcules de cabeza ni cites una tasa de memoria: usa la herramienta convert_to_pesos, o el bloque EN PESOS COLOMBIANOS que ya trae analyze_investment. La tasa vive en el código y se actualiza; cualquier cifra que te inventes va a estar vieja.
-- Y di siempre las dos direcciones: cuánto menos cuesta hoy que en el pico del dólar, Y qué pasa con la cuota si el peso se devalúa otra vez. La cuota de la hipoteca es en dólares. Un cliente que solo oye el lado bueno se siente engañado después, y Catherine pierde el referido.
+- Y di siempre las dos direcciones: cuánto menos cuesta hoy que cuando el dólar estaba alto (2022-2023, rondando 4.800 — no lo llames "el pico", que en 2022 pasó de 5.000 y un cliente informado te corrige), Y qué pasa con la cuota si el peso se devalúa otra vez. La cuota de la hipoteca es en dólares. Un cliente que solo oye el lado bueno se siente engañado después, y Catherine pierde el referido.
 
 DESARROLLADORES CLAVE:
 - Related Group, Ugo Colombo/CMC Group, OKO Group, Melo Group, Swire Properties, Fortune International, Chateau Group
@@ -614,7 +614,7 @@ export async function POST(req: Request) {
               `  DIFERENCIA A FAVOR: ${cop(c.saving)} (${copShort(c.saving)}), un ${c.savingPct.toFixed(1)}% menos`,
               propia
                 ? `  Di que el cliente compró a ${c.rateHigh.toLocaleString("es-CO")}, así que ese ahorro es suyo de verdad.`
-                : `  IMPORTANTE: di que es contra el PICO del dólar, no "lo que usted pagó". El cliente no pagó a ${c.rateHigh.toLocaleString("es-CO")} salvo que él te diga que sí. La frase honesta es: "este apartamento le cuesta ${copShort(c.saving)} de pesos menos de lo que le habría costado cuando el dólar estaba en ${c.rateHigh.toLocaleString("es-CO")}".`,
+                : `  IMPORTANTE: di que es contra la tasa alta de 2022-2023, no "lo que usted pagó". El cliente no pagó a ${c.rateHigh.toLocaleString("es-CO")} salvo que él te diga que sí. La frase honesta es: "este apartamento le cuesta ${copShort(c.saving)} de pesos menos de lo que le habría costado cuando el dólar estaba en ${c.rateHigh.toLocaleString("es-CO")}".`,
               `  Y EL RIESGO, dilo tú antes de que lo pregunten: si el peso se devalúa otra vez a ${c.rateHigh.toLocaleString("es-CO")}, la misma propiedad le costaría ${cop(c.exposureIfBack)} y la cuota de la hipoteca, que es en dólares, le sale ${c.savingPct.toFixed(0)}% más cara en pesos. Es una apuesta en dos direcciones.`,
               `  (TRM de referencia al ${COP_TODAY_ASOF}. Si Catherine dice la tasa del día, úsala y vuelve a correrlo.)`,
             ].join("\n")
@@ -709,7 +709,7 @@ export async function POST(req: Request) {
           propia
             ? `  Ese ahorro es real y es del cliente: compró dólares a ${c.rateHigh.toLocaleString("es-CO")}.`
             : `  DILO ASÍ, no de otra forma: "${copShort(c.saving)} de pesos menos de lo que habría costado cuando el dólar estaba en ${c.rateHigh.toLocaleString("es-CO")}". No digas "usted ahorró" salvo que el cliente haya comprado a esa tasa.`,
-          `  (TRM de referencia al ${COP_TODAY_ASOF}${propia ? "" : `; el pico de ${COP_PEAK.toLocaleString("es-CO")} es de 2022-2023`}.)`,
+          `  (TRM de referencia al ${COP_TODAY_ASOF}${propia ? "" : `; los ${COP_PEAK.toLocaleString("es-CO")} son la tasa alta de 2022-2023`}.)`,
         ].join("\n")
       }
       if (tc.function.name === "send_email") {
