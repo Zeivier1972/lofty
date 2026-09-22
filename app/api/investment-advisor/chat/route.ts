@@ -12,6 +12,7 @@ import { loadPortfolio, findProject, priceOf, explainMiss } from "@/lib/portfoli
 import { project as runProjection, assignmentScenario, PROJECTION_DEFAULTS } from "@/lib/investment-projection"
 import { compare as compareInvestments, GOAL_LABELS, ClientGoal } from "@/lib/investment-compare"
 import { describeOpenAIError, isOutOfCredit, parseOpenAIError } from "@/lib/openai-errors"
+import { compareCop, cop, copShort, COP_TODAY, COP_TODAY_ASOF, COP_PEAK, COP_PEAK_LABEL } from "@/lib/cop-exchange"
 
 const SSE_HEADERS = {
   "Content-Type": "text/event-stream",
@@ -54,7 +55,8 @@ Supuestos base para modelar preconstrucción en Miami (ajústalos si el proyecto
 - Gastos operativos mensuales: property management 20% del ingreso · taxes 1.8% anual del precio ÷ 12 · HOA según $/sqft del proyecto · seguro ~$100
 - Gastos de cierre: 5.4% del precio
 - Valorización durante la obra: ~4% por entrega de lista de precios
-- Para el comprador colombiano: calcula también la ganancia por tasa de cambio entre el peso del día de la compra y el de hoy — en el ejemplo base fue de 4,800 a 3,100 COP/USD, un 35% adicional que no aparece en ningún otro indicador.
+- Para el comprador colombiano: la conversión a pesos es OBLIGATORIA, no opcional. Es el argumento que no aparece en ninguno de los cinco indicadores y el que más le pega a este público. NUNCA la calcules de cabeza ni cites una tasa de memoria: usa la herramienta convert_to_pesos, o el bloque EN PESOS COLOMBIANOS que ya trae analyze_investment. La tasa vive en el código y se actualiza; cualquier cifra que te inventes va a estar vieja.
+- Y di siempre las dos direcciones: cuánto menos cuesta hoy que en el pico del dólar, Y qué pasa con la cuota si el peso se devalúa otra vez. La cuota de la hipoteca es en dólares. Un cliente que solo oye el lado bueno se siente engañado después, y Catherine pierde el referido.
 
 DESARROLLADORES CLAVE:
 - Related Group, Ugo Colombo/CMC Group, OKO Group, Melo Group, Swire Properties, Fortune International, Chateau Group
@@ -231,6 +233,26 @@ const PORTFOLIO_TOOL = {
   },
 }
 
+// Catherine va a estar frente a público colombiano y le van a preguntar "¿y
+// eso cuánto es en pesos?" sobre cualquier cifra, no solo sobre el precio.
+const COP_TOOL = {
+  type: "function" as const,
+  function: {
+    name: "convert_to_pesos",
+    description: "Convert any US dollar figure into Colombian pesos and show what it costs today versus at the peak of the dollar. Use it whenever Catherine or a client asks what something costs in pesos, how much they save because of the exchange rate, or wants a figure in their own currency — a price, a down payment, a monthly cash flow, a ten-year profit, anything. Always state whether the comparison is against the historical peak or against a rate the client actually paid: they are very different claims.",
+    parameters: {
+      type: "object",
+      properties: {
+        usd: { type: "number", description: "The dollar amount to convert." },
+        label: { type: "string", description: "What this figure is, e.g. 'el precio del apartamento', 'la cuota inicial', 'el flujo mensual'. Used in the wording." },
+        rateAtPurchase: { type: "number", description: `Only pass this when the client states the rate he actually bought dollars at. Left out, it uses ${COP_PEAK} — the historical peak — and the answer must say it is the peak, not what he paid.` },
+        rateToday: { type: "number", description: `Only pass this when Catherine states today's TRM. Left out, it uses ${COP_TODAY} as of ${COP_TODAY_ASOF}.` },
+      },
+      required: ["usd"],
+    },
+  },
+}
+
 const COMPARE_TOOL = {
   type: "function" as const,
   function: {
@@ -403,7 +425,7 @@ export async function POST(req: Request) {
     ...messages.slice(-20),
   ]
 
-  const tools: any[] = [EMAIL_TOOL, SAVE_PROJECT_TOOL, ANALYSIS_TOOL, COMPARE_TOOL, PORTFOLIO_TOOL, DETAIL_TOOL, MARKET_DETAIL_TOOL, ...(tavilyKey ? [SEARCH_TOOL] : [])]
+  const tools: any[] = [EMAIL_TOOL, SAVE_PROJECT_TOOL, ANALYSIS_TOOL, COP_TOOL, COMPARE_TOOL, PORTFOLIO_TOOL, DETAIL_TOOL, MARKET_DETAIL_TOOL, ...(tavilyKey ? [SEARCH_TOOL] : [])]
 
   const callOpenAI = (msgs: any[], opts: { stream: boolean; withTools: boolean }) =>
     fetch("https://api.openai.com/v1/chat/completions", {
@@ -554,8 +576,10 @@ export async function POST(req: Request) {
           hoaPerSqft: Number(args.hoaPerSqft) || ANALYSIS_DEFAULTS.hoaPerSqft,
           mortgageRatePct: Number(args.mortgageRatePct) || ANALYSIS_DEFAULTS.mortgageRatePct,
           appreciationPeriods: Number(args.appreciationPeriods) || ANALYSIS_DEFAULTS.appreciationPeriods,
-          copRateAtPurchase: Number(args.copRateAtPurchase) || undefined,
-          copRateToday: Number(args.copRateToday) || undefined,
+          // Antes esto quedaba vacío si el modelo no pasaba las tasas, y el
+          // argumento que más le importa al público colombiano no aparecía.
+          copRateAtPurchase: Number(args.copRateAtPurchase) || COP_PEAK,
+          copRateToday: Number(args.copRateToday) || COP_TODAY,
         }
         const r = runAnalysis(a)
         const m = (n: number) => `$${Math.round(n).toLocaleString()}`
@@ -577,7 +601,24 @@ export async function POST(req: Request) {
           `3. Cash on cash: ${r.cashOnCashPct.toFixed(2)}% — ${r.cashOnCashBand}`,
           `4. ROI: ${r.roiPct.toFixed(2)}% — ${r.roiBand} (incluye ${m(r.appreciation)} de valorización y ${m(r.principalYear)} de abono a capital, menos ${m(r.closingCosts)} de cierre)`,
           `5. Cap rate: ${r.capRatePct.toFixed(2)}% — ${r.capRateBand}`,
-          r.cop ? `Ventaja por tasa de cambio: ${Math.round(r.cop.gain).toLocaleString()} COP menos, ${r.cop.gainPct.toFixed(1)}%` : "",
+          (() => {
+            const c = compareCop(price, a.copRateAtPurchase, a.copRateToday)
+            if (!c) return ""
+            const propia = Number(args.copRateAtPurchase) > 0
+            return [
+              `EN PESOS COLOMBIANOS — el argumento que no aparece en ningún indicador:`,
+              `  Hoy a ${c.rateNow.toLocaleString("es-CO")} COP/USD: ${cop(c.copNow)} (${copShort(c.copNow)})`,
+              propia
+                ? `  A la tasa de ${c.rateHigh.toLocaleString("es-CO")} que te dio Catherine: ${cop(c.copAtHigh)}`
+                : `  Al ${COP_PEAK_LABEL}, ${c.rateHigh.toLocaleString("es-CO")} COP/USD: ${cop(c.copAtHigh)}`,
+              `  DIFERENCIA A FAVOR: ${cop(c.saving)} (${copShort(c.saving)}), un ${c.savingPct.toFixed(1)}% menos`,
+              propia
+                ? `  Di que el cliente compró a ${c.rateHigh.toLocaleString("es-CO")}, así que ese ahorro es suyo de verdad.`
+                : `  IMPORTANTE: di que es contra el PICO del dólar, no "lo que usted pagó". El cliente no pagó a ${c.rateHigh.toLocaleString("es-CO")} salvo que él te diga que sí. La frase honesta es: "este apartamento le cuesta ${copShort(c.saving)} de pesos menos de lo que le habría costado cuando el dólar estaba en ${c.rateHigh.toLocaleString("es-CO")}".`,
+              `  Y EL RIESGO, dilo tú antes de que lo pregunten: si el peso se devalúa otra vez a ${c.rateHigh.toLocaleString("es-CO")}, la misma propiedad le costaría ${cop(c.exposureIfBack)} y la cuota de la hipoteca, que es en dólares, le sale ${c.savingPct.toFixed(0)}% más cara en pesos. Es una apuesta en dos direcciones.`,
+              `  (TRM de referencia al ${COP_TODAY_ASOF}. Si Catherine dice la tasa del día, úsala y vuelve a correrlo.)`,
+            ].join("\n")
+          })(),
           (() => {
             const h = Math.max(1, Math.min(Number(args.horizonYears) || 5, PROJECTION_DEFAULTS.years))
             const rows = runProjection(a, { ...PROJECTION_DEFAULTS, marketAppreciationPct: apr?.marketYoYPct ?? PROJECTION_DEFAULTS.marketAppreciationPct })
@@ -651,6 +692,25 @@ export async function POST(req: Request) {
         const { query } = JSON.parse(tc.function.arguments || "{}")
         console.log("[Investment Advisor] Tavily search:", query)
         return await tavilySearch(query, tavilyKey)
+      }
+      if (tc.function.name === "convert_to_pesos") {
+        const { usd, label, rateAtPurchase, rateToday } = JSON.parse(tc.function.arguments || "{}")
+        const c = compareCop(Number(usd), Number(rateAtPurchase) || COP_PEAK, Number(rateToday) || COP_TODAY)
+        if (!c) return "Necesito una cifra en dólares mayor que cero para convertirla a pesos."
+        const propia = Number(rateAtPurchase) > 0
+        const qué = label || "esa cifra"
+        return [
+          `${qué}: $${Number(usd).toLocaleString("en-US")} USD`,
+          `  Hoy a ${c.rateNow.toLocaleString("es-CO")} COP/USD: ${cop(c.copNow)} (${copShort(c.copNow)})`,
+          propia
+            ? `  A ${c.rateHigh.toLocaleString("es-CO")}, la tasa que pagó el cliente: ${cop(c.copAtHigh)}`
+            : `  Al ${COP_PEAK_LABEL}, ${c.rateHigh.toLocaleString("es-CO")}: ${cop(c.copAtHigh)}`,
+          `  Diferencia: ${cop(c.saving)} (${copShort(c.saving)}), ${c.savingPct.toFixed(1)}% menos`,
+          propia
+            ? `  Ese ahorro es real y es del cliente: compró dólares a ${c.rateHigh.toLocaleString("es-CO")}.`
+            : `  DILO ASÍ, no de otra forma: "${copShort(c.saving)} de pesos menos de lo que habría costado cuando el dólar estaba en ${c.rateHigh.toLocaleString("es-CO")}". No digas "usted ahorró" salvo que el cliente haya comprado a esa tasa.`,
+          `  (TRM de referencia al ${COP_TODAY_ASOF}${propia ? "" : `; el pico de ${COP_PEAK.toLocaleString("es-CO")} es de 2022-2023`}.)`,
+        ].join("\n")
       }
       if (tc.function.name === "send_email") {
         const { to, subject, body } = JSON.parse(tc.function.arguments || "{}")
