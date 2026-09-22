@@ -13,12 +13,13 @@ export const COP_TODAY = 3193
 export const COP_TODAY_ASOF = "22 de septiembre de 2026"
 
 /**
- * El pico histórico del dólar. Es la referencia contra la que se mide el
- * ahorro, y hay que nombrarla como pico — no como "lo que usted pagó" — salvo
- * que el cliente sí haya comprado a esa tasa.
+ * La tasa alta de referencia contra la que se mide el ahorro. NO se llama "el
+ * pico": en 2022 el dólar pasó de 5.000, así que llamar pico a 4.800 es una
+ * imprecisión que un cliente informado puede corregir en voz alta. Y tampoco
+ * es "lo que usted pagó", salvo que el cliente sí haya comprado a esa tasa.
  */
 export const COP_PEAK = 4800
-export const COP_PEAK_LABEL = "pico histórico del dólar (2022-2023)"
+export const COP_PEAK_LABEL = "la tasa alta de 2022-2023, cuando el dólar rondaba los 4.800"
 
 export type CopComparison = {
   usd: number

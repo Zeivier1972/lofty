@@ -464,7 +464,11 @@ const check = (name, cond, detail = "") => {
   check("la respuesta advierte qué pasa si el peso se devalúa otra vez",
     rSrc.includes("se devalúa otra vez") && rSrc.includes("exposureIfBack"))
   // "Usted ahorró" es falso salvo que el cliente haya comprado a esa tasa.
-  check("prohíbe decir \"usted ahorró\" contra el pico",
+  // Llamar "pico" a 4.800 es falso: en 2022 el dólar pasó de 5.000. Un cliente
+  // informado corrige eso en voz alta y Catherine queda mal por una etiqueta.
+  check("no llama \"pico\" a los 4.800",
+    !/pico histórico/.test(rSrc) && !/contra el PICO/.test(rSrc))
+  check("prohíbe decir \"usted ahorró\" contra la tasa alta",
     /No digas "usted ahorró" salvo que el cliente haya comprado a esa tasa/.test(rSrc))
   // El prompt tenía 3,100 escrito a mano y ya estaba viejo.
   check("el prompt ya no lleva una tasa escrita a mano",
