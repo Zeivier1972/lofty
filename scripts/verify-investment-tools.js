@@ -26,7 +26,7 @@ const OUT = path.join(ROOT, "node_modules", ".verify-investment")
 const LIBS = [
   "prisma", "portfolio-lookup", "investment-analysis", "investment-explainers",
   "str-market-data", "investment-projection", "investment-compare",
-  "investment-workbook", "preconstruction-context", "openai-errors",
+  "investment-workbook", "preconstruction-context", "openai-errors", "cop-exchange",
 ]
 fs.rmSync(OUT, { recursive: true, force: true })
 // tsc exits non-zero because the "@/lib/..." aliases do not resolve under this
@@ -58,6 +58,7 @@ const { compare } = load("investment-compare")
 const { buildInvestmentWorkbook } = load("investment-workbook")
 const { buildProjectContext, buildMarketInsightsContext, buildStrMarketContext } = load("preconstruction-context")
 const { describeOpenAIError, isOutOfCredit } = load("openai-errors")
+const { compareCop, cop, copShort, COP_TODAY, COP_PEAK } = load("cop-exchange")
 const deck = require(path.join(ROOT, "data/preconstruction/colombia-event-2026.json"))
 
 let pass = 0, fail = 0
@@ -429,6 +430,45 @@ const check = (name, cond, detail = "") => {
   // Guardar el objeto del contacto dejaría datos viejos del lead en pantalla.
   check("guarda el id del contacto, no el contacto entero",
     advSrc.includes("contactId: selectedContact?.id") && advSrc.includes("contacts.find(x => x.id === saved.contactId)"))
+
+  console.log("\n=== 8g. LA CONVERSIÓN A PESOS COLOMBIANOS ===")
+  // Contra el ejemplo de la hoja de Catherine, al peso: $817,000 USD medido a
+  // 4,800 y a 3,100 da 3.921.600.000 y 2.532.700.000, con 1.388.900.000 (35%)
+  // de diferencia. Si la aritmética se desvía de eso, se desvía de lo que ella
+  // ya le mostró a un cliente.
+  const ej = compareCop(817000, 4800, 3100)
+  check("reproduce el ejemplo de la hoja: COP al pico", ej && Math.round(ej.copAtHigh) === 3921600000, ej && cop(ej.copAtHigh))
+  check("reproduce el ejemplo de la hoja: COP hoy", ej && Math.round(ej.copNow) === 2532700000, ej && cop(ej.copNow))
+  check("reproduce el ejemplo de la hoja: la diferencia", ej && Math.round(ej.saving) === 1388900000, ej && cop(ej.saving))
+  check("reproduce el ejemplo de la hoja: el 35%", ej && Math.abs(ej.savingPct - 35) < 0.5, ej && ej.savingPct.toFixed(1) + "%")
+
+  check("una cifra inválida no inventa una conversión",
+    compareCop(0) === null && compareCop(-5) === null && compareCop(100, 0, 0) === null)
+
+  // Un decimal en las cifras grandes: con tres, "1,389 mil millones" se lee
+  // como mil trescientos ochenta y nueve.
+  check("las cifras grandes se dicen en voz alta sin ambigüedad",
+    copShort(1388900000) === "1,4 mil millones", copShort(1388900000))
+  check("los millones salen redondos", copShort(884000000) === "884 millones", copShort(884000000))
+  check("los pesos van con separador colombiano", cop(2532700000) === "$2.532.700.000", cop(2532700000))
+
+  // El bloque tiene que salir SIEMPRE, sin depender de que el modelo pase las
+  // tasas — así fue como el argumento nunca aparecía.
+  const rSrc = fs.readFileSync(path.join(ROOT, "app/api/investment-advisor/chat/route.ts"), "utf8")
+  check("el análisis usa las tasas por defecto si el modelo no las pasa",
+    rSrc.includes("Number(args.copRateAtPurchase) || COP_PEAK") &&
+    rSrc.includes("Number(args.copRateToday) || COP_TODAY"))
+  check("hay una herramienta para convertir cualquier cifra en vivo",
+    rSrc.includes('name: "convert_to_pesos"') && rSrc.includes("COP_TOOL"))
+  // Vender solo el lado bueno es lo que quema el referido.
+  check("la respuesta advierte qué pasa si el peso se devalúa otra vez",
+    rSrc.includes("se devalúa otra vez") && rSrc.includes("exposureIfBack"))
+  // "Usted ahorró" es falso salvo que el cliente haya comprado a esa tasa.
+  check("prohíbe decir \"usted ahorró\" contra el pico",
+    /No digas "usted ahorró" salvo que el cliente haya comprado a esa tasa/.test(rSrc))
+  // El prompt tenía 3,100 escrito a mano y ya estaba viejo.
+  check("el prompt ya no lleva una tasa escrita a mano",
+    !rSrc.includes("de 4,800 a 3,100 COP/USD") && rSrc.includes("usa la herramienta convert_to_pesos"))
 
   console.log("\n=== 9. NOTAS DE MERCADO ===")
   const seeds = require(path.join(ROOT, "data/preconstruction/market-insights.json"))
