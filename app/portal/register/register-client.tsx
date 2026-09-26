@@ -3,6 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { Building2, Mail, User, Phone, ArrowRight, Loader2, CheckCircle } from "lucide-react"
+import { HONEYPOT_FIELD } from "@/lib/spam-guard"
 
 export default function RegisterClient() {
   const [firstName, setFirstName] = useState("")
@@ -12,6 +13,10 @@ export default function RegisterClient() {
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
   const [error, setError] = useState("")
+  // Campo trampa: invisible para una persona, irresistible para un bot que
+  // rellena todo lo que encuentra. Si viene lleno, el servidor descarta el
+  // registro sin crear nada ni mandar correo.
+  const [honeypot, setHoneypot] = useState("")
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -21,7 +26,7 @@ export default function RegisterClient() {
       const res = await fetch("/api/portal/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ firstName, lastName, email, phone }),
+        body: JSON.stringify({ firstName, lastName, email, phone, [HONEYPOT_FIELD]: honeypot }),
       })
       if (res.ok) {
         setDone(true)
@@ -35,6 +40,21 @@ export default function RegisterClient() {
       setLoading(false)
     }
   }
+
+  const honeypotField = (
+    <div aria-hidden="true" style={{ position: "absolute", left: "-9999px", width: 1, height: 1, overflow: "hidden" }}>
+      <label htmlFor={HONEYPOT_FIELD}>Company website (leave empty)</label>
+      <input
+        id={HONEYPOT_FIELD}
+        name={HONEYPOT_FIELD}
+        type="text"
+        tabIndex={-1}
+        autoComplete="off"
+        value={honeypot}
+        onChange={e => setHoneypot(e.target.value)}
+      />
+    </div>
+  )
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0a1f35] to-[#1a3a5c] flex flex-col items-center justify-center p-4">
@@ -80,6 +100,7 @@ export default function RegisterClient() {
               )}
 
               <form onSubmit={handleSubmit} className="space-y-4">
+                {honeypotField}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-sm font-semibold text-gray-700 mb-1.5 block">

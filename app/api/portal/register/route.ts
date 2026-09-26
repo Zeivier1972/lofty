@@ -3,16 +3,54 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { sendEmail } from "@/lib/email"
+import { clientIp, isLikelyEmail, looksLikeBot, rateLimit, PORTAL_LIMITS } from "@/lib/spam-guard"
 
 export async function POST(req: Request) {
   try {
-    const { firstName, lastName, email, phone } = await req.json()
+    const body = await req.json()
+    const { firstName, lastName, email, phone } = body
     if (!firstName?.trim() || !email?.trim()) {
       return NextResponse.json({ error: "First name and email are required." }, { status: 400 })
     }
 
+    // Campo trampa: una persona nunca lo ve. Se responde ok para no enseñarle
+    // al bot qué lo delató, pero no se crea nada ni se manda ningún correo.
+    if (looksLikeBot(body)) {
+      console.warn("[portal/register] honeypot activado desde", clientIp(req))
+      return NextResponse.json({ ok: true })
+    }
+
     const em = email.trim().toLowerCase()
     const ph = phone?.trim() || null
+
+    // El formulario usa type="email", pero un bot va directo al endpoint.
+    if (!isLikelyEmail(em)) {
+      return NextResponse.json({ error: "Please enter a valid email address." }, { status: 400 })
+    }
+
+    const ip = clientIp(req)
+    const perIp = rateLimit(`portal-register:${ip}`, PORTAL_LIMITS.perIp, PORTAL_LIMITS.perIpWindowMs)
+    if (!perIp.ok) {
+      console.warn(`[portal/register] límite por IP alcanzado: ${ip}`)
+      return NextResponse.json(
+        { error: "Too many registrations from this connection. Please try again later." },
+        { status: 429, headers: { "Retry-After": String(perIp.retryAfterSec) } },
+      )
+    }
+
+    // Tope global: acota cuántos correos puede disparar un ataque distribuido,
+    // que es el daño real — la reputación de envío del dominio de Catherine.
+    const lastHour = new Date(Date.now() - 60 * 60 * 1000)
+    const recientes = await prisma.contact.count({
+      where: { source: "PORTAL_REGISTER", createdAt: { gte: lastHour } },
+    }).catch(() => 0)
+    if (recientes >= PORTAL_LIMITS.globalPerHour) {
+      console.error(`[portal/register] TOPE GLOBAL alcanzado: ${recientes} registros en la última hora`)
+      return NextResponse.json(
+        { error: "We are receiving too many registrations right now. Please try again shortly." },
+        { status: 429 },
+      )
+    }
 
     // Find or create contact
     let contact = await prisma.contact.findFirst({ where: { email: em } })
@@ -37,6 +75,15 @@ export async function POST(req: Request) {
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
     const portalUrl = `${appUrl}/portal/login?token=${access.token}`
+
+    // Alguien podría pedir el registro de la misma dirección una y otra vez
+    // para inundar de correo a un tercero. El contacto se deduplica, pero el
+    // correo no se deduplicaba.
+    const envio = rateLimit(`portal-welcome:${em}`, 1, PORTAL_LIMITS.resendCooldownMs)
+    if (!envio.ok) {
+      console.warn(`[portal/register] correo de bienvenida omitido, reenvío muy seguido: ${em}`)
+      return NextResponse.json({ ok: true, contactId: contact.id })
+    }
 
     // Send magic-link welcome email
     await sendEmail({
