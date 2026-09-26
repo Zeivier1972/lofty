@@ -26,7 +26,7 @@ const OUT = path.join(ROOT, "node_modules", ".verify-investment")
 const LIBS = [
   "prisma", "portfolio-lookup", "investment-analysis", "investment-explainers",
   "str-market-data", "investment-projection", "investment-compare",
-  "investment-workbook", "preconstruction-context", "openai-errors", "cop-exchange", "sofia-metrics",
+  "investment-workbook", "preconstruction-context", "openai-errors", "cop-exchange", "sofia-metrics", "spam-guard",
 ]
 fs.rmSync(OUT, { recursive: true, force: true })
 // tsc exits non-zero because the "@/lib/..." aliases do not resolve under this
@@ -60,6 +60,7 @@ const { buildProjectContext, buildMarketInsightsContext, buildStrMarketContext }
 const { describeOpenAIError, isOutOfCredit } = load("openai-errors")
 const { compareCop, cop, copShort, COP_TODAY, COP_PEAK } = load("cop-exchange")
 const sofia = load("sofia-metrics")
+const guard = load("spam-guard")
 const deck = require(path.join(ROOT, "data/preconstruction/colombia-event-2026.json"))
 
 let pass = 0, fail = 0
@@ -529,6 +530,68 @@ const check = (name, cond, detail = "") => {
   // que muestra las últimas 30 SIN filtrar por tipo.
   check("no ensucia el feed de actividad de Catherine",
     !/activity\.create[\s\S]{0,120}SOFIA/.test(fs.readFileSync(path.join(ROOT, "lib/sofia-metrics.ts"), "utf8")))
+
+  console.log("\n=== 8i. PROTECCIÓN DEL REGISTRO DEL PORTAL ===")
+  // El formulario creaba contactos y MANDABA CORREOS sin ninguna barrera:
+  // cualquiera podía registrar lo que quisiera, tantas veces como quisiera, y
+  // cada intento disparaba un correo real a la dirección escrita. Eso ensucia
+  // el CRM y deja que un tercero use el dominio de Catherine para enviar
+  // correo, que es como se arruina la reputación de envío.
+  guard.__resetRateLimits()
+
+  // El campo trampa: cero falsos positivos, no le pide nada al visitante real.
+  check("un bot que rellena el campo trampa se detecta",
+    guard.looksLikeBot({ firstName: "Bot", [guard.HONEYPOT_FIELD]: "http://spam.example" }))
+  check("una persona, que lo deja vacío, pasa",
+    !guard.looksLikeBot({ firstName: "Catherine", [guard.HONEYPOT_FIELD]: "" }) &&
+    !guard.looksLikeBot({ firstName: "Catherine" }))
+
+  // Un bot va directo al endpoint, así que type="email" no protege nada.
+  for (const bueno of ["ana@gmail.com", "jose.perez@empresa.com.co", "a_b+c@sub.dominio.net"]) {
+    check(`acepta el correo válido ${bueno}`, guard.isLikelyEmail(bueno))
+  }
+  for (const malo of ["", "sin-arroba", "a@b", "a@b.c1", "dos@@arrobas.com", "con espacio@x.com", "a@.com"]) {
+    check(`rechaza el correo inválido ${JSON.stringify(malo)}`, !guard.isLikelyEmail(malo))
+  }
+
+  // El límite por IP frena al bot que repite desde un mismo lugar.
+  guard.__resetRateLimits()
+  const lim = guard.PORTAL_LIMITS.perIp
+  let pasaron = 0
+  for (let i = 0; i < lim + 2; i++) {
+    if (guard.rateLimit("prueba-ip", lim, 60000).ok) pasaron++
+  }
+  check(`deja pasar ${lim} intentos por IP y frena el resto`, pasaron === lim, `pasaron ${pasaron}`)
+  check("y le dice al visitante cuánto esperar",
+    guard.rateLimit("prueba-ip", lim, 60000).retryAfterSec > 0)
+
+  // Otra IP no puede quedar castigada por la primera.
+  check("una IP distinta no hereda el castigo", guard.rateLimit("otra-ip", lim, 60000).ok)
+
+  // Y la ventana tiene que expirar, o un visitante real queda bloqueado para
+  // siempre por haberse equivocado tres veces.
+  guard.__resetRateLimits()
+  guard.rateLimit("ventana", 1, 1)
+  await new Promise(r => setTimeout(r, 15))
+  check("pasada la ventana, el visitante puede volver a intentar", guard.rateLimit("ventana", 1, 1).ok)
+
+  // La ruta tiene que usar todo eso, no solo tenerlo disponible.
+  const regSrc = fs.readFileSync(path.join(ROOT, "app/api/portal/register/route.ts"), "utf8")
+  check("la ruta descarta al bot sin crear nada ni mandar correo",
+    /looksLikeBot\(body\)[\s\S]{0,200}return NextResponse\.json\(\{ ok: true \}\)/.test(regSrc))
+  check("la ruta valida el correo del lado del servidor", regSrc.includes("isLikelyEmail(em)"))
+  check("la ruta limita por IP", regSrc.includes("portal-register:${ip}"))
+  check("hay un tope global por hora que acota el daño",
+    regSrc.includes("PORTAL_LIMITS.globalPerHour") && regSrc.includes('source: "PORTAL_REGISTER"'))
+  check("no reenvía el correo de bienvenida una y otra vez a la misma dirección",
+    regSrc.includes("portal-welcome:${em}"))
+
+  // El campo trampa tiene que estar en el formulario y ser invisible, o no
+  // atrapa nada — y si lo ve una persona, es un campo raro que no entiende.
+  const formSrc = fs.readFileSync(path.join(ROOT, "app/portal/register/register-client.tsx"), "utf8")
+  check("el campo trampa está en el formulario", formSrc.includes("{honeypotField}") && formSrc.includes("HONEYPOT_FIELD"))
+  check("y queda fuera de la vista, del tabulador y del lector de pantalla",
+    formSrc.includes('aria-hidden="true"') && formSrc.includes("-9999px") && formSrc.includes("tabIndex={-1}"))
 
   console.log("\n=== 9. NOTAS DE MERCADO ===")
   const seeds = require(path.join(ROOT, "data/preconstruction/market-insights.json"))
