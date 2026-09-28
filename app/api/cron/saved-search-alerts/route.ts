@@ -5,7 +5,7 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { searchIdxListings } from "@/lib/bridge"
 import { propertyTypesForSubTypes } from "@/lib/property-types"
-import { sendEmail } from "@/lib/email"
+import { sendEmail, emailClickUrl } from "@/lib/email"
 
 function authOk(req: Request): boolean {
   const secret = process.env.CRON_SECRET
@@ -79,7 +79,11 @@ export async function GET(req: Request) {
       if (s.maxPrice) qp.set("maxPrice", String(s.maxPrice))
       if (s.minBeds) qp.set("minBeds", String(s.minBeds))
       if (s.propertySubType) qp.set("type", s.propertySubType)
-      const link = `${appUrl}/homes?${qp.toString()}`
+      // Pasa por el rastreador de clics, que registra el clic como señal de
+      // interés Y — lo que importa aquí — le pega el id del lead al destino,
+      // para que Sofía lo reciba sabiendo quién es en vez de como a un
+      // desconocido. Sin esto el correo mandaba a /homes pelado.
+      const link = emailClickUrl(s.contactId, `${appUrl}/homes?${qp.toString()}`, `Alerta: ${s.label}`)
 
       await sendEmail({
         to: s.contact.email,
