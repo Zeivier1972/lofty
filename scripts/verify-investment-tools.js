@@ -593,6 +593,66 @@ const check = (name, cond, detail = "") => {
   check("y queda fuera de la vista, del tabulador y del lector de pantalla",
     formSrc.includes('aria-hidden="true"') && formSrc.includes("-9999px") && formSrc.includes("tabIndex={-1}"))
 
+  console.log("\n=== 8j. EL BOT QUE NO USA EL FORMULARIO ===")
+  // Los "leads" que siguieron llegando DESPUÉS de poner el campo trampa:
+  //   crapula magnam · curiositas ad · textor ex · autem repellat
+  // Nombres en latín de relleno, y ni una sola línea de log de la trampa ni
+  // del límite por IP. O sea: el bot NO usa el formulario, postea directo al
+  // endpoint con datos limpios, despacio y desde IPs distintas. Contra ese,
+  // la trampa no existe en su petición y el límite nunca se alcanza.
+  const TOK = guard.PORTAL_FORM_SCOPE
+
+  // Esto es exactamente lo que manda el bot: un JSON a ciegas, sin token.
+  check("el bot que postea directo se rechaza",
+    guard.checkFormToken(undefined, TOK) === "falta" &&
+    guard.checkFormToken("", TOK) === "falta")
+
+  // Y el visitante real, que cargó la página, pasa.
+  const vivo = guard.issueFormToken(TOK)
+  check("el visitante que cargó el formulario pasa", guard.checkFormToken(vivo, TOK) === "ok")
+
+  check("un token inventado no sirve", guard.checkFormToken("portal-register.123.deadbeef", TOK) === "firma-invalida")
+  check("un token con formato raro no sirve",
+    guard.checkFormToken("basura", TOK) === "malformado" &&
+    guard.checkFormToken("a.b.c.d", TOK) === "malformado")
+
+  // Un token de OTRO formulario no vale aquí: si mañana hay más formularios,
+  // el token de uno no puede abrir el otro.
+  check("el token de otro formulario no sirve",
+    guard.checkFormToken(guard.issueFormToken("otro-formulario"), TOK) === "malformado")
+
+  // Manipular el reloj no compra tiempo: ni hacia atrás ni hacia adelante.
+  const viejo = guard.issueFormToken(TOK, Date.now() - guard.FORM_TOKEN_TTL_MS - 1000)
+  check("un token vencido se rechaza", guard.checkFormToken(viejo, TOK) === "vencido")
+  const futuro = guard.issueFormToken(TOK, Date.now() + 10 * 60 * 1000)
+  check("un token con fecha futura se rechaza", guard.checkFormToken(futuro, TOK) === "futuro")
+
+  // Un visitante real que se demora un poco NO puede quedar fuera.
+  const haceCinco = guard.issueFormToken(TOK, Date.now() - 5 * 60 * 1000)
+  check("quien se demora 5 minutos llenando el formulario sigue pasando",
+    guard.checkFormToken(haceCinco, TOK) === "ok")
+
+  // La ruta tiene que exigirlo, y el vencido tiene que ser distinguible para
+  // poder recargar la página en vez de dejar al visitante atascado.
+  const regSrc2 = fs.readFileSync(path.join(ROOT, "app/api/portal/register/route.ts"), "utf8")
+  check("la ruta exige el token antes de crear nada",
+    regSrc2.indexOf("checkFormToken") < regSrc2.indexOf("prisma.contact.create"))
+  check("el vencido se distingue para poder recargar", regSrc2.includes("expired: true"))
+  // Al bot no se le dice qué le faltó.
+  check("a los demás fallos se les responde genérico",
+    /token de formulario \$\{tok\}/.test(regSrc2) && regSrc2.includes('"Registration failed. Please try again."'))
+
+  // El token tiene que viajar desde la página, no desde un endpoint público:
+  // si cualquiera puede pedirlo, el bot también.
+  const pageSrc = fs.readFileSync(path.join(ROOT, "app/portal/register/page.tsx"), "utf8")
+  check("el token lo emite la página en el servidor",
+    pageSrc.includes("issueFormToken(PORTAL_FORM_SCOPE)") && pageSrc.includes('dynamic = "force-dynamic"'))
+  check("no hay endpoint público que regale tokens",
+    !fs.existsSync(path.join(ROOT, "app/api/portal/form-token")))
+  const formSrc2 = fs.readFileSync(path.join(ROOT, "app/portal/register/register-client.tsx"), "utf8")
+  check("el formulario manda el token", formSrc2.includes("formToken,"))
+  check("y recarga sola si venció", formSrc2.includes("data.expired") && formSrc2.includes("window.location.reload"))
+
   console.log("\n=== 9. NOTAS DE MERCADO ===")
   const seeds = require(path.join(ROOT, "data/preconstruction/market-insights.json"))
   await prisma.setting.upsert({

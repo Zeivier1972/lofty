@@ -74,3 +74,55 @@ export const PORTAL_LIMITS = {
   /** No reenviar el correo de bienvenida a la misma dirección más seguido. */
   resendCooldownMs: 60 * 60 * 1000,
 }
+
+// ── Prueba de que la petición salió del formulario ───────────────────────────
+// El campo trampa y el límite por IP suponen un bot que rellena formularios.
+// El que está entrando no usa el formulario: le pega directo al endpoint, con
+// datos limpios, despacio y desde IPs distintas. Contra ese, la trampa no
+// existe en su petición y el límite nunca se alcanza.
+//
+// Esto le da la vuelta: en vez de detectar al bot, se exige una prueba de que
+// la petición vino de la página real. El formulario pide un token firmado al
+// cargar; quien postea a ciegas no lo tiene. Cero fricción para la persona.
+
+import { createHmac, timingSafeEqual } from "crypto"
+
+const SECRET = process.env.NEXTAUTH_SECRET || "portal-secret-fallback-change-in-prod"
+/** Diez minutos: de sobra para llenar el formulario, corto para reutilizarlo. */
+export const FORM_TOKEN_TTL_MS = 10 * 60 * 1000
+
+function sign(payload: string): string {
+  return createHmac("sha256", SECRET).update(payload).digest("hex")
+}
+
+/** Token para una página de formulario. `scope` lo ata a ese formulario. */
+export function issueFormToken(scope: string, now = Date.now()): string {
+  const payload = `${scope}.${now}`
+  return `${payload}.${sign(payload)}`
+}
+
+export type FormTokenResult = "ok" | "falta" | "malformado" | "firma-invalida" | "vencido" | "futuro"
+
+export function checkFormToken(token: unknown, scope: string, now = Date.now()): FormTokenResult {
+  if (typeof token !== "string" || !token) return "falta"
+  const parts = token.split(".")
+  if (parts.length !== 3) return "malformado"
+  const [tokenScope, tsRaw, mac] = parts
+  if (tokenScope !== scope) return "malformado"
+  const ts = Number(tsRaw)
+  if (!Number.isFinite(ts)) return "malformado"
+
+  const esperado = sign(`${tokenScope}.${tsRaw}`)
+  // Comparación de tiempo constante: comparar con === filtra la firma carácter
+  // a carácter y deja medir dónde falla.
+  const a = Buffer.from(mac, "hex")
+  const b = Buffer.from(esperado, "hex")
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return "firma-invalida"
+
+  // Un reloj adelantado del lado del cliente no puede comprar tiempo extra.
+  if (ts > now + 60 * 1000) return "futuro"
+  if (now - ts > FORM_TOKEN_TTL_MS) return "vencido"
+  return "ok"
+}
+
+export const PORTAL_FORM_SCOPE = "portal-register"
