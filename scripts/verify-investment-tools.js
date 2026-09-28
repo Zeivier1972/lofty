@@ -653,6 +653,38 @@ const check = (name, cond, detail = "") => {
   check("el formulario manda el token", formSrc2.includes("formToken,"))
   check("y recarga sola si venció", formSrc2.includes("data.expired") && formSrc2.includes("window.location.reload"))
 
+  console.log("\n=== 8k. EL CORREO LE DICE A SOFÍA QUIÉN LLEGA ===")
+  // Sofía sabe leer ?sofia= en la URL y recibir al lead por su nombre, con la
+  // conversación pegada a su ficha desde el primer mensaje — sin pedirle otra
+  // vez el correo, que es donde hoy se pierden las conversaciones.
+  // El mecanismo YA existía en el rastreador de clics; lo que faltaba era que
+  // la alerta de búsquedas guardadas pasara por él.
+  const clickSrc = fs.readFileSync(path.join(ROOT, "app/api/email/click/route.ts"), "utf8")
+  check("el rastreador de clics le pega el id del lead al destino",
+    clickSrc.includes('searchParams.set("sofia", contactId)'))
+  check("y solo redirige dentro del propio dominio",
+    clickSrc.includes("t.hostname === base.hostname"))
+
+  const alertSrc = fs.readFileSync(path.join(ROOT, "app/api/cron/saved-search-alerts/route.ts"), "utf8")
+  check("la alerta de búsqueda guardada ya pasa por el rastreador",
+    alertSrc.includes("emailClickUrl(s.contactId,")) 
+  check("y ya no manda a /homes pelado",
+    !/const link = `\$\{appUrl\}\/homes\?/.test(alertSrc))
+
+  // El lado que recibe: Sofía tiene que leer el parámetro y usarlo.
+  const chatSrc = fs.readFileSync(path.join(ROOT, "components/sofia-chat.tsx"), "utf8")
+  check("Sofía lee el id del lead de la URL",
+    chatSrc.includes('p.get("sofia")') && chatSrc.includes("setContactId(id)"))
+  check("y lo manda al servidor en cada mensaje", chatSrc.includes("contactId"))
+
+  // Y con el contacto ya conocido, la conversación se guarda sin que la
+  // persona tenga que teclear su correo otra vez.
+  const siteChatSrc = fs.readFileSync(path.join(ROOT, "app/api/site/chat/route.ts"), "utf8")
+  check("con el lead conocido, la conversación queda en su ficha",
+    /if \(contactId\)[\s\S]{0,400}prisma\.activity\.create/.test(siteChatSrc))
+  check("y la saluda por su nombre sin volver a pedirle datos",
+    siteChatSrc.includes("knownName") && /NO le pidas de nuevo sus datos/.test(siteChatSrc))
+
   console.log("\n=== 9. NOTAS DE MERCADO ===")
   const seeds = require(path.join(ROOT, "data/preconstruction/market-insights.json"))
   await prisma.setting.upsert({
