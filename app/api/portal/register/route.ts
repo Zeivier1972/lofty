@@ -3,7 +3,10 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { sendEmail } from "@/lib/email"
-import { clientIp, isLikelyEmail, looksLikeBot, rateLimit, PORTAL_LIMITS } from "@/lib/spam-guard"
+import {
+  clientIp, isLikelyEmail, looksLikeBot, rateLimit, PORTAL_LIMITS,
+  checkFormToken, PORTAL_FORM_SCOPE,
+} from "@/lib/spam-guard"
 
 export async function POST(req: Request) {
   try {
@@ -18,6 +21,24 @@ export async function POST(req: Request) {
     if (looksLikeBot(body)) {
       console.warn("[portal/register] honeypot activado desde", clientIp(req))
       return NextResponse.json({ ok: true })
+    }
+
+    // La prueba de que esto salió del formulario. El campo trampa y el límite
+    // por IP no frenaron nada porque el bot no usa el formulario: postea
+    // directo, con datos limpios, despacio y desde IPs distintas. Sin token,
+    // no hay registro.
+    const tok = checkFormToken(body?.formToken, PORTAL_FORM_SCOPE)
+    if (tok !== "ok") {
+      console.warn(`[portal/register] token de formulario ${tok} desde ${clientIp(req)}`)
+      if (tok === "vencido") {
+        return NextResponse.json(
+          { error: "This page was open too long. Reload and try again.", expired: true },
+          { status: 400 },
+        )
+      }
+      // Para el resto se responde genérico: no hay que enseñarle al bot qué le
+      // falta. No se crea nada y no se manda ningún correo.
+      return NextResponse.json({ error: "Registration failed. Please try again." }, { status: 400 })
     }
 
     const em = email.trim().toLowerCase()

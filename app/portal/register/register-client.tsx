@@ -5,7 +5,7 @@ import Link from "next/link"
 import { Building2, Mail, User, Phone, ArrowRight, Loader2, CheckCircle } from "lucide-react"
 import { HONEYPOT_FIELD } from "@/lib/spam-guard"
 
-export default function RegisterClient() {
+export default function RegisterClient({ formToken }: { formToken: string }) {
   const [firstName, setFirstName] = useState("")
   const [lastName, setLastName] = useState("")
   const [email, setEmail] = useState("")
@@ -26,12 +26,17 @@ export default function RegisterClient() {
       const res = await fetch("/api/portal/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ firstName, lastName, email, phone, [HONEYPOT_FIELD]: honeypot }),
+        body: JSON.stringify({ firstName, lastName, email, phone, formToken, [HONEYPOT_FIELD]: honeypot }),
       })
       if (res.ok) {
         setDone(true)
       } else {
         const data = await res.json()
+        if (data.expired) {
+          setError("Esta página estuvo abierta demasiado tiempo. La recargamos — vuelve a enviar.")
+          setTimeout(() => window.location.reload(), 2500)
+          return
+        }
         setError(data.error || "Registration failed. Please try again.")
       }
     } catch {
