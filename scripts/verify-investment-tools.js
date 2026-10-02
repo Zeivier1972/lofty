@@ -685,6 +685,30 @@ const check = (name, cond, detail = "") => {
   check("y la saluda por su nombre sin volver a pedirle datos",
     siteChatSrc.includes("knownName") && /NO le pidas de nuevo sus datos/.test(siteChatSrc))
 
+  console.log("\n=== 8l. EL CORREO DE PROPIEDADES SE PUEDE VER ANTES DE ENVIAR ===")
+  // "Los clientes solo reciben direcciones". La plantilla sí arma foto, precio,
+  // habitaciones y MLS#, pero CADA campo es condicional: el que llega vacío
+  // desaparece sin dejar rastro. Una propiedad sin precio ni foto sale como una
+  // dirección pelada, y eso se enviaba sin que nadie pudiera verlo antes.
+  const batchSrc = fs.readFileSync(path.join(ROOT, "app/api/contacts/[id]/send-properties-batch/route.ts"), "utf8")
+  check("la ruta sabe devolver el correo sin enviarlo",
+    /if \(preview\) return NextResponse\.json\(\{ ok: true, html \}\)/.test(batchSrc))
+  // Devolver el HTML sin mandar nada no puede saltarse el control de acceso.
+  check("y el previo sigue detrás de la autenticación",
+    batchSrc.indexOf("Unauthorized") < batchSrc.indexOf("preview"))
+
+  const panelSrc = fs.readFileSync(path.join(ROOT, "app/(dashboard)/contacts/[id]/property-send-panel.tsx"), "utf8")
+  check("el panel ya tiene botón para ver el correo",
+    panelSrc.includes("previewEmail") && panelSrc.includes("preview: true") && panelSrc.includes("Ver el correo"))
+  // El correo trae sus propios estilos: si se pinta suelto, se mezcla con el CRM.
+  check("el previo se muestra aislado en un iframe",
+    /srcDoc=\{previewHtml\}/.test(panelSrc) && /sandbox=""/.test(panelSrc))
+  // Lo que de verdad evita el envío pelado: avisar ANTES.
+  check("avisa cuáles propiedades llegarían como dirección pelada",
+    panelSrc.includes("!l.price && !l.photo") && /solo la direcci/.test(panelSrc))
+  check("y el previo manda los mismos campos que el envío real",
+    (panelSrc.match(/photoUrl: l\.photo/g) || []).length >= 2)
+
   console.log("\n=== 9. NOTAS DE MERCADO ===")
   const seeds = require(path.join(ROOT, "data/preconstruction/market-insights.json"))
   await prisma.setting.upsert({
