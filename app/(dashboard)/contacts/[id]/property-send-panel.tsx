@@ -4,7 +4,7 @@ import { useState } from "react"
 import {
   Search, Mail, MessageSquare, Loader2, Home, MapPin,
   Bed, Bath, Maximize2, CheckCircle, ChevronDown, ChevronUp,
-  Send, Square, CheckSquare, X,
+  Send, Square, CheckSquare, X, Eye,
 } from "lucide-react"
 import { PROPERTY_TYPE_GROUPS, keysToParam, labelForKeys, normalizeBuyerTypeKeys } from "@/lib/property-types"
 import { useToast } from "@/components/ui/use-toast"
@@ -104,6 +104,11 @@ export default function PropertySendPanel({
 
   // Batch send
   const [batchSending, setBatchSending] = useState<"email" | "sms" | null>(null)
+  // Ver el correo exacto que va a recibir el cliente, ANTES de enviarlo. La
+  // ruta siempre soportó preview; el panel nunca lo expuso, así que no había
+  // forma de comprobar qué salía — solo enviarlo y preguntarle al cliente.
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null)
+  const [previewing, setPreviewing] = useState(false)
   const [batchSent, setBatchSent] = useState(false)
 
   // Note
@@ -199,6 +204,36 @@ export default function PropertySendPanel({
     }
   }
 
+  async function previewEmail() {
+    const toSend = listings.filter(l => selected.has(l.listingKey))
+    if (!toSend.length) return
+    setPreviewing(true)
+    try {
+      const res = await fetch(`/api/contacts/${contactId}/send-properties-batch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          listings: toSend.map(l => ({
+            listingKey: l.listingKey, listingId: l.listingId,
+            address: l.address, city: l.city, state: l.state,
+            price: l.price, beds: l.beds, baths: l.baths,
+            sqft: l.sqft, photoUrl: l.photo,
+          })),
+          method: "email",
+          note: note.trim() || undefined,
+          preview: true,
+        }),
+      })
+      const data = await res.json()
+      if (!data.ok) throw new Error(data.error || "Failed")
+      setPreviewHtml(data.html)
+    } catch (e: any) {
+      toast({ title: "No se pudo generar el previo", description: e.message, variant: "destructive" })
+    } finally {
+      setPreviewing(false)
+    }
+  }
+
   async function sendBatch(method: "email" | "sms") {
     if (method === "email" && !contactEmail) {
       toast({ title: "No email on file", variant: "destructive" }); return
@@ -243,6 +278,13 @@ export default function PropertySendPanel({
   }
 
   const selectedCount = selected.size
+  // La plantilla del correo omite en silencio cada campo que llega vacío: sin
+  // precio no hay línea de precio, sin foto no hay imagen. Una propiedad sin
+  // ninguno de los dos le llega al cliente como una dirección pelada, y hoy
+  // eso se enviaba sin que nadie se enterara.
+  const selectedListings = listings.filter(l => selected.has(l.listingKey))
+  const flacas = selectedListings.filter(l => !l.price && !l.photo)
+  const sinFoto = selectedListings.filter(l => l.photo === null && l.price)
 
   return (
     <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
@@ -634,8 +676,25 @@ export default function PropertySendPanel({
                       </span>
                     )}
                     </span>
+                    {flacas.length > 0 && (
+                      <span className="text-[11px] font-semibold text-yellow-200">
+                        · ⚠ {flacas.length} sin precio ni foto: al cliente le llega solo la dirección
+                      </span>
+                    )}
+                    {flacas.length === 0 && sinFoto.length > 0 && (
+                      <span className="text-[11px] text-white/70">· {sinFoto.length} sin foto</span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
+                    <button
+                      onClick={previewEmail}
+                      disabled={previewing || !!batchSending}
+                      title="Ver exactamente el correo que va a recibir el cliente, sin enviarlo"
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-white/20 text-white hover:bg-white/30 disabled:opacity-50 transition-colors"
+                    >
+                      {previewing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
+                      Ver el correo
+                    </button>
                     <button
                       onClick={() => sendBatch("sms")}
                       disabled={!!batchSending || !contactPhone}
@@ -663,6 +722,31 @@ export default function PropertySendPanel({
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Previo del correo — lo que el cliente va a recibir, tal cual */}
+      {previewHtml !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setPreviewHtml(null)}>
+          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-3 border-b">
+              <div>
+                <p className="font-semibold text-gray-900 text-sm">Así le llega a {contactEmail}</p>
+                <p className="text-[11px] text-gray-500">Esto es el correo real, sin enviar.</p>
+              </div>
+              <button onClick={() => setPreviewHtml(null)} className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            {/* En iframe: el correo trae sus propios estilos y no debe mezclarse
+                con los del CRM, ni ver nada de esta página. */}
+            <iframe
+              title="Previo del correo"
+              srcDoc={previewHtml}
+              sandbox=""
+              className="flex-1 w-full border-0 bg-white"
+            />
+          </div>
         </div>
       )}
     </div>
