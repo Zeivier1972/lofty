@@ -77,6 +77,19 @@ const FEATURED: Record<string, string> = {
   recamara: `${IMG_DIR}/recamara-vista.jpg`,
 }
 
+/**
+ * Real alt text per rendering, keyed by filename. A file without an entry still
+ * gets a sensible generic description, so dropping new renderings in never
+ * leaves an image undescribed.
+ */
+const GALLERY_ALT: Record<string, string> = {
+  "balcon-bahia.jpg": "Balcón de una residencia de House of Wellness Brickell con sillón, mesa y vista abierta a la bahía de Biscayne y al skyline de Miami",
+  "fachada-noche.jpg": "La torre House of Wellness iluminada de noche sobre 152 SW 9th Street, con sus balcones ajardinados y los arcos de la azotea",
+  "torre-dia.jpg": "Vista diurna de la torre House of Wellness entre los edificios de Brickell, con vegetación en cada balcón",
+  "recamara-closets.jpg": "Recámara de House of Wellness Brickell con clósets de madera integrados de piso a techo, cabecera tapizada y salida al balcón",
+  "spa-piscina.jpg": "Terraza de spa de House of Wellness Brickell al atardecer, con piscina, jacuzzi, camastros y acceso al sauna",
+}
+
 const AMENITIES: { icon: string; title: string; body: string }[] = [
   { icon: "🏋️", title: "Gimnasio de última generación", body: "Equipo completo de fuerza y cardio, con entrenador personal disponible en el edificio." },
   { icon: "🧖", title: "Spa, sauna y hammam", body: "Circuito de spa completo para recuperarte sin salir de casa." },
@@ -503,7 +516,7 @@ export default async function HouseOfWellnessPage() {
                 <img
                   key={src}
                   src={src}
-                  alt="Render del proyecto House of Wellness Brickell en Miami"
+                  alt={GALLERY_ALT[src.split("/").pop() || ""] || "Render del proyecto House of Wellness Brickell en Miami"}
                   loading="lazy"
                   className="h-64 w-full rounded-2xl object-cover"
                 />
