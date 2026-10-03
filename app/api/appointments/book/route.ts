@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { isAssignedToPartner } from "@/lib/referral"
+import { applyTagAndEnroll } from "@/lib/lead-ingest"
 import { sendEmail } from "@/lib/email"
 
 export async function POST(req: Request) {
@@ -12,7 +13,27 @@ export async function POST(req: Request) {
       firstName, lastName, email, phone,
       topic, message, type = "BUYER_CONSULTATION",
       meetingType = "PHONE",
+      source, sourceDetail,
     } = await req.json()
+
+    // Landing pages that run their own campaign nurture. The tag is what
+    // enrols the lead in the matching CONTACT_TAGGED smart plan, so it has to
+    // match the Facebook form's utm_campaign / utm_content exactly. Fixed
+    // allowlist: this endpoint is public, so a caller cannot invent tags.
+    const CAMPAIGN_TAGS: Record<string, string> = {
+      HOUSE_OF_WELLNESS: "House of Wellness",
+    }
+
+    // Landing pages (e.g. /house-of-wellness) tag the lead with their own
+    // source so campaign leads are countable. Anything else keeps "WEBSITE".
+    // Sanitised because this endpoint is public.
+    const safeSource = typeof source === "string"
+      ? source.toUpperCase().replace(/[^A-Z0-9_]/g, "").slice(0, 40) || null
+      : null
+    const safeDetail = typeof sourceDetail === "string"
+      ? sourceDetail.replace(/[\r\n]+/g, " ").slice(0, 300)
+      : ""
+
 
     if (!date || !time || !firstName || !lastName) {
       return NextResponse.json({ error: "Faltan campos requeridos" }, { status: 400 })
@@ -41,10 +62,15 @@ export async function POST(req: Request) {
           email: email || null,
           phone: phone || null,
           status: "LEAD",
-          source: "WEBSITE",
+          source: safeSource || "WEBSITE",
           leadScore: 40,
-          notes: message ? {
-            create: { content: `Mensaje al agendar cita: ${message}` },
+          notes: (message || safeDetail) ? {
+            create: {
+              content: [
+                message ? `Mensaje al agendar cita: ${message}` : "",
+                safeDetail ? `Origen de la campaña: ${safeDetail}` : "",
+              ].filter(Boolean).join("\n"),
+            },
           } : undefined,
         },
       })
@@ -70,6 +96,14 @@ export async function POST(req: Request) {
         ...(agent && { userId: agent.id }),
       },
     })
+
+    // Tag campaign leads so they enter that campaign's smart plan — the same
+    // sequence Facebook leads land in. Never blocks the booking.
+    const campaignTag = safeSource ? CAMPAIGN_TAGS[safeSource] : undefined
+    if (campaignTag) {
+      await applyTagAndEnroll(contact.id, campaignTag)
+        .catch(e => console.error("[BOOKING] Campaign tag failed:", e))
+    }
 
     // Log activity
     await prisma.activity.create({
