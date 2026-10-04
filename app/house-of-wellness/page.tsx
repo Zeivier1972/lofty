@@ -112,6 +112,8 @@ const GALLERY_ALT: Record<string, string> = {
   "torre-dia.jpg": "Vista diurna de la torre House of Wellness entre los edificios de Brickell, con vegetación en cada balcón",
   "recamara-closets.jpg": "Recámara de House of Wellness Brickell con clósets de madera integrados de piso a techo, cabecera tapizada y salida al balcón",
   "spa-piscina.jpg": "Terraza de spa de House of Wellness Brickell al atardecer, con piscina, jacuzzi, camastros y acceso al sauna",
+  "bano.jpg": "Baño de una residencia de House of Wellness Brickell en travertino, con espejo retroiluminado, mueble de madera y regadera tipo lluvia",
+  "piscina-aerea.jpg": "Vista aérea de la piscina de House of Wellness Brickell, con camastros, cabañas de madera y palmeras alrededor",
 }
 
 const AMENITIES: { title: string; body: string }[] = [
