@@ -26,6 +26,31 @@ export interface LeadData {
   eventDay?: string      // event form answer "¿Qué día quieres atender?" — synced to the event sheet
 }
 
+/**
+ * Apply campaign tags one at a time, de-duplicated. Returns immediately; the
+ * work continues in the background so webhook responses stay fast.
+ */
+function applyTagsInBackground(contactId: string, tags: string[], label: string): void {
+  const seen = new Set<string>()
+  const unique = tags
+    .map(t => t.trim())
+    .filter(t => {
+      if (!t) return false
+      const key = t.toLowerCase()
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  if (!unique.length) return
+
+  void (async () => {
+    for (const tagName of unique) {
+      await applyTagAndEnroll(contactId, tagName)
+        .catch(e => console.error(`[INGEST] ${label} tag apply error:`, e))
+    }
+  })()
+}
+
 export async function checkAndEnrollSmartPlans(contactId: string, tagId: string): Promise<void> {
   const plans = await prisma.smartPlan.findMany({
     where: { isActive: true, trigger: `CONTACT_TAGGED:${tagId}` },
@@ -67,11 +92,19 @@ export async function enrollContactInPlanByName(contactId: string, planName: str
 }
 
 export async function applyTagAndEnroll(contactId: string, tagName: string): Promise<void> {
-  const tag = await prisma.tag.upsert({
-    where: { name: tagName },
-    update: {},
-    create: { name: tagName, color: "#10B981" },
-  })
+  // upsert still races when two callers create the same unique name at once:
+  // both see "not found", both insert, the loser gets P2002. Re-read instead.
+  let tag
+  try {
+    tag = await prisma.tag.upsert({
+      where: { name: tagName },
+      update: {},
+      create: { name: tagName, color: "#10B981" },
+    })
+  } catch {
+    tag = await prisma.tag.findUnique({ where: { name: tagName } })
+    if (!tag) throw new Error(`No se pudo crear ni encontrar la etiqueta "${tagName}"`)
+  }
   await prisma.contactTag.upsert({
     where: { contactId_tagId: { contactId, tagId: tag.id } },
     create: { contactId, tagId: tag.id },
@@ -162,11 +195,7 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
 
     // Existing contacts still need the campaign/event tags applied so they enter
     // the right smart plans, get event reminders, and show on the guest list.
-    if (tags?.length) {
-      for (const tagName of tags) {
-        applyTagAndEnroll(existing.id, tagName).catch(e => console.error("[INGEST] Returning-lead tag apply error:", e))
-      }
-    }
+    if (tags?.length) applyTagsInBackground(existing.id, tags, "Returning-lead")
 
     // Sync to the event sheet (only fires for Bogotá/Medellín event leads).
     appendEventLeadToSheet({
@@ -296,11 +325,7 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
   scoreContact(contact.id).catch(() => {})
 
   // Apply tags and auto-enroll in matching CONTACT_TAGGED smart plans
-  if (tags?.length) {
-    for (const tagName of tags) {
-      applyTagAndEnroll(contact.id, tagName).catch(e => console.error("[INGEST] Tag apply error:", e))
-    }
-  }
+  if (tags?.length) applyTagsInBackground(contact.id, tags, "New-lead")
 
   // Sync to the event sheet (only fires for Bogotá/Medellín event leads).
   appendEventLeadToSheet({ firstName, lastName, email, phone, tags, eventDay }).catch(() => {})
