@@ -13,7 +13,7 @@
  * campaign brought in can actually be counted.
  */
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import {
   ChevronLeft, ChevronRight, Clock, CheckCircle2, Loader2, Video, Phone,
 } from "lucide-react"
@@ -60,6 +60,7 @@ export default function BookingForm() {
     firstName: "", lastName: "", email: "", phone: "", interest: "", message: "",
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const calendarRef = useRef<HTMLDivElement>(null)
 
   const monthStart = startOfMonth(currentMonth)
   const days = eachDayOfInterval({ start: monthStart, end: endOfMonth(currentMonth) })
@@ -96,7 +97,12 @@ export default function BookingForm() {
 
   const submit = async (ev: React.FormEvent) => {
     ev.preventDefault()
-    if (!validate() || !selectedDate || !selectedTime) return
+    if (!validate() || !selectedDate || !selectedTime) {
+      if (!selectedDate || !selectedTime) {
+        calendarRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
+      }
+      return
+    }
     setSubmitting(true)
     try {
       const res = await fetch("/api/appointments/book", {
@@ -155,6 +161,11 @@ export default function BookingForm() {
   return (
     <form onSubmit={submit} className="rounded-none bg-[#FAF8F4] p-6 ring-1 ring-black/5 sm:p-8">
       {/* Step 1 — day */}
+      <div ref={calendarRef} className="scroll-mt-24">
+        <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.2em] text-[#9A9289]">
+          Paso 1 · Elige el día
+        </p>
+      </div>
       <div className="flex items-center justify-between">
         <button
           type="button"
@@ -210,6 +221,9 @@ export default function BookingForm() {
       {/* Step 2 — time */}
       {selectedDate && (
         <div className="mt-6 border-t border-[#EDE7DD] pt-6">
+          <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.2em] text-[#9A9289]">
+            Paso 2 · Elige la hora
+          </p>
           <p className="flex items-center gap-2 text-sm font-semibold text-[#0C0B0A]">
             <Clock className="h-4 w-4" aria-hidden="true" /> Horarios disponibles
           </p>
@@ -245,6 +259,9 @@ export default function BookingForm() {
 
       {/* Step 3 — details */}
       <div className="mt-6 space-y-4 border-t border-[#EDE7DD] pt-6">
+        <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-[#9A9289]">
+          Paso 3 · Tus datos
+        </p>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label htmlFor="hw-first" className="text-sm font-medium text-[#3D3831]">Nombre *</label>
@@ -325,6 +342,14 @@ export default function BookingForm() {
           />
         </div>
 
+        {(errors.date || errors.time) && (
+          <p className="rounded-none bg-red-50 px-4 py-3 text-sm text-red-700">
+            {!selectedDate
+              ? "Primero elige el día de tu cita en el calendario de arriba."
+              : "Ya elegiste el día. Ahora elige la hora en el calendario de arriba."}
+          </p>
+        )}
+
         {errors.submit && (
           <p className="rounded-none bg-red-50 px-4 py-3 text-sm text-red-700">{errors.submit}</p>
         )}
@@ -339,7 +364,9 @@ export default function BookingForm() {
             : "Confirmar mi cita con Catherine"}
         </button>
         <p className="text-center text-xs text-[#9A9289]">
-          Sin compromiso. Catherine te atiende en español o inglés.
+          {!selectedDate || !selectedTime
+            ? "Elige el día y la hora arriba para confirmar tu cita."
+            : "Sin compromiso. Catherine te atiende en español o inglés."}
         </p>
       </div>
     </form>
