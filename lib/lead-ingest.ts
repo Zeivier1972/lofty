@@ -130,6 +130,13 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
     await prisma.contact.update({
       where: { id: existing.id },
       data: {
+        // Somebody who just filled in a form is not archived any more. Leaving
+        // the flag set hides them from the contacts list and from search — the
+        // lead arrives, and nobody can find it.
+        ...(existing.isArchived && { isArchived: false }),
+        // Fill blanks only; never overwrite what is already on the record.
+        ...(email && !existing.email && { email }),
+        ...(phone && !existing.phone && { phone }),
         ...(smsConsent && { smsTCPAConsent: true, smsTCPAConsentDate: new Date(), smsTCPAConsentMethod: source.toLowerCase() }),
         ...(facebookLeadId && { facebookLeadId }),
         ...(budget && { buyerBudgetMax: budget }),
@@ -138,6 +145,9 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
         ...(propertyType && { buyerPropertyType: propertyType }),
       },
     })
+    if (existing.isArchived) {
+      console.log(`[INGEST] Un-archived ${existing.id} — returning lead from ${source}`)
+    }
     if (message) {
       await prisma.note.create({ data: { content: `[${source}] ${message}`, contactId: existing.id } })
     }
