@@ -316,8 +316,8 @@ export async function POST(req: Request) {
               )
             } else {
               // External PDF campaign (e.g. BRICKELL) — send brochure link via IG DM
-              const campaign = await prisma.instagramBotCampaign.findUnique({
-                where: { keyword: convo.campaignKeyword },
+              const campaign = await prisma.instagramBotCampaign.findFirst({
+                where: { keyword: convo.campaignKeyword, isActive: true },
               })
               if (campaign?.pdfUrl) {
                 const brochureUrl = `${process.env.NEXT_PUBLIC_APP_URL || ""}/brochure/${convo.campaignKeyword}`
