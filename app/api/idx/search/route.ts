@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { propertyTypesForSubTypes } from "@/lib/property-types"
-import { searchIdxListings, fetchPrimaryPhotos, buildDisplayAddress, idxTotalFromResult } from "@/lib/bridge"
+import { searchIdxListings, fetchPrimaryPhotos, buildDisplayAddress, listingUnit, idxTotalFromResult } from "@/lib/bridge"
 
 // CORS: allow partner apps (e.g. Easy Rental) to consume this endpoint from the browser
 const CORS_HEADERS = {
@@ -92,6 +92,7 @@ export async function GET(req: Request) {
       listingKey: l.ListingKey,
       listingId: l.ListingId ?? l.ListingKey ?? "", // real MLS# (e.g. A11234567)
       address: buildDisplayAddress(l),
+      unit: listingUnit(l), // the apartment/unit on its own, for consumers that print it separately
       city: l.City ?? null,
       state: l.StateOrProvince ?? null,
       zip: l.PostalCode ?? null,
