@@ -87,6 +87,7 @@ type TabId = "overview" | "properties" | "searches" | "transactions" | "document
 
 function BuyerPrefsPanel({ contact }: { contact: any }) {
   const { toast } = useToast()
+  const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [fields, setFields] = useState({
@@ -138,6 +139,11 @@ function BuyerPrefsPanel({ contact }: { contact: any }) {
       Object.assign(contact, body)
       setEditing(false)
       toast({ title: "Buyer preferences saved" })
+      // The write lands in the database, but Next keeps the server component's
+      // payload for this route in its client router cache. Without this the
+      // panel looks right until you navigate away and back, and then shows the
+      // old preferences again — which reads as "it did not save".
+      router.refresh()
     } catch {
       toast({ title: "Error saving", variant: "destructive" })
     } finally {
