@@ -151,15 +151,39 @@ export async function fetchListingMedia(listingKey: string): Promise<string[]> {
   }
 }
 
+// The unit as the MLS records it, or null. Kept apart from the address so a
+// consumer (the site, Easy Rental) can print it where it needs to.
+export function listingUnit(l: any): string | null {
+  const unit = l?.UnitNumber == null ? "" : String(l.UnitNumber).trim()
+  return unit || null
+}
+
+// True when an address string already names a unit ("# 2504", "Unit 12B", "Apt 3").
+function namesUnit(address: string, unit: string): boolean {
+  const re = new RegExp(`(?:#|\\b(?:unit|apt|apartment|suite|ste|ph)\\b\\.?)\\s*#?\\s*${unit.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i")
+  return re.test(address)
+}
+
 // Build a display address, falling back to street components when UnparsedAddress
 // is missing (some MLS records withhold it).
+//
+// A condo's UnparsedAddress names its unit only when the listing agent typed
+// it there, and in a building of two hundred units the street address alone
+// is not an address. So the unit is always written in when the MLS has it.
 export function buildDisplayAddress(l: any): string {
-  if (l?.UnparsedAddress && String(l.UnparsedAddress).trim()) return String(l.UnparsedAddress).trim()
+  const unit = listingUnit(l)
+  const unparsed = l?.UnparsedAddress ? String(l.UnparsedAddress).trim() : ""
+  if (unparsed) {
+    if (!unit || namesUnit(unparsed, unit)) return unparsed
+    // Put the unit after the street, before any ", City, ST zip" that follows.
+    const [street, ...rest] = unparsed.split(",")
+    return [`${street.trim()} # ${unit}`, ...rest.map(s => s.trim())].join(", ")
+  }
   const street = [l?.StreetNumber, l?.StreetDirPrefix, l?.StreetName, l?.StreetSuffix, l?.StreetDirSuffix]
     .filter(Boolean).join(" ").trim()
-  const unit = l?.UnitNumber ? ` # ${l.UnitNumber}` : ""
+  const unitPart = unit ? ` # ${unit}` : ""
   const cityState = [l?.City, l?.StateOrProvince].filter(Boolean).join(", ")
-  const parts = [street ? street + unit : "", cityState, l?.PostalCode].filter(s => s && String(s).trim())
+  const parts = [street ? street + unitPart : "", cityState, l?.PostalCode].filter(s => s && String(s).trim())
   return parts.join(", ") || "Dirección disponible al contactar"
 }
 
