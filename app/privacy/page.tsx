@@ -56,7 +56,8 @@ export default function PrivacyPage() {
           <p className="mt-2">
             We do not use your messages for advertising or profiling, and we do not sell them. Reply
             <strong> STOP </strong> in the conversation at any time and we will stop messaging you. To have
-            your conversation history deleted, contact us using the details below.
+            your conversation history deleted, use our{" "}
+            <a href="/data-deletion" className="text-blue-600 underline">data deletion page</a>.
           </p>
         </div>
 
@@ -72,7 +73,10 @@ export default function PrivacyPage() {
           <h2 className="text-xl font-semibold mb-2">6. Data Retention</h2>
           <p>
             We retain your information for as long as necessary to provide services and comply with legal
-            obligations. You may request deletion of your data at any time by contacting us.
+            obligations. You may request deletion of your data at any time, free of charge, from our{" "}
+            <a href="/data-deletion" className="text-blue-600 underline">data deletion page</a>, by replying
+            <strong> DELETE </strong> in any Messenger or Instagram conversation, or by emailing us. Requests
+            are processed within 30 days.
           </p>
         </div>
 
