@@ -10,6 +10,13 @@ import {
 import { ingestLead } from "@/lib/lead-ingest"
 import { generateSocialAIReply, getMatchingProperties, getMatchingPreConstruction, notifyCatherineAboutLead } from "@/lib/social-ai-chat"
 
+/**
+ * How quiet a stranded ASKED_NAME conversation must be before a new comment
+ * re-sends the greeting. Long enough that somebody commenting on three posts in
+ * one sitting is messaged once, short enough to be useful the next day.
+ */
+const RESEND_GREETING_AFTER_MS = 60 * 60 * 1000
+
 const INTENT_TAG_COLORS: Record<string, string> = {
   comprador_vivienda: "#22C55E",
   inversionista_airbnb: "#8B5CF6",
@@ -106,6 +113,28 @@ export async function POST(req: Request) {
 
         if (existing) {
           if (existing.state === "OPTED_OUT") continue
+
+          // A conversation still at ASKED_NAME with no name captured means the
+          // greeting was never answered — and for everyone who commented during
+          // the Aug–Oct token outage it means the greeting was never delivered
+          // at all: the row below is created before the DM is attempted, and
+          // nothing rolled it back when the send failed. Answering those people
+          // "ya te escribí" points them at a DM that does not exist, so re-send
+          // the greeting instead. Gated on a quiet period so somebody who
+          // comments several times in one sitting is not messaged every time.
+          const quietMs = Date.now() - new Date(existing.updatedAt).getTime()
+          if (existing.state === "ASKED_NAME" && !existing.firstName && quietMs > RESEND_GREETING_AFTER_MS) {
+            const { greeting: retryGreeting } = await buildGreeting(commentText)
+            if (await sendInstagramDM(igUserId, retryGreeting)) {
+              // Touching the row restarts the quiet window above.
+              await prisma.instagramConversation
+                .update({ where: { igUserId }, data: { igUsername: igUsername || existing.igUsername } })
+                .catch(() => {})
+              replyToComment(commentId, "¡Hola! Te acabo de enviar un mensaje privado 📩").catch(() => {})
+            }
+            continue
+          }
+
           const nudge = existing.state === "COMPLETE"
             ? "¡Hola! Ya tenemos tu información 😊 Si tienes preguntas, escríbeme aquí por DM y con gusto te ayudo."
             : "¡Hola! Ya te escribí por mensaje privado 📩 Revisa tu bandeja de DMs para continuar."
@@ -115,12 +144,26 @@ export async function POST(req: Request) {
 
         const { greeting, campaignKeyword } = await buildGreeting(commentText)
 
+        // Created before the send so two deliveries of the same webhook cannot
+        // both start a conversation. Rolled back just below if the DM fails.
         await prisma.instagramConversation.create({
           data: { igUserId, igUsername, state: "ASKED_NAME", sourceCommentId: commentId, campaignKeyword },
         })
 
+        if (!(await sendInstagramDM(igUserId, greeting))) {
+          // Leaving the row behind strands this person: every later comment
+          // would take the branch above and answer "ya te escribí" about a DM
+          // that never arrived. Roll it back so their next comment starts
+          // cleanly, and say nothing publicly — claiming we sent a message we
+          // did not send is worse than staying quiet.
+          console.error(`[IG bot] greeting NOT delivered to ${igUserId} — rolling back the conversation`)
+          await prisma.instagramConversation.delete({ where: { igUserId } }).catch(() => {})
+          continue
+        }
+
         // Ring the bell so Catherine can see someone just started the bot (and
         // can DM them personally if they stall before finishing the form).
+        // After the send, so a greeting that never landed raises no bell.
         await prisma.aINotification.create({
           data: {
             type: "BOT_STARTED",
@@ -131,7 +174,6 @@ export async function POST(req: Request) {
         }).catch(() => {})
 
         replyToComment(commentId, "¡Hola! Te acabo de enviar un mensaje privado 📩").catch(() => {})
-        await sendInstagramDM(igUserId, greeting)
       }
 
       // ── DM events ─────────────────────────────────────────────────────────
@@ -151,6 +193,14 @@ export async function POST(req: Request) {
           convo = await prisma.instagramConversation.create({
             data: { igUserId, state: "ASKED_NAME", campaignKeyword },
           })
+          if (!(await sendInstagramDM(igUserId, greeting))) {
+            // Same rollback as the comment path: a row with no greeting behind
+            // it makes every later message look like a reply to a question the
+            // person never received.
+            console.error(`[IG bot] DM greeting NOT delivered to ${igUserId} — rolling back the conversation`)
+            await prisma.instagramConversation.delete({ where: { igUserId } }).catch(() => {})
+            continue
+          }
           // Ring the bell — someone started the bot by DM but hasn't finished.
           await prisma.aINotification.create({
             data: {
@@ -160,7 +210,6 @@ export async function POST(req: Request) {
               priority: "MEDIUM",
             },
           }).catch(() => {})
-          await sendInstagramDM(igUserId, greeting)
           continue
         }
 
