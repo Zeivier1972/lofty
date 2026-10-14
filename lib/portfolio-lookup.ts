@@ -41,6 +41,12 @@ export type Match = {
   ambiguous: boolean
 }
 
+/**
+ * Score at or above which a name match may be acted on without asking. Below it
+ * the candidate is only ever offered back by name — never used for numbers.
+ */
+const CONFIDENT = 60
+
 export function findProject(all: PortfolioProject[], query: string | undefined): Match {
   const portfolioSize = all.length
   if (!query || !query.trim()) return { project: null, near: [], portfolioSize, ambiguous: false }
@@ -51,19 +57,27 @@ export function findProject(all: PortfolioProject[], query: string | undefined):
     if (n === q) return { p, score: 100 }
     if (n.startsWith(q) || q.startsWith(n)) return { p, score: 80 }
     if (n.includes(q) || q.includes(n)) return { p, score: 60 }
-    // Fall back to how many words they share, so "Domus Center" still finds
-    // "Domus Brickell Center".
+    // Fall back to shared words. Covering EVERY significant word of the query is
+    // a real match — "Domus Center" finds "Domus Brickell Center". Covering only
+    // some of them is not: "Millennial Park" shares "park" with "Domus Brickell
+    // Park" and they are different buildings with different prices.
     const qw = new Set(q.split(" ").filter(w => w.length > 2))
     const nw = n.split(" ").filter(w => w.length > 2)
     const shared = nw.filter(w => qw.has(w)).length
+    if (shared > 0 && shared === qw.size) return { p, score: CONFIDENT }
     return { p, score: shared > 0 ? 10 * shared : 0 }
   }).filter(x => x.score > 0).sort((a, b) => b.score - a.score)
 
   if (scored.length === 0) return { project: null, near: [], portfolioSize, ambiguous: false }
 
   const best = scored[0]
-  // A single shared word is a guess, not a match — offer it instead of assuming.
-  if (best.score < 60 && scored.length > 1) {
+  // A partial word overlap is a guess, not a match — offer it instead of
+  // assuming, however few candidates there are. The old gate also required
+  // `scored.length > 1`, so a query that brushed exactly ONE project was
+  // returned as a confident match: asking for "Millennial Park" handed back
+  // Domus Brickell Park, with ambiguous false and near empty, and the advisor
+  // quoted Domus's prices and payment plan under the name the user asked for.
+  if (best.score < CONFIDENT) {
     return { project: null, near: scored.slice(0, 5).map(x => x.p), portfolioSize, ambiguous: true }
   }
   const tied = scored.filter(x => x.score === best.score)
