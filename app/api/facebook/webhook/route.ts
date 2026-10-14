@@ -18,6 +18,10 @@ import {
 import { ingestLead, enrollContactInPlanByName } from "@/lib/lead-ingest"
 import { generateSocialAIReply, getMatchingProperties, getMatchingPreConstruction, notifyCatherineAboutLead } from "@/lib/social-ai-chat"
 
+/** See the Instagram webhook: how quiet a stranded ASKED_NAME conversation must
+ *  be before a new comment re-sends the greeting. */
+const RESEND_GREETING_AFTER_MS = 60 * 60 * 1000
+
 function greetingQuickReplies(config: any) {
   return (config.greetingButtons || "Sí, me interesa,Quiero más info")
     .split(",").map((t: string) => t.trim()).filter(Boolean)
@@ -314,6 +318,23 @@ export async function POST(req: Request) {
                 continue
               }
             }
+            // Still at ASKED_NAME with no name captured means the greeting was
+            // never answered — and often never delivered, since the row below is
+            // created before the send and nothing rolled it back on failure.
+            // Re-send rather than answering "ya te escribí" about a message that
+            // never arrived. Gated on a quiet period so repeat commenters are not
+            // messaged every time.
+            const quietMs = Date.now() - new Date(existing.updatedAt).getTime()
+            if (existing.state === "ASKED_NAME" && !existing.firstName && quietMs > RESEND_GREETING_AFTER_MS) {
+              if (await privateReplyToComment(commentId, greeting)) {
+                // Touching the row restarts the quiet window above.
+                await prisma.facebookBotConversation
+                  .update({ where: { psid: commenterId }, data: { sourceCommentId: commentId } })
+                  .catch(() => {})
+              }
+              continue
+            }
+
             const nudge = existing.state === "COMPLETE"
               ? "¡Hola! Ya tenemos tu información 😊 Si tienes preguntas, escríbeme aquí por DM y con gusto te ayudo."
               : "¡Hola! Ya te escribí por mensaje privado 📩 Revisa tu bandeja de mensajes para continuar."
@@ -341,6 +362,15 @@ export async function POST(req: Request) {
           console.log(`[FB bot] privateReplyToComment result: ${privateOk}`)
 
           if (!privateOk) {
+            // Roll the conversation back. Two things go wrong if it stays: every
+            // later comment answers "ya te escribí" about a message that never
+            // arrived, and the m.me link below pre-fills the keyword, so the DM
+            // handler would record "INFO" as the person's first name. Without
+            // the row, that same tap starts a clean conversation that asks for
+            // the name properly.
+            console.error(`[FB bot] greeting NOT delivered to ${commenterId} — rolling back the conversation`)
+            await prisma.facebookBotConversation.delete({ where: { psid: commenterId } }).catch(() => {})
+
             // Reel or missing permission — fall back to public reply with one-tap m.me link
             const meLink = `https://m.me/${pageId}?text=${encodeURIComponent(keyword.toUpperCase())}`
             postPublicCommentReply(commentId,
@@ -669,12 +699,13 @@ export async function POST(req: Request) {
               priority: "MEDIUM",
             },
           }).catch(() => {})
-          // If Facebook refuses the greeting the conversation sits in ASKED_NAME
-          // forever and the lead sees nothing, so record the failure in the log even
-          // though it no longer raises an alert.
+          // If Facebook refuses the greeting, the row would otherwise sit in
+          // ASKED_NAME forever and the lead would see nothing, so roll it back
+          // and let their next message start the conversation properly.
           const greetingSent = await sendFacebookMessage(psid, greeting)
           if (!greetingSent) {
-            console.error(`[FB bot] greeting NOT delivered to ${psid} — see the [FB] error above`)
+            console.error(`[FB bot] greeting NOT delivered to ${psid} — rolling back the conversation`)
+            await prisma.facebookBotConversation.delete({ where: { psid } }).catch(() => {})
           }
         } else {
         // ── Non-bot Messenger DM handling ───────────────────────────────────

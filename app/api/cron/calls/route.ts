@@ -4,15 +4,7 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { triggerOutboundCall } from "@/lib/vapi"
 import { toE164 } from "@/lib/sms"
-
-function isBusinessHours(): boolean {
-  const now = new Date()
-  const et = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }))
-  const hour = et.getHours()
-  const day = et.getDay()
-  if (day === 0) return false // no Sunday calls
-  return hour >= 8 && hour < 21  // 8 am–9 pm ET
-}
+import { isWithinCallingWindow } from "@/lib/calling-hours"
 
 // GET /api/cron/calls
 // Called by Railway cron every 15 minutes.
@@ -24,10 +16,6 @@ export async function GET(req: Request) {
     if (auth !== `Bearer ${secret}`) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
-  }
-
-  if (!isBusinessHours()) {
-    return NextResponse.json({ skipped: "outside business hours" })
   }
 
   const now = new Date()
@@ -78,6 +66,14 @@ export async function GET(req: Request) {
     }
 
     const toPhone = toE164(phone)
+
+    // Checked per lead rather than once per run: the window depends on their
+    // area code, so a Miami number and a California number are not callable at
+    // the same hour. Left PENDING so it retries in a later run.
+    if (!isWithinCallingWindow(toPhone)) {
+      results.push({ contactId: contact.id, status: "skipped_outside_calling_window" })
+      continue
+    }
 
     const callId = await triggerOutboundCall({
       toPhone,

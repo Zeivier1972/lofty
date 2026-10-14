@@ -684,6 +684,10 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
   // Twilio browser softphone state
   const [twilioDevice, setTwilioDevice] = useState<any>(null)
   const [activeCall, setActiveCall] = useState<any>(null)
+  // Mirrored into a ref so the advance-to-next-contact effect below can hang the
+  // call up. It cannot read `activeCall` directly: adding it to that effect's
+  // deps would fire the effect the instant a call connects and kill it.
+  const activeCallRef = useRef<any>(null)
   const [callStatus, setCallStatus] = useState<"idle" | "connecting" | "connected">("idle")
   const [callSeconds, setCallSeconds] = useState(0)
   const [deviceReady, setDeviceReady] = useState(false)
@@ -831,6 +835,8 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
     return () => { device?.destroy(); setTwilioDevice(null); setDeviceReady(false) }
   }, [phase, callerType])
 
+  useEffect(() => { activeCallRef.current = activeCall }, [activeCall])
+
   // Timer while on a call
   useEffect(() => {
     if (callStatus !== "connected") { setCallSeconds(0); return }
@@ -838,8 +844,26 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
     return () => clearInterval(t)
   }, [callStatus])
 
-  // Reset call state when advancing to next contact
-  useEffect(() => { setCallStatus("idle"); setActiveCall(null) }, [manualIndex])
+  // Reset call state when advancing to next contact.
+  //
+  // This used to drop the call reference without hanging up, so logging an
+  // outcome mid-call left the Twilio line connected to the previous contact.
+  // The UI showed "Llamar a <next>" while the device was still busy, so the
+  // next call could not be placed and the previous contact's audio — usually
+  // their voicemail greeting — kept playing with the Colgar button gone.
+  //
+  // Clearing the selected template matters for the same reason: its <audio>
+  // element is keyed by template id inside a list that does not change between
+  // contacts, so React reuses the same DOM node and playback carries over.
+  // `showScript` is deliberately left alone — that is a panel preference, and
+  // collapsing it on every contact would fight the person working the queue.
+  useEffect(() => {
+    activeCallRef.current?.disconnect()
+    activeCallRef.current = null
+    setCallStatus("idle")
+    setActiveCall(null)
+    setSelectedTplId(null)
+  }, [manualIndex])
 
   const startBrowserCall = async (phone: string) => {
     if (!twilioDevice) return
