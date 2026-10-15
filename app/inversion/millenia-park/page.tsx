@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import { Cormorant_Garamond, Jost } from "next/font/google"
+import { usd, Eyebrow, Rule, FaqList, ContactBlock } from "../_ui"
 
 const serif = Cormorant_Garamond({ subsets: ["latin"], weight: ["400", "500", "600"], variable: "--mp-serif" })
 const sans = Jost({ subsets: ["latin"], weight: ["300", "400", "500", "600"], variable: "--mp-sans" })
@@ -55,9 +56,6 @@ export const metadata: Metadata = {
  */
 const LEASE_BACK_RATE = 0.07
 const monthlyLeaseBack = (price: number) => (price * LEASE_BACK_RATE) / 12
-
-const usd = (n: number, decimals = 0) =>
-  `$${n.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`
 
 type Unit = { type: string; layout: string; price: number | null; sqft?: number; hoa: number }
 
@@ -250,18 +248,6 @@ const jsonLd = {
 }
 
 /* --------------------------------------------------------------- helpers --- */
-function Eyebrow({ children, onDark = false }: { children: React.ReactNode; onDark?: boolean }) {
-  return (
-    <p className={`text-[0.68rem] font-medium uppercase tracking-[0.34em] ${onDark ? "text-[#C7A869]" : "text-[#A6823B]"}`}>
-      {children}
-    </p>
-  )
-}
-
-function Rule({ onDark = false }: { onDark?: boolean }) {
-  return <div className={`my-5 h-px w-12 ${onDark ? "bg-[#C7A869]" : "bg-[#A6823B]"}`} />
-}
-
 function PriceTable({ caption, units, note }: { caption: string; units: Unit[]; note?: string }) {
   return (
     <div className="mt-8 overflow-x-auto rounded-lg border border-[#E1DACA] bg-[#FBF9F3]">
@@ -312,7 +298,7 @@ export default function MilleniaParkPage() {
           alt="Millenia Park, Orlando — torres residenciales frente al lago de la comunidad"
           className="absolute inset-0 h-full w-full object-cover"
         />
-        <div className="absolute inset-0 bg-gradient-to-b from-[#0c0a07]/35 via-[#0c0a07]/20 to-[#0c0a07]/90" />
+        <div className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(12,10,7,0.22)_0%,rgba(12,10,7,0.30)_40%,rgba(12,10,7,0.72)_66%,rgba(12,10,7,0.93)_84%,rgba(12,10,7,0.97)_100%)]" />
         <div className="relative mx-auto w-full max-w-5xl px-5 pb-12 pt-28 sm:pb-16">
           <Eyebrow onDark>Oportunidad de inversión · Orlando</Eyebrow>
           <h1 className="mt-3 font-[family-name:var(--mp-serif)] text-5xl font-medium leading-[0.95] text-white sm:text-7xl lg:text-8xl">
@@ -630,45 +616,13 @@ export default function MilleniaParkPage() {
         <Eyebrow>Preguntas frecuentes</Eyebrow>
         <Rule />
         <h2 className="font-[family-name:var(--mp-serif)] text-4xl font-medium leading-[1.05] sm:text-5xl">Lo que más preguntan</h2>
-        <div className="mt-10 divide-y divide-[#E1DACA] border-y border-[#E1DACA]">
-          {FAQS.map(f => (
-            <details key={f.q} className="group py-5">
-              <summary className="flex cursor-pointer list-none items-start justify-between gap-4 text-left font-medium text-[#17160F] marker:content-none">
-                <span>{f.q}</span>
-                <span aria-hidden className="mt-1 shrink-0 text-[#A6823B] transition-transform group-open:rotate-45">+</span>
-              </summary>
-              <p className="mt-3 max-w-[68ch] leading-relaxed text-[#17160F]/80">{f.a}</p>
-            </details>
-          ))}
+        <div className="mt-10">
+          <FaqList faqs={FAQS} />
         </div>
       </section>
 
-      {/* ---------- CONTACTO ---------- */}
-      <section className="border-t border-[#E1DACA] bg-[#FBF9F3]">
-        <div className="mx-auto max-w-5xl px-5 py-16 text-center sm:py-20">
-          <Eyebrow>Contacto</Eyebrow>
-          <div className="mx-auto my-5 h-px w-12 bg-[#A6823B]" />
-          <h2 className="font-[family-name:var(--mp-serif)] text-4xl font-medium sm:text-5xl">Catherine Gomez</h2>
-          <p className="mt-2 text-sm uppercase tracking-[0.2em] text-[#7C776A]">Realtor · Miami &amp; Orlando</p>
-          <p className="mt-6 font-[family-name:var(--mp-serif)] text-3xl tabular-nums">
-            <a href={`tel:${PHONE_E164}`} className="text-[#17160F] hover:text-[#A6823B]">{PHONE_DISPLAY}</a>
-          </p>
-          <div className="mt-8 flex flex-wrap justify-center gap-3">
-            <a href={BOOK_URL} className="rounded-lg bg-[#17130E] px-7 py-4 font-medium text-[#ECE5D5] hover:bg-[#2a241b]">
-              Agendar una llamada
-            </a>
-            <a href={WA_URL} className="rounded-lg bg-[#25D366] px-7 py-4 font-medium text-white hover:brightness-95">
-              Escribir por WhatsApp
-            </a>
-            <a
-              href="mailto:info@catherinegomezrealtor.com?subject=Millenia%20Park%20Orlando"
-              className="rounded-lg border border-[#A6823B] px-7 py-4 font-medium text-[#A6823B] hover:bg-[#A6823B]/5"
-            >
-              Enviar un correo
-            </a>
-          </div>
-        </div>
-      </section>
+      <ContactBlock bookUrl={BOOK_URL} waUrl={WA_URL} phoneDisplay={PHONE_DISPLAY}
+        phoneE164={PHONE_E164} subject="Millenia Park Orlando" />
 
       <footer className="bg-[#17130E] text-[#ECE5D5]/60">
         <div className="mx-auto flex max-w-5xl flex-col gap-2 px-5 py-10 text-xs sm:flex-row sm:items-center sm:justify-between">
