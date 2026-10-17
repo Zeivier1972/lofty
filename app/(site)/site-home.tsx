@@ -34,7 +34,15 @@ export const siteHomeMetadata: Metadata = {
 }
 
 // Load with ssr:false so Framer Motion never runs server-side
-const HomeClient = nextDynamic(() => import("./home-client"), { ssr: false })
+// Rendered on the server. This was `{ ssr: false }`, which meant the entire
+// homepage body existed only after JavaScript ran: the HTML Google and the AI
+// answer engines fetch carried 16 characters of text and not one heading,
+// while every other public page serves its content normally.
+//
+// Nothing in home-client needed the browser at render time — no window, no
+// document, no storage, no Math.random or Date in the markup — so the flag was
+// costing the site its front page for nothing.
+const HomeClient = nextDynamic(() => import("./home-client"))
 
 // The public real-estate homepage. Rendered at both the bare domain "/" and "/site".
 export default async function SiteHome() {
