@@ -6,6 +6,7 @@ import { Building2, Search, Bed, Bath, Maximize2, MapPin, Loader2, Phone, Slider
 import { IdxDisclaimer } from "@/components/idx-disclaimer"
 import { LeadCaptureModal } from "@/components/idx/lead-capture-modal"
 import { PROPERTY_TYPE_GROUPS, keysToParam, paramToKeys, labelForKeys } from "@/lib/property-types"
+import { parseSearchQuery } from "@/lib/search-query"
 import { getFavs, setFavs, getLead, setLead, saveHome, type LeadFields } from "@/lib/idx-favorites"
 
 interface Result {
@@ -32,6 +33,25 @@ const PRICE_OPTIONS = [
   { label: "$1M", value: "1000000" },
   { label: "$2M", value: "2000000" },
 ]
+
+
+/**
+ * The price filters are fixed steps, but a spoken or typed query carries any
+ * number ("bajo 500 mil"). The parsed value is applied to the search either
+ * way; without adding it to the list the control renders blank and the filter
+ * looks as though it was ignored. Fold the active value in, in order, so what
+ * the dropdown shows is what the search is actually using.
+ */
+function priceOptionsWith(active: string) {
+  if (!active || PRICE_OPTIONS.some(o => o.value === active)) return PRICE_OPTIONS
+  const n = Number(active)
+  if (!Number.isFinite(n) || n <= 0) return PRICE_OPTIONS
+  const label = n >= 1_000_000
+    ? `$${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`
+    : `$${Math.round(n / 1000)}k`
+  return [...PRICE_OPTIONS, { label, value: active }]
+    .sort((a, b) => (Number(a.value) || 0) - (Number(b.value) || 0))
+}
 
 
 // South Florida cities (Miami-Dade, Broward, Palm Beach) for the city autocomplete.
@@ -269,13 +289,19 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search)
     const m: "sale" | "rent" = sp.get("mode") === "rent" ? "rent" : "sale"
+    // A free-text `q` arrives from the homepage SearchAction — Google's
+    // sitelinks searchbox and the assistants that read the same markup send one
+    // search string and nothing else — and from the voice button in the chat
+    // widget. Explicit params still win over anything parsed out of `q`, so
+    // every link that already exists keeps its exact meaning.
+    const parsed = parseSearchQuery(sp.get("q"))
     const init = {
-      city: initialCity || sp.get("city") || "",
-      minPrice: sp.get("minPrice") || "",
-      maxPrice: sp.get("maxPrice") || "",
-      minBeds: sp.get("minBeds") || "",
+      city: initialCity || sp.get("city") || parsed.city || "",
+      minPrice: sp.get("minPrice") || parsed.minPrice || "",
+      maxPrice: sp.get("maxPrice") || parsed.maxPrice || "",
+      minBeds: sp.get("minBeds") || parsed.minBeds || "",
       stories: sp.get("stories") || "",
-      propType: sp.get("type") || "",
+      propType: sp.get("type") || parsed.type || "",
       mode: m,
     }
     setMode(m)
@@ -386,10 +412,10 @@ export default function HomesClient({ initialCity }: { initialCity?: string } = 
             )}
           </div>
           <select value={minPrice} onChange={e => setMinPrice(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-lofty-400">
-            {PRICE_OPTIONS.map(o => <option key={`min${o.value}`} value={o.value}>{o.value ? `Desde ${o.label}` : "Precio mín."}</option>)}
+            {priceOptionsWith(minPrice).map(o => <option key={`min${o.value}`} value={o.value}>{o.value ? `Desde ${o.label}` : "Precio mín."}</option>)}
           </select>
           <select value={maxPrice} onChange={e => setMaxPrice(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-lofty-400">
-            {PRICE_OPTIONS.map(o => <option key={`max${o.value}`} value={o.value}>{o.value ? `Hasta ${o.label}` : "Precio máx."}</option>)}
+            {priceOptionsWith(maxPrice).map(o => <option key={`max${o.value}`} value={o.value}>{o.value ? `Hasta ${o.label}` : "Precio máx."}</option>)}
           </select>
           <select value={minBeds} onChange={e => setMinBeds(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-lofty-400">
             <option value="">Cuartos</option>
