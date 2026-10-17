@@ -15,6 +15,7 @@ import { v2 as cloudinary } from "cloudinary"
 import { prisma } from "@/lib/prisma"
 import { researchViralContent, buildAIOSystemPrompt, ResearchBrief } from "./content-research"
 import { uploadVideoToYouTube } from "./youtube-upload"
+import { publishGoogleBusinessPost } from "./google-business"
 import { fetchSceneVideoUrl, getFallbackBackground, fetchPexelsPhoto } from "./pexels-video"
 import { generateGuideFromScript } from "./generate-guide"
 
@@ -135,7 +136,17 @@ const PLATFORM_GUIDES: Record<string, string> = {
   YOUTUBE:
     "Formato YouTube Shorts: descripción optimizada para SEO (300-400 palabras), incluye el año 2026, menciona Brickell Miami y Catherine Gomez Realtor, termina con CTA de suscripción y hashtags relevantes.",
   GOOGLE_BUSINESS:
-    "Formato Google Business: 150-250 palabras, tono profesional, menciona servicios y área de cobertura (Miami, Homestead, Orlando, South Florida).",
+    // Google rejects or removes posts that put a phone number in the body — it
+    // wants people using the Call button on the profile — and hashtags do
+    // nothing on a Business Profile. The post is also truncated after roughly
+    // 100 characters in the preview, so the offer has to lead. sanitizeForGoogle
+    // strips a number or hashtag that slips through, but stripping leaves
+    // "Llámame al ." behind, so the model is told not to write one at all.
+    "Formato Google Business: 150-250 palabras, tono profesional, menciona servicios y área de cobertura (Miami, Doral, Brickell, Orlando, South Florida). " +
+    "PROHIBIDO incluir números de teléfono en el texto — Google rechaza esos posts; la gente usa el botón de Llamar del perfil. " +
+    "PROHIBIDO usar hashtags: no funcionan en Google Business. " +
+    "No cierres con firma ni datos de contacto. " +
+    "Las primeras 100 caracteres son lo único que se ve en la vista previa, así que empieza por la oferta o la novedad concreta, nunca por un saludo.",
 }
 
 // ─── Content generation with Claude + AIO optimization ───────────────────────
@@ -1446,6 +1457,29 @@ async function publishToYouTube(account: AccountLike, post: PostLike): Promise<s
   return youtubeUrl
 }
 
+/**
+ * Google Business Profile. `accountId` holds the location resource name
+ * ("accounts/x/locations/y") that the OAuth callback resolved — Local Posts are
+ * created under a location, not a user.
+ *
+ * The call to action points at the site rather than at a phone number, since a
+ * number in the body is what gets these posts removed. The profile already
+ * carries the Call button.
+ */
+async function publishToGoogleBusiness(account: AccountLike, post: PostLike): Promise<string> {
+  if (!account.refreshToken) throw new Error("Google Business: falta el refresh token — reconecta la cuenta")
+  if (!account.accountId) throw new Error("Google Business: falta la ubicación del perfil — reconecta la cuenta")
+
+  const site = process.env.NEXT_PUBLIC_APP_URL || "https://www.catherinegomezrealtor.com"
+  return publishGoogleBusinessPost({
+    locationName: account.accountId,
+    refreshToken: account.refreshToken,
+    content: post.content,
+    mediaUrl: post.mediaUrl,
+    ctaUrl: site,
+  })
+}
+
 export async function publishPost(post: PostLike, account: AccountLike): Promise<void> {
   let externalId: string | undefined
 
@@ -1460,6 +1494,8 @@ export async function publishPost(post: PostLike, account: AccountLike): Promise
       externalId = await publishToLinkedIn(account, post)
     } else if (post.platform === "YOUTUBE") {
       externalId = await publishToYouTube(account, post)
+    } else if (post.platform === "GOOGLE_BUSINESS") {
+      externalId = await publishToGoogleBusiness(account, post)
     } else {
       console.log(`[social-autopilot] Skipping unsupported platform: ${post.platform}`)
       return

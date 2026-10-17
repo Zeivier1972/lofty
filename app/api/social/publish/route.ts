@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth"
+import { publishGoogleBusinessPost } from "@/lib/google-business"
 
 async function publishToFacebook(account: { accessToken: string | null; pageId: string | null }, content: string, mediaUrl?: string | null) {
   if (!account.accessToken || !account.pageId) throw new Error("Facebook not connected")
@@ -111,6 +112,20 @@ export async function POST(req: Request) {
         externalId = await publishToInstagram(post.account, post.content, post.mediaUrl)
       } else if (post.platform === "TIKTOK") {
         externalId = await publishToTikTok(post.account, post.content)
+      } else if (post.platform === "GOOGLE_BUSINESS") {
+        // accountId holds the location resource name the OAuth callback
+        // resolved. The CTA points at the site, not a number: a phone number in
+        // the body is what gets a Google post removed.
+        if (!post.account.refreshToken || !post.account.accountId) {
+          throw new Error("Google Business no está conectado — reconéctalo en Ajustes → Redes Sociales")
+        }
+        externalId = await publishGoogleBusinessPost({
+          locationName: post.account.accountId,
+          refreshToken: post.account.refreshToken,
+          content: post.content,
+          mediaUrl: post.mediaUrl,
+          ctaUrl: process.env.NEXT_PUBLIC_APP_URL || "https://www.catherinegomezrealtor.com",
+        })
       }
     }
 
