@@ -1,5 +1,6 @@
 import twilio from "twilio"
 import { prisma } from "@/lib/prisma"
+import { wasRecentlySent } from "@/lib/message-dedupe"
 
 // Normalize any stored phone to E.164 WITHOUT assuming it's a US number.
 // The old pattern (`+1` + last 10 digits) silently converted international
@@ -254,6 +255,20 @@ export async function sendSMS(
         return null
       }
     } catch { /* if the check fails, fall through and send */ }
+
+    // Repetition guard. The cooldown above is a volume limit and only reads
+    // SMSMessage; this asks the different question — have these exact words
+    // already gone to this person, on EITHER channel, in the last 30 days. A
+    // plan that WhatsApps and texts the same copy is otherwise invisible to it,
+    // and sanitizeSmsBody has already stripped the accents by now, so the two
+    // copies no longer even match byte for byte.
+    try {
+      const dup = await wasRecentlySent({ body, contactId: opts.contactId, toNumber: to })
+      if (dup.duplicate) {
+        console.log(`[SMS DUPLICATE] ${to}: same message already sent via ${dup.channel} on ${dup.sentAt?.toISOString()} — skipping`)
+        return null
+      }
+    } catch { /* if the check fails, fall through and send */ }
   }
 
   const c = getClient()
@@ -324,11 +339,53 @@ export async function initiateCall(to: string, callbackUrl: string): Promise<str
   return call.sid
 }
 
-export async function sendWhatsApp(to: string, body: string, mediaUrl?: string): Promise<string | null> {
+/**
+ * `opts` is optional so existing manual callers keep working untouched, but an
+ * automated caller should always pass it: without `automated` there is no
+ * repetition guard, and without `contactId` a duplicate can only be matched by
+ * phone number.
+ */
+export async function sendWhatsApp(
+  to: string,
+  body: string,
+  mediaUrl?: string,
+  opts?: { automated?: boolean; contactId?: string },
+): Promise<string | null> {
   const c = getClient()
-  const toNumber = to.startsWith("whatsapp:") ? to : `whatsapp:${toE164(to) || to}`
+  const e164 = toE164(to) || to
+  const toNumber = to.startsWith("whatsapp:") ? to : `whatsapp:${e164}`
   // Use dedicated WhatsApp number if configured, otherwise fall back to SMS number
   const fromNumber = `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER || process.env.TWILIO_PHONE_NUMBER}`
+
+  const digits10 = (e164 || "").replace(/\D/g, "").slice(-10)
+
+  // Opt-outs apply to WhatsApp too. sendSMS has blocked a flagged number
+  // centrally for a while; this path did not, so a contact who replied STOP
+  // could still be reached here by any caller that forgot to check first.
+  if (opts?.automated && digits10.length >= 7) {
+    try {
+      const blocked = await prisma.contact.findFirst({
+        where: { doNotText: true, phone: { contains: digits10 } },
+        select: { id: true },
+      })
+      if (blocked) {
+        console.log(`[WHATSAPP BLOCKED — doNotText] ${toNumber}: "${body.slice(0, 60)}"`)
+        return null
+      }
+    } catch { /* if the check fails, fall through and send */ }
+  }
+
+  // Repetition guard, across both channels — see lib/message-dedupe.
+  if (opts?.automated) {
+    try {
+      const dup = await wasRecentlySent({ body, contactId: opts.contactId, toNumber: e164 })
+      if (dup.duplicate) {
+        console.log(`[WHATSAPP DUPLICATE] ${toNumber}: same message already sent via ${dup.channel} on ${dup.sentAt?.toISOString()} — skipping`)
+        return null
+      }
+    } catch { /* if the check fails, fall through and send */ }
+  }
+
   if (!c) {
     console.log("[WHATSAPP MOCK] To:", toNumber, "Body:", body)
     return "mock-wa-sid"
@@ -339,6 +396,22 @@ export async function sendWhatsApp(to: string, body: string, mediaUrl?: string):
     to: toNumber,
     ...(mediaUrl ? { mediaUrl: [mediaUrl] } : {}),
   })
+
+  // Record it. This function never logged its sends, which is why the SMS
+  // cooldown could not see a WhatsApp message and why the same copy could go
+  // out on both channels. The guard above is only as good as this row.
+  prisma.whatsAppMessage.create({
+    data: {
+      body,
+      fromNumber,
+      toNumber,
+      direction: "OUTBOUND",
+      status: "SENT",
+      twilioSid: msg.sid,
+      ...(opts?.contactId ? { contactId: opts.contactId } : {}),
+    },
+  }).catch(e => console.error("[WHATSAPP] could not log outbound message:", e))
+
   return msg.sid
 }
 
