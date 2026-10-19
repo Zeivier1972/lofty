@@ -148,7 +148,7 @@ export async function GET(req: Request) {
           let channel: "WHATSAPP" | "SMS" = "SMS"
           if (recentInbound) {
             try {
-              await sendWhatsApp(toPhone, filledContent)
+              await sendWhatsApp(toPhone, filledContent, undefined, { automated: true, contactId: contact.id })
               channel = "WHATSAPP"
             } catch (waErr: any) {
               console.warn("[smart-plans] WhatsApp failed despite open session, falling back to SMS:", waErr?.message)
