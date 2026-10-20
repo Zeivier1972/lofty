@@ -16,6 +16,7 @@ import { prisma } from "@/lib/prisma"
 import { researchViralContent, buildAIOSystemPrompt, ResearchBrief } from "./content-research"
 import { uploadVideoToYouTube } from "./youtube-upload"
 import { publishGoogleBusinessPost } from "./google-business"
+import { createVideo, getVideoStatus, isFinished, isFailed, type HeyGenScene } from "./heygen"
 import { fetchSceneVideoUrl, getFallbackBackground, fetchPexelsPhoto } from "./pexels-video"
 import { generateGuideFromScript } from "./generate-guide"
 
@@ -601,71 +602,53 @@ async function triggerHeyGenVideo(script: string, dayOfWeek: number): Promise<st
     if (!avatarInfo) return null
 
     const talkingPhotoIds = new Set(CATHERINE_TALKING_PHOTO_IDS)
-    const isTalkingPhoto = talkingPhotoIds.has(avatarInfo.avatarId)
-
-    const character: Record<string, unknown> = isTalkingPhoto
-      ? { type: "talking_photo", talking_photo_id: avatarInfo.avatarId }
-      : { type: "avatar", avatar_id: avatarInfo.avatarId, avatar_style: "normal" }
 
     // Structure: avatar intro → b-roll scenes → avatar outro
-    const scenes = splitScriptForBRoll(script)
+    const parts = splitScriptForBRoll(script)
     const videoUrls = await Promise.all(
-      scenes.map((sceneText, i) =>
-        i === 0 || i === scenes.length - 1
+      parts.map((sceneText, i) =>
+        i === 0 || i === parts.length - 1
           ? Promise.resolve(null)
           : fetchSceneVideoUrl(sceneText, "portrait")
       )
     )
 
-    const videoInputs = scenes.map((sceneText, i) => {
-      const isFirst = i === 0
-      const isLast = i === scenes.length - 1
-      if (isFirst || isLast) {
-        return {
-          character,
-          voice: { type: "text", input_text: sceneText, voice_id: avatarInfo.voiceId },
-          background: getFallbackBackground(sceneText, i),
-        }
-      }
+    // The avatar/talking-photo split is gone on v3: one avatar_id covers both,
+    // and a photo avatar's look id is what produces a talking photo. The set is
+    // still passed through so the v2 escape hatch can rebuild the old shape.
+    const scenes: HeyGenScene[] = parts.map((sceneText, i) => {
+      const isEdge = i === 0 || i === parts.length - 1
       const videoUrl = videoUrls[i]
+      if (!isEdge && videoUrl) {
+        return { kind: "broll", videoUrl, script: sceneText, voiceId: avatarInfo.voiceId }
+      }
+      const bg = getFallbackBackground(sceneText, i) as { type: string; url: string }
       return {
-        voice: { type: "text", input_text: sceneText, voice_id: avatarInfo.voiceId },
-        background: videoUrl
-          ? { type: "video", url: videoUrl, play_style: "fit_to_scene" }
-          : getFallbackBackground(sceneText, i),
+        kind: "avatar",
+        avatarId: avatarInfo.avatarId,
+        script: sceneText,
+        voiceId: avatarInfo.voiceId,
+        background: { type: "image", url: bg.url },
       }
     })
 
-    const payload = {
-      video_inputs: videoInputs,
-      // 1080x1920 — Reels/Shorts/TikTok re-compress on upload, so a 720p source
-      // lands visibly soft. Must match the Creatomate render size below, or the
-      // caption pass would scale this straight back down.
-      dimension: { width: 1080, height: 1920 },
-      caption: true,
-    }
+    const brollCount = scenes.filter(sc => sc.kind === "broll").length
+    console.log(`[social-autopilot] HeyGen — ${scenes.length} scenes, ${brollCount} B-roll, avatar: ${avatarInfo.avatarId.slice(0, 8)}`)
 
-    const brollCount = Math.max(0, scenes.length - 2)
-    console.log(`[social-autopilot] HeyGen — avatar intro + ${brollCount} B-roll + avatar outro, Pexels: ${videoUrls.filter(Boolean).length}/${brollCount}, avatar: ${avatarInfo.avatarId.slice(0, 8)}`)
-
-    const res = await fetch("https://api.heygen.com/v2/video/generate", {
-      method: "POST",
-      headers: {
-        "X-Api-Key": apiKey,
-        "Content-Type": "application/json",
+    const result = await createVideo(
+      {
+        scenes,
+        // 1080x1920 — Reels/Shorts/TikTok re-compress on upload, so a 720p
+        // source lands visibly soft. Must match the Creatomate render size, or
+        // the caption pass would scale this straight back down.
+        width: 1080,
+        height: 1920,
+        caption: true,
       },
-      body: JSON.stringify(payload),
-    })
+      talkingPhotoIds,
+    )
 
-    const data = await res.json()
-
-    if (!data?.data?.video_id) {
-      console.error(`[social-autopilot] HeyGen generate failed (HTTP ${res.status}):`, JSON.stringify(data))
-    } else {
-      console.log(`[social-autopilot] HeyGen generate success — video_id: ${data.data.video_id}, scenes: ${scenes.length}`)
-    }
-
-    return (data?.data?.video_id as string) ?? null
+    return result.videoId
   } catch (err) {
     console.error("[social-autopilot] HeyGen video generation failed:", err)
     return null
@@ -1050,15 +1033,9 @@ export async function checkHeygenVideos(): Promise<{ checked: number; completed:
 
   for (const post of heygenPending) {
     try {
-      const res = await fetch(
-        `https://api.heygen.com/v1/video_status.get?video_id=${post.externalId}`,
-        { headers: { "X-Api-Key": apiKey } }
-      )
-      const data = await res.json()
-      const heygenStatus: string | undefined = data?.data?.status
-      const videoUrl: string | undefined = data?.data?.video_url
+      const { status: heygenStatus, videoUrl } = await getVideoStatus(post.externalId as string)
 
-      if (heygenStatus === "completed" && videoUrl) {
+      if (isFinished(heygenStatus) && videoUrl) {
         if (creatomateKey) {
           // Pipe through Creatomate for kinetic captions before publishing
           const ctRes = await fetch("https://api.creatomate.com/v1/renders", {
@@ -1118,7 +1095,7 @@ export async function checkHeygenVideos(): Promise<{ checked: number; completed:
           if (post.account) await publishPost({ ...post, mediaUrl: videoUrl }, post.account)
           completed++
         }
-      } else if (heygenStatus === "failed") {
+      } else if (isFailed(heygenStatus)) {
         await prisma.socialPost.update({ where: { id: post.id }, data: { status: "FAILED" } })
       }
     } catch (err) {

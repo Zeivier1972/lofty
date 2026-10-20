@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
+import { getVideoStatus } from "@/lib/heygen"
 
 export async function GET(req: Request) {
   const session = await auth()
@@ -15,9 +16,8 @@ export async function GET(req: Request) {
   const videoId = searchParams.get("videoId")
   if (!videoId) return NextResponse.json({ error: "videoId required" }, { status: 400 })
 
-  const res = await fetch(`https://api.heygen.com/v1/video_status.get?video_id=${videoId}`, {
-    headers: { "X-Api-Key": process.env.HEYGEN_API_KEY },
-  })
-  const data = await res.json()
-  return NextResponse.json(data)
+  // Goes through lib/heygen so this follows HEYGEN_API_VERSION with everything
+  // else; the raw payload is still returned for any caller reading its fields.
+  const { status, videoUrl, raw } = await getVideoStatus(videoId)
+  return NextResponse.json({ ...raw, status, video_url: videoUrl })
 }
