@@ -700,6 +700,14 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
   type VmTemplate = { id: string; name: string; text: string; audioUrl?: string }
   const [templates, setTemplates] = useState<VmTemplate[]>([])
   const [selectedTplId, setSelectedTplId] = useState<string | null>(null)
+  // What the one-click "Dejar mensaje y siguiente" button sends: whatever is
+  // picked in the panel below, else the first message that has audio. Falling
+  // back like this is the point — the button has to work the moment the
+  // greeting starts, with no panel opened and nothing picked.
+  const quickVmTemplate =
+    templates.find(t => t.id === selectedTplId && t.audioUrl) ||
+    templates.find(t => t.audioUrl) ||
+    null
   const [tplForm, setTplForm] = useState<Partial<VmTemplate> | null>(null)
   const [uploadingAudio, setUploadingAudio] = useState(false)
   const [savingTpl, setSavingTpl] = useState(false)
@@ -1395,6 +1403,29 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
                   </div>
                 )}
 
+                {/*
+                  The button for the moment the greeting starts playing: hang
+                  up, let Twilio leave the recording after the beep on its own
+                  call, go to the next contact. It sits here, under the call
+                  controls, because that is where the cursor already is — it
+                  used to live at the bottom of the collapsed "Mensajes
+                  pre-grabados" panel, which meant expanding it and picking a
+                  message again on every single contact.
+                */}
+                {quickVmTemplate && (
+                  <button
+                    onClick={() => dropVoicemail(contact.phone, quickVmTemplate.audioUrl!, contact.id)}
+                    className="w-full flex flex-col items-center justify-center gap-0.5 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+                  >
+                    <span className="flex items-center gap-2 font-semibold">
+                      <Voicemail className="w-5 h-5" /> Dejar mensaje y siguiente
+                    </span>
+                    <span className="text-[11px] text-blue-100">
+                      No esperes el saludo — {quickVmTemplate.name}
+                    </span>
+                  </button>
+                )}
+
                 {/* Notes */}
                 <div>
                   <label className="text-xs font-semibold text-gray-500 mb-1.5 block">Notas (opcional)</label>
@@ -1415,7 +1446,7 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
                   </button>
                   <button onClick={() => logManualCall("voicemail")}
                     className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 transition-colors disabled:opacity-50">
-                    <MessageSquare className="w-5 h-5" /><span className="text-xs font-semibold">Buzón de voz</span>
+                    <MessageSquare className="w-5 h-5" /><span className="text-xs font-semibold">Buzón, sin mensaje</span>
                   </button>
                   <button onClick={() => logManualCall("no_answer")}
                     className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 transition-colors disabled:opacity-50">
@@ -1459,13 +1490,9 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
                                 <audio key={`${t.id}-${contact.id}`} src={t.audioUrl} controls className="mt-2 w-full h-8" />
                               )}
                               {isSel && t.audioUrl && (
-                                <button
-                                  onClick={e => { e.stopPropagation(); dropVoicemail(contact.phone, t.audioUrl!, contact.id) }}
-                                  className="mt-2 w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors"
-                                >
-                                  <Voicemail className="w-3.5 h-3.5" />
-                                  Dejar mensaje y siguiente
-                                </button>
+                                <p className="mt-1.5 text-xs text-blue-700 font-semibold">
+                                  Este es el que deja el botón azul de arriba.
+                                </p>
                               )}
                               {isSel && !t.audioUrl && (
                                 <p className="mt-1.5 text-xs text-gray-400 italic">Lee este mensaje en el buzón de voz</p>
