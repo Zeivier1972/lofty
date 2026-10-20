@@ -678,8 +678,11 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
   const [manualIndex, setManualIndex] = useState(0)
   const [manualNote, setManualNote] = useState("")
   const [manualLog, setManualLog] = useState<{ name: string; outcome: string }[]>([])
-  const [loggingCall, setLoggingCall] = useState(false)
   const manualContacts = contactList.filter(c => c.phone)
+  // Swallows a double-click on an outcome button. The queue now advances
+  // synchronously, so without this a fast second click lands on the contact
+  // after the one it was meant for and skips them.
+  const lastAdvanceRef = useRef(0)
 
   // Twilio browser softphone state
   const [twilioDevice, setTwilioDevice] = useState<any>(null)
@@ -697,10 +700,17 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
   type VmTemplate = { id: string; name: string; text: string; audioUrl?: string }
   const [templates, setTemplates] = useState<VmTemplate[]>([])
   const [selectedTplId, setSelectedTplId] = useState<string | null>(null)
+  // What the one-click "Dejar mensaje y siguiente" button sends: whatever is
+  // picked in the panel below, else the first message that has audio. Falling
+  // back like this is the point — the button has to work the moment the
+  // greeting starts, with no panel opened and nothing picked.
+  const quickVmTemplate =
+    templates.find(t => t.id === selectedTplId && t.audioUrl) ||
+    templates.find(t => t.audioUrl) ||
+    null
   const [tplForm, setTplForm] = useState<Partial<VmTemplate> | null>(null)
   const [uploadingAudio, setUploadingAudio] = useState(false)
   const [savingTpl, setSavingTpl] = useState(false)
-  const [droppingVM, setDroppingVM] = useState(false)
   const [showScript, setShowScript] = useState(false)
   // In-browser recording state
   const [recording, setRecording] = useState(false)
@@ -765,21 +775,98 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
     } finally { setUploadingAudio(false) }
   }
 
-  const dropVoicemail = async (phone: string, audioUrl: string) => {
-    setDroppingVM(true)
+  /** Hang the browser call up and clear the softphone state. */
+  const releaseLine = () => {
+    activeCallRef.current?.disconnect()
+    activeCallRef.current = null
+    setCallStatus("idle")
+    setActiveCall(null)
+  }
+
+  /**
+   * Move to the next contact. Synchronous on purpose.
+   *
+   * Nothing here waits on a request. Every path that advances the queue used to
+   * `await` its POST first, which on a phone reads as the dialer being stuck on
+   * the call you just finished: the outcome buttons sat disabled and the next
+   * contact did not appear until the round trip came back. Logging an outcome
+   * and sending a recording are both things the server can finish on its own,
+   * so they are started and left to run.
+   */
+  const advanceQueue = (
+    contact: { firstName: string; lastName: string },
+    outcome: string,
+  ): boolean => {
+    const now = Date.now()
+    if (now - lastAdvanceRef.current < 500) return false
+    lastAdvanceRef.current = now
+
+    releaseLine()
+    const newLog = [...manualLog, { name: `${contact.firstName} ${contact.lastName}`, outcome }]
+    setManualLog(newLog)
+    if (manualIndex + 1 >= manualContacts.length) {
+      setSessionData({ callLog: newLog.map(e => ({ ...e, at: new Date().toISOString() })), totalCount: manualContacts.length })
+      setPhase("done")
+    } else {
+      setManualIndex(i => i + 1)
+      setManualNote("")
+    }
+    return true
+  }
+
+  /**
+   * Drop a pre-recorded message and move on immediately.
+   *
+   * Two things were wrong here. The browser call was still up when the drop was
+   * requested, and the drop is a SECOND, independent Twilio call to the same
+   * number (`client.calls.create` in app/api/dialer/voicemail-drop) — so it was
+   * dialling a line the agent's own call was occupying, and the carrier
+   * answers that with busy. The live call was only hung up afterwards, by the
+   * `manualIndex` effect, once both POSTs had come back.
+   *
+   * So: release the line first, give the carrier a moment to let go of it, and
+   * only then ask Twilio to place the drop. `machineDetection:
+   * "DetectMessageEnd"` means Twilio sits through the greeting and plays after
+   * the beep, which is the entire point — nobody has to listen to it. The
+   * queue advances on the click, before any of that happens.
+   */
+  const dropVoicemail = async (phone: string, audioUrl: string, contactId?: string) => {
+    const contact = manualContacts[manualIndex]
+    const who = contact ? contact.firstName : "el contacto"
+    const note = manualNote
+
+    // advanceQueue doubles as the double-click guard: a second press inside half
+    // a second returns false, so nothing below runs twice for one contact. The
+    // guard is that half-second and nothing more — deliberately not an
+    // in-flight flag, which would swallow the next contact's drop while this
+    // one is still waiting out the settle below.
+    if (contact) {
+      if (!advanceQueue(contact, "voicemail")) return
+    } else {
+      releaseLine()
+    }
+    logCallOutcome(contact?.id ?? contactId, "voicemail", note)
+    toast({ title: "Mensaje grabado en camino ✓", description: "Twilio lo deja después del pitido." })
+
     try {
+      // The PSTN leg takes a moment to tear down after disconnect(); dialling
+      // into it before then is what produced the busy signal.
+      await new Promise(r => setTimeout(r, 1200))
       const res = await fetch("/api/dialer/voicemail-drop", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, audioUrl }),
+        body: JSON.stringify({ phone, audioUrl, contactId }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
-      toast({ title: "Mensaje de voz enviado ✓" })
-      await logManualCall("voicemail")
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || data.ok === false) throw new Error(data.error || "Twilio no aceptó la llamada")
     } catch (e: any) {
-      toast({ title: e.message || "No se pudo enviar el mensaje", variant: "destructive" })
-    } finally { setDroppingVM(false) }
+      // Already on the next contact, so the toast has to say who it failed for.
+      toast({
+        title: `No se pudo dejar el mensaje a ${who}`,
+        description: e.message || "Inténtalo de nuevo desde su ficha.",
+        variant: "destructive",
+      })
+    }
   }
 
   const startRecording = async () => {
@@ -844,25 +931,23 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
     return () => clearInterval(t)
   }, [callStatus])
 
-  // Reset call state when advancing to next contact.
+  // Backstop for the line never outliving the contact it belongs to. Every
+  // path that advances the queue releases it itself, in the click handler, so
+  // the audio stops the moment the button is pressed rather than one render
+  // later; this covers an index change from anywhere else. Leaving the line up
+  // across contacts was the original bug: the UI offered "Llamar a <next>"
+  // while the device was still busy with the previous contact's voicemail
+  // greeting, and the Colgar button was gone.
   //
-  // This used to drop the call reference without hanging up, so logging an
-  // outcome mid-call left the Twilio line connected to the previous contact.
-  // The UI showed "Llamar a <next>" while the device was still busy, so the
-  // next call could not be placed and the previous contact's audio — usually
-  // their voicemail greeting — kept playing with the Colgar button gone.
-  //
-  // Clearing the selected template matters for the same reason: its <audio>
-  // element is keyed by template id inside a list that does not change between
-  // contacts, so React reuses the same DOM node and playback carries over.
-  // `showScript` is deliberately left alone — that is a panel preference, and
-  // collapsing it on every contact would fight the person working the queue.
+  // The selected template is deliberately NOT cleared. It used to be, because
+  // the preview <audio> was keyed by template id in a list that does not change
+  // between contacts, so React reused the DOM node and playback carried over.
+  // That cost two clicks on every contact — expand the panel, re-pick the
+  // message — for the one action meant to be a single click. The <audio> is
+  // keyed by contact as well now, so it remounts and the playback stops, which
+  // lets the choice stick. `showScript` is left alone for the same reason.
   useEffect(() => {
-    activeCallRef.current?.disconnect()
-    activeCallRef.current = null
-    setCallStatus("idle")
-    setActiveCall(null)
-    setSelectedTplId(null)
+    releaseLine()
   }, [manualIndex])
 
   const startBrowserCall = async (phone: string) => {
@@ -883,7 +968,7 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
     }
   }
 
-  const hangUp = () => { activeCall?.disconnect(); setCallStatus("idle"); setActiveCall(null) }
+  const hangUp = () => releaseLine()
 
   const fmtTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`
 
@@ -930,33 +1015,28 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
     toast({ title: "Sesión de marcación detenida" })
   }
 
-  const logManualCall = async (outcome: "connected" | "voicemail" | "no_answer" | "skip") => {
+  /**
+   * Record the outcome against the contact. Not awaited by anything that
+   * advances the queue — a failure is surfaced as a toast instead, because
+   * silently losing the note is worse than a late one.
+   */
+  const logCallOutcome = (contactId: string | undefined, outcome: string, note?: string) => {
+    if (!contactId || outcome === "skip") return
+    fetch(`/api/contacts/${contactId}/log-call`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ outcome, note: note?.trim() || undefined, callerName: "Catherine" }),
+    })
+      .then(res => { if (!res.ok) throw new Error(String(res.status)) })
+      .catch(() => toast({ title: "No se pudo guardar el resultado de la llamada", variant: "destructive" }))
+  }
+
+  const logManualCall = (outcome: "connected" | "voicemail" | "no_answer" | "skip") => {
     const contact = manualContacts[manualIndex]
     if (!contact) return
-    if (outcome !== "skip") {
-      setLoggingCall(true)
-      try {
-        await fetch(`/api/contacts/${contact.id}/log-call`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            outcome,
-            note: manualNote.trim() || undefined,
-            callerName: "Catherine",
-          }),
-        })
-      } catch { /* non-blocking */ }
-      finally { setLoggingCall(false) }
-    }
-    const newLog = [...manualLog, { name: `${contact.firstName} ${contact.lastName}`, outcome }]
-    setManualLog(newLog)
-    if (manualIndex + 1 >= manualContacts.length) {
-      setSessionData({ callLog: newLog.map(e => ({ ...e, at: new Date().toISOString() })), totalCount: manualContacts.length })
-      setPhase("done")
-    } else {
-      setManualIndex(i => i + 1)
-      setManualNote("")
-    }
+    const note = manualNote
+    if (!advanceQueue(contact, outcome)) return
+    logCallOutcome(contact.id, outcome, note)
   }
 
   const outcomeIcon = (outcome: string) => {
@@ -1323,6 +1403,29 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
                   </div>
                 )}
 
+                {/*
+                  The button for the moment the greeting starts playing: hang
+                  up, let Twilio leave the recording after the beep on its own
+                  call, go to the next contact. It sits here, under the call
+                  controls, because that is where the cursor already is — it
+                  used to live at the bottom of the collapsed "Mensajes
+                  pre-grabados" panel, which meant expanding it and picking a
+                  message again on every single contact.
+                */}
+                {quickVmTemplate && (
+                  <button
+                    onClick={() => dropVoicemail(contact.phone, quickVmTemplate.audioUrl!, contact.id)}
+                    className="w-full flex flex-col items-center justify-center gap-0.5 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+                  >
+                    <span className="flex items-center gap-2 font-semibold">
+                      <Voicemail className="w-5 h-5" /> Dejar mensaje y siguiente
+                    </span>
+                    <span className="text-[11px] text-blue-100">
+                      No esperes el saludo — {quickVmTemplate.name}
+                    </span>
+                  </button>
+                )}
+
                 {/* Notes */}
                 <div>
                   <label className="text-xs font-semibold text-gray-500 mb-1.5 block">Notas (opcional)</label>
@@ -1337,19 +1440,19 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
 
                 {/* Outcome buttons (always visible so Catherine can log even if call was via phone) */}
                 <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => logManualCall("connected")} disabled={loggingCall}
+                  <button onClick={() => logManualCall("connected")}
                     className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-green-50 hover:bg-green-100 border border-green-200 text-green-700 transition-colors disabled:opacity-50">
                     <CheckCircle className="w-5 h-5" /><span className="text-xs font-semibold">Contestó</span>
                   </button>
-                  <button onClick={() => logManualCall("voicemail")} disabled={loggingCall}
+                  <button onClick={() => logManualCall("voicemail")}
                     className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 transition-colors disabled:opacity-50">
-                    <MessageSquare className="w-5 h-5" /><span className="text-xs font-semibold">Buzón de voz</span>
+                    <MessageSquare className="w-5 h-5" /><span className="text-xs font-semibold">Buzón, sin mensaje</span>
                   </button>
-                  <button onClick={() => logManualCall("no_answer")} disabled={loggingCall}
+                  <button onClick={() => logManualCall("no_answer")}
                     className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 transition-colors disabled:opacity-50">
                     <Clock className="w-5 h-5" /><span className="text-xs font-semibold">No contestó</span>
                   </button>
-                  <button onClick={() => logManualCall("skip")} disabled={loggingCall}
+                  <button onClick={() => logManualCall("skip")}
                     className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-600 transition-colors">
                     <SkipForward className="w-5 h-5" /><span className="text-xs font-semibold">Omitir</span>
                   </button>
@@ -1384,17 +1487,12 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
                               <p className="text-xs font-semibold text-gray-800">{t.name}</p>
                               <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{t.text}</p>
                               {isSel && t.audioUrl && (
-                                <audio src={t.audioUrl} controls className="mt-2 w-full h-8" />
+                                <audio key={`${t.id}-${contact.id}`} src={t.audioUrl} controls className="mt-2 w-full h-8" />
                               )}
                               {isSel && t.audioUrl && (
-                                <button
-                                  onClick={e => { e.stopPropagation(); dropVoicemail(contact.phone, t.audioUrl!) }}
-                                  disabled={droppingVM || loggingCall}
-                                  className="mt-2 w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold disabled:opacity-50 transition-colors"
-                                >
-                                  {droppingVM ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Voicemail className="w-3.5 h-3.5" />}
-                                  Dejar mensaje grabado
-                                </button>
+                                <p className="mt-1.5 text-xs text-blue-700 font-semibold">
+                                  Este es el que deja el botón azul de arriba.
+                                </p>
                               )}
                               {isSel && !t.audioUrl && (
                                 <p className="mt-1.5 text-xs text-gray-400 italic">Lee este mensaje en el buzón de voz</p>
