@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth"
 import { createMeeting, zoomConfigured } from "@/lib/zoom"
 import { findProject } from "@/lib/investment-projects"
+import { REPLAY_ENGAGED_PCT } from "@/lib/webinar"
 
 /**
  * Webinars, from the dashboard. Authenticated — the public side is
@@ -47,12 +48,24 @@ export async function GET() {
   })
   const attendedBy = new Map(attended.map(a => [a.webinarId, a._count._all]))
 
+  // People who watched the recording far enough to count. Separate from live
+  // attendance on purpose: for an evergreen session this is the number that
+  // keeps moving long after the night itself, and averaging the two into one
+  // figure would hide exactly that.
+  const watched = await prisma.webinarRegistration.groupBy({
+    by: ["webinarId"],
+    where: { replayPct: { gte: REPLAY_ENGAGED_PCT } },
+    _count: { _all: true },
+  })
+  const watchedBy = new Map(watched.map(a => [a.webinarId, a._count._all]))
+
   return NextResponse.json({
     zoomConfigured: zoomConfigured(),
     webinars: webinars.map(w => ({
       ...w,
       registrations: w._count.registrations,
       attendedCount: attendedBy.get(w.id) ?? 0,
+      replayWatchedCount: watchedBy.get(w.id) ?? 0,
     })),
   })
 }

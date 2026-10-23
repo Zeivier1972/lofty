@@ -236,6 +236,21 @@ const STMTS = [
   `ALTER TABLE "WebinarRegistration" DROP CONSTRAINT IF EXISTS "WebinarRegistration_contactId_fkey"`,
   `ALTER TABLE "WebinarRegistration" ADD CONSTRAINT "WebinarRegistration_contactId_fkey"
      FOREIGN KEY ("contactId") REFERENCES "Contact"("id") ON DELETE SET NULL ON UPDATE CASCADE`,
+
+  // On-demand replay watching. Separate from the live attendance columns above
+  // on purpose — see the note on the model. Added as nullable/defaulted ALTERs
+  // so the deploy does not need a table rewrite.
+  `ALTER TABLE "WebinarRegistration" ADD COLUMN IF NOT EXISTS "watchToken" TEXT`,
+  `ALTER TABLE "WebinarRegistration" ADD COLUMN IF NOT EXISTS "replaySeconds" INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE "WebinarRegistration" ADD COLUMN IF NOT EXISTS "replayPct" INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE "WebinarRegistration" ADD COLUMN IF NOT EXISTS "replayFirstAt" TIMESTAMP(3)`,
+  `ALTER TABLE "WebinarRegistration" ADD COLUMN IF NOT EXISTS "replayLastAt" TIMESTAMP(3)`,
+  `ALTER TABLE "WebinarRegistration" ADD COLUMN IF NOT EXISTS "replayEngagedAt" TIMESTAMP(3)`,
+  // Nulls are fine under a unique index, so existing rows are filled afterwards
+  // in Node (backfillWatchTokens) rather than with gen_random_uuid() here —
+  // that keeps the migration off any assumption about the server's version or
+  // installed extensions, and matches how partner tokens are already backfilled.
+  `CREATE UNIQUE INDEX IF NOT EXISTS "WebinarRegistration_watchToken_key" ON "WebinarRegistration"("watchToken")`,
 ]
 
 // ─── Email templates ─────────────────────────────────────────────────────────
@@ -1168,6 +1183,21 @@ async function backfillPartnerTokens(db) {
   if (partners.length) console.log(`[db-migrate] backfilled ${partners.length} partner tokens`)
 }
 
+// Every signup that predates the replay-tracking columns gets its link token,
+// so the next "aquí está la grabación" mail can attribute the watch instead of
+// sending them off as anonymous traffic.
+async function backfillWatchTokens(db) {
+  const crypto = require("crypto")
+  const regs = await db.webinarRegistration.findMany({ where: { watchToken: null }, select: { id: true } })
+  for (const r of regs) {
+    await db.webinarRegistration.update({
+      where: { id: r.id },
+      data: { watchToken: crypto.randomBytes(16).toString("hex") },
+    })
+  }
+  if (regs.length) console.log(`[db-migrate] backfilled ${regs.length} webinar watch tokens`)
+}
+
 // ─── Warm → Hot smart plan ────────────────────────────────────────────────────
 // Auto-enrolls when a lead moves to the Warm stage (they replied/engaged).
 // Goal: convert engagement into a phone call / appointment (Hot). Design:
@@ -1463,6 +1493,7 @@ async function main() {
   await dedupPipelineLeads(db).catch(e => console.warn("[db-migrate] dedup pipeline leads skip:", e.message))
   await seedBrickellKeywords(db).catch(e => console.warn("[db-migrate] Brickell keywords skip:", e.message))
   await backfillPartnerTokens(db).catch(e => console.warn("[db-migrate] partner tokens skip:", e.message))
+  await backfillWatchTokens(db).catch(e => console.warn("[db-migrate] watch tokens skip:", e.message))
   await convertWhatsAppStepsToSMS(db).catch(e => console.warn("[db-migrate] WhatsApp→SMS convert skip:", e.message))
   await importOldCrmTransactions(db).catch(e => console.warn("[db-migrate] transaction import skip:", e.message))
   await backfillTeamAssignedStage(db).catch(e => console.warn("[db-migrate] team-assigned backfill skip:", e.message))

@@ -59,7 +59,19 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   }).catch(() => null)
 
   if (!updated) return NextResponse.json({ error: "No existe ese webinar" }, { status: 404 })
-  return NextResponse.json({ ok: true, webinar: updated })
+
+  // How many people got the follow-up back when the recording was still
+  // processing, and are therefore waiting on the "ya está lista" send that the
+  // reminder cron makes on its next pass. Reported back so the dashboard can
+  // say what pasting the link actually set in motion, instead of only "guardado".
+  let replayQueued = 0
+  if (updated.replayUrl) {
+    replayQueued = await prisma.webinarRegistration.count({
+      where: { webinarId: params.id, lastStage: "FOLLOWUP", replaySentAt: null },
+    })
+  }
+
+  return NextResponse.json({ ok: true, webinar: updated, replayQueued })
 }
 
 /**
@@ -80,11 +92,15 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
 
   const registrations = await prisma.webinarRegistration.findMany({
     where: { webinarId: params.id },
-    orderBy: [{ watchedPct: "desc" }, { createdAt: "asc" }],
+    // Live attendance first, then replay watching: both are "how much of this
+    // did they actually take in", and someone who watched 80% of the recording
+    // is a better call than someone who registered and vanished.
+    orderBy: [{ watchedPct: "desc" }, { replayPct: "desc" }, { createdAt: "asc" }],
     select: {
       id: true, email: true, firstName: true, lastName: true, phone: true,
       source: true, attended: true, watchedPct: true, secondsAttended: true,
       firstJoinedAt: true, lastStage: true, contactId: true, createdAt: true,
+      replayPct: true, replaySeconds: true, replayFirstAt: true,
     },
   })
 

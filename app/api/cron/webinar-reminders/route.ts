@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma"
 import { sendEmail } from "@/lib/email"
 import { sendSMS, toE164 } from "@/lib/sms"
 import { createMeeting, zoomConfigured } from "@/lib/zoom"
-import { ATTENDED_PCT_THRESHOLD } from "@/lib/webinar"
+import { ATTENDED_PCT_THRESHOLD, replayWatchUrl } from "@/lib/webinar"
 
 /**
  * The webinar reminder sequence, and the follow-up that is the actual point.
@@ -63,7 +63,7 @@ export async function GET(req: Request) {
   if (!authOk(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const now = Date.now()
-  const sent: Record<string, number> = { REMINDER_1D: 0, REMINDER_1H: 0, LIVE: 0, FOLLOWUP: 0 }
+  const sent: Record<string, number> = { REMINDER_1D: 0, REMINDER_1H: 0, LIVE: 0, FOLLOWUP: 0, REPLAY_READY: 0 }
   const notes: string[] = []
 
   // ── 0. Create the Zoom meeting for anything starting in the next 3 days ───
@@ -201,7 +201,7 @@ export async function GET(req: Request) {
         where: { OR: [{ lastStage: null }, { lastStage: { not: "FOLLOWUP" } }] },
         select: {
           id: true, email: true, firstName: true, phone: true, contactId: true,
-          attended: true, watchedPct: true,
+          attended: true, watchedPct: true, watchToken: true,
         },
       },
     },
@@ -211,10 +211,11 @@ export async function GET(req: Request) {
     const endedAt = w.startsAt.getTime() + w.durationMins * 60000
     if (now < endedAt + 30 * 60000) continue
 
-    const replayLink = `${BASE}/webinar/${w.slug}/replay`
-
     for (const r of w.registrations) {
       const first = (r.firstName || "").split(" ")[0] || "Hola"
+      // Per person, not per webinar: the token is what turns a replay view into
+      // a named one, and it is the only reason we know who to call afterwards.
+      const replayLink = replayWatchUrl(w.slug, r.watchToken)
       const engaged = r.attended && r.watchedPct >= ATTENDED_PCT_THRESHOLD
 
       const copy = engaged
@@ -260,6 +261,76 @@ export async function GET(req: Request) {
           data: { lastStage: "FOLLOWUP", replaySentAt: w.replayUrl ? new Date() : null },
         })
         sent.FOLLOWUP++
+      }
+    }
+  }
+
+  // ── 5. "Ya está lista" — the send that closes the 30-minute race ──────────
+  // Step 4 fires 30 minutes after the end whether or not a recording exists,
+  // because a no-show who hears nothing that same evening is gone. But Zoom
+  // needs longer than that to process an hour of video, so in practice the
+  // first follow-up usually points at a page that says "se está procesando" —
+  // and nobody goes back to a page that had nothing the first time.
+  //
+  // `replaySentAt` is what records whether the link was real when it went out.
+  // This is the loop that reads it: once the recording lands, everyone who got
+  // the placeholder gets told, once. Without it, pasting the replay URL late
+  // means the recording simply never reaches the people it was recorded for.
+  const nowReplayable = await prisma.webinar.findMany({
+    where: {
+      replayUrl: { not: null },
+      startsAt: { gte: new Date(now - 30 * 86400000), lte: new Date(now) },
+      status: { not: "CANCELLED" },
+    },
+    select: {
+      slug: true, title: true, startsAt: true, replayPostedAt: true,
+      registrations: {
+        // Only the people step 4 already reached, and only those whose copy
+        // carried a link to an empty page. Anyone whose follow-up went out
+        // after the recording existed already has it.
+        where: { lastStage: "FOLLOWUP", replaySentAt: null },
+        select: { id: true, email: true, firstName: true, phone: true, contactId: true, watchToken: true },
+      },
+    },
+  })
+
+  for (const w of nowReplayable) {
+    // Bounded on purpose. A hard-bouncing address never sets `replaySentAt`,
+    // and nothing else moves the row forward, so without this the job would
+    // retry the same dead address every 15 minutes for a month.
+    const postedAt = (w.replayPostedAt || w.startsAt).getTime()
+    if (now > postedAt + 3 * 86400000) continue
+
+    for (const r of w.registrations) {
+      const first = (r.firstName || "").split(" ")[0] || "Hola"
+      const replayLink = replayWatchUrl(w.slug, r.watchToken)
+      const subject = `${first}, ya está lista la grabación de "${w.title}"`
+      const html = shell(`<h2 style="color:#0c4a6e">${first}, ya puedes verla</h2>
+        <p style="color:#334155;line-height:1.6">Cuando te escribí, la grabación todavía se estaba procesando. Ya quedó lista — aquí la tienes completa.</p>
+        <p><a href="${replayLink}" style="background:#0369a1;color:#fff;padding:14px 30px;border-radius:50px;text-decoration:none;font-weight:bold;display:inline-block">Ver la grabación →</a></p>
+        <p style="color:#64748b;font-size:13px">Si prefieres que veamos tus números directamente, <a href="${BASE}/book" style="color:#0369a1">agenda 20 minutos aquí</a>.</p>`)
+
+      let delivered = false
+      if (r.email) {
+        await sendEmail({ to: r.email, subject, html })
+          .then(() => { delivered = true })
+          .catch(e => notes.push(`✗ replay ${r.email}: ${e.message}`))
+      } else if (r.phone) {
+        // SMS only when there is no email to send to. Step 4 already texted
+        // this person this same link; a second text carrying it would read as a
+        // duplicate, where the email at least leads with what changed.
+        await sendSMS(toE164(r.phone), `${first}, ya está lista la grabación del webinar 👉 ${replayLink}`,
+          undefined, { automated: true, contactId: r.contactId || undefined })
+          .then(sid => { if (sid) delivered = true })
+          .catch(() => {})
+      }
+
+      if (delivered) {
+        await prisma.webinarRegistration.update({
+          where: { id: r.id },
+          data: { replaySentAt: new Date() },
+        })
+        sent.REPLAY_READY++
       }
     }
   }
