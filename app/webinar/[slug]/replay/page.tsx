@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 import Link from "next/link"
 import { prisma } from "@/lib/prisma"
 import { RegisterForm } from "../register-form"
+import { findProject } from "@/lib/investment-projects"
 
 export const dynamic = "force-dynamic"
 
@@ -156,9 +157,9 @@ export default async function ReplayPage({ params }: { params: { slug: string } 
           )}
         </div>
 
-        {w.projectSlug && (
+        {findProject(w.projectSlug) && (
           <p className="mt-6 text-sm">
-            <Link href={`/inversion/${w.projectSlug}`} className="font-semibold text-sky-700 underline">
+            <Link href={`/inversion/${findProject(w.projectSlug)!.slug}`} className="font-semibold text-sky-700 underline">
               Ver todos los números de este proyecto →
             </Link>
           </p>

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 import Link from "next/link"
 import { prisma } from "@/lib/prisma"
 import { RegisterForm } from "./register-form"
+import { findProject } from "@/lib/investment-projects"
 
 export const dynamic = "force-dynamic"
 
@@ -60,7 +61,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
 
   const title = `${w.title} | Webinar gratis con Catherine Gomez`
   const description = `${w.description} Webinar en vivo y gratuito, ${when} (hora de Miami). Cupos limitados — reserva tu lugar.`.slice(0, 300)
-  const image = w.coverImageUrl || OG_FALLBACK
+  const image = w.coverImageUrl || findProject(w.projectSlug)?.og || OG_FALLBACK
 
   return {
     title,
@@ -134,6 +135,10 @@ export default async function WebinarPage({ params }: { params: { slug: string }
   const pageUrl = `${BASE}/webinar/${w.slug}`
   const { local, bogota, sameClock } = timesFor(w.startsAt, w.timezone)
   const faqs = faqsFor(w)
+  const project = findProject(w.projectSlug)
+  // The project's own photography is a far better cover than a generic card,
+  // and it is already on disk under /public/inversion.
+  const cover = w.coverImageUrl || project?.hero || null
   const isPast = w.status === "ENDED" || w.startsAt.getTime() < Date.now()
   const endsAt = new Date(w.startsAt.getTime() + w.durationMins * 60000)
 
@@ -191,6 +196,16 @@ export default async function WebinarPage({ params }: { params: { slug: string }
               {w.title}
             </h1>
 
+            {cover && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={cover}
+                alt={project ? `${project.name} — el proyecto del webinar` : w.title}
+                className="mt-5 aspect-[16/9] w-full rounded-2xl border border-slate-200 object-cover"
+                loading="eager"
+              />
+            )}
+
             <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
               <p className="text-sm font-semibold capitalize text-slate-900">{local}</p>
               <p className="text-xs text-slate-500">hora de Miami</p>
@@ -205,10 +220,10 @@ export default async function WebinarPage({ params }: { params: { slug: string }
 
             <p className="mt-6 text-base leading-relaxed text-slate-700">{w.description}</p>
 
-            {w.projectSlug && (
+            {project && (
               <p className="mt-4 text-sm">
-                <Link href={`/inversion/${w.projectSlug}`} className="font-semibold text-sky-700 underline">
-                  Ver los números del proyecto antes del webinar →
+                <Link href={`/inversion/${project.slug}`} className="font-semibold text-sky-700 underline">
+                  Ver los números de {project.name.split(" — ")[0]} antes del webinar →
                 </Link>
               </p>
             )}

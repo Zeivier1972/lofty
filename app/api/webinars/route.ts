@@ -4,6 +4,7 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth"
 import { createMeeting, zoomConfigured } from "@/lib/zoom"
+import { findProject } from "@/lib/investment-projects"
 
 /**
  * Webinars, from the dashboard. Authenticated — the public side is
@@ -33,7 +34,7 @@ export async function GET() {
     select: {
       id: true, slug: true, series: true, title: true, description: true,
       startsAt: true, durationMins: true, timezone: true, status: true,
-      zoomJoinUrl: true, zoomMeetingId: true, replayUrl: true, projectSlug: true,
+      zoomJoinUrl: true, zoomMeetingId: true, replayUrl: true, projectSlug: true, coverImageUrl: true,
       _count: { select: { registrations: true } },
     },
   })
@@ -74,6 +75,15 @@ export async function POST(req: Request) {
   const startsAt = new Date(startsAtRaw)
   if (isNaN(startsAt.getTime())) return NextResponse.json({ error: "Fecha inválida" }, { status: 400 })
 
+  const wantedProject = String(body.projectSlug || "").trim()
+  const project = findProject(wantedProject)
+  if (wantedProject && !project) {
+    return NextResponse.json(
+      { error: `No existe el proyecto "${wantedProject}". Elígelo de la lista.` },
+      { status: 400 },
+    )
+  }
+
   // A slug has to be unique and it is what gets shared, so collisions are
   // resolved by suffixing rather than by refusing the whole create — two
   // sessions of the same series legitimately share a title.
@@ -92,11 +102,15 @@ export async function POST(req: Request) {
       description,
       startsAt,
       series: body.series ? String(body.series).trim() : null,
-      projectSlug: body.projectSlug ? String(body.projectSlug).trim() : null,
+      // Validated rather than trusted: an unknown slug used to be rendered
+      // into a link that 404'd for every visitor to the public page.
+      projectSlug: project?.slug ?? null,
       durationMins: Math.max(10, Math.min(480, Number(body.durationMins) || 60)),
       timezone: String(body.timezone || "America/New_York"),
       language: String(body.language || "es"),
-      coverImageUrl: body.coverImageUrl ? String(body.coverImageUrl) : null,
+      // Falls back to the project's own social card, so a webinar about a
+      // project never goes out as a bare link with no picture.
+      coverImageUrl: String(body.coverImageUrl || "").trim() || project?.og || null,
     },
   })
 
