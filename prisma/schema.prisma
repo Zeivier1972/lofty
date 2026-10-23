@@ -1244,6 +1244,12 @@ model Webinar {
   replayUrl      String?
   replayPostedAt DateTime?
 
+  /// When the CRM's own list was invited to this session, and how many it
+  /// reached. Stamped so a second click cannot blast the same list twice —
+  /// re-sending has to be asked for on purpose.
+  invitedAt    DateTime?
+  invitedCount Int       @default(0)
+
   coverImageUrl String?
   registrations WebinarRegistration[]
   createdAt     DateTime              @default(now())

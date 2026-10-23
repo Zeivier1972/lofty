@@ -22,6 +22,7 @@ type Webinar = {
   registrations: number
   attendedCount: number
   replayWatchedCount: number
+  invitedAt: string | null
 }
 
 const SITE = "https://www.catherinegomezrealtor.com"
@@ -240,14 +241,152 @@ export function WebinarsClient() {
         </div>
       ) : (
         <div className="space-y-3">
-          {list.map(w => <WebinarRow key={w.id} w={w} onSaveReplay={saveReplay} />)}
+          {list.map(w => <WebinarRow key={w.id} w={w} onSaveReplay={saveReplay} onReload={load} />)}
         </div>
       )}
     </div>
   )
 }
 
-function WebinarRow({ w, onSaveReplay }: { w: Webinar; onSaveReplay: (id: string, url: string) => void }) {
+/**
+ * "Invite my list" — the cheapest seats there are, and the ones most often
+ * left on the table because doing it by hand means building a campaign and
+ * pasting the right link.
+ *
+ * Opens to a count before it sends anything: a blast to the whole book cannot
+ * be taken back, so the number has to be on screen first. SMS is off by
+ * default and counted separately, because texting is its own permission and
+ * its own cost.
+ */
+function InviteList({
+  webinarId, invitedAt, onDone,
+}: {
+  webinarId: string
+  invitedAt: string | null
+  onDone: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [counts, setCounts] = useState<{ emailCount: number; smsCount: number; alreadyRegistered: number } | null>(null)
+  const [withSms, setWithSms] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [result, setResult] = useState<string | null>(null)
+
+  const preview = async () => {
+    setOpen(true)
+    setCounts(null)
+    const res = await fetch(`/api/webinars/${webinarId}/invite`)
+    if (res.ok) setCounts(await res.json())
+  }
+
+  const send = async () => {
+    if (!counts) return
+    setSending(true)
+    try {
+      const res = await fetch(`/api/webinars/${webinarId}/invite`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // force: the preview already told her it had been sent before, so
+        // reaching this button again is the deliberate re-send.
+        body: JSON.stringify({ email: true, sms: withSms, force: !!invitedAt }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setResult(data.error || "No se pudo enviar."); return }
+      setResult(
+        `Invitación enviada: ${data.emailSent} por correo` +
+        (withSms ? ` y ${data.smsSent} por SMS` : "") + ".",
+      )
+      onDone()
+    } finally { setSending(false) }
+  }
+
+  if (!open) {
+    return (
+      <div className="mt-3 border-t border-gray-100 pt-3">
+        <button
+          onClick={preview}
+          className="flex items-center gap-1.5 text-sm font-semibold text-indigo-600 hover:text-indigo-800"
+        >
+          <Users className="h-4 w-4" />
+          {invitedAt ? "Volver a invitar a mi lista" : "Invitar a mi lista"}
+        </button>
+        {invitedAt && (
+          <p className="mt-1 text-xs text-gray-500">
+            Ya invitaste a tu lista el {new Date(invitedAt).toLocaleDateString("es-US", { day: "numeric", month: "long" })}.
+          </p>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50/60 p-4">
+      {result ? (
+        <p className="text-sm font-semibold text-indigo-900">{result}</p>
+      ) : !counts ? (
+        <p className="text-sm text-gray-600">Contando a quién le llegaría…</p>
+      ) : (
+        <>
+          <p className="text-sm text-gray-800">
+            Le llega por correo a <strong>{counts.emailCount}</strong>{" "}
+            {counts.emailCount === 1 ? "persona" : "personas"} de tu base.
+            {counts.alreadyRegistered > 0 && (
+              <span className="text-gray-600">
+                {" "}({counts.alreadyRegistered} ya {counts.alreadyRegistered === 1 ? "está registrada" : "están registradas"} y{" "}
+                {counts.alreadyRegistered === 1 ? "queda" : "quedan"} fuera.)
+              </span>
+            )}
+          </p>
+
+          <label className="mt-3 flex items-start gap-2 text-sm text-gray-800">
+            <input
+              type="checkbox"
+              checked={withSms}
+              onChange={e => setWithSms(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-gray-300"
+            />
+            <span>
+              Mandar también por SMS a <strong>{counts.smsCount}</strong>{" "}
+              {counts.smsCount === 1 ? "persona" : "personas"}
+              <span className="block text-xs text-gray-500">
+                Solo a quien dio permiso de texto. El SMS cuesta; el correo no.
+              </span>
+            </span>
+          </label>
+
+          {invitedAt && (
+            <p className="mt-3 rounded-lg bg-amber-100 px-3 py-2 text-xs text-amber-900">
+              Ya invitaste a tu lista a este webinar. Si sigues, les llega otra vez.
+            </p>
+          )}
+
+          <div className="mt-4 flex gap-2">
+            <button
+              onClick={send}
+              disabled={sending || counts.emailCount === 0}
+              className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {sending ? "Enviando…" : "Enviar la invitación"}
+            </button>
+            <button
+              onClick={() => setOpen(false)}
+              className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+            >
+              Cancelar
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function WebinarRow({
+  w, onSaveReplay, onReload,
+}: {
+  w: Webinar
+  onSaveReplay: (id: string, url: string) => void
+  onReload: () => void
+}) {
   const [replay, setReplay] = useState(w.replayUrl || "")
   const past = new Date(w.startsAt).getTime() < Date.now()
   const pageUrl = `${SITE}/webinar/${w.slug}`
@@ -298,6 +437,12 @@ function WebinarRow({ w, onSaveReplay }: { w: Webinar; onSaveReplay: (id: string
           <span className="text-xs text-amber-700">Zoom se crea 3 días antes</span>
         )}
       </div>
+
+      {/* The free seat-filler. Only before the session — after it, the thing to
+          send is the recording, which is the field further down. */}
+      {!past && w.status !== "CANCELLED" && (
+        <InviteList webinarId={w.id} invitedAt={w.invitedAt} onDone={onReload} />
+      )}
 
       {past && (
         <div className="mt-4 border-t border-gray-100 pt-3">

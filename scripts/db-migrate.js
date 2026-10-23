@@ -196,6 +196,8 @@ const STMTS = [
     "updatedAt"      TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "Webinar_pkey" PRIMARY KEY ("id")
   )`,
+  `ALTER TABLE "Webinar" ADD COLUMN IF NOT EXISTS "invitedAt" TIMESTAMP(3)`,
+  `ALTER TABLE "Webinar" ADD COLUMN IF NOT EXISTS "invitedCount" INTEGER NOT NULL DEFAULT 0`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "Webinar_slug_key" ON "Webinar"("slug")`,
   `CREATE INDEX IF NOT EXISTS "Webinar_startsAt_idx" ON "Webinar"("startsAt")`,
   `CREATE INDEX IF NOT EXISTS "Webinar_series_idx" ON "Webinar"("series")`,
