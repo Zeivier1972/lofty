@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma"
 import { ingestLead } from "@/lib/lead-ingest"
 import { watchedPercent } from "@/lib/zoom"
+import type { CapiBrowserSignals } from "@/lib/facebook"
 
 /**
  * Webinar registration and attendance.
@@ -26,6 +27,8 @@ export type RegisterInput = {
   /** utm_source, "replay", "instagram" — whatever brought them. */
   source?: string
   smsConsent?: boolean
+  /** Browser signals for the Facebook Lead event — see lib/facebook. */
+  capi?: CapiBrowserSignals
 }
 
 export type RegisterResult =
@@ -67,6 +70,7 @@ export async function registerForWebinar(input: RegisterInput): Promise<Register
       notes: `Se registró al webinar "${webinar.title}" (${webinar.startsAt.toISOString()})`,
       smsConsent: input.smsConsent,
       tags: [webinarTag(webinar)],
+      capi: input.capi,
     })
     contactId = res.contactId
   } catch (e) {
