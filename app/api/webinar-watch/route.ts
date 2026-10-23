@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
-import { recordReplayProgress } from "@/lib/webinar"
+import { recordReplayProgress, handleReplayEngagement } from "@/lib/webinar"
 
 /**
  * Heartbeat from the replay player: "this person is still watching".
@@ -28,11 +28,22 @@ export async function POST(req: Request) {
 
   if (!watchToken || !slug) return new NextResponse(null, { status: 204 })
 
-  await recordReplayProgress({
+  const progress = await recordReplayProgress({
     watchToken: watchToken.slice(0, 64),
     slug: slug.slice(0, 160),
     durationSecs: Number.isFinite(durationSecs) && durationSecs > 0 ? durationSecs : 0,
-  }).catch(e => console.error("[webinar-watch] progress failed:", e))
+  }).catch(e => {
+    console.error("[webinar-watch] progress failed:", e)
+    return null
+  })
+
+  // Awaited rather than fired and forgotten: this happens once per person, the
+  // viewer is not waiting on the response body anyway, and letting the request
+  // end early would risk losing the hand-off if the container is recycled.
+  if (progress?.justCrossed) {
+    await handleReplayEngagement(progress.registrationId)
+      .catch(e => console.error("[webinar-watch] engagement hand-off failed:", e))
+  }
 
   return new NextResponse(null, { status: 204 })
 }

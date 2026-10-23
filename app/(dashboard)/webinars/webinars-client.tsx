@@ -21,6 +21,7 @@ type Webinar = {
   coverImageUrl: string | null
   registrations: number
   attendedCount: number
+  replayWatchedCount: number
 }
 
 const SITE = "https://www.catherinegomezrealtor.com"
@@ -271,6 +272,11 @@ function WebinarRow({ w, onSaveReplay }: { w: Webinar; onSaveReplay: (id: string
           <Users className="h-4 w-4 text-gray-400" />
           <strong>{w.registrations}</strong> registrados
           {past && <span className="text-gray-500">· {w.attendedCount} asistieron</span>}
+          {/* Only once there is a recording — before that a zero here reads as
+              a failure rather than as "nobody has been offered it yet". */}
+          {past && w.replayUrl && (
+            <span className="text-gray-500">· {w.replayWatchedCount} vieron la grabación</span>
+          )}
         </span>
         <a href={pageUrl} target="_blank" rel="noopener noreferrer"
           className="flex items-center gap-1.5 font-semibold text-indigo-600 hover:text-indigo-800">

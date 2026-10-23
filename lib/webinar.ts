@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto"
 import { prisma } from "@/lib/prisma"
 import { ingestLead } from "@/lib/lead-ingest"
+import { handleLeadEngaged } from "@/lib/lead-flow"
 import { watchedPercent } from "@/lib/zoom"
 import type { CapiBrowserSignals } from "@/lib/facebook"
 import { sendEmail } from "@/lib/email"
@@ -99,6 +100,59 @@ function calendarUrl(w: { title: string; description: string; startsAt: Date; du
   return `https://calendar.google.com/calendar/render?${qs.toString()}`
 }
 
+/** Below this, waiting for the live session is not much of a wait. */
+const ON_DEMAND_OFFER_HOURS = 20
+
+/**
+ * "Don't wait until Thursday — here is last week's, now."
+ *
+ * This is the piece that makes the recording an acquisition channel rather than
+ * a consolation prize. Someone who sees an ad at 9pm Tuesday is interested at
+ * 9pm Tuesday; by Thursday they have cooled off, and the industry's 35-50%
+ * show-up rates are mostly that gap. Offering the previous session closes it
+ * while the intent is still there.
+ *
+ * Stays honest about what it is: the recording is called a recording, the live
+ * session keeps its own billing above, and the one thing the live has that the
+ * recording does not — being able to ask — is the reason given to still come.
+ * No "starting in 4 minutes" on a video from last week.
+ *
+ * Returns "" when there is nothing to offer, which is the common case early on.
+ */
+async function onDemandBlock(
+  w: { id: string; startsAt: Date; series: string | null },
+  watchToken: string,
+): Promise<string> {
+  const hoursAway = (w.startsAt.getTime() - Date.now()) / 3600000
+  if (!w.series || hoursAway < ON_DEMAND_OFFER_HOURS) return ""
+
+  const previous = await prisma.webinar
+    .findFirst({
+      where: {
+        series: w.series,
+        id: { not: w.id },
+        replayUrl: { not: null },
+        startsAt: { lt: new Date() },
+        status: { not: "CANCELLED" },
+      },
+      orderBy: { startsAt: "desc" },
+      select: { slug: true, title: true },
+    })
+    .catch(() => null)
+  if (!previous) return ""
+
+  return `<table style="width:100%;background:#f0f9ff;border:1px solid #bae6fd;border-radius:12px;padding:16px;margin:22px 0">
+    <tr><td>
+      <p style="color:#0c4a6e;font-weight:bold;margin:0 0 6px">¿No quieres esperar?</p>
+      <p style="color:#334155;line-height:1.6;margin:0 0 12px;font-size:14px">
+        Puedes ver ahora mismo la grabación completa de la sesión anterior. El jueves en vivo
+        es para preguntar lo tuyo — eso es lo único que la grabación no te da.
+      </p>
+      <a href="${replayWatchUrl(previous.slug, watchToken)}" style="color:#0369a1;font-weight:bold;text-decoration:none">Ver la grabación ahora →</a>
+    </td></tr>
+  </table>`
+}
+
 /**
  * The confirmation, sent the moment somebody registers.
  *
@@ -112,8 +166,8 @@ function calendarUrl(w: { title: string; description: string; startsAt: Date; du
  * where a join link is no use to anyone.
  */
 async function sendConfirmation(
-  w: { slug: string; title: string; description: string; startsAt: Date; durationMins: number; timezone: string; zoomJoinUrl: string | null },
-  to: { email: string; firstName: string; phone?: string | null; contactId: string | null; smsConsent?: boolean },
+  w: { id: string; slug: string; title: string; description: string; startsAt: Date; durationMins: number; timezone: string; zoomJoinUrl: string | null; series: string | null },
+  to: { email: string; firstName: string; phone?: string | null; contactId: string | null; smsConsent?: boolean; watchToken: string },
 ): Promise<boolean> {
   const first = (to.firstName || "").split(" ")[0]
   const pageUrl = `${BASE}/webinar/${w.slug}`
@@ -142,6 +196,7 @@ async function sendConfirmation(
     ${linkBlock}
     <p style="text-align:center;margin:18px 0"><a href="${calendarUrl(w, joinUrl)}" style="color:#0369a1;font-weight:bold">Agregar a mi calendario</a></p>
     <p style="color:#334155;line-height:1.6">Te recordamos un día antes y una hora antes. Al final hay preguntas abiertas — esa parte no queda en la grabación.</p>
+    ${await onDemandBlock(w, to.watchToken)}
     <p style="color:#64748b;font-size:12px;margin-top:26px;border-top:1px solid #e2e8f0;padding-top:14px">
       Catherine Gomez, Realtor · 305-283-0872<br/><a href="${BASE}" style="color:#64748b">catherinegomezrealtor.com</a>
     </p></div>`
@@ -218,6 +273,11 @@ export async function registerForWebinar(input: RegisterInput): Promise<Register
     select: { id: true, watchToken: true },
   })
 
+  // Never reissued: a token already sitting in someone's inbox has to keep
+  // working, so an existing one is reused and only a row predating the column
+  // gets a fresh one.
+  const watchToken = existing?.watchToken || newWatchToken()
+
   await prisma.webinarRegistration.upsert({
     where: { webinarId_email: { webinarId: webinar.id, email } },
     create: {
@@ -228,7 +288,7 @@ export async function registerForWebinar(input: RegisterInput): Promise<Register
       lastName: input.lastName?.trim() || null,
       phone: input.phone?.trim() || null,
       source: input.source?.slice(0, 120) || null,
-      watchToken: newWatchToken(),
+      watchToken,
     },
     update: {
       // Fill blanks; a second signup should not wipe a phone number captured
@@ -236,9 +296,7 @@ export async function registerForWebinar(input: RegisterInput): Promise<Register
       ...(contactId ? { contactId } : {}),
       ...(input.lastName?.trim() ? { lastName: input.lastName.trim() } : {}),
       ...(input.phone?.trim() ? { phone: input.phone.trim() } : {}),
-      // Never reissued — a token already sitting in someone's inbox has to keep
-      // working. This only fills a row that predates the column.
-      ...(existing && !existing.watchToken ? { watchToken: newWatchToken() } : {}),
+      watchToken,
     },
   })
 
@@ -248,6 +306,7 @@ export async function registerForWebinar(input: RegisterInput): Promise<Register
     phone: input.phone?.trim() || null,
     contactId,
     smsConsent: input.smsConsent,
+    watchToken,
   })
 
   return {
@@ -317,6 +376,7 @@ export async function recordLeave(opts: { zoomMeetingId: string; email: string |
 /* --------------------------------------------------- on-demand watching --- */
 
 export type ReplayProgress = {
+  registrationId: string
   /** Seconds credited so far, and the share of the recording they represent. */
   seconds: number
   pct: number
@@ -347,16 +407,55 @@ export async function recordReplayProgress(opts: {
   const token = (opts.watchToken || "").trim()
   if (!token) return null
 
-  const reg = await prisma.webinarRegistration.findUnique({
+  // The token identifies a person, via the registration it was issued for —
+  // which is not necessarily the recording being watched. The confirmation mail
+  // offers the *previous* session in the same series ("don't wait until
+  // Thursday"), so the common case is a token from webinar B arriving on
+  // webinar A's replay page.
+  const holder = await prisma.webinarRegistration.findUnique({
     where: { watchToken: token },
     select: {
-      id: true, replaySeconds: true, replayPct: true, replayFirstAt: true, replayLastAt: true,
-      webinar: { select: { slug: true, durationMins: true } },
+      id: true, email: true, contactId: true, firstName: true, lastName: true, phone: true,
+      webinar: { select: { id: true, series: true } },
     },
   })
-  // The token must belong to the webinar whose page is posting, so a token from
-  // one session cannot be replayed against another's recording.
-  if (!reg || reg.webinar.slug !== opts.slug) return null
+  if (!holder) return null
+
+  const watched = await prisma.webinar.findUnique({
+    where: { slug: opts.slug },
+    select: { id: true, series: true, durationMins: true },
+  })
+  // Same session, or another in the same series — which is the whole set we
+  // ever link to. A token cannot be pointed at an unrelated webinar's page.
+  if (!watched) return null
+  const sameSeries = !!watched.series && watched.series === holder.webinar.series
+  if (watched.id !== holder.webinar.id && !sameSeries) return null
+
+  // Credit the registration for the recording actually being watched, so the
+  // per-webinar numbers mean what they say. Watching a session they never
+  // signed up for creates that row — it is a true statement about them, and it
+  // is what makes the replay a way in rather than only a consolation prize.
+  // Marked as already followed-up so the past-webinar follow-up does not mail
+  // them "te perdiste el webinar, aquí está la grabación" while they watch it.
+  const reg = await prisma.webinarRegistration.upsert({
+    where: { webinarId_email: { webinarId: watched.id, email: holder.email } },
+    create: {
+      webinarId: watched.id,
+      contactId: holder.contactId,
+      email: holder.email,
+      firstName: holder.firstName,
+      lastName: holder.lastName,
+      phone: holder.phone,
+      source: "replay",
+      watchToken: newWatchToken(),
+      lastStage: "FOLLOWUP",
+      replaySentAt: new Date(),
+    },
+    update: {},
+    select: {
+      id: true, replaySeconds: true, replayPct: true, replayFirstAt: true, replayLastAt: true,
+    },
+  })
 
   const now = new Date()
   // The first beat fires the instant they press play, when nothing has been
@@ -372,7 +471,7 @@ export async function recordReplayProgress(opts: {
   // a complete 40-minute watch as 67%. Falls back to the scheduled length when
   // the player has not reported one yet.
   const totalSecs =
-    opts.durationSecs > 0 ? Math.round(opts.durationSecs) : reg.webinar.durationMins * 60
+    opts.durationSecs > 0 ? Math.round(opts.durationSecs) : watched.durationMins * 60
   const seconds = Math.min(reg.replaySeconds + credit, totalSecs)
   const pct = totalSecs > 0 ? Math.min(100, Math.round((seconds / totalSecs) * 100)) : 0
 
@@ -387,10 +486,73 @@ export async function recordReplayProgress(opts: {
   })
 
   return {
+    registrationId: reg.id,
     seconds: Math.round(seconds),
     pct,
     justCrossed: reg.replayPct < REPLAY_ENGAGED_PCT && pct >= REPLAY_ENGAGED_PCT,
   }
+}
+
+/**
+ * Somebody just watched enough of the recording to be worth a phone call.
+ *
+ * The claim is a conditional update rather than a read-then-write: two
+ * heartbeats can land in the same second, and both reading `replayEngagedAt`
+ * as null would mean asking the same person for an appointment twice. Only the
+ * update that actually changes a row goes on.
+ *
+ * Everything after that is the CRM's existing hand-off — `handleLeadEngaged`
+ * moves them to Warm, cancels pending Sofia retries, pauses the educational
+ * drip and puts a task on Catherine's list. Worth being explicit about the
+ * drip: this treats watching half an investment webinar the same as replying
+ * to a message. It is a one-way signal, so that is a deliberate call — a
+ * person who just sat through forty minutes of numbers should get Catherine,
+ * not another automated lesson.
+ */
+export async function handleReplayEngagement(registrationId: string): Promise<boolean> {
+  const claimed = await prisma.webinarRegistration.updateMany({
+    where: { id: registrationId, replayEngagedAt: null },
+    data: { replayEngagedAt: new Date() },
+  })
+  if (claimed.count !== 1) return false
+
+  const reg = await prisma.webinarRegistration.findUnique({
+    where: { id: registrationId },
+    select: {
+      email: true, firstName: true, contactId: true, replayPct: true,
+      webinar: { select: { title: true, slug: true } },
+    },
+  })
+  if (!reg) return false
+
+  const first = (reg.firstName || "").split(" ")[0] || "Hola"
+
+  // The ask, while they are still on the page with the numbers fresh.
+  await sendEmail({
+    to: reg.email,
+    subject: `${first}, ¿vemos tus números en concreto?`,
+    transactional: true,
+    html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:8px 0">
+      <h2 style="color:#0c4a6e;margin:0 0 6px">${first}, veo que llegaste lejos en el video</h2>
+      <p style="color:#334155;line-height:1.6">Lo que sigue no está en la grabación: qué significan esos números <em>para ti</em> — tu presupuesto, si financias o no, cómo se ve desde tu país. Son 20 minutos y no hay nada que firmar.</p>
+      <p style="text-align:center;margin:26px 0"><a href="${BASE}/book" style="background:#0369a1;color:#fff;padding:14px 32px;border-radius:50px;text-decoration:none;font-weight:bold;display:inline-block">Agendar 20 minutos</a></p>
+      <p style="color:#64748b;font-size:13px">Si prefieres escribir primero, responde este correo y te contesto yo.</p>
+      <p style="color:#64748b;font-size:12px;margin-top:26px;border-top:1px solid #e2e8f0;padding-top:14px">
+        Catherine Gomez, Realtor · 305-283-0872<br/><a href="${BASE}" style="color:#64748b">catherinegomezrealtor.com</a>
+      </p></div>`,
+  }).catch(e => console.error("[webinar] replay booking ask failed:", e))
+
+  // Only a matched contact can be routed; a registration whose ingestLead
+  // failed still gets the mail above, and the dashboard still shows the watch.
+  if (reg.contactId) {
+    await handleLeadEngaged(
+      reg.contactId,
+      "grabación del webinar",
+      `Vio ${reg.replayPct}% de "${reg.webinar.title}"`,
+    ).catch(e => console.error("[webinar] lead hand-off failed:", e))
+  }
+
+  return true
 }
 
 /**
