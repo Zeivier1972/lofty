@@ -45,91 +45,54 @@ schedule = "0 16 * * *"
 command = "curl -sf \"${NEXT_PUBLIC_APP_URL}/api/cron/hot-buyer-followup\" -H \"x-cron-secret: ${CRON_SECRET}\" || true"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Jobs whose routes were written, deployed, and never called.
+# TWO SCHEDULERS RUN IN THIS PROJECT. Read instrumentation.ts before adding
+# anything here.
 #
-# Same failure as smart-plans-engine above, seven more times. The worst of them
-# is `calls`: lead-ingest.ts:511 and lead-flow.ts:109 create a PENDING
-# ScheduledCall for every lead that arrives, and /api/cron/calls is the only
-# thing that dials them — so Sofía has been booking a callback for every lead
-# and none was ever placed. The same route is also what expires a stale call,
-# so they never even aged out; they just sat at PENDING.
+# `instrumentation.ts` registers node-cron schedules in-process at server
+# startup (next.config.js sets experimental.instrumentationHook). It already
+# drives: calls (*/15), social-autopilot morning 13:00 / evening 22:00 / check
+# hourly, soi-check hourly, score-decay hourly, event-reminders 14:00,
+# smart-plans hourly, system-check */20 + 12:00, and the MLS sync.
 #
-# All seven accept `Authorization: Bearer`, which is NOT true of the four above
-# that use x-cron-secret — mixing them up is a silent 401 and a dark job again.
-# Minutes are staggered off :00 and :30 so these never land on top of
-# match-alerts or the Smart Plan engine.
+# The entries in THIS file cover the jobs that scheduler does not: match-alerts,
+# warm-plan-release, hot-buyer-followup — plus the two below, which nothing
+# called at all.
+#
+# A job scheduled in both places runs twice. For some that is harmless
+# (smart-plans is due-based, system-check only reports) and the two above have
+# been doubled for a while. For others it is not: a second social-autopilot slot
+# can post to Facebook and Instagram twice.
 #
 # Times are UTC; Miami is UTC-4 (EDT) / UTC-5 (EST), so a UTC hour reads ~4-5
 # hours earlier locally.
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Fires the AI callbacks Sofía schedules. Self-limiting by design: expires
-# anything more than 48h overdue BEFORE selecting (so turning this on does not
-# cold-call a months-old backlog), caps at 20 per run, cancels on doNotCall /
-# no phone / a lead already Warm or beyond, and checks the calling window per
-# area code so a Miami number and a California number are not dialled at the
-# same hour. Four times an hour, as its own header comment intended.
-[[crons]]
-name = "scheduled-calls"
-schedule = "5,20,35,50 * * * *"
-command = "curl -sf \"${NEXT_PUBLIC_APP_URL}/api/cron/calls\" -H \"Authorization: Bearer ${CRON_SECRET}\" || true"
-
-# Social auto-pilot — the content engine. Gated by the socialAutoPilotConfig
-# master toggle, so these three slots do nothing until it is switched on in
-# Ajustes. 13:12 UTC ≈ 9 AM ET and 22:12 UTC ≈ 6 PM ET, the two slots the
-# runner itself names. The `check` slot only polls HeyGen for finished videos
-# and posts nothing, which is why it ignores the toggle.
-[[crons]]
-name = "social-autopilot-morning"
-schedule = "12 13 * * *"
-command = "curl -sf \"${NEXT_PUBLIC_APP_URL}/api/cron/social-autopilot?slot=morning\" -H \"Authorization: Bearer ${CRON_SECRET}\" || true"
-
-[[crons]]
-name = "social-autopilot-evening"
-schedule = "12 22 * * *"
-command = "curl -sf \"${NEXT_PUBLIC_APP_URL}/api/cron/social-autopilot?slot=evening\" -H \"Authorization: Bearer ${CRON_SECRET}\" || true"
-
-[[crons]]
-name = "social-autopilot-video-check"
-schedule = "40 */2 * * *"
-command = "curl -sf \"${NEXT_PUBLIC_APP_URL}/api/cron/social-autopilot?slot=check\" -H \"Authorization: Bearer ${CRON_SECRET}\" || true"
-
 # Saved-search alerts — one email per active saved search when new listings
 # match, linking to a pre-filtered /homes through the click tracker so Sofía
 # knows who arrived. One email per person per run regardless of how many
-# listings matched. 12:47 UTC ≈ 8:47 AM ET.
+# listings matched. Genuinely had no caller: not in instrumentation.ts, not
+# here. 12:47 UTC ≈ 8:47 AM ET.
 [[crons]]
 name = "saved-search-alerts"
 schedule = "47 12 * * *"
 command = "curl -sf \"${NEXT_PUBLIC_APP_URL}/api/cron/saved-search-alerts\" -H \"Authorization: Bearer ${CRON_SECRET}\" || true"
 
-# Birthday + home-anniversary emails. Only ever matches today's month/day, so
-# there is no backlog to blast on the first run. 11:52 UTC ≈ 7:52 AM ET.
-[[crons]]
-name = "soi-birthdays"
-schedule = "52 11 * * *"
-command = "curl -sf \"${NEXT_PUBLIC_APP_URL}/api/cron/soi-check\" -H \"Authorization: Bearer ${CRON_SECRET}\" || true"
-
-# Event countdown reminders at 7 / 3 / 1 / 0 days out, with one-click RSVP.
-# Driven by the list in lib/events.ts, so it sends nothing on a day that is not
-# an anchor for some event — the two events in there now are already past, and
-# this starts working by itself when the next one is added.
-[[crons]]
-name = "event-reminders"
-schedule = "8 14 * * *"
-command = "curl -sf \"${NEXT_PUBLIC_APP_URL}/api/cron/event-reminders\" -H \"Authorization: Bearer ${CRON_SECRET}\" || true"
-
-# Lead-score decay, so a lead that has gone quiet stops ranking as hot. Pure
-# DB update, no messages. Overnight: 07:17 UTC ≈ 3:17 AM ET.
-[[crons]]
-name = "score-decay"
-schedule = "17 7 * * *"
-command = "curl -sf \"${NEXT_PUBLIC_APP_URL}/api/cron/score-decay\" -H \"Authorization: Bearer ${CRON_SECRET}\" || true"
-
 # Nightly pre-construction scrape into the Setting row the admin page reads.
-# Needs Chromium on the Railway image; if it is missing the route logs that and
-# returns the error rather than failing the deploy. 06:25 UTC ≈ 2:25 AM ET.
+# Also had no scheduled caller. Needs Chromium on the Railway image; if it is
+# missing the route logs that and returns the error rather than failing the
+# deploy. 06:25 UTC ≈ 2:25 AM ET.
 [[crons]]
 name = "scrape-preconstruction"
 schedule = "25 6 * * *"
 command = "curl -sf \"${NEXT_PUBLIC_APP_URL}/api/cron/scrape-preconstruction\" -H \"Authorization: Bearer ${CRON_SECRET}\" || true"
+
+# Webinar sequence: creates the Zoom meeting for anything starting within 3
+# days, sends the 1-day / 1-hour / "we're live" reminders, and 30 minutes after
+# the end sends the follow-up split by what each person actually did — watched
+# past 60% gets asked for a 1:1, a no-show gets the replay. Every 15 minutes
+# because the 1-hour and at-start windows are too tight for a daily job; a
+# `lastStage` on each registration is what stops a second run re-sending.
+[[crons]]
+name = "webinar-reminders"
+schedule = "2,17,32,47 * * * *"
+command = "curl -sf \"${NEXT_PUBLIC_APP_URL}/api/cron/webinar-reminders\" -H \"Authorization: Bearer ${CRON_SECRET}\" || true"
