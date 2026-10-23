@@ -222,7 +222,7 @@ export default async function WebinarPage({ params }: { params: { slug: string }
 
             {project && (
               <p className="mt-4 text-sm">
-                <Link href={`/inversion/${project.slug}`} className="font-semibold text-sky-700 underline">
+                <Link href={project.path} className="font-semibold text-sky-700 underline">
                   Ver los números de {project.name.split(" — ")[0]} antes del webinar →
                 </Link>
               </p>
