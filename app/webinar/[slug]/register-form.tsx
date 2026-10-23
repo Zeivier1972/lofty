@@ -19,7 +19,7 @@ export function RegisterForm({ slug, joinUrlKnown }: { slug: string; joinUrlKnow
   const [smsConsent, setSmsConsent] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [done, setDone] = useState<{ joinUrl: string | null; already: boolean } | null>(null)
+  const [done, setDone] = useState<{ joinUrl: string | null; already: boolean; emailed: boolean } | null>(null)
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -38,7 +38,7 @@ export function RegisterForm({ slug, joinUrlKnown }: { slug: string; joinUrlKnow
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok || !data.ok) throw new Error(data.error || "No se pudo completar el registro.")
-      setDone({ joinUrl: data.joinUrl ?? null, already: !!data.alreadyRegistered })
+      setDone({ joinUrl: data.joinUrl ?? null, already: !!data.alreadyRegistered, emailed: !!data.confirmationSent })
     } catch (err: any) {
       setError(err.message || "No se pudo completar el registro.")
     } finally {
@@ -53,7 +53,9 @@ export function RegisterForm({ slug, joinUrlKnown }: { slug: string; joinUrlKnow
           {done.already ? "Ya estabas registrado ✓" : "¡Listo, estás registrado! ✓"}
         </p>
         <p className="mt-2 text-sm text-emerald-800">
-          Te enviamos la confirmación por correo. Te recordamos un día antes y una hora antes.
+          {done.emailed
+            ? "Te enviamos la confirmación por correo. Te recordamos un día antes y una hora antes."
+            : "Guarda esta página. Te recordamos un día antes y una hora antes."}
         </p>
         {done.joinUrl && (
           <a

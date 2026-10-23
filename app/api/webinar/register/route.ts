@@ -40,6 +40,7 @@ export async function POST(req: Request) {
   return NextResponse.json({
     ok: true,
     alreadyRegistered: result.alreadyRegistered,
+    confirmationSent: result.confirmationSent,
     webinarTitle: result.webinarTitle,
     startsAt: result.startsAt.toISOString(),
     // The join link is handed over right away when it exists, so somebody

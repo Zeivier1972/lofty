@@ -2,6 +2,8 @@ import { prisma } from "@/lib/prisma"
 import { ingestLead } from "@/lib/lead-ingest"
 import { watchedPercent } from "@/lib/zoom"
 import type { CapiBrowserSignals } from "@/lib/facebook"
+import { sendEmail } from "@/lib/email"
+import { sendSMS, toE164 } from "@/lib/sms"
 
 /**
  * Webinar registration and attendance.
@@ -32,8 +34,112 @@ export type RegisterInput = {
 }
 
 export type RegisterResult =
-  | { ok: true; webinarTitle: string; startsAt: Date; joinUrl: string | null; alreadyRegistered: boolean }
+  | {
+      ok: true
+      webinarTitle: string
+      startsAt: Date
+      joinUrl: string | null
+      alreadyRegistered: boolean
+      /** Whether the confirmation actually went out — the page says so only if it did. */
+      confirmationSent: boolean
+    }
   | { ok: false; error: string }
+
+const BASE = process.env.NEXT_PUBLIC_APP_URL || "https://www.catherinegomezrealtor.com"
+
+const whenIn = (d: Date, tz: string) =>
+  new Intl.DateTimeFormat("es-US", {
+    timeZone: tz, weekday: "long", day: "numeric", month: "long",
+    hour: "numeric", minute: "2-digit", hour12: true,
+  }).format(d)
+
+/** Google Calendar wants YYYYMMDDTHHMMSSZ. */
+const gcalStamp = (d: Date) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "")
+
+/**
+ * "Add to calendar" as a link rather than an .ics attachment: sendEmail takes
+ * no attachments, and a calendar entry is the single thing that most moves
+ * whether somebody actually turns up.
+ */
+function calendarUrl(w: { title: string; description: string; startsAt: Date; durationMins: number }, joinUrl: string): string {
+  const end = new Date(w.startsAt.getTime() + w.durationMins * 60000)
+  const qs = new URLSearchParams({
+    action: "TEMPLATE",
+    text: w.title,
+    dates: `${gcalStamp(w.startsAt)}/${gcalStamp(end)}`,
+    details: `${w.description}\n\n${joinUrl}`,
+    location: joinUrl,
+  })
+  return `https://calendar.google.com/calendar/render?${qs.toString()}`
+}
+
+/**
+ * The confirmation, sent the moment somebody registers.
+ *
+ * This was missing: registration created the row and the reminders fired a day
+ * and an hour out, but nothing arrived at signup — while the page claimed a
+ * confirmation had been sent. For a webinar that gap is the whole funnel,
+ * because this is the mail people search for when it is time to join, and the
+ * one that gets the event onto their calendar.
+ *
+ * Marked transactional so Gmail keeps it in Primary instead of Promotions,
+ * where a join link is no use to anyone.
+ */
+async function sendConfirmation(
+  w: { slug: string; title: string; description: string; startsAt: Date; durationMins: number; timezone: string; zoomJoinUrl: string | null },
+  to: { email: string; firstName: string; phone?: string | null; contactId: string | null; smsConsent?: boolean },
+): Promise<boolean> {
+  const first = (to.firstName || "").split(" ")[0]
+  const pageUrl = `${BASE}/webinar/${w.slug}`
+  const joinUrl = w.zoomJoinUrl || pageUrl
+
+  const local = whenIn(w.startsAt, w.timezone)
+  const bogota = whenIn(w.startsAt, "America/Bogota")
+  const sameClock =
+    new Intl.DateTimeFormat("en-US", { timeZone: w.timezone, hour: "numeric", minute: "2-digit" }).format(w.startsAt) ===
+    new Intl.DateTimeFormat("en-US", { timeZone: "America/Bogota", hour: "numeric", minute: "2-digit" }).format(w.startsAt)
+
+  const linkBlock = w.zoomJoinUrl
+    ? `<p style="text-align:center;margin:24px 0"><a href="${joinUrl}" style="background:#0369a1;color:#fff;padding:14px 32px;border-radius:50px;text-decoration:none;font-weight:bold;display:inline-block">Entrar al webinar</a></p>
+       <p style="color:#64748b;font-size:13px;text-align:center">Guarda este correo — es tu enlace para entrar.</p>`
+    : `<p style="color:#334155;line-height:1.6">Te enviamos el enlace para entrar por correo antes de que empiece.</p>`
+
+  const html = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:8px 0">
+    <h2 style="color:#0c4a6e;margin:0 0 6px">${first}, tu lugar está reservado ✅</h2>
+    <p style="color:#334155;line-height:1.6;margin:0 0 18px">${w.title}</p>
+    <table style="width:100%;background:#f8fafc;border-radius:12px;padding:16px;margin:0 0 6px">
+      <tr><td style="color:#0f172a;font-weight:bold;text-transform:capitalize">${local}</td></tr>
+      <tr><td style="color:#64748b;font-size:13px">hora de Miami</td></tr>
+      ${sameClock ? "" : `<tr><td style="color:#0f172a;font-weight:bold;padding-top:8px;text-transform:capitalize">${bogota}</td></tr>
+      <tr><td style="color:#64748b;font-size:13px">hora de Colombia</td></tr>`}
+    </table>
+    ${linkBlock}
+    <p style="text-align:center;margin:18px 0"><a href="${calendarUrl(w, joinUrl)}" style="color:#0369a1;font-weight:bold">Agregar a mi calendario</a></p>
+    <p style="color:#334155;line-height:1.6">Te recordamos un día antes y una hora antes. Al final hay preguntas abiertas — esa parte no queda en la grabación.</p>
+    <p style="color:#64748b;font-size:12px;margin-top:26px;border-top:1px solid #e2e8f0;padding-top:14px">
+      Catherine Gomez, Realtor · 305-283-0872<br/><a href="${BASE}" style="color:#64748b">catherinegomezrealtor.com</a>
+    </p></div>`
+
+  let sent = false
+  await sendEmail({
+    to: to.email,
+    subject: `✅ Estás registrado: ${w.title}`,
+    html,
+    transactional: true,
+  }).then(ok => { sent = !!ok }).catch(e => console.error("[webinar] confirmation email failed:", e))
+
+  // SMS only with consent — the checkbox on the form is what makes it lawful.
+  if (to.phone && to.smsConsent) {
+    await sendSMS(
+      toE164(to.phone),
+      `${first}, quedaste registrado para "${w.title}". ${local} (hora de Miami). Enlace 👉 ${joinUrl}`,
+      undefined,
+      { automated: true, contactId: to.contactId || undefined },
+    ).catch(() => {})
+  }
+
+  return sent
+}
 
 export function normalizeEmail(raw: string): string {
   return (raw || "").trim().toLowerCase()
@@ -106,12 +212,21 @@ export async function registerForWebinar(input: RegisterInput): Promise<Register
     },
   })
 
+  const confirmationSent = await sendConfirmation(webinar, {
+    email,
+    firstName,
+    phone: input.phone?.trim() || null,
+    contactId,
+    smsConsent: input.smsConsent,
+  })
+
   return {
     ok: true,
     webinarTitle: webinar.title,
     startsAt: webinar.startsAt,
     joinUrl: webinar.zoomJoinUrl,
     alreadyRegistered: !!existing,
+    confirmationSent,
   }
 }
 
