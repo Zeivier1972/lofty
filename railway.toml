@@ -133,3 +133,14 @@ command = "curl -sf \"${NEXT_PUBLIC_APP_URL}/api/cron/score-decay\" -H \"Authori
 name = "scrape-preconstruction"
 schedule = "25 6 * * *"
 command = "curl -sf \"${NEXT_PUBLIC_APP_URL}/api/cron/scrape-preconstruction\" -H \"Authorization: Bearer ${CRON_SECRET}\" || true"
+
+# Webinar sequence: creates the Zoom meeting for anything starting within 3
+# days, sends the 1-day / 1-hour / "we're live" reminders, and 30 minutes after
+# the end sends the follow-up split by what each person actually did — watched
+# past 60% gets asked for a 1:1, a no-show gets the replay. Every 15 minutes
+# because the 1-hour and at-start windows are too tight for a daily job; a
+# `lastStage` on each registration is what stops a second run re-sending.
+[[crons]]
+name = "webinar-reminders"
+schedule = "2,17,32,47 * * * *"
+command = "curl -sf \"${NEXT_PUBLIC_APP_URL}/api/cron/webinar-reminders\" -H \"Authorization: Bearer ${CRON_SECRET}\" || true"
