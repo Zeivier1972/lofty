@@ -164,6 +164,30 @@ export async function deleteMeeting(meetingId: string): Promise<{ ok: boolean; e
   }
 }
 
+/**
+ * A FRESH host start link for a meeting.
+ *
+ * The `start_url` returned when a meeting is created carries a token that
+ * expires after about two hours. A webinar's meeting is created up to three
+ * days ahead, so the stored one is always dead by the time it is needed —
+ * clicking the attendee link instead is what leaves the host sitting in
+ * "waiting for the host to start this meeting", which is the one person who
+ * cannot possibly be waiting for themselves.
+ *
+ * So the link is fetched at the moment it is clicked, never read from the row.
+ */
+export async function getStartUrl(meetingId: string): Promise<{ ok: true; startUrl: string } | { ok: false; error: string }> {
+  if (!zoomConfigured()) return { ok: false, error: "Zoom no está configurado" }
+  try {
+    const { ok, status, data } = await zoomFetch(`/meetings/${encodeURIComponent(meetingId)}`)
+    if (!ok) return { ok: false, error: data?.message || `HTTP ${status}` }
+    if (!data?.start_url) return { ok: false, error: "Zoom no devolvió start_url" }
+    return { ok: true, startUrl: data.start_url }
+  } catch (e: any) {
+    return { ok: false, error: String(e.message || e) }
+  }
+}
+
 /** The account user the meetings are created under. Proves the read scope. */
 export async function getMe(): Promise<{ ok: boolean; email?: string; accountId?: string; type?: number; error?: string }> {
   if (!zoomConfigured()) return { ok: false, error: "Zoom no está configurado" }

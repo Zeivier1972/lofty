@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Loader2, Video, Users, Link2, Plus, ExternalLink, AlertTriangle } from "lucide-react"
+import { Loader2, Video, Users, Link2, Plus, ExternalLink, AlertTriangle, Radio } from "lucide-react"
+import { INVESTMENT_PROJECTS } from "@/lib/investment-projects"
 
 type Webinar = {
   id: string
@@ -17,6 +18,7 @@ type Webinar = {
   zoomMeetingId: string | null
   replayUrl: string | null
   projectSlug: string | null
+  coverImageUrl: string | null
   registrations: number
   attendedCount: number
 }
@@ -191,14 +193,18 @@ export function WebinarsClient() {
 
           <div>
             <label className="mb-1 block text-xs font-semibold text-gray-600">
-              Proyecto <span className="font-normal text-gray-400">— slug de /inversion/… para enlazar los números. Opcional.</span>
+              Proyecto <span className="font-normal text-gray-400">— enlaza los números y pone la foto de portada. Opcional.</span>
             </label>
-            <input
+            <select
               value={form.projectSlug}
               onChange={e => setForm(f => ({ ...f, projectSlug: e.target.value }))}
-              placeholder="millenia-park"
-              className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-            />
+              className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="">Sin proyecto</option>
+              {INVESTMENT_PROJECTS.map(p => (
+                <option key={p.slug} value={p.slug}>{p.name}</option>
+              ))}
+            </select>
           </div>
 
           <button
@@ -257,10 +263,16 @@ function WebinarRow({ w, onSaveReplay }: { w: Webinar; onSaveReplay: (id: string
           className="flex items-center gap-1.5 font-semibold text-indigo-600 hover:text-indigo-800">
           <Link2 className="h-4 w-4" /> Página de registro
         </a>
+        {w.zoomMeetingId && (
+          <a href={`/api/webinars/${w.id}/start`} target="_blank" rel="noopener noreferrer"
+            className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 font-semibold text-white hover:bg-emerald-700">
+            <Radio className="h-4 w-4" /> Iniciar como anfitriona
+          </a>
+        )}
         {w.zoomJoinUrl && (
           <a href={w.zoomJoinUrl} target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-1.5 font-semibold text-indigo-600 hover:text-indigo-800">
-            <ExternalLink className="h-4 w-4" /> Entrar a Zoom
+            className="flex items-center gap-1.5 text-gray-600 hover:text-gray-800">
+            <ExternalLink className="h-4 w-4" /> Enlace de los asistentes
           </a>
         )}
         {!w.zoomMeetingId && w.status !== "CANCELLED" && (

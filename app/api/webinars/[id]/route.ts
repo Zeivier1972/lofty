@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth"
+import { findProject } from "@/lib/investment-projects"
 
 /**
  * Edit one webinar after the fact. In practice this is two jobs: pasting in
@@ -37,7 +38,15 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   }
   if (body.title !== undefined) data.title = String(body.title).trim()
   if (body.description !== undefined) data.description = String(body.description).trim()
-  if (body.projectSlug !== undefined) data.projectSlug = String(body.projectSlug).trim() || null
+  if (body.projectSlug !== undefined) {
+    // Same guard as on create: an unknown slug becomes a 404 link on a public
+    // page, so it is rejected rather than stored.
+    const wanted = String(body.projectSlug || "").trim()
+    if (wanted && !findProject(wanted)) {
+      return NextResponse.json({ error: `No existe el proyecto "${wanted}".` }, { status: 400 })
+    }
+    data.projectSlug = wanted || null
+  }
 
   if (Object.keys(data).length === 0) {
     return NextResponse.json({ error: "Nada que cambiar" }, { status: 400 })
