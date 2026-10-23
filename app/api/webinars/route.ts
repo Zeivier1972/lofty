@@ -36,6 +36,7 @@ export async function GET() {
       id: true, slug: true, series: true, title: true, description: true,
       startsAt: true, durationMins: true, timezone: true, status: true,
       zoomJoinUrl: true, zoomMeetingId: true, replayUrl: true, projectSlug: true, coverImageUrl: true,
+      invitedAt: true,
       _count: { select: { registrations: true } },
     },
   })
