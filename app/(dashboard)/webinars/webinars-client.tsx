@@ -101,7 +101,20 @@ export function WebinarsClient() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ replayUrl }),
     })
-    if (res.ok) { setMsg({ kind: "ok", text: "Grabación guardada — la página de replay ya la muestra." }); load() }
+    if (res.ok) {
+      // The count is the part worth saying out loud: these are the people whose
+      // follow-up went out while the recording was still processing, so the
+      // link they got led to an empty page. They only get the recording because
+      // this send exists.
+      const { replayQueued } = await res.json().catch(() => ({ replayQueued: 0 }))
+      setMsg({
+        kind: "ok",
+        text: replayQueued > 0
+          ? `Grabación guardada. Se la enviamos a ${replayQueued} ${replayQueued === 1 ? "persona que la estaba esperando" : "personas que la estaban esperando"} en los próximos 15 minutos.`
+          : "Grabación guardada — la página de replay ya la muestra.",
+      })
+      load()
+    }
     else setMsg({ kind: "err", text: "No se pudo guardar la grabación." })
   }
 
@@ -283,7 +296,11 @@ function WebinarRow({ w, onSaveReplay }: { w: Webinar; onSaveReplay: (id: string
       {past && (
         <div className="mt-4 border-t border-gray-100 pt-3">
           <label className="mb-1 block text-xs font-semibold text-gray-600">
-            Enlace de la grabación <span className="font-normal text-gray-400">— YouTube, Vimeo o el .mp4 de Zoom</span>
+            Enlace de la grabación{" "}
+            <span className="font-normal text-gray-400">
+              — YouTube (no listado) o Vimeo se ven dentro de la página. Un enlace de zoom.us
+              solo abre un botón hacia Zoom.
+            </span>
           </label>
           <div className="flex gap-2">
             <input
