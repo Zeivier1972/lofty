@@ -147,6 +147,35 @@ export async function createMeeting(input: CreateMeetingInput): Promise<CreateMe
   }
 }
 
+/**
+ * Delete a meeting. Used to clean up after the self-test in
+ * /api/zoom/test — a diagnostic that leaves a stray meeting on Catherine's
+ * calendar every time it runs is a diagnostic nobody will run twice.
+ */
+export async function deleteMeeting(meetingId: string): Promise<{ ok: boolean; error?: string }> {
+  if (!zoomConfigured()) return { ok: false, error: "Zoom no está configurado" }
+  try {
+    const { ok, status, data } = await zoomFetch(`/meetings/${encodeURIComponent(meetingId)}`, { method: "DELETE" })
+    // 204 is the success case and carries no body.
+    if (!ok && status !== 204) return { ok: false, error: data?.message || `HTTP ${status}` }
+    return { ok: true }
+  } catch (e: any) {
+    return { ok: false, error: String(e.message || e) }
+  }
+}
+
+/** The account user the meetings are created under. Proves the read scope. */
+export async function getMe(): Promise<{ ok: boolean; email?: string; accountId?: string; type?: number; error?: string }> {
+  if (!zoomConfigured()) return { ok: false, error: "Zoom no está configurado" }
+  try {
+    const { ok, status, data } = await zoomFetch("/users/me")
+    if (!ok) return { ok: false, error: data?.message || `HTTP ${status}` }
+    return { ok: true, email: data?.email, accountId: data?.account_id, type: data?.type }
+  } catch (e: any) {
+    return { ok: false, error: String(e.message || e) }
+  }
+}
+
 /* ------------------------------------------------------------ attendance --- */
 
 export type ZoomParticipant = {

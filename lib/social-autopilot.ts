@@ -328,21 +328,32 @@ async function generateAndUploadImage(
 
     const imagePrompt = `Professional South Florida real estate photography. Subject: ${subject}. Perspective: ${angle}. Thematic context: ${theme}. Clear blue sky, lush tropical landscaping, modern architecture, bright natural daylight. Ultra-realistic, no text, no watermarks, no people. Date reference: ${dateStr}.`
 
+    // `response_format` is NOT sent. OpenAI rejects it with
+    // `unknown_parameter` on the image models — every run was failing with a
+    // 400 and silently falling back to a Pexels stock photo, which is why the
+    // posts looked generic. Reports conflict on whether dall-e-3 still accepts
+    // it, so rather than bet on one answer the parameter is dropped and BOTH
+    // response shapes are handled: the newer models always return b64_json,
+    // and dall-e-3 with no format defaults to a url.
     const response = await getOpenAI().images.generate({
       model: "dall-e-3",
       prompt: imagePrompt,
       n: 1,
       size: "1024x1024",
-      response_format: "b64_json",
     } as any)
 
-    const b64 = (response.data as any[])?.[0]?.b64_json
-    if (!b64) return null
+    const first = (response.data as any[])?.[0]
+    // Cloudinary takes a remote URL as happily as a data URI, so a url
+    // response needs no download step.
+    const source: string | null = first?.b64_json
+      ? `data:image/png;base64,${first.b64_json}`
+      : first?.url || null
+    if (!source) {
+      console.warn("[social-autopilot] image generate returned neither b64_json nor url:", JSON.stringify(first || {}).slice(0, 300))
+      return null
+    }
 
-    const uploadResult = await cloudinary.uploader.upload(
-      `data:image/png;base64,${b64}`,
-      { folder: "lofty-social" }
-    )
+    const uploadResult = await cloudinary.uploader.upload(source, { folder: "lofty-social" })
 
     return uploadResult.secure_url
   } catch (err) {
@@ -796,19 +807,21 @@ async function generateSectionImage(prompt: string, folder = "lofty-blog", usedU
       prompt: `Professional Miami real estate photography. ${prompt}. Perspective: ${angle}. Luxury properties, blue sky, palm trees, modern architecture. Photorealistic, bright daylight, no text or watermarks.`,
       n: 1,
       size: "1024x1024",
-      response_format: "b64_json",
+      // No response_format — see the note on the social image generator above:
+      // OpenAI rejects it with `unknown_parameter`, so every blog image was
+      // falling through to a stock fallback.
     } as any)
 
-    const b64 = (response.data as any[])?.[0]?.b64_json
-    if (!b64) {
-      console.warn("[social-autopilot] DALL-E returned no b64_json, using fallback")
+    const first = (response.data as any[])?.[0]
+    const source: string | null = first?.b64_json
+      ? `data:image/png;base64,${first.b64_json}`
+      : first?.url || null
+    if (!source) {
+      console.warn("[social-autopilot] image generate returned no image, using fallback:", JSON.stringify(first || {}).slice(0, 300))
       return pickFallback()
     }
 
-    const uploadResult = await cloudinary.uploader.upload(
-      `data:image/png;base64,${b64}`,
-      { folder }
-    )
+    const uploadResult = await cloudinary.uploader.upload(source, { folder })
     usedUrls?.add(uploadResult.secure_url)
     return uploadResult.secure_url
   } catch (err) {
@@ -1338,31 +1351,83 @@ async function generateEngagementComment(platform: string, postContent: string):
   }
 }
 
+/**
+ * Publish a photo post to TikTok.
+ *
+ * The old code POSTed to `/v2/post/publish/text/init/` with `source:
+ * "FILE_UPLOAD"` and a video size of zero. That endpoint does not exist —
+ * TikTok has no text-only posting, it is a video and photo platform — so the
+ * request hit a 404 HTML page and the failure surfaced as
+ * `Unexpected token '<', "<html>` when the response was parsed as JSON. It
+ * could never have worked, on any token.
+ *
+ * The real endpoint for a still image is `/v2/post/publish/content/init/` with
+ * `media_type: "PHOTO"` and `source: "PULL_FROM_URL"`, which is why a post
+ * with no image is refused here instead of attempted.
+ *
+ * TWO THINGS LIVE OUTSIDE THIS CODE and will still reject the request:
+ *
+ *  - The image URL's domain has to be verified in the TikTok for Developers
+ *    portal (their Media Transfer Guide). Our images come from Cloudinary, so
+ *    `res.cloudinary.com` — or whatever CDN host the upload returns — needs a
+ *    URL-prefix verification there.
+ *  - An unaudited app can only post with SELF_ONLY visibility. Until TikTok
+ *    audits the app, `PUBLIC_TO_EVERYONE` is rejected; `TIKTOK_PRIVACY_LEVEL`
+ *    exists so posts can at least land privately in the meantime.
+ *
+ * Both produce a real JSON error now rather than an HTML parse failure, so the
+ * reason shows up in the post's errorMessage instead of being a mystery.
+ */
 async function publishToTikTok(account: AccountLike, post: PostLike): Promise<string> {
   if (!account.accessToken) throw new Error("TikTok: missing access token")
+  if (!post.mediaUrl) {
+    throw new Error("TikTok: no admite publicaciones de solo texto — este post necesita una imagen")
+  }
 
-  const res = await fetch("https://open.tiktokapis.com/v2/post/publish/text/init/", {
+  const res = await fetch("https://open.tiktokapis.com/v2/post/publish/content/init/", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${account.accessToken}`,
       "Content-Type": "application/json; charset=UTF-8",
     },
     body: JSON.stringify({
+      media_type: "PHOTO",
+      post_mode: "DIRECT_POST",
       post_info: {
-        title: post.content.slice(0, 150),
-        privacy_level: "PUBLIC_TO_EVERYONE",
+        title: post.content.slice(0, 90),
+        description: post.content.slice(0, 4000),
+        privacy_level: process.env.TIKTOK_PRIVACY_LEVEL || "PUBLIC_TO_EVERYONE",
+        disable_comment: false,
+        auto_add_music: true,
       },
       source_info: {
-        source: "FILE_UPLOAD",
-        video_size: 0,
-        chunk_size: 0,
-        total_chunk_count: 0,
+        source: "PULL_FROM_URL",
+        photo_cover_index: 0,
+        photo_images: [post.mediaUrl],
       },
     }),
   })
-  const data = await res.json()
-  if (data.error?.code !== "ok") throw new Error(data.error?.message ?? "TikTok publish failed")
-  return data.data?.publish_id as string
+
+  // Read as text first. A non-JSON body is exactly how the old bug presented,
+  // and `res.json()` on an HTML error page throws a parse error that says
+  // nothing about what TikTok actually refused.
+  const raw = await res.text()
+  let data: any = {}
+  try { data = JSON.parse(raw) } catch {
+    throw new Error(`TikTok respondió HTTP ${res.status} sin JSON: ${raw.slice(0, 200)}`)
+  }
+
+  if (!res.ok || (data.error?.code && data.error.code !== "ok")) {
+    const code = data.error?.code || `HTTP ${res.status}`
+    const msg = data.error?.message || "TikTok publish failed"
+    throw new Error(`TikTok (${code}): ${msg}`)
+  }
+
+  const publishId = data.data?.publish_id
+  if (!publishId) throw new Error(`TikTok no devolvió publish_id: ${raw.slice(0, 200)}`)
+  // Publishing is asynchronous; publish_id is what /v2/post/publish/status/fetch/
+  // takes if the status is ever polled.
+  return publishId as string
 }
 
 async function publishToLinkedIn(account: AccountLike, post: PostLike): Promise<string> {
