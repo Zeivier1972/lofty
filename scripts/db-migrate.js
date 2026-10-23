@@ -236,6 +236,21 @@ const STMTS = [
   `ALTER TABLE "WebinarRegistration" DROP CONSTRAINT IF EXISTS "WebinarRegistration_contactId_fkey"`,
   `ALTER TABLE "WebinarRegistration" ADD CONSTRAINT "WebinarRegistration_contactId_fkey"
      FOREIGN KEY ("contactId") REFERENCES "Contact"("id") ON DELETE SET NULL ON UPDATE CASCADE`,
+
+  // On-demand replay watching. Separate from the live attendance columns above
+  // on purpose — see the note on the model. Added as nullable/defaulted ALTERs
+  // so the deploy does not need a table rewrite.
+  `ALTER TABLE "WebinarRegistration" ADD COLUMN IF NOT EXISTS "watchToken" TEXT`,
+  `ALTER TABLE "WebinarRegistration" ADD COLUMN IF NOT EXISTS "replaySeconds" INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE "WebinarRegistration" ADD COLUMN IF NOT EXISTS "replayPct" INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE "WebinarRegistration" ADD COLUMN IF NOT EXISTS "replayFirstAt" TIMESTAMP(3)`,
+  `ALTER TABLE "WebinarRegistration" ADD COLUMN IF NOT EXISTS "replayLastAt" TIMESTAMP(3)`,
+  // Backfill before the unique index, so every existing signup already has a
+  // link token the next replay mail can carry. gen_random_uuid() is core in
+  // PG13+ and CSPRNG-backed, which random() is not — this value ends up in a
+  // URL, so it should not be guessable from a neighbouring one.
+  `UPDATE "WebinarRegistration" SET "watchToken" = replace(gen_random_uuid()::text, '-', '') WHERE "watchToken" IS NULL`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "WebinarRegistration_watchToken_key" ON "WebinarRegistration"("watchToken")`,
 ]
 
 // ─── Email templates ─────────────────────────────────────────────────────────

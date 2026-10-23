@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto"
 import { prisma } from "@/lib/prisma"
 import { ingestLead } from "@/lib/lead-ingest"
 import { watchedPercent } from "@/lib/zoom"
@@ -19,6 +20,31 @@ import { sendSMS, toE164 } from "@/lib/sms"
 
 /** How much of the session counts as "really attended". */
 export const ATTENDED_PCT_THRESHOLD = 60
+
+/**
+ * How much of the recording counts as a buying signal.
+ *
+ * Lower than the live threshold on purpose. Sitting through 60% of a live hour
+ * means blocking out an evening; watching half a recording means choosing it
+ * over everything else available at that moment, usually on a phone, usually
+ * alone. The second is a weaker commitment of time and a stronger signal of
+ * intent, and it arrives while the person is still thinking about it.
+ */
+export const REPLAY_ENGAGED_PCT = 50
+
+/** A heartbeat lands every 15s of playback; 25 absorbs jitter and a slow tab. */
+const HEARTBEAT_MAX_CREDIT_SECS = 25
+
+/** Opaque, unguessable, and not the row id — this ends up in forwarded links. */
+export function newWatchToken(): string {
+  return randomUUID().replace(/-/g, "")
+}
+
+/** The replay link to put in a mail, carrying who it was sent to. */
+export function replayWatchUrl(slug: string, watchToken?: string | null): string {
+  const base = `${BASE}/webinar/${slug}/replay`
+  return watchToken ? `${base}?w=${watchToken}` : base
+}
 
 export type RegisterInput = {
   slug: string
@@ -189,7 +215,7 @@ export async function registerForWebinar(input: RegisterInput): Promise<Register
   // than making a second row that gets counted — and reminded — twice.
   const existing = await prisma.webinarRegistration.findUnique({
     where: { webinarId_email: { webinarId: webinar.id, email } },
-    select: { id: true },
+    select: { id: true, watchToken: true },
   })
 
   await prisma.webinarRegistration.upsert({
@@ -202,6 +228,7 @@ export async function registerForWebinar(input: RegisterInput): Promise<Register
       lastName: input.lastName?.trim() || null,
       phone: input.phone?.trim() || null,
       source: input.source?.slice(0, 120) || null,
+      watchToken: newWatchToken(),
     },
     update: {
       // Fill blanks; a second signup should not wipe a phone number captured
@@ -209,6 +236,9 @@ export async function registerForWebinar(input: RegisterInput): Promise<Register
       ...(contactId ? { contactId } : {}),
       ...(input.lastName?.trim() ? { lastName: input.lastName.trim() } : {}),
       ...(input.phone?.trim() ? { phone: input.phone.trim() } : {}),
+      // Never reissued — a token already sitting in someone's inbox has to keep
+      // working. This only fills a row that predates the column.
+      ...(existing && !existing.watchToken ? { watchToken: newWatchToken() } : {}),
     },
   })
 
@@ -282,6 +312,85 @@ export async function recordLeave(opts: { zoomMeetingId: string; email: string |
     },
   })
   return true
+}
+
+/* --------------------------------------------------- on-demand watching --- */
+
+export type ReplayProgress = {
+  /** Seconds credited so far, and the share of the recording they represent. */
+  seconds: number
+  pct: number
+  /** True on the heartbeat that first crosses REPLAY_ENGAGED_PCT. */
+  justCrossed: boolean
+}
+
+/**
+ * Credit a heartbeat of replay watching to the person a link token identifies.
+ *
+ * The client posts every 15 seconds while the player is actually playing, and
+ * sends its current position. We do NOT store that position: a viewer can drag
+ * the scrubber to the last second and report 100%, and this number is going to
+ * decide who gets asked for an appointment. Instead each beat credits the real
+ * time since the previous one, capped — so sixty minutes of credit costs sixty
+ * minutes of sitting there, whatever the player claims.
+ *
+ * Returns null for an unknown or missing token. The replay page is public by
+ * design (that is what makes it rank), so most views have nobody to attribute
+ * them to, and that is an ordinary outcome rather than an error.
+ */
+export async function recordReplayProgress(opts: {
+  watchToken: string
+  slug: string
+  /** The recording's real length, as the player reports it. */
+  durationSecs: number
+}): Promise<ReplayProgress | null> {
+  const token = (opts.watchToken || "").trim()
+  if (!token) return null
+
+  const reg = await prisma.webinarRegistration.findUnique({
+    where: { watchToken: token },
+    select: {
+      id: true, replaySeconds: true, replayPct: true, replayFirstAt: true, replayLastAt: true,
+      webinar: { select: { slug: true, durationMins: true } },
+    },
+  })
+  // The token must belong to the webinar whose page is posting, so a token from
+  // one session cannot be replayed against another's recording.
+  if (!reg || reg.webinar.slug !== opts.slug) return null
+
+  const now = new Date()
+  // The first beat fires the instant they press play, when nothing has been
+  // watched yet — it starts the clock rather than crediting a block of time.
+  // A gap longer than one beat (they came back tomorrow) credits one beat, not
+  // the whole absence.
+  const credit = reg.replayLastAt
+    ? Math.max(0, Math.min((now.getTime() - reg.replayLastAt.getTime()) / 1000, HEARTBEAT_MAX_CREDIT_SECS))
+    : 0
+
+  // Prefer the player's own duration: a recording is nearly always shorter than
+  // the slot that was booked for it, and dividing by the booked hour would read
+  // a complete 40-minute watch as 67%. Falls back to the scheduled length when
+  // the player has not reported one yet.
+  const totalSecs =
+    opts.durationSecs > 0 ? Math.round(opts.durationSecs) : reg.webinar.durationMins * 60
+  const seconds = Math.min(reg.replaySeconds + credit, totalSecs)
+  const pct = totalSecs > 0 ? Math.min(100, Math.round((seconds / totalSecs) * 100)) : 0
+
+  await prisma.webinarRegistration.update({
+    where: { id: reg.id },
+    data: {
+      replaySeconds: Math.round(seconds),
+      replayPct: pct,
+      replayLastAt: now,
+      ...(reg.replayFirstAt ? {} : { replayFirstAt: now }),
+    },
+  })
+
+  return {
+    seconds: Math.round(seconds),
+    pct,
+    justCrossed: reg.replayPct < REPLAY_ENGAGED_PCT && pct >= REPLAY_ENGAGED_PCT,
+  }
 }
 
 /**

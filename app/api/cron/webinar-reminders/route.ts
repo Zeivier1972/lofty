@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma"
 import { sendEmail } from "@/lib/email"
 import { sendSMS, toE164 } from "@/lib/sms"
 import { createMeeting, zoomConfigured } from "@/lib/zoom"
-import { ATTENDED_PCT_THRESHOLD } from "@/lib/webinar"
+import { ATTENDED_PCT_THRESHOLD, replayWatchUrl } from "@/lib/webinar"
 
 /**
  * The webinar reminder sequence, and the follow-up that is the actual point.
@@ -201,7 +201,7 @@ export async function GET(req: Request) {
         where: { OR: [{ lastStage: null }, { lastStage: { not: "FOLLOWUP" } }] },
         select: {
           id: true, email: true, firstName: true, phone: true, contactId: true,
-          attended: true, watchedPct: true,
+          attended: true, watchedPct: true, watchToken: true,
         },
       },
     },
@@ -211,10 +211,11 @@ export async function GET(req: Request) {
     const endedAt = w.startsAt.getTime() + w.durationMins * 60000
     if (now < endedAt + 30 * 60000) continue
 
-    const replayLink = `${BASE}/webinar/${w.slug}/replay`
-
     for (const r of w.registrations) {
       const first = (r.firstName || "").split(" ")[0] || "Hola"
+      // Per person, not per webinar: the token is what turns a replay view into
+      // a named one, and it is the only reason we know who to call afterwards.
+      const replayLink = replayWatchUrl(w.slug, r.watchToken)
       const engaged = r.attended && r.watchedPct >= ATTENDED_PCT_THRESHOLD
 
       const copy = engaged
@@ -288,7 +289,7 @@ export async function GET(req: Request) {
         // carried a link to an empty page. Anyone whose follow-up went out
         // after the recording existed already has it.
         where: { lastStage: "FOLLOWUP", replaySentAt: null },
-        select: { id: true, email: true, firstName: true, phone: true, contactId: true },
+        select: { id: true, email: true, firstName: true, phone: true, contactId: true, watchToken: true },
       },
     },
   })
@@ -300,10 +301,9 @@ export async function GET(req: Request) {
     const postedAt = (w.replayPostedAt || w.startsAt).getTime()
     if (now > postedAt + 3 * 86400000) continue
 
-    const replayLink = `${BASE}/webinar/${w.slug}/replay`
-
     for (const r of w.registrations) {
       const first = (r.firstName || "").split(" ")[0] || "Hola"
+      const replayLink = replayWatchUrl(w.slug, r.watchToken)
       const subject = `${first}, ya está lista la grabación de "${w.title}"`
       const html = shell(`<h2 style="color:#0c4a6e">${first}, ya puedes verla</h2>
         <p style="color:#334155;line-height:1.6">Cuando te escribí, la grabación todavía se estaba procesando. Ya quedó lista — aquí la tienes completa.</p>

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 import Link from "next/link"
 import { prisma } from "@/lib/prisma"
 import { RegisterForm } from "../register-form"
+import { ReplayPlayer } from "./replay-player"
 import { findProject } from "@/lib/investment-projects"
 
 export const dynamic = "force-dynamic"
@@ -34,10 +35,15 @@ async function getWebinar(slug: string) {
   })
 }
 
-/** Turn a YouTube or Vimeo link into something embeddable; pass others through. */
-function embedUrl(raw: string): { kind: "iframe" | "video"; src: string } {
+/**
+ * Turn a YouTube or Vimeo link into something embeddable; pass others through.
+ *
+ * `youTubeId` is carried separately because the tracked player drives the
+ * YouTube API, which wants the bare id rather than an embed URL.
+ */
+function embedUrl(raw: string): { kind: "iframe" | "video"; src: string; youTubeId?: string } {
   const yt = raw.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([\w-]{6,})/)
-  if (yt) return { kind: "iframe", src: `https://www.youtube-nocookie.com/embed/${yt[1]}` }
+  if (yt) return { kind: "iframe", src: `https://www.youtube-nocookie.com/embed/${yt[1]}`, youTubeId: yt[1] }
   const vimeo = raw.match(/vimeo\.com\/(?:video\/)?(\d+)/)
   if (vimeo) return { kind: "iframe", src: `https://player.vimeo.com/video/${vimeo[1]}` }
   // A Zoom cloud-recording share link cannot be iframed (Zoom sends
@@ -77,12 +83,23 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   }
 }
 
-export default async function ReplayPage({ params }: { params: { slug: string } }) {
+export default async function ReplayPage({
+  params, searchParams,
+}: {
+  params: { slug: string }
+  searchParams: { w?: string }
+}) {
   const w = await getWebinar(params.slug)
   if (!w) notFound()
 
   const pageUrl = `${BASE}/webinar/${w.slug}/replay`
   const embed = w.replayUrl ? embedUrl(w.replayUrl) : null
+
+  // Set only when the visitor followed one of our own mails. It turns the
+  // player into a tracked one; without it the page renders exactly as it did
+  // before, which is what every crawler and every shared link still gets.
+  const watchToken = (searchParams?.w || "").trim().slice(0, 64)
+  const tracked = !!watchToken && !!embed && (!!embed.youTubeId || embed.kind === "video")
 
   // The next session in the same series, so the replay has somewhere to send
   // people who want it live.
@@ -125,6 +142,15 @@ export default async function ReplayPage({ params }: { params: { slug: string } 
                 Déjanos tu correo abajo y te la enviamos en cuanto esté lista.
               </p>
             </div>
+          ) : tracked && embed ? (
+            <ReplayPlayer
+              kind={embed.youTubeId ? "youtube" : "video"}
+              src={embed.youTubeId || embed.src}
+              slug={w.slug}
+              watchToken={watchToken}
+              title={`${w.title} — grabación del webinar`}
+              poster={w.coverImageUrl || undefined}
+            />
           ) : embed && embed.kind === "iframe" && embed.src ? (
             <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-black pt-[56.25%]">
               <iframe

@@ -92,11 +92,15 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
 
   const registrations = await prisma.webinarRegistration.findMany({
     where: { webinarId: params.id },
-    orderBy: [{ watchedPct: "desc" }, { createdAt: "asc" }],
+    // Live attendance first, then replay watching: both are "how much of this
+    // did they actually take in", and someone who watched 80% of the recording
+    // is a better call than someone who registered and vanished.
+    orderBy: [{ watchedPct: "desc" }, { replayPct: "desc" }, { createdAt: "asc" }],
     select: {
       id: true, email: true, firstName: true, lastName: true, phone: true,
       source: true, attended: true, watchedPct: true, secondsAttended: true,
       firstJoinedAt: true, lastStage: true, contactId: true, createdAt: true,
+      replayPct: true, replaySeconds: true, replayFirstAt: true,
     },
   })
 

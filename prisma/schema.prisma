@@ -1292,6 +1292,25 @@ model WebinarRegistration {
   lastStage    String?
   replaySentAt DateTime?
 
+  /// Opaque per-person link token. Every replay link we mail carries it, so a
+  /// recording watched on demand can be attributed to a person instead of
+  /// landing as anonymous traffic. Not the row id: that would put a database
+  /// key in a URL people forward around.
+  watchToken String? @unique
+
+  /// On-demand watching of the recording — deliberately NOT folded into
+  /// secondsAttended/watchedPct above. Those mean "was in the live room", which
+  /// is what the attendance reports and the Zoom reconciliation read; mixing a
+  /// replay view into them would turn every no-show who later watched into a
+  /// live attendee and quietly corrupt the one number that says whether a
+  /// session worked. Two signals, two columns.
+  replaySeconds Int       @default(0)
+  replayPct     Int       @default(0)
+  replayFirstAt DateTime?
+  /// Also the heartbeat clock: progress is credited against the gap since this
+  /// stamp, so seeking to the end cannot buy more than real elapsed time.
+  replayLastAt  DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
