@@ -519,6 +519,32 @@ export type CapiEventName =
   | "Schedule"       // appointment scheduled
   | "Purchase"       // deal closed
 
+/**
+ * The browser signals Facebook uses to match a server-side event back to a
+ * real person and, with `_fbc`, to the specific ad click that produced it.
+ *
+ * Without them a Lead still registers, but loosely attributed: the campaign
+ * optimises on weaker signal and the reported cost per lead looks worse than
+ * it is. The cookies ride along with any same-origin fetch, so this only has
+ * to read them off the request — nothing is needed from the client.
+ */
+export type CapiBrowserSignals = {
+  clientIp: string | null
+  clientUserAgent: string | null
+  fbp: string | null
+  fbc: string | null
+}
+
+export function capiSignalsFromRequest(req: Request): CapiBrowserSignals {
+  const cookie = req.headers.get("cookie") || ""
+  return {
+    clientIp: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip") || null,
+    clientUserAgent: req.headers.get("user-agent") || null,
+    fbp: cookie.match(/_fbp=([^;]+)/)?.[1] || null,
+    fbc: cookie.match(/_fbc=([^;]+)/)?.[1] || null,
+  }
+}
+
 interface CapiUserData {
   email?: string | null
   phone?: string | null

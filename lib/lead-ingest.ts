@@ -3,7 +3,7 @@ import { scoreContact } from "@/lib/scoring"
 import { triggerOutboundCall } from "@/lib/vapi"
 import { sendEmail } from "@/lib/email"
 import { sendSMS, sendWhatsApp, sendWhatsAppTemplate, toE164 } from "@/lib/sms"
-import { sendCapiEvent } from "@/lib/facebook"
+import { sendCapiEvent, type CapiBrowserSignals } from "@/lib/facebook"
 import { findEventByTag } from "@/lib/events"
 import { appendEventLeadToSheet } from "@/lib/google-sheets"
 
@@ -24,6 +24,12 @@ export interface LeadData {
   facebookLeadId?: string
   tags?: string[]        // tag names to apply on creation (triggers smart plan enrollment)
   eventDay?: string      // event form answer "¿Qué día quieres atender?" — synced to the event sheet
+  /**
+   * Browser signals for the Facebook Lead event, from capiSignalsFromRequest.
+   * Optional: a lead that arrives from a webhook or an import has no browser
+   * behind it, and the event is still worth sending without them.
+   */
+  capi?: CapiBrowserSignals
 }
 
 /**
@@ -114,7 +120,7 @@ export async function applyTagAndEnroll(contactId: string, tagName: string): Pro
 }
 
 export async function ingestLead(data: LeadData): Promise<{ contactId: string; isNew: boolean }> {
-  const { firstName, lastName, email, phone, source, campaign, budget, location, bedroomsMin, propertyType, message, notes, smsConsent, facebookLeadId, tags, eventDay } = data
+  const { firstName, lastName, email, phone, source, campaign, budget, location, bedroomsMin, propertyType, message, notes, smsConsent, facebookLeadId, tags, eventDay, capi } = data
 
   const phoneDigits = phone ? phone.replace(/\D/g, "").slice(-10) : null
 
@@ -246,13 +252,19 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
     .then(r => console.log(`[INGEST] First match alert for ${contact.id}: sent=${r?.sent}`))
     .catch(e => console.error("[INGEST] First match alert failed:", e))
 
-  // Report Lead event to Facebook Conversions API (fire-and-forget)
+  // Report Lead event to Facebook Conversions API (fire-and-forget).
+  //
+  // `capi` carries the _fbp/_fbc cookies and the client IP when the lead came
+  // from a form on our own site. Facebook needs _fbc to tie the conversion to
+  // the ad click that caused it, so a campaign optimising on Lead is working
+  // from a much stronger signal when they are present.
   sendCapiEvent("Lead", {
     email,
     phone: contact.phone,
     firstName,
     lastName,
     facebookLeadId,
+    ...(capi || {}),
   }, { eventId: contact.id }).catch(() => {})
 
   // Auto-assign to first stage of default pipeline

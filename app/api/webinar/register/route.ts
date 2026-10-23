@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { registerForWebinar } from "@/lib/webinar"
+import { capiSignalsFromRequest } from "@/lib/facebook"
 
 /**
  * Public webinar signup. No auth — this is the form on the landing page.
@@ -29,6 +30,9 @@ export async function POST(req: Request) {
     phone: phone ? String(phone) : undefined,
     source: source ? String(source) : undefined,
     smsConsent: !!smsConsent,
+    // Read off the request rather than asked for from the client: the _fbp and
+    // _fbc cookies travel with this same-origin fetch on their own.
+    capi: capiSignalsFromRequest(req),
   })
 
   if (!result.ok) return NextResponse.json(result, { status: 400 })
@@ -36,6 +40,7 @@ export async function POST(req: Request) {
   return NextResponse.json({
     ok: true,
     alreadyRegistered: result.alreadyRegistered,
+    confirmationSent: result.confirmationSent,
     webinarTitle: result.webinarTitle,
     startsAt: result.startsAt.toISOString(),
     // The join link is handed over right away when it exists, so somebody
