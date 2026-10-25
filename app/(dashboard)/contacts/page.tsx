@@ -6,7 +6,7 @@ import ContactsClient from "./contacts-client"
 export default async function ContactsPage({
   searchParams,
 }: {
-  searchParams: { status?: string; search?: string; source?: string; page?: string; tab?: string; tags?: string; smartPlanId?: string; smartPlanEnrolled?: string }
+  searchParams: { status?: string; statusNot?: string; search?: string; source?: string; page?: string; tab?: string; tags?: string; tagMode?: string; smartPlanId?: string; smartPlanEnrolled?: string }
 }) {
   let contacts: any[] = []
   let total = 0
@@ -58,6 +58,12 @@ export default async function ContactsPage({
     }
 
     if (searchParams.source) tabWhere.source = searchParams.source
+    // Status was read off the URL and handed to the client as an active filter,
+    // but never reached the query — so picking one lit up the chip and changed
+    // nothing in the list. `status` is non-nullable with a default, so `not`
+    // behaves here (no NULL rows to silently drop).
+    if (searchParams.statusNot) tabWhere.status = { not: searchParams.statusNot }
+    else if (searchParams.status) tabWhere.status = searchParams.status
     if (searchParams.search) {
       const q = searchParams.search.trim()
       const or: any[] = [
@@ -104,7 +110,20 @@ export default async function ContactsPage({
     }
     if (searchParams.tags) {
       const tagIds = searchParams.tags.split(",").filter(Boolean)
-      if (tagIds.length > 0) tabWhere.tags = { some: { tagId: { in: tagIds } } }
+      if (tagIds.length > 0) {
+        // "all" needs one `some` per tag: a single `some` with `in` asks for a
+        // row matching any of them, which is the opposite question. Useful for
+        // narrowing — "inversionista AND Colombia" is a different, much smaller
+        // list than "inversionista OR Colombia".
+        if (searchParams.tagMode === "all") {
+          tabWhere.AND = [
+            ...(tabWhere.AND || []),
+            ...tagIds.map(id => ({ tags: { some: { tagId: id } } })),
+          ]
+        } else {
+          tabWhere.tags = { some: { tagId: { in: tagIds } } }
+        }
+      }
     }
     if (searchParams.smartPlanId) {
       if (searchParams.smartPlanEnrolled === "false") {
@@ -155,7 +174,7 @@ export default async function ContactsPage({
       page={page}
       pageSize={pageSize}
       tags={JSON.parse(JSON.stringify(tags))}
-      filters={{ status: searchParams.status, search: searchParams.search, source: searchParams.source, tags: searchParams.tags, smartPlanId: searchParams.smartPlanId, smartPlanEnrolled: searchParams.smartPlanEnrolled }}
+      filters={{ status: searchParams.status, statusNot: searchParams.statusNot, search: searchParams.search, source: searchParams.source, tags: searchParams.tags, tagMode: searchParams.tagMode, smartPlanId: searchParams.smartPlanId, smartPlanEnrolled: searchParams.smartPlanEnrolled }}
       smartPlans={JSON.parse(JSON.stringify(smartPlans))}
       activeTab={searchParams.tab || "all"}
       stageCounts={stageCounts}
