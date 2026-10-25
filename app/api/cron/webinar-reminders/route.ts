@@ -190,7 +190,7 @@ export async function GET(req: Request) {
       status: { in: ["ENDED", "LIVE", "SCHEDULED"] },
     },
     select: {
-      id: true, slug: true, title: true, startsAt: true, durationMins: true, replayUrl: true,
+      id: true, slug: true, title: true, startsAt: true, durationMins: true, replayUrl: true, series: true,
       registrations: {
         // `lastStage` is null for anyone who never got a reminder — someone who
         // registered ten minutes before the start, or whose email bounced. SQL
@@ -211,11 +211,41 @@ export async function GET(req: Request) {
     const endedAt = w.startsAt.getTime() + w.durationMins * 60000
     if (now < endedAt + 30 * 60000) continue
 
+    // Which recording this follow-up can honestly point at.
+    //
+    // Its own, normally. But a session can end with none: nobody turned up so
+    // it was never run, or it ran and the recording never got uploaded. The
+    // follow-up still fires — it has to, a no-show who hears nothing that same
+    // evening is gone — and it used to send everyone to this session's own
+    // replay page, which in that case says "se está procesando" forever. A
+    // promise that never resolves is worse than no promise.
+    //
+    // So it falls back to the series' most recent recording, which is usually
+    // the standalone evergreen one. The watch token still works there: it
+    // resolves against the recording actually being watched, not the session
+    // that issued it.
+    let replaySlug: string | null = w.replayUrl ? w.slug : null
+    if (!replaySlug && w.series) {
+      const stand = await prisma.webinar
+        .findFirst({
+          where: {
+            series: w.series,
+            id: { not: w.id },
+            replayUrl: { not: null },
+            status: { not: "CANCELLED" },
+          },
+          orderBy: { startsAt: "desc" },
+          select: { slug: true },
+        })
+        .catch(() => null)
+      replaySlug = stand?.slug ?? null
+    }
+
     for (const r of w.registrations) {
       const first = (r.firstName || "").split(" ")[0] || "Hola"
       // Per person, not per webinar: the token is what turns a replay view into
       // a named one, and it is the only reason we know who to call afterwards.
-      const replayLink = replayWatchUrl(w.slug, r.watchToken)
+      const replayLink = replaySlug ? replayWatchUrl(replaySlug, r.watchToken) : null
       const engaged = r.attended && r.watchedPct >= ATTENDED_PCT_THRESHOLD
 
       const copy = engaged
@@ -224,23 +254,42 @@ export async function GET(req: Request) {
             html: shell(`<h2 style="color:#0c4a6e">Gracias por quedarte, ${first}</h2>
               <p style="color:#334155;line-height:1.6">Te quedaste hasta el final, así que supongo que los números te cuadraron. Lo siguiente es verlo con tu presupuesto y tu situación: 20 minutos, sin compromiso.</p>
               <p><a href="${BASE}/book" style="background:#0369a1;color:#fff;padding:14px 30px;border-radius:50px;text-decoration:none;font-weight:bold;display:inline-block">Agendar 20 minutos →</a></p>
-              <p style="color:#64748b;font-size:13px">También te dejo <a href="${replayLink}" style="color:#0369a1">la grabación</a> por si quieres repasar algo.</p>`),
+              ${replayLink ? `<p style="color:#64748b;font-size:13px">También te dejo <a href="${replayLink}" style="color:#0369a1">la grabación</a> por si quieres repasar algo.</p>` : ""}`),
             sms: `${first}, gracias por quedarte en el webinar. ¿Vemos tu caso en 20 min? Agenda aquí 👉 ${BASE}/book`,
           }
         : r.attended
+        ? replayLink
+          ? {
+              subject: `${first}, te dejo la grabación (te fuiste a mitad)`,
+              html: shell(`<h2 style="color:#0c4a6e">${first}, aquí está la grabación</h2>
+                <p style="color:#334155;line-height:1.6">Te tocó salir antes del final — la parte de los números y las preguntas está en la grabación.</p>
+                <p><a href="${replayLink}" style="background:#0369a1;color:#fff;padding:14px 30px;border-radius:50px;text-decoration:none;font-weight:bold;display:inline-block">Ver la grabación →</a></p>`),
+              sms: `${first}, te dejo la grabación del webinar por si quieres ver la parte que te perdiste 👉 ${replayLink}`,
+            }
+          // No recording anywhere in the series yet. Say what is true and make
+          // the ask directly, rather than pointing at a page that will tell
+          // them the video is still processing.
+          : {
+              subject: `${first}, ¿repasamos lo que te perdiste?`,
+              html: shell(`<h2 style="color:#0c4a6e">${first}, te tocó salir antes</h2>
+                <p style="color:#334155;line-height:1.6">La parte de los números quedó para el final. En vez de mandarte a verla, prefiero repasarla contigo en 20 minutos y de paso vemos tu caso.</p>
+                <p><a href="${BASE}/book" style="background:#0369a1;color:#fff;padding:14px 30px;border-radius:50px;text-decoration:none;font-weight:bold;display:inline-block">Agendar 20 minutos →</a></p>`),
+              sms: `${first}, te perdiste la parte de los numeros. Te los repaso en 20 min 👉 ${BASE}/book`,
+            }
+        : replayLink
         ? {
-            subject: `${first}, te dejo la grabación (te fuiste a mitad)`,
-            html: shell(`<h2 style="color:#0c4a6e">${first}, aquí está la grabación</h2>
-              <p style="color:#334155;line-height:1.6">Te tocó salir antes del final — la parte de los números y las preguntas está en la grabación.</p>
-              <p><a href="${replayLink}" style="background:#0369a1;color:#fff;padding:14px 30px;border-radius:50px;text-decoration:none;font-weight:bold;display:inline-block">Ver la grabación →</a></p>`),
-            sms: `${first}, te dejo la grabación del webinar por si quieres ver la parte que te perdiste 👉 ${replayLink}`,
-          }
-        : {
             subject: `${first}, te perdiste el webinar — aquí está la grabación`,
             html: shell(`<h2 style="color:#0c4a6e">${first}, sé que no pudiste entrar</h2>
               <p style="color:#334155;line-height:1.6">Pasa. Te dejo la grabación completa para que la veas cuando puedas.</p>
               <p><a href="${replayLink}" style="background:#0369a1;color:#fff;padding:14px 30px;border-radius:50px;text-decoration:none;font-weight:bold;display:inline-block">Ver la grabación →</a></p>`),
             sms: `${first}, te perdiste el webinar. Aquí está la grabación completa 👉 ${replayLink}`,
+          }
+        : {
+            subject: `${first}, no pudiste entrar — te lo cuento en 20 minutos`,
+            html: shell(`<h2 style="color:#0c4a6e">${first}, sé que no pudiste entrar</h2>
+              <p style="color:#334155;line-height:1.6">Pasa. En vez de hacerte esperar a la próxima sesión, te propongo algo mejor: 20 minutos conmigo, y vemos los números directamente sobre tu caso.</p>
+              <p><a href="${BASE}/book" style="background:#0369a1;color:#fff;padding:14px 30px;border-radius:50px;text-decoration:none;font-weight:bold;display:inline-block">Agendar 20 minutos →</a></p>`),
+            sms: `${first}, no pudiste entrar al webinar. Te propongo 20 min conmigo y vemos los numeros 👉 ${BASE}/book`,
           }
 
       let delivered = false

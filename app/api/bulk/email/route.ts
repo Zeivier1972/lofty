@@ -15,7 +15,7 @@ export async function POST(req: Request) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   try {
-    const { contactIds, subject, body, campaignId } = await req.json()
+    const { contactIds, subject, body, campaignId, imageUrl } = await req.json()
     if (!contactIds?.length) return NextResponse.json({ error: "No contacts selected" }, { status: 400 })
     if (!subject?.trim()) return NextResponse.json({ error: "Subject is required" }, { status: 400 })
     if (!body?.trim()) return NextResponse.json({ error: "Body is required" }, { status: 400 })
@@ -47,16 +47,26 @@ export async function POST(req: Request) {
       },
     }))
 
+    // The composer is a plain textarea, so what arrives is plain text — and
+    // dropping that straight into HTML collapses every line break, turning a
+    // message written as paragraphs into one unbroken block. Anything that
+    // already looks like HTML is left exactly as typed.
+    const looksLikeHtml = /<(p|div|br|table|h[1-6]|ul|ol|img|a)\b/i.test(body)
+    const htmlBody = looksLikeHtml
+      ? body
+      : String(body)
+          .split(/\n{2,}/)
+          .map((para: string) => `<p style="margin:0 0 16px">${para.replace(/\n/g, "<br/>")}</p>`)
+          .join("")
+
     // Wrap body with unsubscribe footer
-    const wrappedHtml = wrapEmail(
-      body
-        .replace(/\{first_name\}/gi, "{first_name}")
-        .replace(/\{last_name\}/gi, "{last_name}"),
-      {
-        agentName,
-        unsubscribeUrl: "{unsubscribe_url}",
-      }
-    )
+    const wrappedHtml = wrapEmail(htmlBody, {
+      agentName,
+      unsubscribeUrl: "{unsubscribe_url}",
+      // Her own picture takes the slot the rotating stock photo normally fills.
+      heroImage: typeof imageUrl === "string" && /^https:\/\//.test(imageUrl) ? imageUrl : undefined,
+      heroAlt: subject,
+    })
 
     // Send in batches of 50, 1 second between batches
     const { sent, failed } = await sendBulkEmail(recipients, {
