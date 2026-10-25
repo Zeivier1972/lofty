@@ -43,3 +43,56 @@ command = "curl -sf -X POST ${NEXT_PUBLIC_APP_URL}/api/cron/warm-plan-release -H
 name = "hot-buyer-followup"
 schedule = "0 16 * * *"
 command = "curl -sf \"${NEXT_PUBLIC_APP_URL}/api/cron/hot-buyer-followup\" -H \"x-cron-secret: ${CRON_SECRET}\" || true"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TWO SCHEDULERS RUN IN THIS PROJECT. Read instrumentation.ts before adding
+# anything here.
+#
+# `instrumentation.ts` registers node-cron schedules in-process at server
+# startup (next.config.js sets experimental.instrumentationHook). It already
+# drives: calls (*/15), social-autopilot morning 13:00 / evening 22:00 / check
+# hourly, soi-check hourly, score-decay hourly, event-reminders 14:00,
+# smart-plans hourly, system-check */20 + 12:00, and the MLS sync.
+#
+# The entries in THIS file cover the jobs that scheduler does not: match-alerts,
+# warm-plan-release, hot-buyer-followup — plus the two below, which nothing
+# called at all.
+#
+# A job scheduled in both places runs twice. For some that is harmless
+# (smart-plans is due-based, system-check only reports) and the two above have
+# been doubled for a while. For others it is not: a second social-autopilot slot
+# can post to Facebook and Instagram twice.
+#
+# Times are UTC; Miami is UTC-4 (EDT) / UTC-5 (EST), so a UTC hour reads ~4-5
+# hours earlier locally.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Saved-search alerts — one email per active saved search when new listings
+# match, linking to a pre-filtered /homes through the click tracker so Sofía
+# knows who arrived. One email per person per run regardless of how many
+# listings matched. Genuinely had no caller: not in instrumentation.ts, not
+# here. 12:47 UTC ≈ 8:47 AM ET.
+[[crons]]
+name = "saved-search-alerts"
+schedule = "47 12 * * *"
+command = "curl -sf \"${NEXT_PUBLIC_APP_URL}/api/cron/saved-search-alerts\" -H \"Authorization: Bearer ${CRON_SECRET}\" || true"
+
+# Nightly pre-construction scrape into the Setting row the admin page reads.
+# Also had no scheduled caller. Needs Chromium on the Railway image; if it is
+# missing the route logs that and returns the error rather than failing the
+# deploy. 06:25 UTC ≈ 2:25 AM ET.
+[[crons]]
+name = "scrape-preconstruction"
+schedule = "25 6 * * *"
+command = "curl -sf \"${NEXT_PUBLIC_APP_URL}/api/cron/scrape-preconstruction\" -H \"Authorization: Bearer ${CRON_SECRET}\" || true"
+
+# Webinar sequence: creates the Zoom meeting for anything starting within 3
+# days, sends the 1-day / 1-hour / "we're live" reminders, and 30 minutes after
+# the end sends the follow-up split by what each person actually did — watched
+# past 60% gets asked for a 1:1, a no-show gets the replay. Every 15 minutes
+# because the 1-hour and at-start windows are too tight for a daily job; a
+# `lastStage` on each registration is what stops a second run re-sending.
+[[crons]]
+name = "webinar-reminders"
+schedule = "2,17,32,47 * * * *"
+command = "curl -sf \"${NEXT_PUBLIC_APP_URL}/api/cron/webinar-reminders\" -H \"Authorization: Bearer ${CRON_SECRET}\" || true"

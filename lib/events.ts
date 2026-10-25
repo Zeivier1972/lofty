@@ -31,6 +31,19 @@ export const EVENTS: EventInfo[] = [
   },
 ]
 
+// Click-to-WhatsApp leads carry no form fields — only the ad's headline/body text
+// that Meta forwards. Match the event by the city named in that copy so a Medellín
+// ad tags the lead for Medellín (accent- and case-insensitive: "Medellin" == "Medellín").
+function normalize(s: string): string {
+  return (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+}
+
+export function findEventByAdText(...parts: (string | null | undefined)[]): EventInfo | undefined {
+  const hay = normalize(parts.filter(Boolean).join(" "))
+  if (!hay.trim()) return undefined
+  return EVENTS.find(e => hay.includes(normalize(e.city)))
+}
+
 export function findEventByTag(tag: string): EventInfo | undefined {
   const t = (tag || "").toLowerCase()
   return EVENTS.find(e => e.tag.toLowerCase() === t)

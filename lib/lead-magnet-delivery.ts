@@ -174,9 +174,12 @@ async function sendFacebookDM(psid: string, message: string): Promise<void> {
     where: { platform: "FACEBOOK", isConnected: true },
   })
   const accessToken = account?.accessToken || process.env.FB_PAGE_ACCESS_TOKEN
+  const pageId = account?.pageId || process.env.FACEBOOK_PAGE_ID
   if (!accessToken) throw new Error("No Facebook account connected")
+  if (!pageId) throw new Error("FACEBOOK_PAGE_ID is not set")
 
-  const res = await fetch("https://graph.facebook.com/v19.0/me/messages", {
+  // Address the page by id, never as `me` — see the note in lib/facebook.ts.
+  const res = await fetch(`https://graph.facebook.com/v19.0/${pageId}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

@@ -169,6 +169,90 @@ const STMTS = [
   `ALTER TABLE "PipelineStage" ADD COLUMN IF NOT EXISTS "rotPercent" DOUBLE PRECISION`,
   // Twilio message SID — lets delivery receipts update the message status
   `ALTER TABLE "SMSMessage" ADD COLUMN IF NOT EXISTS "sid" TEXT`,
+
+  // ── Webinars ──────────────────────────────────────────────────────────────
+  // A weekly webinar cannot live in lib/events.ts: that file is a hardcoded
+  // array of two September events in Colombia, so adding one needs a deploy.
+  // These two tables are the same idea in the database.
+  `CREATE TABLE IF NOT EXISTS "Webinar" (
+    "id"             TEXT NOT NULL,
+    "slug"           TEXT NOT NULL,
+    "series"         TEXT,
+    "title"          TEXT NOT NULL,
+    "description"    TEXT NOT NULL,
+    "projectSlug"    TEXT,
+    "startsAt"       TIMESTAMP(3) NOT NULL,
+    "durationMins"   INTEGER NOT NULL DEFAULT 60,
+    "timezone"       TEXT NOT NULL DEFAULT 'America/New_York',
+    "language"       TEXT NOT NULL DEFAULT 'es',
+    "status"         TEXT NOT NULL DEFAULT 'SCHEDULED',
+    "zoomMeetingId"  TEXT,
+    "zoomJoinUrl"    TEXT,
+    "zoomStartUrl"   TEXT,
+    "replayUrl"      TEXT,
+    "replayPostedAt" TIMESTAMP(3),
+    "coverImageUrl"  TEXT,
+    "createdAt"      TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt"      TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "Webinar_pkey" PRIMARY KEY ("id")
+  )`,
+  `ALTER TABLE "Webinar" ADD COLUMN IF NOT EXISTS "invitedAt" TIMESTAMP(3)`,
+  `ALTER TABLE "Webinar" ADD COLUMN IF NOT EXISTS "invitedCount" INTEGER NOT NULL DEFAULT 0`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "Webinar_slug_key" ON "Webinar"("slug")`,
+  `CREATE INDEX IF NOT EXISTS "Webinar_startsAt_idx" ON "Webinar"("startsAt")`,
+  `CREATE INDEX IF NOT EXISTS "Webinar_series_idx" ON "Webinar"("series")`,
+
+  `CREATE TABLE IF NOT EXISTS "WebinarRegistration" (
+    "id"               TEXT NOT NULL,
+    "webinarId"        TEXT NOT NULL,
+    "contactId"        TEXT,
+    "email"            TEXT NOT NULL,
+    "firstName"        TEXT,
+    "lastName"         TEXT,
+    "phone"            TEXT,
+    "source"           TEXT,
+    "zoomRegistrantId" TEXT,
+    "attended"         BOOLEAN NOT NULL DEFAULT false,
+    "firstJoinedAt"    TIMESTAMP(3),
+    "lastLeftAt"       TIMESTAMP(3),
+    "secondsAttended"  INTEGER NOT NULL DEFAULT 0,
+    "watchedPct"       INTEGER NOT NULL DEFAULT 0,
+    "lastStage"        TEXT,
+    "replaySentAt"     TIMESTAMP(3),
+    "createdAt"        TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt"        TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "WebinarRegistration_pkey" PRIMARY KEY ("id")
+  )`,
+  // One row per person per webinar: the registration endpoint upserts on this,
+  // so someone signing up twice updates their details instead of being counted
+  // twice and reminded twice.
+  `CREATE UNIQUE INDEX IF NOT EXISTS "WebinarRegistration_webinarId_email_key" ON "WebinarRegistration"("webinarId", "email")`,
+  `CREATE INDEX IF NOT EXISTS "WebinarRegistration_webinarId_attended_idx" ON "WebinarRegistration"("webinarId", "attended")`,
+  `CREATE INDEX IF NOT EXISTS "WebinarRegistration_contactId_idx" ON "WebinarRegistration"("contactId")`,
+  // Cascade on the webinar so deleting a cancelled session takes its signups
+  // with it; the contact link is left alone (SET NULL) because a registration
+  // is still a real event even if the contact row is later merged away.
+  `ALTER TABLE "WebinarRegistration" DROP CONSTRAINT IF EXISTS "WebinarRegistration_webinarId_fkey"`,
+  `ALTER TABLE "WebinarRegistration" ADD CONSTRAINT "WebinarRegistration_webinarId_fkey"
+     FOREIGN KEY ("webinarId") REFERENCES "Webinar"("id") ON DELETE CASCADE ON UPDATE CASCADE`,
+  `ALTER TABLE "WebinarRegistration" DROP CONSTRAINT IF EXISTS "WebinarRegistration_contactId_fkey"`,
+  `ALTER TABLE "WebinarRegistration" ADD CONSTRAINT "WebinarRegistration_contactId_fkey"
+     FOREIGN KEY ("contactId") REFERENCES "Contact"("id") ON DELETE SET NULL ON UPDATE CASCADE`,
+
+  // On-demand replay watching. Separate from the live attendance columns above
+  // on purpose — see the note on the model. Added as nullable/defaulted ALTERs
+  // so the deploy does not need a table rewrite.
+  `ALTER TABLE "WebinarRegistration" ADD COLUMN IF NOT EXISTS "watchToken" TEXT`,
+  `ALTER TABLE "WebinarRegistration" ADD COLUMN IF NOT EXISTS "replaySeconds" INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE "WebinarRegistration" ADD COLUMN IF NOT EXISTS "replayPct" INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE "WebinarRegistration" ADD COLUMN IF NOT EXISTS "replayFirstAt" TIMESTAMP(3)`,
+  `ALTER TABLE "WebinarRegistration" ADD COLUMN IF NOT EXISTS "replayLastAt" TIMESTAMP(3)`,
+  `ALTER TABLE "WebinarRegistration" ADD COLUMN IF NOT EXISTS "replayEngagedAt" TIMESTAMP(3)`,
+  // Nulls are fine under a unique index, so existing rows are filled afterwards
+  // in Node (backfillWatchTokens) rather than with gen_random_uuid() here —
+  // that keeps the migration off any assumption about the server's version or
+  // installed extensions, and matches how partner tokens are already backfilled.
+  `CREATE UNIQUE INDEX IF NOT EXISTS "WebinarRegistration_watchToken_key" ON "WebinarRegistration"("watchToken")`,
 ]
 
 // ─── Email templates ─────────────────────────────────────────────────────────
@@ -1101,6 +1185,21 @@ async function backfillPartnerTokens(db) {
   if (partners.length) console.log(`[db-migrate] backfilled ${partners.length} partner tokens`)
 }
 
+// Every signup that predates the replay-tracking columns gets its link token,
+// so the next "aquí está la grabación" mail can attribute the watch instead of
+// sending them off as anonymous traffic.
+async function backfillWatchTokens(db) {
+  const crypto = require("crypto")
+  const regs = await db.webinarRegistration.findMany({ where: { watchToken: null }, select: { id: true } })
+  for (const r of regs) {
+    await db.webinarRegistration.update({
+      where: { id: r.id },
+      data: { watchToken: crypto.randomBytes(16).toString("hex") },
+    })
+  }
+  if (regs.length) console.log(`[db-migrate] backfilled ${regs.length} webinar watch tokens`)
+}
+
 // ─── Warm → Hot smart plan ────────────────────────────────────────────────────
 // Auto-enrolls when a lead moves to the Warm stage (they replied/engaged).
 // Goal: convert engagement into a phone call / appointment (Hot). Design:
@@ -1396,6 +1495,7 @@ async function main() {
   await dedupPipelineLeads(db).catch(e => console.warn("[db-migrate] dedup pipeline leads skip:", e.message))
   await seedBrickellKeywords(db).catch(e => console.warn("[db-migrate] Brickell keywords skip:", e.message))
   await backfillPartnerTokens(db).catch(e => console.warn("[db-migrate] partner tokens skip:", e.message))
+  await backfillWatchTokens(db).catch(e => console.warn("[db-migrate] watch tokens skip:", e.message))
   await convertWhatsAppStepsToSMS(db).catch(e => console.warn("[db-migrate] WhatsApp→SMS convert skip:", e.message))
   await importOldCrmTransactions(db).catch(e => console.warn("[db-migrate] transaction import skip:", e.message))
   await backfillTeamAssignedStage(db).catch(e => console.warn("[db-migrate] team-assigned backfill skip:", e.message))

@@ -151,15 +151,39 @@ export async function fetchListingMedia(listingKey: string): Promise<string[]> {
   }
 }
 
+// The unit as the MLS records it, or null. Kept apart from the address so a
+// consumer (the site, Easy Rental) can print it where it needs to.
+export function listingUnit(l: any): string | null {
+  const unit = l?.UnitNumber == null ? "" : String(l.UnitNumber).trim()
+  return unit || null
+}
+
+// True when an address string already names a unit ("# 2504", "Unit 12B", "Apt 3").
+function namesUnit(address: string, unit: string): boolean {
+  const re = new RegExp(`(?:#|\\b(?:unit|apt|apartment|suite|ste|ph)\\b\\.?)\\s*#?\\s*${unit.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i")
+  return re.test(address)
+}
+
 // Build a display address, falling back to street components when UnparsedAddress
 // is missing (some MLS records withhold it).
+//
+// A condo's UnparsedAddress names its unit only when the listing agent typed
+// it there, and in a building of two hundred units the street address alone
+// is not an address. So the unit is always written in when the MLS has it.
 export function buildDisplayAddress(l: any): string {
-  if (l?.UnparsedAddress && String(l.UnparsedAddress).trim()) return String(l.UnparsedAddress).trim()
+  const unit = listingUnit(l)
+  const unparsed = l?.UnparsedAddress ? String(l.UnparsedAddress).trim() : ""
+  if (unparsed) {
+    if (!unit || namesUnit(unparsed, unit)) return unparsed
+    // Put the unit after the street, before any ", City, ST zip" that follows.
+    const [street, ...rest] = unparsed.split(",")
+    return [`${street.trim()} # ${unit}`, ...rest.map(s => s.trim())].join(", ")
+  }
   const street = [l?.StreetNumber, l?.StreetDirPrefix, l?.StreetName, l?.StreetSuffix, l?.StreetDirSuffix]
     .filter(Boolean).join(" ").trim()
-  const unit = l?.UnitNumber ? ` # ${l.UnitNumber}` : ""
+  const unitPart = unit ? ` # ${unit}` : ""
   const cityState = [l?.City, l?.StateOrProvince].filter(Boolean).join(", ")
-  const parts = [street ? street + unit : "", cityState, l?.PostalCode].filter(s => s && String(s).trim())
+  const parts = [street ? street + unitPart : "", cityState, l?.PostalCode].filter(s => s && String(s).trim())
   return parts.join(", ") || "Dirección disponible al contactar"
 }
 
@@ -167,7 +191,7 @@ export function buildDisplayAddress(l: any): string {
 export async function searchIdxListings(params: {
   city?: string; cities?: string[]; zip?: string; zips?: string[]; minPrice?: number; maxPrice?: number
   minBeds?: number; maxBeds?: number; minBaths?: number; maxBaths?: number
-  minGarage?: number; propertySubType?: string; propertySubTypes?: string[]; mode?: "sale" | "rent"
+  minGarage?: number; propertySubType?: string; propertySubTypes?: string[]; propertyTypes?: string[]; mode?: "sale" | "rent"
   minSqft?: number; maxSqft?: number; minYear?: number; maxYear?: number
   maxHoa?: number; maxDom?: number; pool?: boolean; waterfront?: boolean
   minStories?: number; maxStories?: number
@@ -179,14 +203,24 @@ export async function searchIdxListings(params: {
   const titleCase = (s: string) => s.trim().toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
 
   // "rent" → Residential Lease; "sale" (default) → Residential (for-sale).
-  const resoType = params.mode === "rent" ? "Residential Lease" : "Residential"
+  //
+  // Sale searches may need more than one: duplexes, triplexes and fourplexes are
+  // filed as "Residential Income" in RESO, so a query pinned to "Residential"
+  // dropped every one of them before PropertySubType was even considered — the
+  // MLS had them and CASAi returned nothing. Callers pass the types their
+  // selection needs; the subtype filter still pins what comes back.
+  const resoTypes = params.mode === "rent"
+    ? ["Residential Lease"]
+    : (params.propertyTypes && params.propertyTypes.length > 0 ? params.propertyTypes : ["Residential"])
 
   // InternetEntireListingDisplayYN gates IDX display: listings whose agent/seller
   // opted out must NOT be shown (compliance) — and those are exactly the ones whose
   // photo URLs come back null. Filtering to true fixes both.
   const filters = [
     `StandardStatus eq 'Active'`,
-    `PropertyType eq '${resoType}'`,
+    resoTypes.length === 1
+      ? `PropertyType eq '${esc(resoTypes[0])}'`
+      : `(${resoTypes.map(t => `PropertyType eq '${esc(t)}'`).join(" or ")})`,
     `InternetEntireListingDisplayYN eq true`,
   ]
   if (params.minPrice) filters.push(`ListPrice ge ${params.minPrice}`)

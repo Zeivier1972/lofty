@@ -15,6 +15,8 @@ import { v2 as cloudinary } from "cloudinary"
 import { prisma } from "@/lib/prisma"
 import { researchViralContent, buildAIOSystemPrompt, ResearchBrief } from "./content-research"
 import { uploadVideoToYouTube } from "./youtube-upload"
+import { publishGoogleBusinessPost } from "./google-business"
+import { createVideo, getVideoStatus, isFinished, isFailed, type HeyGenScene } from "./heygen"
 import { fetchSceneVideoUrl, getFallbackBackground, fetchPexelsPhoto } from "./pexels-video"
 import { generateGuideFromScript } from "./generate-guide"
 
@@ -135,7 +137,17 @@ const PLATFORM_GUIDES: Record<string, string> = {
   YOUTUBE:
     "Formato YouTube Shorts: descripción optimizada para SEO (300-400 palabras), incluye el año 2026, menciona Brickell Miami y Catherine Gomez Realtor, termina con CTA de suscripción y hashtags relevantes.",
   GOOGLE_BUSINESS:
-    "Formato Google Business: 150-250 palabras, tono profesional, menciona servicios y área de cobertura (Miami, Homestead, Orlando, South Florida).",
+    // Google rejects or removes posts that put a phone number in the body — it
+    // wants people using the Call button on the profile — and hashtags do
+    // nothing on a Business Profile. The post is also truncated after roughly
+    // 100 characters in the preview, so the offer has to lead. sanitizeForGoogle
+    // strips a number or hashtag that slips through, but stripping leaves
+    // "Llámame al ." behind, so the model is told not to write one at all.
+    "Formato Google Business: 150-250 palabras, tono profesional, menciona servicios y área de cobertura (Miami, Doral, Brickell, Orlando, South Florida). " +
+    "PROHIBIDO incluir números de teléfono en el texto — Google rechaza esos posts; la gente usa el botón de Llamar del perfil. " +
+    "PROHIBIDO usar hashtags: no funcionan en Google Business. " +
+    "No cierres con firma ni datos de contacto. " +
+    "Las primeras 100 caracteres son lo único que se ve en la vista previa, así que empieza por la oferta o la novedad concreta, nunca por un saludo.",
 }
 
 // ─── Content generation with Claude + AIO optimization ───────────────────────
@@ -316,21 +328,32 @@ async function generateAndUploadImage(
 
     const imagePrompt = `Professional South Florida real estate photography. Subject: ${subject}. Perspective: ${angle}. Thematic context: ${theme}. Clear blue sky, lush tropical landscaping, modern architecture, bright natural daylight. Ultra-realistic, no text, no watermarks, no people. Date reference: ${dateStr}.`
 
+    // `response_format` is NOT sent. OpenAI rejects it with
+    // `unknown_parameter` on the image models — every run was failing with a
+    // 400 and silently falling back to a Pexels stock photo, which is why the
+    // posts looked generic. Reports conflict on whether dall-e-3 still accepts
+    // it, so rather than bet on one answer the parameter is dropped and BOTH
+    // response shapes are handled: the newer models always return b64_json,
+    // and dall-e-3 with no format defaults to a url.
     const response = await getOpenAI().images.generate({
       model: "dall-e-3",
       prompt: imagePrompt,
       n: 1,
       size: "1024x1024",
-      response_format: "b64_json",
     } as any)
 
-    const b64 = (response.data as any[])?.[0]?.b64_json
-    if (!b64) return null
+    const first = (response.data as any[])?.[0]
+    // Cloudinary takes a remote URL as happily as a data URI, so a url
+    // response needs no download step.
+    const source: string | null = first?.b64_json
+      ? `data:image/png;base64,${first.b64_json}`
+      : first?.url || null
+    if (!source) {
+      console.warn("[social-autopilot] image generate returned neither b64_json nor url:", JSON.stringify(first || {}).slice(0, 300))
+      return null
+    }
 
-    const uploadResult = await cloudinary.uploader.upload(
-      `data:image/png;base64,${b64}`,
-      { folder: "lofty-social" }
-    )
+    const uploadResult = await cloudinary.uploader.upload(source, { folder: "lofty-social" })
 
     return uploadResult.secure_url
   } catch (err) {
@@ -590,68 +613,53 @@ async function triggerHeyGenVideo(script: string, dayOfWeek: number): Promise<st
     if (!avatarInfo) return null
 
     const talkingPhotoIds = new Set(CATHERINE_TALKING_PHOTO_IDS)
-    const isTalkingPhoto = talkingPhotoIds.has(avatarInfo.avatarId)
-
-    const character: Record<string, unknown> = isTalkingPhoto
-      ? { type: "talking_photo", talking_photo_id: avatarInfo.avatarId }
-      : { type: "avatar", avatar_id: avatarInfo.avatarId, avatar_style: "normal" }
 
     // Structure: avatar intro → b-roll scenes → avatar outro
-    const scenes = splitScriptForBRoll(script)
+    const parts = splitScriptForBRoll(script)
     const videoUrls = await Promise.all(
-      scenes.map((sceneText, i) =>
-        i === 0 || i === scenes.length - 1
+      parts.map((sceneText, i) =>
+        i === 0 || i === parts.length - 1
           ? Promise.resolve(null)
           : fetchSceneVideoUrl(sceneText, "portrait")
       )
     )
 
-    const videoInputs = scenes.map((sceneText, i) => {
-      const isFirst = i === 0
-      const isLast = i === scenes.length - 1
-      if (isFirst || isLast) {
-        return {
-          character,
-          voice: { type: "text", input_text: sceneText, voice_id: avatarInfo.voiceId },
-          background: getFallbackBackground(sceneText, i),
-        }
-      }
+    // The avatar/talking-photo split is gone on v3: one avatar_id covers both,
+    // and a photo avatar's look id is what produces a talking photo. The set is
+    // still passed through so the v2 escape hatch can rebuild the old shape.
+    const scenes: HeyGenScene[] = parts.map((sceneText, i) => {
+      const isEdge = i === 0 || i === parts.length - 1
       const videoUrl = videoUrls[i]
+      if (!isEdge && videoUrl) {
+        return { kind: "broll", videoUrl, script: sceneText, voiceId: avatarInfo.voiceId }
+      }
+      const bg = getFallbackBackground(sceneText, i) as { type: string; url: string }
       return {
-        voice: { type: "text", input_text: sceneText, voice_id: avatarInfo.voiceId },
-        background: videoUrl
-          ? { type: "video", url: videoUrl, play_style: "fit_to_scene" }
-          : getFallbackBackground(sceneText, i),
+        kind: "avatar",
+        avatarId: avatarInfo.avatarId,
+        script: sceneText,
+        voiceId: avatarInfo.voiceId,
+        background: { type: "image", url: bg.url },
       }
     })
 
-    const payload = {
-      video_inputs: videoInputs,
-      dimension: { width: 720, height: 1280 },
-      caption: true,
-    }
+    const brollCount = scenes.filter(sc => sc.kind === "broll").length
+    console.log(`[social-autopilot] HeyGen — ${scenes.length} scenes, ${brollCount} B-roll, avatar: ${avatarInfo.avatarId.slice(0, 8)}`)
 
-    const brollCount = Math.max(0, scenes.length - 2)
-    console.log(`[social-autopilot] HeyGen — avatar intro + ${brollCount} B-roll + avatar outro, Pexels: ${videoUrls.filter(Boolean).length}/${brollCount}, avatar: ${avatarInfo.avatarId.slice(0, 8)}`)
-
-    const res = await fetch("https://api.heygen.com/v2/video/generate", {
-      method: "POST",
-      headers: {
-        "X-Api-Key": apiKey,
-        "Content-Type": "application/json",
+    const result = await createVideo(
+      {
+        scenes,
+        // 1080x1920 — Reels/Shorts/TikTok re-compress on upload, so a 720p
+        // source lands visibly soft. Must match the Creatomate render size, or
+        // the caption pass would scale this straight back down.
+        width: 1080,
+        height: 1920,
+        caption: true,
       },
-      body: JSON.stringify(payload),
-    })
+      talkingPhotoIds,
+    )
 
-    const data = await res.json()
-
-    if (!data?.data?.video_id) {
-      console.error(`[social-autopilot] HeyGen generate failed (HTTP ${res.status}):`, JSON.stringify(data))
-    } else {
-      console.log(`[social-autopilot] HeyGen generate success — video_id: ${data.data.video_id}, scenes: ${scenes.length}`)
-    }
-
-    return (data?.data?.video_id as string) ?? null
+    return result.videoId
   } catch (err) {
     console.error("[social-autopilot] HeyGen video generation failed:", err)
     return null
@@ -799,19 +807,21 @@ async function generateSectionImage(prompt: string, folder = "lofty-blog", usedU
       prompt: `Professional Miami real estate photography. ${prompt}. Perspective: ${angle}. Luxury properties, blue sky, palm trees, modern architecture. Photorealistic, bright daylight, no text or watermarks.`,
       n: 1,
       size: "1024x1024",
-      response_format: "b64_json",
+      // No response_format — see the note on the social image generator above:
+      // OpenAI rejects it with `unknown_parameter`, so every blog image was
+      // falling through to a stock fallback.
     } as any)
 
-    const b64 = (response.data as any[])?.[0]?.b64_json
-    if (!b64) {
-      console.warn("[social-autopilot] DALL-E returned no b64_json, using fallback")
+    const first = (response.data as any[])?.[0]
+    const source: string | null = first?.b64_json
+      ? `data:image/png;base64,${first.b64_json}`
+      : first?.url || null
+    if (!source) {
+      console.warn("[social-autopilot] image generate returned no image, using fallback:", JSON.stringify(first || {}).slice(0, 300))
       return pickFallback()
     }
 
-    const uploadResult = await cloudinary.uploader.upload(
-      `data:image/png;base64,${b64}`,
-      { folder }
-    )
+    const uploadResult = await cloudinary.uploader.upload(source, { folder })
     usedUrls?.add(uploadResult.secure_url)
     return uploadResult.secure_url
   } catch (err) {
@@ -1036,15 +1046,9 @@ export async function checkHeygenVideos(): Promise<{ checked: number; completed:
 
   for (const post of heygenPending) {
     try {
-      const res = await fetch(
-        `https://api.heygen.com/v1/video_status.get?video_id=${post.externalId}`,
-        { headers: { "X-Api-Key": apiKey } }
-      )
-      const data = await res.json()
-      const heygenStatus: string | undefined = data?.data?.status
-      const videoUrl: string | undefined = data?.data?.video_url
+      const { status: heygenStatus, videoUrl } = await getVideoStatus(post.externalId as string)
 
-      if (heygenStatus === "completed" && videoUrl) {
+      if (isFinished(heygenStatus) && videoUrl) {
         if (creatomateKey) {
           // Pipe through Creatomate for kinetic captions before publishing
           const ctRes = await fetch("https://api.creatomate.com/v1/renders", {
@@ -1054,8 +1058,10 @@ export async function checkHeygenVideos(): Promise<{ checked: number; completed:
               source: {
                 output_format: "mp4",
                 frame_rate: 30,
-                width: 720,
-                height: 1280,
+                // Keep in step with the HeyGen dimension above — this caption pass
+                // is the final output, so a smaller size here silently undoes it.
+                width: 1080,
+                height: 1920,
                 elements: [
                   { id: "main-video", type: "video", source: videoUrl, fit: "cover", time: 0, duration: "auto" },
                   {
@@ -1102,7 +1108,7 @@ export async function checkHeygenVideos(): Promise<{ checked: number; completed:
           if (post.account) await publishPost({ ...post, mediaUrl: videoUrl }, post.account)
           completed++
         }
-      } else if (heygenStatus === "failed") {
+      } else if (isFailed(heygenStatus)) {
         await prisma.socialPost.update({ where: { id: post.id }, data: { status: "FAILED" } })
       }
     } catch (err) {
@@ -1345,31 +1351,83 @@ async function generateEngagementComment(platform: string, postContent: string):
   }
 }
 
+/**
+ * Publish a photo post to TikTok.
+ *
+ * The old code POSTed to `/v2/post/publish/text/init/` with `source:
+ * "FILE_UPLOAD"` and a video size of zero. That endpoint does not exist —
+ * TikTok has no text-only posting, it is a video and photo platform — so the
+ * request hit a 404 HTML page and the failure surfaced as
+ * `Unexpected token '<', "<html>` when the response was parsed as JSON. It
+ * could never have worked, on any token.
+ *
+ * The real endpoint for a still image is `/v2/post/publish/content/init/` with
+ * `media_type: "PHOTO"` and `source: "PULL_FROM_URL"`, which is why a post
+ * with no image is refused here instead of attempted.
+ *
+ * TWO THINGS LIVE OUTSIDE THIS CODE and will still reject the request:
+ *
+ *  - The image URL's domain has to be verified in the TikTok for Developers
+ *    portal (their Media Transfer Guide). Our images come from Cloudinary, so
+ *    `res.cloudinary.com` — or whatever CDN host the upload returns — needs a
+ *    URL-prefix verification there.
+ *  - An unaudited app can only post with SELF_ONLY visibility. Until TikTok
+ *    audits the app, `PUBLIC_TO_EVERYONE` is rejected; `TIKTOK_PRIVACY_LEVEL`
+ *    exists so posts can at least land privately in the meantime.
+ *
+ * Both produce a real JSON error now rather than an HTML parse failure, so the
+ * reason shows up in the post's errorMessage instead of being a mystery.
+ */
 async function publishToTikTok(account: AccountLike, post: PostLike): Promise<string> {
   if (!account.accessToken) throw new Error("TikTok: missing access token")
+  if (!post.mediaUrl) {
+    throw new Error("TikTok: no admite publicaciones de solo texto — este post necesita una imagen")
+  }
 
-  const res = await fetch("https://open.tiktokapis.com/v2/post/publish/text/init/", {
+  const res = await fetch("https://open.tiktokapis.com/v2/post/publish/content/init/", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${account.accessToken}`,
       "Content-Type": "application/json; charset=UTF-8",
     },
     body: JSON.stringify({
+      media_type: "PHOTO",
+      post_mode: "DIRECT_POST",
       post_info: {
-        title: post.content.slice(0, 150),
-        privacy_level: "PUBLIC_TO_EVERYONE",
+        title: post.content.slice(0, 90),
+        description: post.content.slice(0, 4000),
+        privacy_level: process.env.TIKTOK_PRIVACY_LEVEL || "PUBLIC_TO_EVERYONE",
+        disable_comment: false,
+        auto_add_music: true,
       },
       source_info: {
-        source: "FILE_UPLOAD",
-        video_size: 0,
-        chunk_size: 0,
-        total_chunk_count: 0,
+        source: "PULL_FROM_URL",
+        photo_cover_index: 0,
+        photo_images: [post.mediaUrl],
       },
     }),
   })
-  const data = await res.json()
-  if (data.error?.code !== "ok") throw new Error(data.error?.message ?? "TikTok publish failed")
-  return data.data?.publish_id as string
+
+  // Read as text first. A non-JSON body is exactly how the old bug presented,
+  // and `res.json()` on an HTML error page throws a parse error that says
+  // nothing about what TikTok actually refused.
+  const raw = await res.text()
+  let data: any = {}
+  try { data = JSON.parse(raw) } catch {
+    throw new Error(`TikTok respondió HTTP ${res.status} sin JSON: ${raw.slice(0, 200)}`)
+  }
+
+  if (!res.ok || (data.error?.code && data.error.code !== "ok")) {
+    const code = data.error?.code || `HTTP ${res.status}`
+    const msg = data.error?.message || "TikTok publish failed"
+    throw new Error(`TikTok (${code}): ${msg}`)
+  }
+
+  const publishId = data.data?.publish_id
+  if (!publishId) throw new Error(`TikTok no devolvió publish_id: ${raw.slice(0, 200)}`)
+  // Publishing is asynchronous; publish_id is what /v2/post/publish/status/fetch/
+  // takes if the status is ever polled.
+  return publishId as string
 }
 
 async function publishToLinkedIn(account: AccountLike, post: PostLike): Promise<string> {
@@ -1441,6 +1499,29 @@ async function publishToYouTube(account: AccountLike, post: PostLike): Promise<s
   return youtubeUrl
 }
 
+/**
+ * Google Business Profile. `accountId` holds the location resource name
+ * ("accounts/x/locations/y") that the OAuth callback resolved — Local Posts are
+ * created under a location, not a user.
+ *
+ * The call to action points at the site rather than at a phone number, since a
+ * number in the body is what gets these posts removed. The profile already
+ * carries the Call button.
+ */
+async function publishToGoogleBusiness(account: AccountLike, post: PostLike): Promise<string> {
+  if (!account.refreshToken) throw new Error("Google Business: falta el refresh token — reconecta la cuenta")
+  if (!account.accountId) throw new Error("Google Business: falta la ubicación del perfil — reconecta la cuenta")
+
+  const site = process.env.NEXT_PUBLIC_APP_URL || "https://www.catherinegomezrealtor.com"
+  return publishGoogleBusinessPost({
+    locationName: account.accountId,
+    refreshToken: account.refreshToken,
+    content: post.content,
+    mediaUrl: post.mediaUrl,
+    ctaUrl: site,
+  })
+}
+
 export async function publishPost(post: PostLike, account: AccountLike): Promise<void> {
   let externalId: string | undefined
 
@@ -1455,6 +1536,8 @@ export async function publishPost(post: PostLike, account: AccountLike): Promise
       externalId = await publishToLinkedIn(account, post)
     } else if (post.platform === "YOUTUBE") {
       externalId = await publishToYouTube(account, post)
+    } else if (post.platform === "GOOGLE_BUSINESS") {
+      externalId = await publishToGoogleBusiness(account, post)
     } else {
       console.log(`[social-autopilot] Skipping unsupported platform: ${post.platform}`)
       return

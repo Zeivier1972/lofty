@@ -3,7 +3,7 @@ import { scoreContact } from "@/lib/scoring"
 import { triggerOutboundCall } from "@/lib/vapi"
 import { sendEmail } from "@/lib/email"
 import { sendSMS, sendWhatsApp, sendWhatsAppTemplate, toE164 } from "@/lib/sms"
-import { sendCapiEvent } from "@/lib/facebook"
+import { sendCapiEvent, type CapiBrowserSignals } from "@/lib/facebook"
 import { findEventByTag } from "@/lib/events"
 import { appendEventLeadToSheet } from "@/lib/google-sheets"
 
@@ -24,6 +24,37 @@ export interface LeadData {
   facebookLeadId?: string
   tags?: string[]        // tag names to apply on creation (triggers smart plan enrollment)
   eventDay?: string      // event form answer "¿Qué día quieres atender?" — synced to the event sheet
+  /**
+   * Browser signals for the Facebook Lead event, from capiSignalsFromRequest.
+   * Optional: a lead that arrives from a webhook or an import has no browser
+   * behind it, and the event is still worth sending without them.
+   */
+  capi?: CapiBrowserSignals
+}
+
+/**
+ * Apply campaign tags one at a time, de-duplicated. Returns immediately; the
+ * work continues in the background so webhook responses stay fast.
+ */
+function applyTagsInBackground(contactId: string, tags: string[], label: string): void {
+  const seen = new Set<string>()
+  const unique = tags
+    .map(t => t.trim())
+    .filter(t => {
+      if (!t) return false
+      const key = t.toLowerCase()
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  if (!unique.length) return
+
+  void (async () => {
+    for (const tagName of unique) {
+      await applyTagAndEnroll(contactId, tagName)
+        .catch(e => console.error(`[INGEST] ${label} tag apply error:`, e))
+    }
+  })()
 }
 
 export async function checkAndEnrollSmartPlans(contactId: string, tagId: string): Promise<void> {
@@ -67,11 +98,19 @@ export async function enrollContactInPlanByName(contactId: string, planName: str
 }
 
 export async function applyTagAndEnroll(contactId: string, tagName: string): Promise<void> {
-  const tag = await prisma.tag.upsert({
-    where: { name: tagName },
-    update: {},
-    create: { name: tagName, color: "#10B981" },
-  })
+  // upsert still races when two callers create the same unique name at once:
+  // both see "not found", both insert, the loser gets P2002. Re-read instead.
+  let tag
+  try {
+    tag = await prisma.tag.upsert({
+      where: { name: tagName },
+      update: {},
+      create: { name: tagName, color: "#10B981" },
+    })
+  } catch {
+    tag = await prisma.tag.findUnique({ where: { name: tagName } })
+    if (!tag) throw new Error(`No se pudo crear ni encontrar la etiqueta "${tagName}"`)
+  }
   await prisma.contactTag.upsert({
     where: { contactId_tagId: { contactId, tagId: tag.id } },
     create: { contactId, tagId: tag.id },
@@ -81,7 +120,7 @@ export async function applyTagAndEnroll(contactId: string, tagName: string): Pro
 }
 
 export async function ingestLead(data: LeadData): Promise<{ contactId: string; isNew: boolean }> {
-  const { firstName, lastName, email, phone, source, campaign, budget, location, bedroomsMin, propertyType, message, notes, smsConsent, facebookLeadId, tags, eventDay } = data
+  const { firstName, lastName, email, phone, source, campaign, budget, location, bedroomsMin, propertyType, message, notes, smsConsent, facebookLeadId, tags, eventDay, capi } = data
 
   const phoneDigits = phone ? phone.replace(/\D/g, "").slice(-10) : null
 
@@ -97,6 +136,13 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
     await prisma.contact.update({
       where: { id: existing.id },
       data: {
+        // Somebody who just filled in a form is not archived any more. Leaving
+        // the flag set hides them from the contacts list and from search — the
+        // lead arrives, and nobody can find it.
+        ...(existing.isArchived && { isArchived: false }),
+        // Fill blanks only; never overwrite what is already on the record.
+        ...(email && !existing.email && { email }),
+        ...(phone && !existing.phone && { phone }),
         ...(smsConsent && { smsTCPAConsent: true, smsTCPAConsentDate: new Date(), smsTCPAConsentMethod: source.toLowerCase() }),
         ...(facebookLeadId && { facebookLeadId }),
         ...(budget && { buyerBudgetMax: budget }),
@@ -105,6 +151,9 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
         ...(propertyType && { buyerPropertyType: propertyType }),
       },
     })
+    if (existing.isArchived) {
+      console.log(`[INGEST] Un-archived ${existing.id} — returning lead from ${source}`)
+    }
     if (message) {
       await prisma.note.create({ data: { content: `[${source}] ${message}`, contactId: existing.id } })
     }
@@ -162,11 +211,7 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
 
     // Existing contacts still need the campaign/event tags applied so they enter
     // the right smart plans, get event reminders, and show on the guest list.
-    if (tags?.length) {
-      for (const tagName of tags) {
-        applyTagAndEnroll(existing.id, tagName).catch(e => console.error("[INGEST] Returning-lead tag apply error:", e))
-      }
-    }
+    if (tags?.length) applyTagsInBackground(existing.id, tags, "Returning-lead")
 
     // Sync to the event sheet (only fires for Bogotá/Medellín event leads).
     appendEventLeadToSheet({
@@ -207,13 +252,19 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
     .then(r => console.log(`[INGEST] First match alert for ${contact.id}: sent=${r?.sent}`))
     .catch(e => console.error("[INGEST] First match alert failed:", e))
 
-  // Report Lead event to Facebook Conversions API (fire-and-forget)
+  // Report Lead event to Facebook Conversions API (fire-and-forget).
+  //
+  // `capi` carries the _fbp/_fbc cookies and the client IP when the lead came
+  // from a form on our own site. Facebook needs _fbc to tie the conversion to
+  // the ad click that caused it, so a campaign optimising on Lead is working
+  // from a much stronger signal when they are present.
   sendCapiEvent("Lead", {
     email,
     phone: contact.phone,
     firstName,
     lastName,
     facebookLeadId,
+    ...(capi || {}),
   }, { eventId: contact.id }).catch(() => {})
 
   // Auto-assign to first stage of default pipeline
@@ -296,11 +347,7 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
   scoreContact(contact.id).catch(() => {})
 
   // Apply tags and auto-enroll in matching CONTACT_TAGGED smart plans
-  if (tags?.length) {
-    for (const tagName of tags) {
-      applyTagAndEnroll(contact.id, tagName).catch(e => console.error("[INGEST] Tag apply error:", e))
-    }
-  }
+  if (tags?.length) applyTagsInBackground(contact.id, tags, "New-lead")
 
   // Sync to the event sheet (only fires for Bogotá/Medellín event leads).
   appendEventLeadToSheet({ firstName, lastName, email, phone, tags, eventDay }).catch(() => {})
@@ -327,15 +374,21 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
       // number"). Non-event leads fall through to the investor/regular welcome
       // below, which stays geared to the campaign they came from.
       const smsBody = `Hola ${firstName}, soy Sofia de Catherine Gomez Realtor. Gracias por registrarte en nuestro Evento de Inversion en Miami en ${eventInfo.city} (${eventInfo.dateLabel}). Catherine te contactara pronto. Asegura tu lugar: ${eventInfo.link}`
+      // sendSMS resolves to null when the text never left — the automated kill
+      // switch, the budget cap, the per-contact cooldown, doNotText, or a Twilio
+      // rejection. Only record the activity when it actually went out, and never
+      // write our own SMSMessage row: sendSMS already logs one on success, so a
+      // second here both duplicates real sends and invents skipped ones.
       sendSMS(toPhone, smsBody, undefined, { automated: true, contactId: contact.id })
-        .then(() => {
+        .then(sid => {
+          if (!sid) {
+            console.warn(`[INGEST] Event welcome SMS NOT sent to ${toPhone} — see the [SMS ...] line above for the reason`)
+            return
+          }
           console.log(`[INGEST] Event welcome SMS sent to ${toPhone}`)
           prisma.activity.create({ data: { type: "SMS", title: "Sofía sent event welcome SMS", description: smsBody.slice(0, 200), contactId: contact.id } }).catch(() => {})
         })
         .catch(e => console.error("[INGEST] Event welcome SMS failed:", e))
-      prisma.sMSMessage.create({
-        data: { toNumber: toPhone, fromNumber: process.env.TWILIO_PHONE_NUMBER || "", body: smsBody, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
-      }).catch(() => {})
     } else if (isInvestor && waNumber) {
       // Investor leads → WhatsApp via template only.
       // Free-form WhatsApp (sendWhatsApp) requires an open 24h session from a prior inbound message.
@@ -345,7 +398,11 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
 
       if (templateSid) {
         sendWhatsAppTemplate(toPhone, templateSid, { "1": firstName })
-          .then(() => {
+          .then(sid => {
+            if (!sid) {
+              console.warn(`[INGEST] WhatsApp template NOT sent to investor ${toPhone}`)
+              return
+            }
             console.log(`[INGEST] WhatsApp template sent to investor ${toPhone}`)
             const sentDescription = `Hola ${firstName}, soy Sofía, asistente de Catherine Gómez Realtor 🏙️ Vi que estás interesado en inversiones inmobiliarias en Miami...`
             prisma.activity.create({
@@ -359,7 +416,11 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
             console.error("[INGEST] WhatsApp template failed, falling back to SMS:", e)
             const smsBody = `Hola ${firstName}, soy Sofia de Catherine Gomez Realtor. Gracias por solicitar informacion sobre invertir en Miami. Te muestro los numeros y el plan de pagos? Agenda: ${bookingUrl}`
             sendSMS(toPhone, smsBody, undefined, { automated: true, contactId: contact.id })
-              .then(() => {
+              .then(sid => {
+                if (!sid) {
+                  console.warn(`[INGEST] Investor fallback SMS NOT sent to ${toPhone}`)
+                  return
+                }
                 prisma.activity.create({
                   data: { type: "SMS", title: "Sofía sent investor welcome via SMS (WhatsApp fallback)", description: smsBody.slice(0, 200), contactId: contact.id },
                 }).catch(() => {})
@@ -371,7 +432,11 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
         console.log("[INGEST] No TWILIO_WA_INVESTOR_TEMPLATE_SID — sending SMS to investor")
         const smsBody = `Hola ${firstName}, soy Sofia de Catherine Gomez Realtor. Gracias por solicitar informacion sobre invertir en Miami. Te muestro los numeros y el plan de pagos? Agenda: ${bookingUrl}`
         sendSMS(toPhone, smsBody, undefined, { automated: true, contactId: contact.id })
-          .then(() => {
+          .then(sid => {
+            if (!sid) {
+              console.warn(`[INGEST] Investor SMS NOT sent to ${toPhone}`)
+              return
+            }
             prisma.activity.create({
               data: { type: "SMS", title: "Sofía sent investor welcome via SMS (no WhatsApp template)", description: smsBody.slice(0, 200), contactId: contact.id },
             }).catch(() => {})
@@ -385,17 +450,17 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
         : propertyType ? `${propertyType.toLowerCase().replace("_", " ")} en Miami` : "propiedades en Miami"
       const smsBody = `Hola ${firstName}, soy Sofia de Catherine Gomez Realtor. Gracias por solicitar informacion sobre ${interest}. Hablamos? Agenda: ${bookingUrl}`
       sendSMS(toPhone, smsBody, undefined, { automated: true, contactId: contact.id })
-        .then(() => {
+        .then(sid => {
+          if (!sid) {
+            console.warn(`[INGEST] Welcome SMS NOT sent to ${toPhone} — see the [SMS ...] line above for the reason`)
+            return
+          }
           console.log(`[INGEST] SMS sent to ${toPhone}`)
           prisma.activity.create({
             data: { type: "SMS", title: "Sofía sent welcome SMS", description: smsBody.slice(0, 200), contactId: contact.id },
           }).catch(() => {})
         })
         .catch(e => console.error("[INGEST] SMS failed:", e))
-
-      prisma.sMSMessage.create({
-        data: { toNumber: toPhone, fromNumber: process.env.TWILIO_PHONE_NUMBER || "", body: smsBody, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
-      }).catch(() => {})
     }
   } else {
     console.log(`[INGEST] SMS skipped — phone=${!!phone} autoSMS=${autoSMS}`)

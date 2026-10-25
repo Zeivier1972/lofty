@@ -151,12 +151,58 @@ async function checkEmailVolume(): Promise<CheckResult> {
   }
 }
 
+/**
+ * Instagram comment bot / DMs.
+ *
+ * This is the check that would have caught the 11 August outage: the token
+ * expired, nothing failed loudly, and comments were dropped for two months
+ * before anyone noticed.
+ *
+ * Deliberately hits graph.instagram.com with a Bearer header — exactly what
+ * lib/instagram.ts does — so the check fails under the same conditions the
+ * real bot does. A Facebook token (EAA...) is NOT interchangeable here: that
+ * host cannot parse it, which is its own distinct failure worth naming.
+ */
+async function checkInstagram(): Promise<CheckResult> {
+  const t = Date.now()
+  const name = "Instagram (DMs / comentarios)"
+  const token = process.env.INSTAGRAM_ACCESS_TOKEN
+  if (!token) {
+    return { name, ok: false, detail: "INSTAGRAM_ACCESS_TOKEN no configurado", ms: 0, critical: true }
+  }
+  try {
+    const res = await fetchWithTimeout("https://graph.instagram.com/v23.0/me?fields=id,username", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const data: any = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      const m = String(data?.error?.message || `HTTP ${res.status}`)
+      // Name the two failures we have actually hit, so the alert says what to
+      // do instead of just quoting Meta.
+      const hint = /cannot parse/i.test(m)
+        ? " — parece un token de Facebook (EAA...). Instagram necesita uno de Instagram Login (IGAA...): App CRM → Instagram → API setup with Instagram login → Generate token"
+        : /expired|session|190/i.test(m)
+          ? " — el token caducó. Genera uno nuevo en App CRM → Instagram → API setup with Instagram login → Generate token"
+          : ""
+      return { name, ok: false, detail: `Token rechazado — ${m}${hint}`.slice(0, 400), ms: Date.now() - t, critical: true }
+    }
+    // The account is reported rather than asserted against INSTAGRAM_ACCOUNT_ID:
+    // a mismatch here would fire a critical alert every 20 minutes, and these
+    // two ids are not guaranteed to be the same value. A human can eyeball it.
+    const who = data?.username ? `@${data.username}` : data?.id ? `id ${data.id}` : "token válido"
+    return { name, ok: true, detail: `Conectado: ${who}`, ms: Date.now() - t, critical: true }
+  } catch (e: any) {
+    return { name, ok: false, detail: String(e?.message || e).slice(0, 140), ms: Date.now() - t, critical: true }
+  }
+}
+
 // Run every check in parallel. Returns a stable-ordered list.
 export async function runAllChecks(): Promise<CheckResult[]> {
   return Promise.all([
     checkDatabase(),
     checkBridgeMLS(),
     checkFacebook(),
+    checkInstagram(),
     checkEventbrite(),
     checkEmail(),
     checkSMS(),

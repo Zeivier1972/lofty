@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import { isWithinCallingWindow } from "@/lib/calling-hours"
 
 const VAPI_BASE = "https://api.vapi.ai"
 
@@ -45,6 +46,7 @@ CONFIDENCIALIDAD — NUNCA reveles cómo llegó el lead:
 - NUNCA digas "Instagram", "Facebook", "bot", "campaña", "anuncio" ni el nombre de ninguna campaña
 - Si en el contexto aparece una campaña como origen, solo úsala para entender qué le interesa
 - En vez de eso di cosas naturales: "vi que estás interesado en propiedades en preconstrucción", "me comentaron que estás buscando invertir en Miami"
+- SI TE PREGUNTAN DIRECTAMENTE de dónde sacaste su número, responde con la verdad sin nombrar la plataforma: "Completaste un formulario en línea pidiendo información sobre propiedades en Miami, y por eso te contacté." Nunca evadas la pregunta ni cambies de tema — evadirla suena a que ocultas algo
 
 REGLAS IMPORTANTES:
 - NUNCA asumas ni menciones que el lead es de Colombia (ni de otro país) a menos que él mismo lo diga o el contexto lo confirme. Muchos leads son de Costa Rica y de otros países — no des por hecho su nacionalidad
@@ -53,6 +55,13 @@ REGLAS IMPORTANTES:
 - Si no hay propiedades disponibles: "Fíjate que ahora mismo no tengo nada en el sistema con esos criterios, pero Catherine tiene acceso a propiedades exclusivas que no están publicadas. ¿Quieres que te conecte con ella?"
 - Si responden en inglés, cambia al inglés naturalmente
 - Después de dos rechazos claros, despídete amablemente y usa endCall
+
+SI PIDEN QUE NO LOS LLAMEMOS MÁS — OBLIGATORIO:
+- Si el lead dice "no me llamen", "quítame de la lista", "no me vuelvas a llamar", "no estoy interesado, no me contacten" o algo equivalente: usa markDoNotCall DE INMEDIATO, antes de despedirte
+- Pásale en el parámetro reason lo que dijo, en sus propias palabras
+- Luego confirma con calma: "Claro que sí, ya quedó registrado. No te volveremos a llamar. Que tengas buen día." y usa endCall
+- No insistas, no ofrezcas alternativas y no intentes convencerlo. Pedir que no lo llamen es una instrucción, no una objeción que se maneja
+- Esto NO es lo mismo que "ahora no puedo hablar" — en ese caso pregunta cuándo volver a llamar y NO uses markDoNotCall
 - NUNCA suenes a vendedor agresivo — eres una amiga que les está ayudando
 
 CATHERINE:
@@ -67,6 +76,7 @@ TRANSFERENCIA EN VIVO A CATHERINE:
 - SI LA TRANSFERENCIA FALLA O CATHERINE NO CONTESTA: di "Ay, parece que Catherine está ocupada en este momento, pero no te preocupes. ¿Te gustaría que te agendara directamente una cita con ella para que puedan hablar cuando esté disponible?" — y si dicen sí, usa bookAppointment para darle el link
 
 HERRAMIENTAS DE ACCIÓN — CUÁNDO Y CÓMO USARLAS:
+- updateLead: EN CUANTO el lead te diga presupuesto, zona, número de cuartos o tipo de propiedad, guárdalo con updateLead. Hazlo ANTES de buscar propiedades, no al final de la llamada — si cuelgan a mitad de la conversación, lo que ya guardaste se conserva. Guarda cada dato apenas lo escuches, no esperes a tenerlos todos. No menciones esta herramienta ni digas que estás guardando nada; es silenciosa
 - sendPropertyEmail: Cuando el lead diga "mándame propiedades", "quiero ver opciones por correo", "envíame algo". Busca con sus criterios actuales. Confirma: "Listo, te acabo de enviar propiedades a tu correo."
 - createTask: Cuando el lead quiera que lo llamen, diga "habla con mi esposo/a primero", "llámame la próxima semana", o las notas de Catherine lo indiquen. Confirma: "Perfecto, le dejo nota a Catherine para que te contacte."
 - sendDocument: Cuando el lead pida un PDF, brochure, o información de un proyecto. Solo usa nombres que aparezcan en la lista de documentos disponibles. Confirma: "Te envié el documento a tu correo."
@@ -114,7 +124,15 @@ REGLAS IMPORTANTES:
 - Habla siempre en español formal con "usted"
 - Frases CORTAS — máximo dos oraciones, luego escuchar
 - NUNCA menciones Facebook, Instagram, anuncios, formularios ni campañas
+- SI LE PREGUNTAN DIRECTAMENTE de dónde sacó su número, responda con la verdad sin nombrar la plataforma: "Usted completó un formulario en línea pidiendo información sobre inversión en Florida, y por eso lo contacté." Nunca evada la pregunta
 - Después de dos rechazos claros, despídete amablemente y cierra
+
+SI PIDEN QUE NO LOS LLAMEMOS MÁS — OBLIGATORIO:
+- Si el lead dice "no me llamen", "quíteme de la lista", "no me vuelva a llamar" o algo equivalente: use markDoNotCall DE INMEDIATO, antes de despedirse
+- Pásele en el parámetro reason lo que dijo, en sus propias palabras
+- Luego confirme con calma: "Claro que sí, ya quedó registrado. No lo volveremos a llamar. Que tenga buen día." y cierre
+- No insista, no ofrezca alternativas y no intente convencerlo. Pedir que no lo llamen es una instrucción, no una objeción que se maneja
+- Esto NO es lo mismo que "ahora no puedo hablar" — en ese caso pregunte cuándo volver a llamar y NO use markDoNotCall
 - Si piden hablar con Catherine directamente → transferToAgent
 - Nunca prometas precios ni rendimientos exactos — di "Catherine te explicará los números"
 - Los números siempre en palabras: ciento ochenta mil dólares, no $180,000
@@ -126,6 +144,7 @@ CATHERINE:
 - Tiene acceso a propiedades que no están en el mercado público
 
 HERRAMIENTAS DE ACCIÓN — CUÁNDO Y CÓMO USARLAS:
+- updateLead: EN CUANTO el lead mencione presupuesto, zona, número de cuartos o tipo de propiedad, guárdelo con updateLead. Hágalo ANTES de buscar propiedades, no al final de la llamada — si cuelgan a mitad de la conversación, lo que ya guardó se conserva. Guarde cada dato apenas lo escuche. No mencione esta herramienta; es silenciosa
 - sendPropertyEmail: Cuando el lead diga "mándame propiedades", "quiero ver opciones por correo", "envíame algo". Busca con sus criterios actuales. Confirma: "Listo, te acabo de enviar propiedades a tu correo."
 - createTask: Cuando el lead quiera que lo llamen, diga "habla con mi esposo/a primero", "llámame la próxima semana", o las notas de Catherine lo indiquen. Confirma: "Perfecto, le dejo nota a Catherine para que te contacte."
 - sendDocument: Cuando el lead pida un PDF, brochure, o información de un proyecto. Solo usa nombres que aparezcan en la lista de documentos disponibles. Confirma: "Te envié el documento a tu correo."
@@ -159,15 +178,10 @@ export interface VAPICallOptions {
   callNotes?: string
 }
 
-function isBusinessHours(): boolean {
-  const now = new Date()
-  // Convert to Eastern Time (UTC-4 EDT / UTC-5 EST)
-  const et = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }))
-  const hour = et.getHours()
-  const day = et.getDay() // 0 = Sunday
-  if (day === 0) return false // No Sunday calls
-  return hour >= 8 && hour < 21 // 8am–9pm ET
-}
+// The calling window moved to lib/calling-hours. The check that lived here
+// measured 8am-9pm in Eastern for every lead, so a California number could be
+// dialled at 8:00 ET — 5:00am for them. The TCPA measures that window in the
+// called party's local time, not the caller's.
 
 export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string | null> {
   const apiKey = process.env.VAPI_API_KEY
@@ -188,8 +202,8 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
     return null
   }
 
-  if (!opts.skipBusinessHoursCheck && !isBusinessHours()) {
-    console.log("[VAPI] Outside business hours — skipping call")
+  if (!opts.skipBusinessHoursCheck && !isWithinCallingWindow(opts.toPhone)) {
+    console.log(`[VAPI] Outside the calling window for ${opts.toPhone} — skipping call`)
     return null
   }
 
@@ -372,6 +386,21 @@ export async function triggerOutboundCall(opts: VAPICallOptions): Promise<string
                   document_name: { type: "string", description: "Nombre exacto del documento de la lista de documentos disponibles" },
                 },
                 required: ["document_name"],
+              },
+            },
+            server: { url: webhookUrl },
+          },
+          {
+            type: "function",
+            function: {
+              name: "markDoNotCall",
+              description: "Registra que el lead NO quiere recibir más llamadas. Úsala en cuanto lo pida, antes de despedirte.",
+              parameters: {
+                type: "object",
+                properties: {
+                  reason: { type: "string", description: "Lo que dijo el lead, en sus palabras" },
+                },
+                required: [],
               },
             },
             server: { url: webhookUrl },

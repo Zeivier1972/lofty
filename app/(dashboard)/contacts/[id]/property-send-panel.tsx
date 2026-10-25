@@ -4,8 +4,9 @@ import { useState } from "react"
 import {
   Search, Mail, MessageSquare, Loader2, Home, MapPin,
   Bed, Bath, Maximize2, CheckCircle, ChevronDown, ChevronUp,
-  Send, Square, CheckSquare, X,
+  Send, Square, CheckSquare, X, Eye,
 } from "lucide-react"
+import { PROPERTY_TYPE_GROUPS, keysToParam, labelForKeys, normalizeBuyerTypeKeys } from "@/lib/property-types"
 import { useToast } from "@/components/ui/use-toast"
 
 interface MlsListing {
@@ -21,21 +22,14 @@ interface MlsListing {
   photo: string | null
 }
 
-// Selectable MLS subtypes — pick any combination (none = all types)
-const PROP_TYPE_OPTIONS = [
-  { value: "Single Family Residence", label: "Single Family" },
-  { value: "Townhouse", label: "Townhouse" },
-  { value: "Condominium", label: "Condo" },
-  { value: "Multi Family", label: "Multi-Family" },
-]
-
-// CRM buyerPropertyType enum → Bridge subtype
-const CRM_TO_BRIDGE: Record<string, string> = {
-  SINGLE_FAMILY: "Single Family Residence",
-  CONDO: "Condominium",
-  TOWNHOUSE: "Townhouse",
-  MULTI_FAMILY: "Multi Family",
-}
+// Selectable type groups — pick any combination (none = all types). Shared with
+// the public search so the two cannot drift; Multi-Family carries duplex,
+// triplex and fourplex, and each of those is also selectable on its own.
+const PROP_TYPE_OPTIONS = PROPERTY_TYPE_GROUPS.map(g => ({
+  value: g.key,
+  label: g.labelEn,
+  nested: !!g.parent,
+}))
 
 interface Props {
   contactId: string
@@ -81,13 +75,11 @@ export default function PropertySendPanel({
   const [showMore, setShowMore] = useState(false)
   // Multiple property types — start with the buyer's known preference(s).
   // buyerPropertyType may hold several comma-separated types.
+  // Read the stored preference generously — older rows hold display labels
+  // ("Casa") or enum keys ("SINGLE_FAMILY"), and a strict lookup left the
+  // panel opening with nothing selected for most contacts.
   const [propTypes, setPropTypes] = useState<Set<string>>(
-    new Set(
-      (defaultPropertyType || "")
-        .split(",")
-        .map(t => CRM_TO_BRIDGE[t.trim()])
-        .filter(Boolean)
-    )
+    new Set(normalizeBuyerTypeKeys(defaultPropertyType))
   )
 
   function togglePropType(v: string) {
@@ -112,6 +104,11 @@ export default function PropertySendPanel({
 
   // Batch send
   const [batchSending, setBatchSending] = useState<"email" | "sms" | null>(null)
+  // Ver el correo exacto que va a recibir el cliente, ANTES de enviarlo. La
+  // ruta siempre soportó preview; el panel nunca lo expuso, así que no había
+  // forma de comprobar qué salía — solo enviarlo y preguntarle al cliente.
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null)
+  const [previewing, setPreviewing] = useState(false)
   const [batchSent, setBatchSent] = useState(false)
 
   // Note
@@ -162,7 +159,7 @@ export default function PropertySendPanel({
       if (stories) qs.set("stories", stories)
       if (pool) qs.set("pool", "1")
       if (waterfront) qs.set("waterfront", "1")
-      if (propTypes.size) qs.set("type", Array.from(propTypes).join(","))
+      if (propTypes.size) qs.set("type", keysToParam(Array.from(propTypes)))
       qs.set("limit", "12")
       const res = await fetch(`/api/idx/search?${qs}`)
       const data = await res.json()
@@ -204,6 +201,36 @@ export default function PropertySendPanel({
       toast({ title: "Send failed", description: e.message, variant: "destructive" })
     } finally {
       setSending(null)
+    }
+  }
+
+  async function previewEmail() {
+    const toSend = listings.filter(l => selected.has(l.listingKey))
+    if (!toSend.length) return
+    setPreviewing(true)
+    try {
+      const res = await fetch(`/api/contacts/${contactId}/send-properties-batch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          listings: toSend.map(l => ({
+            listingKey: l.listingKey, listingId: l.listingId,
+            address: l.address, city: l.city, state: l.state,
+            price: l.price, beds: l.beds, baths: l.baths,
+            sqft: l.sqft, photoUrl: l.photo,
+          })),
+          method: "email",
+          note: note.trim() || undefined,
+          preview: true,
+        }),
+      })
+      const data = await res.json()
+      if (!data.ok) throw new Error(data.error || "Failed")
+      setPreviewHtml(data.html)
+    } catch (e: any) {
+      toast({ title: "No se pudo generar el previo", description: e.message, variant: "destructive" })
+    } finally {
+      setPreviewing(false)
     }
   }
 
@@ -251,6 +278,13 @@ export default function PropertySendPanel({
   }
 
   const selectedCount = selected.size
+  // La plantilla del correo omite en silencio cada campo que llega vacío: sin
+  // precio no hay línea de precio, sin foto no hay imagen. Una propiedad sin
+  // ninguno de los dos le llega al cliente como una dirección pelada, y hoy
+  // eso se enviaba sin que nadie se enterara.
+  const selectedListings = listings.filter(l => selected.has(l.listingKey))
+  const flacas = selectedListings.filter(l => !l.price && !l.photo)
+  const sinFoto = selectedListings.filter(l => l.photo === null && l.price)
 
   return (
     <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
@@ -361,7 +395,7 @@ export default function PropertySendPanel({
             {/* Row 4: property type — pick one OR MORE (none = all types) */}
             <div>
               <label className="text-xs font-semibold text-gray-500 mb-1 block">
-                Property Type <span className="font-normal text-gray-400">· pick one or more</span>
+                Property Type <span className="font-normal text-gray-400">· pick one or more · Multi-Family covers duplex, triplex and fourplex</span>
               </label>
               <div className="flex flex-wrap gap-1.5">
                 {PROP_TYPE_OPTIONS.map(o => {
@@ -371,10 +405,14 @@ export default function PropertySendPanel({
                       key={o.value}
                       type="button"
                       onClick={() => togglePropType(o.value)}
-                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                      className={`flex items-center gap-1 rounded-lg text-xs font-medium border transition-colors ${
+                        o.nested ? "px-2 py-1 border-dashed" : "px-2.5 py-1.5"
+                      } ${
                         active
                           ? "bg-blue-600 text-white border-blue-600"
-                          : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+                          : o.nested
+                            ? "bg-white text-gray-500 border-gray-200 hover:bg-gray-50"
+                            : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
                       }`}
                     >
                       {active && <CheckCircle className="w-3 h-3" />}
@@ -386,7 +424,7 @@ export default function PropertySendPanel({
               <p className="text-[11px] text-gray-400 mt-1">
                 {propTypes.size === 0
                   ? "Showing all property types"
-                  : `Searching ${Array.from(propTypes).map(v => PROP_TYPE_OPTIONS.find(o => o.value === v)?.label).join(" + ")}`}
+                  : `Searching ${labelForKeys(Array.from(propTypes), "en")}`}
               </p>
             </div>
 
@@ -638,8 +676,25 @@ export default function PropertySendPanel({
                       </span>
                     )}
                     </span>
+                    {flacas.length > 0 && (
+                      <span className="text-[11px] font-semibold text-yellow-200">
+                        · ⚠ {flacas.length} sin precio ni foto: al cliente le llega solo la dirección
+                      </span>
+                    )}
+                    {flacas.length === 0 && sinFoto.length > 0 && (
+                      <span className="text-[11px] text-white/70">· {sinFoto.length} sin foto</span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
+                    <button
+                      onClick={previewEmail}
+                      disabled={previewing || !!batchSending}
+                      title="Ver exactamente el correo que va a recibir el cliente, sin enviarlo"
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-white/20 text-white hover:bg-white/30 disabled:opacity-50 transition-colors"
+                    >
+                      {previewing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
+                      Ver el correo
+                    </button>
                     <button
                       onClick={() => sendBatch("sms")}
                       disabled={!!batchSending || !contactPhone}
@@ -667,6 +722,31 @@ export default function PropertySendPanel({
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Previo del correo — lo que el cliente va a recibir, tal cual */}
+      {previewHtml !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setPreviewHtml(null)}>
+          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-3 border-b">
+              <div>
+                <p className="font-semibold text-gray-900 text-sm">Así le llega a {contactEmail}</p>
+                <p className="text-[11px] text-gray-500">Esto es el correo real, sin enviar.</p>
+              </div>
+              <button onClick={() => setPreviewHtml(null)} className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            {/* En iframe: el correo trae sus propios estilos y no debe mezclarse
+                con los del CRM, ni ver nada de esta página. */}
+            <iframe
+              title="Previo del correo"
+              srcDoc={previewHtml}
+              sandbox=""
+              className="flex-1 w-full border-0 bg-white"
+            />
+          </div>
         </div>
       )}
     </div>

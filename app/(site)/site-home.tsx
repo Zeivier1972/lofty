@@ -3,7 +3,14 @@ import { fetchPrimaryPhotos } from "@/lib/bridge"
 import nextDynamic from "next/dynamic"
 import type { Metadata } from "next"
 
-const BASE = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
+// Pinned to the canonical www host rather than read from NEXT_PUBLIC_APP_URL.
+// This string is the homepage's canonical tag, its Open Graph url and the `@id`
+// that every other page's JSON-LD points at, so it has to be the one public
+// address and the same one every time — an env var that happens to hold the
+// Railway domain in some environment would quietly publish the wrong canonical
+// and split the site's identity in two. The other public pages hardcode the
+// same host.
+const BASE = "https://www.catherinegomezrealtor.com"
 
 // Shared SEO metadata for the public real-estate homepage. Re-exported by both
 // the bare domain (app/page.tsx) and /site so they stay identical.
@@ -27,7 +34,15 @@ export const siteHomeMetadata: Metadata = {
 }
 
 // Load with ssr:false so Framer Motion never runs server-side
-const HomeClient = nextDynamic(() => import("./home-client"), { ssr: false })
+// Rendered on the server. This was `{ ssr: false }`, which meant the entire
+// homepage body existed only after JavaScript ran: the HTML Google and the AI
+// answer engines fetch carried 16 characters of text and not one heading,
+// while every other public page serves its content normally.
+//
+// Nothing in home-client needed the browser at render time — no window, no
+// document, no storage, no Math.random or Date in the markup — so the flag was
+// costing the site its front page for nothing.
+const HomeClient = nextDynamic(() => import("./home-client"))
 
 // The public real-estate homepage. Rendered at both the bare domain "/" and "/site".
 export default async function SiteHome() {
@@ -66,18 +81,44 @@ export default async function SiteHome() {
     console.error("Site page error:", e)
   }
 
-  // LocalBusiness + RealEstateAgent JSON-LD for AI Overview and local SEO
-  const jsonLd = {
-    "@context": "https://schema.org",
+  // LocalBusiness + RealEstateAgent JSON-LD for AI Overview and local SEO.
+  //
+  // Everything here is read from WebsiteConfig rather than written inline: the
+  // phone number was hard-coded as "+1-305-000-0000", a placeholder, which is
+  // precisely the field a voice assistant reads aloud when someone asks how to
+  // reach Catherine. Sourcing it from the record she already edits in Settings
+  // means it cannot drift again, and the social links fill `sameAs`, which is
+  // how Google ties the site to the Google Business Profile.
+  const toE164 = (raw: string) => {
+    const d = raw.replace(/\D/g, "")
+    if (!d) return null
+    if (raw.trim().startsWith("+")) return `+${d}`
+    return d.length === 10 ? `+1${d}` : `+${d}`
+  }
+  const telephone = toE164(websiteConfig?.agentPhone || "305-283-0872")
+  const email = websiteConfig?.agentEmail || "info@catherinegomezrealtor.com"
+  const sameAs = [
+    websiteConfig?.facebook,
+    websiteConfig?.instagram,
+    websiteConfig?.linkedin,
+    websiteConfig?.youtube,
+  ].filter((u): u is string => !!u && /^https?:\/\//.test(u))
+
+  const agent = {
     "@type": ["RealEstateAgent", "LocalBusiness"],
+    "@id": `${BASE}#agent`,
     name: "Catherine Gomez Realtor",
-    description: "Licensed Florida Realtor specializing in new construction, pre-construction condos, and luxury homes in Miami and South Florida. Bilingual — English & Spanish.",
+    description: "Licensed Florida Realtor specializing in new construction, pre-construction condos, and luxury homes in Miami, Orlando and South Florida. Bilingual — English & Spanish.",
     url: BASE,
-    telephone: "+1-305-000-0000",
+    ...(telephone ? { telephone } : {}),
+    email,
+    ...(websiteConfig?.agentPhotoUrl ? { image: websiteConfig.agentPhotoUrl } : {}),
+    ...(websiteConfig?.logoUrl ? { logo: websiteConfig.logoUrl } : {}),
+    ...(websiteConfig?.agentBrokerage ? { parentOrganization: { "@type": "Organization", name: websiteConfig.agentBrokerage } } : {}),
     areaServed: [
       "Miami", "Miami Beach", "Coral Gables", "Doral", "Aventura",
-      "Sunny Isles Beach", "Brickell", "Edgewater", "Wynwood", "Hialeah",
-    ],
+      "Sunny Isles Beach", "Brickell", "Edgewater", "Wynwood", "Hialeah", "Orlando",
+    ].map(name => ({ "@type": "City", name, addressRegion: "FL" })),
     knowsLanguage: ["en", "es"],
     hasOfferCatalog: {
       "@type": "OfferCatalog",
@@ -89,8 +130,30 @@ export default async function SiteHome() {
         { "@type": "Offer", itemOffered: { "@type": "Service", name: "Bilingual Real Estate Services" } },
       ],
     },
-    sameAs: [],
+    ...(sameAs.length ? { sameAs } : {}),
   }
+
+  // WebSite + SearchAction: the markup that declares this site searchable.
+  // It powers Google's sitelinks searchbox and lets an assistant hand a spoken
+  // query straight to /homes, which now parses one free-text `q` into filters.
+  const website = {
+    "@type": "WebSite",
+    "@id": `${BASE}#website`,
+    url: BASE,
+    name: "Catherine Gomez Realtor",
+    inLanguage: ["es", "en"],
+    publisher: { "@id": `${BASE}#agent` },
+    potentialAction: {
+      "@type": "SearchAction",
+      target: {
+        "@type": "EntryPoint",
+        urlTemplate: `${BASE}/homes?q={search_term_string}`,
+      },
+      "query-input": "required name=search_term_string",
+    },
+  }
+
+  const jsonLd = { "@context": "https://schema.org", "@graph": [agent, website] }
 
   return (
     <>

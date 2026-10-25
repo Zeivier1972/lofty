@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
-import { fetchListingByKey, fetchListingMedia, buildDisplayAddress } from "@/lib/bridge"
+import { fetchListingByKey, fetchListingMedia, buildDisplayAddress, listingUnit } from "@/lib/bridge"
 
 // CORS: allow partner apps (e.g. Easy Rental) to consume this endpoint from the browser
 const CORS_HEADERS = {
@@ -28,6 +28,7 @@ export async function GET(_req: Request, { params }: { params: { key: string } }
         listingKey: l.ListingKey,
         mlsNumber: l.ListingId ?? null,
         address: buildDisplayAddress(l),
+        unit: listingUnit(l), // the apartment/unit on its own, for consumers that print it separately
         city: l.City ?? null,
         state: l.StateOrProvince ?? null,
         zip: l.PostalCode ?? null,

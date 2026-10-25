@@ -18,10 +18,36 @@ export async function GET(req: Request) {
   const aiConfig = await prisma.aIConfig.findFirst()
   const agentName = aiConfig?.realtorName || "Catherine"
 
+  // Only people who HAVE one of the two dates. The query used to pull every
+  // contact in the book to check two fields on each, which is the whole table
+  // in memory for the handful whose birthday is actually today.
   const contacts = await prisma.contact.findMany({
-    where: { isArchived: false, doNotEmail: false, email: { not: null } },
+    where: {
+      isArchived: false,
+      doNotEmail: false,
+      email: { not: null },
+      OR: [{ birthday: { not: null } }, { homeClosedAt: { not: null } }],
+    },
     select: { id: true, firstName: true, lastName: true, email: true, birthday: true, homeClosedAt: true },
   })
+
+  // Was this exact greeting already sent today?
+  //
+  // Nothing stopped a second send. The job is scheduled daily, but `curl -sf
+  // ... || true` retries nothing while Railway restarting the service mid-run,
+  // or anyone hitting the route by hand, re-sends to everyone it already
+  // reached — and a duplicate "Feliz Cumpleaños" is the kind of thing a client
+  // notices. The Activity row each send writes is the only record there is, so
+  // it is also the guard: it carries the date, so the check is cheap and the
+  // marker cannot collide with last year's.
+  const stamp = `${today.getFullYear()}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+  const alreadySent = async (contactId: string, kind: "bday" | "anniv") => {
+    const found = await prisma.activity.findFirst({
+      where: { contactId, type: "EMAIL", description: { contains: `soi:${kind}:${stamp}` } },
+      select: { id: true },
+    })
+    return !!found
+  }
 
   let birthdaysSent = 0
   let anniversariesSent = 0
@@ -31,7 +57,7 @@ export async function GET(req: Request) {
     if (c.birthday) {
       const bMonth = c.birthday.getMonth() + 1
       const bDay = c.birthday.getDate()
-      if (bMonth === month && bDay === day) {
+      if (bMonth === month && bDay === day && !(await alreadySent(c.id, "bday"))) {
         await sendEmail({
           to: c.email!,
           subject: `🎂 ¡Feliz Cumpleaños, ${c.firstName}!`,
@@ -47,7 +73,7 @@ export async function GET(req: Request) {
           `,
         })
         await prisma.activity.create({
-          data: { type: "EMAIL", title: "Email de Cumpleaños", description: "Email de cumpleaños automático", contactId: c.id },
+          data: { type: "EMAIL", title: "Email de Cumpleaños", description: `Email de cumpleaños automático · soi:bday:${stamp}`, contactId: c.id },
         })
         birthdaysSent++
       }
@@ -58,7 +84,7 @@ export async function GET(req: Request) {
       const aMonth = c.homeClosedAt.getMonth() + 1
       const aDay = c.homeClosedAt.getDate()
       const years = today.getFullYear() - c.homeClosedAt.getFullYear()
-      if (aMonth === month && aDay === day && years > 0) {
+      if (aMonth === month && aDay === day && years > 0 && !(await alreadySent(c.id, "anniv"))) {
         await sendEmail({
           to: c.email!,
           subject: `🏠 ¡${years} año${years > 1 ? "s" : ""} en tu hogar, ${c.firstName}!`,
@@ -74,12 +100,12 @@ export async function GET(req: Request) {
           `,
         })
         await prisma.activity.create({
-          data: { type: "EMAIL", title: "Aniversario de Hogar", description: `${years} año(s) en su hogar`, contactId: c.id },
+          data: { type: "EMAIL", title: "Aniversario de Hogar", description: `${years} año(s) en su hogar · soi:anniv:${stamp}`, contactId: c.id },
         })
         anniversariesSent++
       }
     }
   }
 
-  return NextResponse.json({ birthdaysSent, anniversariesSent })
+  return NextResponse.json({ date: stamp, scanned: contacts.length, birthdaysSent, anniversariesSent })
 }

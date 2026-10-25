@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
 import { prisma } from "@/lib/prisma"
+import { recordSofiaEvent } from "@/lib/sofia-metrics"
 import { sendSMS } from "@/lib/sms"
 import { searchIdxListings, buildDisplayAddress, fetchPrimaryPhotos, fetchListingByKey } from "@/lib/bridge"
 import { getMatchingPreConstruction } from "@/lib/social-ai-chat"
@@ -208,6 +209,11 @@ export async function POST(req: Request) {
       if (!c) contactId = null
     }
 
+    // Medir antes de nada: si el visitante se va sin dejar datos, este contador
+    // es lo ÚNICO que queda de que la conversación existió.
+    if (messages.filter(m => m.role === "user").length === 1) void recordSofiaEvent("conversation")
+    void recordSofiaEvent("message")
+
     const convo = messages.map(m => m.content).join("\n")
     const email = convo.match(EMAIL_RE)?.[0] || null
     const phone = convo.match(PHONE_RE)?.[0] || null
@@ -218,11 +224,15 @@ export async function POST(req: Request) {
     // Capture once we have contact info and aren't already linked.
     if (!contactId && (email || phone)) {
       contactId = await captureContact({ firstName: knownName || givenName, email, phone, message: lastUser })
+      if (contactId) void recordSofiaEvent("captured")
       if (!knownName) knownName = givenName
     }
 
     // Ping Catherine when a captured lead wants to talk/book.
     const wantsCatherine = /hablar|llamar|contactar|catherine|agente|cita|reuni|agenda|schedule|appointment|\bcall\b/i.test(lastUser)
+    // Se cuenta haya contacto o no: un visitante anónimo que pide agendar es
+    // exactamente la fuga que estamos buscando, y hoy no deja ningún rastro.
+    if (wantsCatherine) void recordSofiaEvent("wantedBooking")
     if (contactId && wantsCatherine && realtorPhone) {
       sendSMS(realtorPhone, `🔔 Lead en el SITIO WEB quiere avanzar\n👤 ${knownName || givenName || "Visitante"}${phone ? `\n📱 ${phone}` : ""}${email ? `\n📧 ${email}` : ""}\n💬 "${lastUser.slice(0, 120)}"`).catch(() => {})
     }
@@ -246,6 +256,8 @@ export async function POST(req: Request) {
         ? `Proyectos de preconstrucción relevantes que puedes describir SIN revelar el nombre del desarrollo (empuja a agendar un tour privado con ${realtorName}):\n${pre.join("\n---\n")}`
         : `Invítalo a ver los proyectos de preconstrucción en ${projectsUrl} y a agendar un tour con ${realtorName}.`
     }
+
+    if (listings.length) void recordSofiaEvent("sawListings")
 
     const system = `Eres ${agentName}, la asistente experta de bienes raíces de ${realtorName} Realtor en Miami y Orlando. Chateas con un visitante EN EL SITIO WEB mientras mira propiedades.
 

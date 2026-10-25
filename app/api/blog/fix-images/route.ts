@@ -27,13 +27,19 @@ async function generateAndUploadImage(prompt: string): Promise<string | null> {
       prompt: `Professional Miami real estate photography. ${prompt}. Luxury properties, modern architecture. Photorealistic, bright daylight, no text or watermarks.`,
       n: 1,
       size: "1024x1024",
-      response_format: "b64_json",
+      // No response_format: OpenAI rejects it with `unknown_parameter` on the
+      // image models, which sent every call straight to the fallback list.
+      // Both shapes are handled instead — b64_json from the newer models, a
+      // url from dall-e-3 when no format is given.
     } as any)
 
-    const b64 = (response.data as any[])?.[0]?.b64_json
-    if (!b64) return FALLBACKS[Math.floor(Math.random() * FALLBACKS.length)]
+    const first = (response.data as any[])?.[0]
+    const source: string | null = first?.b64_json
+      ? `data:image/png;base64,${first.b64_json}`
+      : first?.url || null
+    if (!source) return FALLBACKS[Math.floor(Math.random() * FALLBACKS.length)]
 
-    const result = await cloudinary.uploader.upload(`data:image/png;base64,${b64}`, { folder: "lofty-blog" })
+    const result = await cloudinary.uploader.upload(source, { folder: "lofty-blog" })
     return result.secure_url
   } catch {
     return FALLBACKS[Math.floor(Math.random() * FALLBACKS.length)]

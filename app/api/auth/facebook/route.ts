@@ -18,7 +18,12 @@ export async function GET() {
   const params = new URLSearchParams({
     client_id: appId,
     redirect_uri: redirectUri,
-    scope: "pages_show_list,leads_retrieval,pages_read_engagement,business_management",
+    // pages_messaging is what lets Sofía answer Messenger DMs. It was missing here,
+    // so the connect flow never asked for it and the page tokens it returns could not
+    // send — the messaging token had to be minted by hand in Business Manager instead.
+    // App Review also expects to watch a user grant the permission being requested,
+    // which is impossible if the app never asks for it.
+    scope: "pages_show_list,leads_retrieval,pages_read_engagement,business_management,pages_messaging",
     response_type: "code",
     auth_type: "rerequest",
   })

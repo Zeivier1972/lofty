@@ -87,6 +87,16 @@ export default function AIAgentClient({
   const [chatInput, setChatInput] = useState("")
   const [chatLoading, setChatLoading] = useState(false)
   const [config, setConfig] = useState(initConfig)
+  // Qué está haciendo Sofía de verdad. "No veo citas" puede ser que nadie le
+  // escriba, que le escriban y no dejen datos, o que dejen datos y no agenden;
+  // cada una se arregla distinto y sin números no se sabe cuál es.
+  const [sofiaStats, setSofiaStats] = useState<any>(null)
+  useEffect(() => {
+    fetch("/api/sofia-metrics?days=30")
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => setSofiaStats(d))
+      .catch(() => {})
+  }, [])
   const [seedingPlan, setSeedingPlan] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -162,6 +172,52 @@ export default function AIAgentClient({
 
   return (
     <div className="p-6 space-y-5 animate-fade-in">
+      {/* Qué está haciendo Sofía — el embudo real, no la impresión */}
+      {sofiaStats && (
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center gap-2 mb-1">
+            <Activity className="w-4 h-4 text-indigo-600" />
+            <h2 className="font-bold text-gray-900">Qué está haciendo {config.agentName} — últimos {sofiaStats.days} días</h2>
+          </div>
+          <p className="text-sm text-gray-700 mb-4">{sofiaStats.lectura}</p>
+
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+            {[
+              ["Conversaciones", sofiaStats.counters?.conversation, "visitantes que le escribieron"],
+              ["Dejaron datos", sofiaStats.counters?.captured, "correo o teléfono"],
+              ["Vieron propiedades", sofiaStats.counters?.sawListings, "se les mostró inventario"],
+              ["Pidieron agendar", sofiaStats.counters?.wantedBooking, "dijeron cita / hablar / llamar"],
+              ["Citas en el CRM", sofiaStats.history?.citasEnElCRM, "creadas en el calendario"],
+            ].map(([label, value, hint]: any) => (
+              <div key={label} className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                <p className="text-2xl font-bold text-gray-900 leading-none">{value ?? 0}</p>
+                <p className="text-xs font-medium text-gray-700 mt-1">{label}</p>
+                <p className="text-[11px] text-gray-500 leading-snug">{hint}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="text-xs text-gray-500 space-y-1 border-t pt-3">
+            <p>
+              Histórico guardado en la base: <strong>{sofiaStats.history?.leadsCapturados ?? 0}</strong> leads capturados
+              y <strong>{sofiaStats.history?.intercambiosRegistrados ?? 0}</strong> intercambios registrados.
+              {sofiaStats.history?.ultimaConversacion
+                ? ` Última conversación guardada: ${new Date(sofiaStats.history.ultimaConversacion).toLocaleString("es-CO")}.`
+                : " No hay ninguna conversación guardada todavía."}
+            </p>
+            <p>
+              {sofiaStats.instrumentadoDesde
+                ? `Los contadores cuentan desde el ${sofiaStats.instrumentadoDesde}. Lo anterior a esa fecha no se midió.`
+                : "Los contadores empiezan a contar desde ahora — aún no hay datos medidos."}
+            </p>
+            <p className="text-amber-700">
+              Ojo: hoy una conversación en la que el visitante NO deja correo ni teléfono no se guarda en ninguna parte.
+              Estos contadores son lo único que queda de ella.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Header — Sofia branding */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500 p-6 text-white shadow-xl">
         <div className="absolute inset-0 opacity-10" style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.4'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E\")" }} />

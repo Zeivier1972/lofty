@@ -4,13 +4,19 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { fetchSceneVideoUrl, getFallbackBackground } from "@/lib/pexels-video"
 
+// Render at 1080p. Reels, Shorts and TikTok expect 1080x1920 and re-compress on
+// upload, so a 720p source arrives visibly soft on a phone.
 const DIMENSIONS: Record<string, { width: number; height: number }> = {
-  "16:9": { width: 1280, height: 720 },
-  "9:16": { width: 720, height: 1280 },
-  "1:1":  { width: 720, height: 720 },
+  "16:9": { width: 1920, height: 1080 },
+  "9:16": { width: 1080, height: 1920 },
+  "1:1":  { width: 1080, height: 1080 },
 }
 
-// Catherine Gomez talking_photo IDs — confirmed by user
+// Whether an id is a talking photo decides which character block HeyGen expects,
+// and sending the wrong one fails. This list only covers the nine looks that
+// existed when it was written, so a newly recorded avatar was typed wrongly and
+// rejected. The client now states it outright; the list remains a fallback for
+// callers that do not.
 const TALKING_PHOTO_IDS = new Set([
   "ab393d45f3044a89b92fc77d17f321b7",
   "28e35d5f82f64101a2584fb29e841a88",
@@ -63,13 +69,13 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { avatarId, voiceId, script, ratio = "9:16", styleId, broll = true } = await req.json()
+    const { avatarId, voiceId, script, ratio = "9:16", styleId, broll = true, isTalkingPhoto } = await req.json()
     if (!avatarId || !voiceId || !script?.trim()) {
       return NextResponse.json({ error: "avatarId, voiceId, and script are required" }, { status: 400 })
     }
 
     const dimension = DIMENSIONS[ratio] ?? DIMENSIONS["9:16"]
-    const isTalkingPhoto = TALKING_PHOTO_IDS.has(avatarId)
+    const talkingPhoto = typeof isTalkingPhoto === "boolean" ? isTalkingPhoto : TALKING_PHOTO_IDS.has(avatarId)
     const orientation = ratio === "9:16" ? "portrait" : "landscape"
 
     let videoInputs: Record<string, unknown>[]
@@ -86,7 +92,7 @@ export async function POST(req: Request) {
         )
       )
 
-      const character: Record<string, unknown> = isTalkingPhoto
+      const character: Record<string, unknown> = talkingPhoto
         ? { type: "talking_photo", talking_photo_id: avatarId }
         : { type: "avatar", avatar_id: avatarId, avatar_style: "normal" }
 
@@ -120,18 +126,18 @@ export async function POST(req: Request) {
     } else {
       // Single-scene mode — apply style preset background if selected
       const STYLE_BACKGROUNDS: Record<string, string> = {
-        cinematic:  "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1280&q=80",
-        thriller:   "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=1280&q=80",
-        retro_tech: "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1280&q=80",
-        pop_culture:"https://images.unsplash.com/photo-1533106497176-45ae19e68ba2?w=1280&q=80",
-        modern:     "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1280&q=80",
-        warm:       "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=1280&q=80",
-        handmade:   "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=1280&q=80",
-        iconic:     "https://images.unsplash.com/photo-1613977257365-aaae5a9817ff?w=1280&q=80",
-        print:      "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1280&q=80",
+        cinematic:  "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1920&q=85",
+        thriller:   "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=1920&q=85",
+        retro_tech: "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1920&q=85",
+        pop_culture:"https://images.unsplash.com/photo-1533106497176-45ae19e68ba2?w=1920&q=85",
+        modern:     "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1920&q=85",
+        warm:       "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=1920&q=85",
+        handmade:   "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=1920&q=85",
+        iconic:     "https://images.unsplash.com/photo-1613977257365-aaae5a9817ff?w=1920&q=85",
+        print:      "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1920&q=85",
       }
       const hasBackground = !!styleId && styleId !== "none" && STYLE_BACKGROUNDS[styleId]
-      const character: Record<string, unknown> = isTalkingPhoto
+      const character: Record<string, unknown> = talkingPhoto
         ? { type: "talking_photo", talking_photo_id: avatarId }
         : { type: "avatar", avatar_id: avatarId, avatar_style: "normal" }
 

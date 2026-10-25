@@ -3,6 +3,9 @@ export const dynamic = "force-dynamic"
 import { prisma } from "@/lib/prisma"
 import { sendSMS, sendWhatsApp, toE164, sanitizeSmsBody } from "@/lib/sms"
 import { searchIdxListings, fetchPrimaryPhotos } from "@/lib/bridge"
+import { findEventByAdText, findEventByTag, type EventInfo } from "@/lib/events"
+import { applyTagAndEnroll } from "@/lib/lead-ingest"
+import { appendEventLeadToSheet } from "@/lib/google-sheets"
 import Anthropic from "@anthropic-ai/sdk"
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -49,6 +52,8 @@ REGLAS:
 - Para pre-construcción: NUNCA menciones el nombre del constructor ni la comunidad — solo área, precio, cuartos y entrega
 - Si no hay propiedades disponibles, di que estás buscando y que Catherine les llamará
 - Actualiza update_lead_preferences CADA VEZ que el lead comparta información nueva
+- Si el lead comparte su correo electrónico, guárdalo DE INMEDIATO con update_lead_preferences (junto con su nombre completo si también lo dio). No le pidas el correo a un lead que no viene por un evento.
+- Si hay un EVENTO en el contexto del lead y ya te dio nombre y correo: confírmale que le envías las entradas y compártele el link de registro del evento. Si aún falta el correo, pídeselo una sola vez — nunca insistas más de una vez.
 
 CATHERINE GOMEZ:
 - Experta en Miami con amplia experiencia en pre-construcción e inversiones
@@ -96,6 +101,7 @@ const TOOLS: Anthropic.Tool[] = [
       type: "object" as const,
       properties: {
         lead_name: { type: "string", description: "Nombre completo si lo mencionó" },
+        email: { type: "string", description: "Correo electrónico si lo compartió (para enviarle entradas, guías o alertas)" },
         budget_min: { type: "number", description: "Presupuesto mínimo" },
         budget_max: { type: "number", description: "Presupuesto máximo" },
         bedrooms_min: { type: "number", description: "Cuartos mínimos" },
@@ -273,6 +279,13 @@ async function runTool(name: string, input: any, contactId: string): Promise<{te
         data.firstName = parts[0]
         if (parts.length > 1) data.lastName = parts.slice(1).join(" ")
       }
+      // Only accept something that actually looks like an address, and never
+      // overwrite an email we already hold (a form lead's is more trustworthy
+      // than one re-typed into a chat).
+      if (input.email && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(input.email.trim())) {
+        const current = await prisma.contact.findUnique({ where: { id: contactId }, select: { email: true } })
+        if (!current?.email) data.email = input.email.trim().toLowerCase()
+      }
       if (Object.keys(data).length > 0) {
         await prisma.contact.update({ where: { id: contactId }, data })
       }
@@ -283,6 +296,21 @@ async function runTool(name: string, input: any, contactId: string): Promise<{te
   }
 
   return {text: "Herramienta no encontrada.", imageUrls: []}
+}
+
+// Sofía's first reply to a lead arriving from a click-to-WhatsApp ad. This is the
+// ONE message a cold ad lead sees, so it names the event and ends with a question.
+// Edit the copy here. Only ever used for ad leads (ReferralSourceId present).
+function ctwaGreeting(firstName: string, ev?: EventInfo): string {
+  const hi = firstName && firstName !== "Lead" ? `¡Hola ${firstName}! 👋` : "¡Hola! 👋"
+  if (!ev) {
+    return `${hi} Soy Sofía, asistente de Catherine Gómez Realtor. Gracias por escribirnos — te ayudo a invertir en Miami desde Colombia. ¿Qué te gustaría saber?`
+  }
+  const venue = ev.venue ? ` en ${ev.venue}` : ""
+  // Ask for the email in exchange for the tickets — it is the one contact detail
+  // an ad lead does not already hand us (WhatsApp gives us their number, and their
+  // profile name), and without it they can only ever get SMS event reminders.
+  return `${hi} Soy Sofía, asistente de Catherine Gómez Realtor 🏙️\n\nGracias por tu interés en nuestro Evento de Inversión en Miami en ${ev.city} — ${ev.dateLabel}${venue}. La entrada es GRATIS 🎟️ pero los cupos son limitados.\n\nPara enviarte tus entradas, ¿me confirmas tu nombre completo y tu correo electrónico? Tu número de WhatsApp ya lo tengo ✅`
 }
 
 export async function POST(req: Request) {
@@ -300,6 +328,16 @@ export async function POST(req: Request) {
     const isWhatsApp = from.toLowerCase().startsWith("whatsapp:")
     const phone = from.replace(/^whatsapp:/i, "").trim()
     const digits = phone.replace(/\D/g, "")
+
+    // Meta forwards these ONLY on click-to-WhatsApp ad messages (via Twilio). Also
+    // require the WhatsApp channel explicitly, so an SMS lead can never take this
+    // path even if a referral field ever showed up on one. For every other inbound
+    // message isCtwa is false and nothing below behaves differently than before.
+    const referralSourceId = params.get("ReferralSourceId")
+    const isCtwa = !!referralSourceId && isWhatsApp
+    const ctwaEvent = isCtwa
+      ? findEventByAdText(params.get("ReferralHeadline"), params.get("ReferralBody"))
+      : undefined
 
     // Find or create contact
     let contact = await prisma.contact.findFirst({
@@ -320,9 +358,23 @@ export async function POST(req: Request) {
       },
     })
 
+    // Ad leads arrive with a WhatsApp profile name; everyone else has none, so the
+    // values below stay exactly what they were ("Lead" + phone, SMS/WhatsApp source).
+    const ctwaNameParts = isCtwa
+      ? (params.get("ProfileName") || "").trim().split(/\s+/).filter(Boolean)
+      : []
+    let isNewCtwaLead = false
+
     if (!contact) {
+      isNewCtwaLead = isCtwa
       contact = await prisma.contact.create({
-        data: { firstName: "Lead", lastName: phone, phone, status: "LEAD", source: isWhatsApp ? "WhatsApp" : "SMS" },
+        data: {
+          firstName: ctwaNameParts[0] || "Lead",
+          lastName: ctwaNameParts.length > 1 ? ctwaNameParts.slice(1).join(" ") : phone,
+          phone,
+          status: "LEAD",
+          source: isCtwa ? "FACEBOOK_CTWA" : isWhatsApp ? "WhatsApp" : "SMS",
+        },
         select: {
           id: true, firstName: true, lastName: true, phone: true, status: true,
           buyerBudgetMin: true, buyerBudgetMax: true, buyerBedroomsMin: true,
@@ -330,6 +382,32 @@ export async function POST(req: Request) {
           tags: { select: { tag: { select: { name: true } } } },
         },
       })
+    }
+
+    // A new click-to-WhatsApp lead needs the same follow-through a form lead gets:
+    // the event tag (the reminder cron finds people by tag — untagged means no
+    // 7/3/1/0-day countdown), a row on the event sheet, and the ad attribution so
+    // we can tell which ad produced them. All best-effort: never block the reply.
+    if (isNewCtwaLead) {
+      const attribution = [
+        "Lead de anuncio click-to-WhatsApp",
+        params.get("ReferralHeadline") ? `Anuncio: ${params.get("ReferralHeadline")}` : null,
+        `ad_id: ${referralSourceId}`,
+        params.get("ReferralCtwaClid") ? `ctwa_clid: ${params.get("ReferralCtwaClid")}` : null,
+      ].filter(Boolean).join(" · ")
+
+      prisma.note.create({ data: { content: attribution, contactId: contact.id } }).catch(() => {})
+
+      if (ctwaEvent) {
+        applyTagAndEnroll(contact.id, ctwaEvent.tag).catch(e => console.error("[CTWA] tag error:", e))
+        appendEventLeadToSheet({
+          firstName: contact.firstName,
+          lastName: contact.lastName || "",
+          phone: contact.phone || phone,
+          tags: [ctwaEvent.tag],
+        }).catch(() => {})
+      }
+      console.log(`[CTWA] ad lead ${phone} → contact ${contact.id}${ctwaEvent ? ` (${ctwaEvent.city})` : " (no event matched)"}`)
     }
 
     if (contact.doNotText) {
@@ -388,6 +466,16 @@ export async function POST(req: Request) {
     const isInvestor = tags.some(t => /investor|inversionista/i.test(t))
     const ctx: string[] = [`Nombre: ${name}`, `Estado CRM: ${contact.status}`]
     if (tags.length > 0) ctx.push(`Etiquetas CRM: ${tags.join(", ")}`)
+    // A lead tagged for one of Catherine's events: give Sofía the real date, venue
+    // and registration link so she can send the tickets instead of inventing details.
+    const taggedEvent = tags.map(t => findEventByTag(t)).find(Boolean)
+    if (taggedEvent) {
+      ctx.push(
+        `EVENTO AL QUE ESTE LEAD ESTÁ REGISTRADO/INTERESADO: Evento de Inversión en Miami en ${taggedEvent.city}, ${taggedEvent.dateLabel}` +
+        `${taggedEvent.venue ? `, ${taggedEvent.venue}` : ""}. Entrada gratis, cupos limitados. Link de registro: ${taggedEvent.link}` +
+        ` — usa SOLO estos datos del evento, nunca inventes fecha, lugar ni link.`
+      )
+    }
     if (isInvestor) ctx.push("⚠️ ESTE LEAD ES UN INVERSIONISTA — usa search_preconstruction como primera opción cuando pregunte por propiedades o inversiones.")
     if (contact.buyerBudgetMin || contact.buyerBudgetMax)
       ctx.push(`Presupuesto conocido: $${(contact.buyerBudgetMin || 0).toLocaleString()} – $${(contact.buyerBudgetMax || 0).toLocaleString()}`)
@@ -405,12 +493,19 @@ export async function POST(req: Request) {
       { role: "user" as const, content: body },
     ]
 
+    // A brand-new ad lead gets the event greeting instead of a generic AI turn, so
+    // they immediately see which event they reached and the ticket link. It is saved
+    // to the message history below, so Sofía has that context on every later message
+    // — from their second message on, this is null and the normal loop runs.
+    const ctwaWelcome = isNewCtwaLead ? ctwaGreeting(contact.firstName, ctwaEvent) : null
+
     // Agentic loop — Claude calls tools until it has a final answer
-    let reply = "Hola, soy Sofía de Catherine Gomez Realtor. ¿En qué puedo ayudarte hoy?"
+    let reply = ctwaWelcome || "Hola, soy Sofía de Catherine Gomez Realtor. ¿En qué puedo ayudarte hoy?"
     const collectedImages: string[] = []
     const propertyCards: PropertyCard[] = []
     // Cap the tool-use rounds (4) so a single reply can't rack up many AI calls.
-    const MAX = 4
+    // The greeting is already written, so skip the loop (and its AI cost) entirely.
+    const MAX = ctwaWelcome ? 0 : 4
 
     for (let i = 0; i < MAX; i++) {
       const res = await anthropic.messages.create({

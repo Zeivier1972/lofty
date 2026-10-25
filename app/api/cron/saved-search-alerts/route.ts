@@ -4,7 +4,8 @@ export const maxDuration = 300
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { searchIdxListings } from "@/lib/bridge"
-import { sendEmail } from "@/lib/email"
+import { propertyTypesForSubTypes } from "@/lib/property-types"
+import { sendEmail, emailClickUrl } from "@/lib/email"
 
 function authOk(req: Request): boolean {
   const secret = process.env.CRON_SECRET
@@ -48,6 +49,7 @@ export async function GET(req: Request) {
   for (const s of searches) {
     if (!s.contact?.email || s.contact.doNotEmail) continue
     try {
+      const savedIncomeTypes = propertyTypesForSubTypes((s.propertySubType || "").split(","))
       const listings = await searchIdxListings({
         city: s.city || undefined,
         zip: s.zip || undefined,
@@ -56,6 +58,9 @@ export async function GET(req: Request) {
         minBeds: s.minBeds || undefined,
         minBaths: s.minBaths || undefined,
         propertySubType: s.propertySubType || undefined,
+        // Same trap as the live search: a saved multi-family search matched
+        // nothing, because those subtypes are filed under Residential Income.
+        propertyTypes: savedIncomeTypes.length > 0 ? savedIncomeTypes : undefined,
         limit: 50,
       })
 
@@ -74,7 +79,11 @@ export async function GET(req: Request) {
       if (s.maxPrice) qp.set("maxPrice", String(s.maxPrice))
       if (s.minBeds) qp.set("minBeds", String(s.minBeds))
       if (s.propertySubType) qp.set("type", s.propertySubType)
-      const link = `${appUrl}/homes?${qp.toString()}`
+      // Pasa por el rastreador de clics, que registra el clic como señal de
+      // interés Y — lo que importa aquí — le pega el id del lead al destino,
+      // para que Sofía lo reciba sabiendo quién es en vez de como a un
+      // desconocido. Sin esto el correo mandaba a /homes pelado.
+      const link = emailClickUrl(s.contactId, `${appUrl}/homes?${qp.toString()}`, `Alerta: ${s.label}`)
 
       await sendEmail({
         to: s.contact.email,

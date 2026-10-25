@@ -8,7 +8,7 @@ import {
   Zap, Settings, ChevronLeft, ChevronRight, BarChart3,
   MessageSquare, Bot, Phone, Share2, Key, Globe,
   BellRing, UserCheck, Send, Inbox, ClipboardList, Plug, X, Instagram, Landmark, Facebook,
-  Wand2, ChevronDown, Mail, TrendingUp, Megaphone, Handshake, Activity,
+  Wand2, ChevronDown, Mail, TrendingUp, Megaphone, Handshake, Activity, Video,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
@@ -59,6 +59,7 @@ const navGroups: NavGroup[] = [
       { href: "/campaigns", icon: Send, label: "Email Campaigns" },
       { href: "/social", icon: Share2, label: "Social Media" },
       { href: "/content-studio", icon: Wand2, label: "Content Studio" },
+      { href: "/webinars", icon: Video, label: "Webinars" },
     ],
   },
   {

@@ -1,5 +1,5 @@
 // Casai Service Worker
-const CACHE = "lofty-v1"
+const CACHE = "lofty-v2"
 
 // App shell — these load instantly even offline
 const PRECACHE = [
@@ -38,16 +38,21 @@ self.addEventListener("fetch", (e) => {
     return
   }
 
-  // Network-first for HTML navigation (always fresh data)
+  // Network-first for HTML navigation (always fresh data).
+  // Only successful responses are stored: caching a 404 means a page visited
+  // before it was deployed keeps serving that 404 from the cache afterwards,
+  // and a page nobody can open is worse than a page that loads slowly.
   if (request.mode === "navigate") {
     e.respondWith(
       fetch(request)
         .then((res) => {
-          const clone = res.clone()
-          caches.open(CACHE).then((c) => c.put(request, clone))
+          if (res.ok) {
+            const clone = res.clone()
+            caches.open(CACHE).then((c) => c.put(request, clone))
+          }
           return res
         })
-        .catch(() => caches.match(request))
+        .catch(() => caches.match(request).then((cached) => cached || Response.error()))
     )
     return
   }
@@ -57,8 +62,10 @@ self.addEventListener("fetch", (e) => {
     caches.match(request).then((cached) => {
       if (cached) return cached
       return fetch(request).then((res) => {
-        const clone = res.clone()
-        caches.open(CACHE).then((c) => c.put(request, clone))
+        if (res.ok) {
+          const clone = res.clone()
+          caches.open(CACHE).then((c) => c.put(request, clone))
+        }
         return res
       })
     })

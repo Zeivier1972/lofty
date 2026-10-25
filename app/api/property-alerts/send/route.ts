@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { buyerWantsPropertyType } from "@/lib/property-types"
 import { auth } from "@/lib/auth"
 
 export async function POST() {
@@ -41,6 +42,10 @@ export async function POST() {
         if (buyer.buyerBudgetMax && p.price > buyer.buyerBudgetMax) return false
         if (buyer.buyerBudgetMin && p.price < buyer.buyerBudgetMin) return false
         if (buyer.buyerBedroomsMin && (p.bedrooms || 0) < buyer.buyerBedroomsMin) return false
+        // The buyer's stated type was selected from the database and then never
+        // used, so a condo buyer was alerted about every new listing. Fails open
+        // on both sides: no preference, or a type we cannot resolve, still matches.
+        if (!buyerWantsPropertyType(buyer.buyerPropertyType, p.propertyType)) return false
         if (buyer.buyerLocation) {
           const loc = buyer.buyerLocation.toLowerCase()
           const addr = `${p.address} ${p.city} ${p.state}`.toLowerCase()

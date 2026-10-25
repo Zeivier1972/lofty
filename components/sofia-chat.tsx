@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState } from "react"
 import { usePathname } from "next/navigation"
-import { X, Send, Loader2, CalendarDays, Building2 } from "lucide-react"
+import { X, Send, Loader2, CalendarDays, Building2, Mic, Square } from "lucide-react"
 import SofiaAvatar from "@/components/sofia-avatar"
+import { useSpeechRecognition, speechErrorMessage } from "@/lib/use-speech-recognition"
 
 // Sofía is the LEAD-facing assistant, so she appears ONLY on the public website.
 // The CRM backend has its own agent assistant (Aria) and the client portal has
@@ -104,12 +105,26 @@ export default function SofiaChat() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hidden])
 
+  // Dictation. The transcript lands in the box rather than sending itself:
+  // speech recognition mishears names and numbers often enough that firing a
+  // message the visitor never read would cost more than the tap it saves.
+  const [interim, setInterim] = useState("")
+  const speech = useSpeechRecognition({
+    onResult: text => {
+      setInterim("")
+      setInput(prev => (prev.trim() ? `${prev.trim()} ${text}` : text))
+    },
+    onInterim: setInterim,
+  })
+  const speechHint = speechErrorMessage(speech.error)
+
   async function send() {
     const text = input.trim()
     if (!text || loading) return
     const next = [...messages, { role: "user" as const, content: text }]
     setMessages(next)
     setInput("")
+    setInterim("")
     setLoading(true)
     try {
       const res = await fetch("/api/site/chat", {
@@ -210,17 +225,45 @@ export default function SofiaChat() {
             <CalendarDays className="w-4 h-4" /> Agenda una llamada con Catherine
           </a>
 
-          <form onSubmit={e => { e.preventDefault(); send() }} className="flex items-center gap-2 border-t border-gray-200 p-2">
-            <input
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              placeholder="Escribe tu mensaje…"
-              className="flex-1 rounded-full border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#12315c]"
-            />
-            <button type="submit" disabled={loading || !input.trim()} aria-label="Enviar" className="flex-shrink-0 w-10 h-10 rounded-full bg-[#12315c] text-white flex items-center justify-center hover:bg-[#0b1f3a] disabled:opacity-50">
-              <Send className="w-4 h-4" />
-            </button>
-          </form>
+          <div className="border-t border-gray-200">
+            {(speech.listening || interim || speechHint) && (
+              <p aria-live="polite" className="px-4 pt-2 text-xs text-gray-500">
+                {speech.listening
+                  ? <span className="text-[#12315c] font-medium">{interim || "Escuchando…"}</span>
+                  : speechHint}
+              </p>
+            )}
+            <form onSubmit={e => { e.preventDefault(); send() }} className="flex items-center gap-2 p-2">
+              <input
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                placeholder={speech.listening ? "Habla ahora…" : "Escribe tu mensaje…"}
+                className="flex-1 rounded-full border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#12315c]"
+              />
+              {/* Only rendered where the browser actually supports dictation —
+                  Firefox keeps the plain text box instead of a dead button. */}
+              {speech.supported && (
+                <button
+                  type="button"
+                  onClick={speech.toggle}
+                  disabled={loading}
+                  aria-label={speech.listening ? "Detener dictado" : "Hablar"}
+                  aria-pressed={speech.listening}
+                  title={speech.listening ? "Detener" : "Hablar"}
+                  className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-colors disabled:opacity-50 ${
+                    speech.listening
+                      ? "bg-red-600 text-white hover:bg-red-700 animate-pulse"
+                      : "bg-gray-100 text-[#12315c] hover:bg-gray-200"
+                  }`}
+                >
+                  {speech.listening ? <Square className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                </button>
+              )}
+              <button type="submit" disabled={loading || !input.trim()} aria-label="Enviar" className="flex-shrink-0 w-10 h-10 rounded-full bg-[#12315c] text-white flex items-center justify-center hover:bg-[#0b1f3a] disabled:opacity-50">
+                <Send className="w-4 h-4" />
+              </button>
+            </form>
+          </div>
         </div>
       )}
     </>

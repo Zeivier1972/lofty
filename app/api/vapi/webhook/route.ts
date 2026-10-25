@@ -47,6 +47,46 @@ async function searchProperties(input: any): Promise<string> {
   }
 }
 
+/**
+ * Record a call opt-out. Previously Sofía was told to say goodbye politely after
+ * two refusals, but nothing wrote it down, so the contact stayed as callable as
+ * before and the crons dialled them again on the next cycle.
+ *
+ * Also cancels anything already queued for them — without that, a ScheduledCall
+ * created minutes earlier still fires after they have asked us to stop.
+ */
+async function markDoNotCall(input: any, contactId: string): Promise<string> {
+  try {
+    await prisma.contact.update({ where: { id: contactId }, data: { doNotCall: true } })
+    await prisma.scheduledCall.updateMany({
+      where: { contactId, status: "PENDING" },
+      data: { status: "CANCELLED" },
+    }).catch(() => {})
+    const said = typeof input?.reason === "string" && input.reason.trim()
+      ? ` — "${input.reason.trim().slice(0, 200)}"`
+      : ""
+    await prisma.activity.create({
+      data: { type: "CALL", title: `No volver a llamar: el lead lo pidió por teléfono${said}`, contactId },
+    }).catch(() => {})
+    await prisma.aINotification.create({
+      data: {
+        type: "ACTION",
+        priority: "HIGH",
+        title: "Lead pidió no recibir más llamadas",
+        body: `Marcado como "no llamar" durante una llamada de Sofía${said}`,
+        contactId,
+      },
+    }).catch(() => {})
+    console.log(`[VAPI] markDoNotCall — contact ${contactId} opted out of calls`)
+    return "Registrado. No lo volveremos a llamar."
+  } catch (e) {
+    // Returning the failure matters: if this did not save, Sofía should not tell
+    // the lead it did.
+    console.error("[VAPI] markDoNotCall failed:", e)
+    return "No se pudo registrar."
+  }
+}
+
 async function updateLead(input: any, contactId: string): Promise<string> {
   try {
     const data: any = {}
@@ -330,6 +370,21 @@ export async function POST(req: Request) {
           result = await createTaskForContact(args, contactId)
         } else if (name === "sendDocument" && contactId) {
           result = await sendDocumentToContact(args, contactId)
+        } else if (name === "markDoNotCall") {
+          // Handled without the `&& contactId` guard the other tools use. If it
+          // fell through to the catch-all below, Sofía would be handed "OK" and
+          // would tell the lead their opt-out was recorded when nothing was
+          // written. A false confirmation on a do-not-call request is worse than
+          // no tool at all, so an unidentified caller fails loudly instead.
+          if (contactId) {
+            result = await markDoNotCall(args, contactId)
+          } else {
+            console.error(
+              `[VAPI] markDoNotCall with no contactId — call ${call?.id} — ` +
+              `OPT-OUT NOT RECORDED, needs handling by hand`,
+            )
+            result = "No se pudo registrar. Dile al lead que Catherine lo confirmará personalmente."
+          }
         } else {
           result = "OK"
         }

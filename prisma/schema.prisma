@@ -102,7 +102,7 @@ model Contact {
   buyerBudgetMax        Float?
   buyerBedroomsMin      Int?
   buyerBathroomsMin     Float?
-  buyerStories          Int?     // preferred interior levels: 1 = one story, 2 = two story, 3 = 3+
+  buyerStories          Int? // preferred interior levels: 1 = one story, 2 = two story, 3 = 3+
   buyerPropertyType     String?
   buyerMustHaves        String?
   buyerLocation         String?
@@ -138,6 +138,7 @@ model Contact {
   leadShares            LeadShare[]
   leadMagnetDeliveries  LeadMagnetDelivery[]
   leadReferrals         LeadReferral[]
+  webinarRegistrations  WebinarRegistration[]
   assignedTo            User?                 @relation(fields: [assignedToId], references: [id])
   assignedToId          String?
   customFields          String?
@@ -352,7 +353,7 @@ model SMSMessage {
   toNumber   String
   direction  String   @default("OUTBOUND")
   status     String   @default("SENT")
-  sid        String?  // Twilio message SID — lets delivery receipts update status
+  sid        String? // Twilio message SID — lets delivery receipts update status
   contactId  String?
   userId     String?
   isRead     Boolean  @default(false)
@@ -548,7 +549,7 @@ model MarketingSpend {
   label     String   @unique // lowercased source name or campaign tag
   display   String? // original-cased label for display
   amount    Float    @default(0)
-  updatedAt DateTime @updatedAt @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 }
 
 model AIConfig {
@@ -1206,4 +1207,124 @@ model ReferralUpdate {
   createdAt  DateTime     @default(now())
 
   @@index([referralId])
+}
+
+/// One webinar session. A weekly series is just rows sharing a `series` value,
+/// which is what lets the reminder cron and the landing pages work off the
+/// database instead of the hardcoded array in lib/events.ts — that file holds
+/// two September events in Colombia and needs a deploy to add a third, which is
+/// fine for two a year and impossible for one a week.
+model Webinar {
+  id           String   @id @default(cuid())
+  /// URL slug: /webinar/<slug>. Stable, because it is what gets shared.
+  slug         String   @unique
+  /// Groups the occurrences of a recurring webinar, e.g. "inversion-miami".
+  series       String?
+  title        String
+  /// Shown on the landing page and used for the meta description.
+  description  String
+  /// Which project this week is about, so the copy can come from the portfolio.
+  projectSlug  String?
+  startsAt     DateTime
+  durationMins Int      @default(60)
+  /// IANA zone the displayed time is rendered in. Attendees are in Miami and
+  /// Colombia, which are not always the same offset.
+  timezone     String   @default("America/New_York")
+  language     String   @default("es")
+  status       String   @default("SCHEDULED") // SCHEDULED | LIVE | ENDED | CANCELLED
+
+  /// Zoom. Null until the meeting is created, so a webinar can be drafted and
+  /// published before the credentials exist.
+  zoomMeetingId String?
+  zoomJoinUrl   String?
+  zoomStartUrl  String? // host link — never rendered on a public page
+
+  /// Replay. Set after the session; this is what makes one Thursday an
+  /// evergreen lead magnet instead of a one-night event.
+  replayUrl      String?
+  replayPostedAt DateTime?
+
+  /// When the CRM's own list was invited to this session, and how many it
+  /// reached. Stamped so a second click cannot blast the same list twice —
+  /// re-sending has to be asked for on purpose.
+  invitedAt    DateTime?
+  invitedCount Int       @default(0)
+
+  coverImageUrl String?
+  registrations WebinarRegistration[]
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  @@index([startsAt])
+  @@index([series])
+}
+
+/// One person's relationship to one webinar: that they signed up, and what they
+/// actually did. The attendance fields are the point — "registered" is a vanity
+/// number, while "joined and stayed past 60%" is a buying signal worth routing
+/// on.
+model WebinarRegistration {
+  id        String   @id @default(cuid())
+  webinar   Webinar  @relation(fields: [webinarId], references: [id], onDelete: Cascade)
+  webinarId String
+  contact   Contact? @relation(fields: [contactId], references: [id])
+  contactId String?
+
+  /// Captured at signup, kept even when a Contact is matched, so the row still
+  /// makes sense if contacts are merged later.
+  email     String
+  firstName String?
+  lastName  String?
+  phone     String?
+  /// Where the signup came from: utm_source, a social post, the replay page.
+  source    String?
+
+  /// Zoom's registrant id, when registration is created on their side too.
+  zoomRegistrantId String?
+
+  /// Attendance, accumulated from the participant webhooks. secondsAttended is
+  /// a running total rather than leave-minus-join because people drop and
+  /// rejoin, and a single pair of timestamps reads that as a short visit.
+  attended        Boolean   @default(false)
+  firstJoinedAt   DateTime?
+  lastLeftAt      DateTime?
+  secondsAttended Int       @default(0)
+  /// Share of the scheduled duration actually watched, 0-100. Denormalised so
+  /// the routing query does not have to recompute it per row.
+  watchedPct      Int       @default(0)
+
+  /// Which follow-up this person has had, so a rerun of the cron does not send
+  /// it twice: null | REMINDER_1D | REMINDER_1H | LIVE | FOLLOWUP
+  lastStage    String?
+  replaySentAt DateTime?
+
+  /// Opaque per-person link token. Every replay link we mail carries it, so a
+  /// recording watched on demand can be attributed to a person instead of
+  /// landing as anonymous traffic. Not the row id: that would put a database
+  /// key in a URL people forward around.
+  watchToken String? @unique
+
+  /// On-demand watching of the recording — deliberately NOT folded into
+  /// secondsAttended/watchedPct above. Those mean "was in the live room", which
+  /// is what the attendance reports and the Zoom reconciliation read; mixing a
+  /// replay view into them would turn every no-show who later watched into a
+  /// live attendee and quietly corrupt the one number that says whether a
+  /// session worked. Two signals, two columns.
+  replaySeconds Int       @default(0)
+  replayPct     Int       @default(0)
+  replayFirstAt DateTime?
+  /// Also the heartbeat clock: progress is credited against the gap since this
+  /// stamp, so seeking to the end cannot buy more than real elapsed time.
+  replayLastAt  DateTime?
+  /// When crossing REPLAY_ENGAGED_PCT fired the hand-off to Catherine. Claimed
+  /// with a conditional update, so two heartbeats arriving together cannot both
+  /// win and ask the same person for an appointment twice.
+  replayEngagedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([webinarId, email])
+  @@index([webinarId, attended])
+  @@index([contactId])
 }

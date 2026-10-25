@@ -50,7 +50,7 @@ const PLATFORMS = [
   { id: "INSTAGRAM", label: "Instagram", color: "#E1306C", bg: "bg-gradient-to-br from-purple-500 via-pink-500 to-orange-400", icon: Instagram, connectUrl: "https://developers.facebook.com/apps" },
   { id: "TIKTOK", label: "TikTok", color: "#000000", bg: "bg-black", icon: () => <span className="text-xs font-black">TT</span>, connectUrl: "https://developers.tiktok.com" },
   { id: "LINKEDIN", label: "LinkedIn", color: "#0A66C2", bg: "bg-blue-700", icon: Linkedin, connectUrl: "https://developer.linkedin.com" },
-  { id: "GOOGLE_BUSINESS", label: "Google Business", color: "#4285F4", bg: "bg-blue-500", icon: Globe, connectUrl: "https://business.google.com" },
+  { id: "GOOGLE_BUSINESS", label: "Google Business", color: "#4285F4", bg: "bg-blue-500", icon: Globe, connectUrl: "/api/social/google-business-auth" },
   { id: "YOUTUBE", label: "YouTube", color: "#FF0000", bg: "bg-red-600", icon: Youtube, connectUrl: "https://console.developers.google.com" },
 ]
 

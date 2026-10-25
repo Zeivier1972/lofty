@@ -18,6 +18,10 @@ import {
 import { ingestLead, enrollContactInPlanByName } from "@/lib/lead-ingest"
 import { generateSocialAIReply, getMatchingProperties, getMatchingPreConstruction, notifyCatherineAboutLead } from "@/lib/social-ai-chat"
 
+/** See the Instagram webhook: how quiet a stranded ASKED_NAME conversation must
+ *  be before a new comment re-sends the greeting. */
+const RESEND_GREETING_AFTER_MS = 60 * 60 * 1000
+
 function greetingQuickReplies(config: any) {
   return (config.greetingButtons || "Sí, me interesa,Quiero más info")
     .split(",").map((t: string) => t.trim()).filter(Boolean)
@@ -314,6 +318,23 @@ export async function POST(req: Request) {
                 continue
               }
             }
+            // Still at ASKED_NAME with no name captured means the greeting was
+            // never answered — and often never delivered, since the row below is
+            // created before the send and nothing rolled it back on failure.
+            // Re-send rather than answering "ya te escribí" about a message that
+            // never arrived. Gated on a quiet period so repeat commenters are not
+            // messaged every time.
+            const quietMs = Date.now() - new Date(existing.updatedAt).getTime()
+            if (existing.state === "ASKED_NAME" && !existing.firstName && quietMs > RESEND_GREETING_AFTER_MS) {
+              if (await privateReplyToComment(commentId, greeting)) {
+                // Touching the row restarts the quiet window above.
+                await prisma.facebookBotConversation
+                  .update({ where: { psid: commenterId }, data: { sourceCommentId: commentId } })
+                  .catch(() => {})
+              }
+              continue
+            }
+
             const nudge = existing.state === "COMPLETE"
               ? "¡Hola! Ya tenemos tu información 😊 Si tienes preguntas, escríbeme aquí por DM y con gusto te ayudo."
               : "¡Hola! Ya te escribí por mensaje privado 📩 Revisa tu bandeja de mensajes para continuar."
@@ -341,6 +362,15 @@ export async function POST(req: Request) {
           console.log(`[FB bot] privateReplyToComment result: ${privateOk}`)
 
           if (!privateOk) {
+            // Roll the conversation back. Two things go wrong if it stays: every
+            // later comment answers "ya te escribí" about a message that never
+            // arrived, and the m.me link below pre-fills the keyword, so the DM
+            // handler would record "INFO" as the person's first name. Without
+            // the row, that same tap starts a clean conversation that asks for
+            // the name properly.
+            console.error(`[FB bot] greeting NOT delivered to ${commenterId} — rolling back the conversation`)
+            await prisma.facebookBotConversation.delete({ where: { psid: commenterId } }).catch(() => {})
+
             // Reel or missing permission — fall back to public reply with one-tap m.me link
             const meLink = `https://m.me/${pageId}?text=${encodeURIComponent(keyword.toUpperCase())}`
             postPublicCommentReply(commentId,
@@ -669,7 +699,14 @@ export async function POST(req: Request) {
               priority: "MEDIUM",
             },
           }).catch(() => {})
-          await sendFacebookMessage(psid, greeting)
+          // If Facebook refuses the greeting, the row would otherwise sit in
+          // ASKED_NAME forever and the lead would see nothing, so roll it back
+          // and let their next message start the conversation properly.
+          const greetingSent = await sendFacebookMessage(psid, greeting)
+          if (!greetingSent) {
+            console.error(`[FB bot] greeting NOT delivered to ${psid} — rolling back the conversation`)
+            await prisma.facebookBotConversation.delete({ where: { psid } }).catch(() => {})
+          }
         } else {
         // ── Non-bot Messenger DM handling ───────────────────────────────────
         let contact = await prisma.contact.findFirst({ where: { facebookPsid: psid } })
@@ -738,6 +775,67 @@ export async function POST(req: Request) {
             contactId: contact.id,
           },
         }).catch(() => {})
+
+        // Answer them. Until now this branch logged the message, rang the bell and
+        // stopped — so anyone whose DM did not contain a campaign or trigger keyword
+        // got total silence from Sofía, which is most organic replies. Facebook's
+        // 24h messaging window is open (they just wrote to us), so a free-form reply
+        // is allowed here.
+        if (isOptOut(text)) {
+          await sendFacebookMessage(psid, "Entendido, no te enviaremos más mensajes. ¡Que tengas un buen día! 👋").catch(() => {})
+        } else {
+          const result = await generateSocialAIReply(text, {
+            firstName: contact.firstName,
+            campaignKeyword: null,
+            platform: "FACEBOOK",
+          }).catch(e => { console.error("[FB non-bot DM] AI reply failed:", e); return null })
+
+          if (result) {
+            // sendFacebookMessage returns the message id on success and null when
+            // Facebook rejects the send (an expired page token, for instance). Only
+            // record it as SENT if it actually left — otherwise the Inbox shows a
+            // reply the lead never received, and Catherine thinks they were answered.
+            const sentId = await sendFacebookMessage(psid, result.reply)
+            await prisma.facebookMessage.create({
+              data: {
+                psid, pageId, body: result.reply, direction: "OUTBOUND",
+                status: sentId ? "SENT" : "FAILED",
+                messageId: sentId || undefined,
+                contactId: contact.id,
+              },
+            }).catch(() => {})
+
+            if (!sentId) {
+              // Logged, not escalated. While pages_messaging sits at Standard access
+              // every send is refused, so a per-message alert is pure noise — the
+              // FACEBOOK_REPLY notification above already tells Catherine the lead
+              // wrote in, and the Inbox row records the reply as FAILED.
+              console.error(`[FB non-bot DM] reply NOT delivered to ${psid} — see the [FB] error above`)
+              continue
+            }
+
+            // Follow through on what the reply promised, so Sofía does not say she
+            // is sending options and then send nothing.
+            if (result.sendPreConstruction) {
+              const aiConfig = await prisma.aIConfig.findFirst()
+              const communities = await getMatchingPreConstruction(text, aiConfig?.calendlyUrl || "").catch(() => [])
+              for (const msg of communities) await sendFacebookMessage(psid, msg).catch(() => {})
+            }
+            if (result.sendProperties) {
+              const listings = await getMatchingProperties(null).catch(() => [])
+              for (const msg of listings) await sendFacebookMessage(psid, msg).catch(() => {})
+            }
+            if (result.notifyCatherine) {
+              notifyCatherineAboutLead({
+                firstName: contact.firstName,
+                phone: contact.phone,
+                email: contact.email,
+                message: text,
+                platform: "FACEBOOK",
+              }).catch(() => {})
+            }
+          }
+        }
         } // end non-bot DM
       }
     }
