@@ -586,7 +586,25 @@ function BulkEmailModal({ contactIds, onClose }: { contactIds: string[]; onClose
   const [subject, setSubject] = useState("")
   const [body, setBody] = useState("")
   const [sending, setSending] = useState(false)
+  const [imageUrl, setImageUrl] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
   const { toast } = useToast()
+
+  async function pickImage(file: File) {
+    setUploading(true)
+    try {
+      const fd = new FormData()
+      fd.append("file", file)
+      const res = await fetch("/api/upload", { method: "POST", body: fd })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "No se pudo subir la imagen")
+      setImageUrl(data.url)
+    } catch (e: any) {
+      toast({ title: e.message || "No se pudo subir la imagen", variant: "destructive" })
+    } finally {
+      setUploading(false)
+    }
+  }
 
   async function send() {
     if (!subject.trim() || !body.trim()) return
@@ -595,7 +613,7 @@ function BulkEmailModal({ contactIds, onClose }: { contactIds: string[]; onClose
       const res = await fetch("/api/bulk/email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contactIds, subject, body }),
+        body: JSON.stringify({ contactIds, subject, body, imageUrl }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
@@ -644,6 +662,35 @@ function BulkEmailModal({ contactIds, onClose }: { contactIds: string[]; onClose
               placeholder={"Hi {first_name},\n\nYour message here..."}
               className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-lofty-500 outline-none resize-none"
             />
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-1.5 block">
+              Imagen <span className="font-normal text-gray-400">— va arriba del correo, en vez de la foto genérica</span>
+            </label>
+            {imageUrl ? (
+              <div className="flex items-center gap-3 rounded-xl border border-gray-200 p-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={imageUrl} alt="Imagen del correo" className="h-16 w-28 rounded-lg object-cover" />
+                <button
+                  type="button"
+                  onClick={() => setImageUrl(null)}
+                  className="text-sm font-semibold text-red-600 hover:text-red-700"
+                >
+                  Quitar
+                </button>
+              </div>
+            ) : (
+              <label className="flex cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-gray-300 px-4 py-5 text-sm text-gray-500 hover:border-gray-400 hover:bg-gray-50">
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) pickImage(f) }}
+                />
+                {uploading ? "Subiendo…" : "Elegir una imagen (máx. 10 MB)"}
+              </label>
+            )}
           </div>
         </div>
         <div className="flex gap-3 p-5 border-t bg-gray-50 rounded-b-2xl">

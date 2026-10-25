@@ -300,6 +300,14 @@ export function wrapEmail(body: string, opts: {
   agentWebsite?: string
   unsubscribeUrl?: string
   preheader?: string
+  /**
+   * Replaces the rotating stock photo at the top. A real picture of the
+   * property being written about beats a generic skyline, and it belongs in
+   * that slot rather than stacked under it — two images in a row is what makes
+   * an email look like a template someone filled in.
+   */
+  heroImage?: string
+  heroAlt?: string
 }): string {
   const phone    = opts.agentPhone  || process.env.AGENT_PHONE  || ""
   const email    = opts.agentEmail  || process.env.AGENT_EMAIL  || "info@catherinegomezrealtor.com"
@@ -313,7 +321,10 @@ export function wrapEmail(body: string, opts: {
     "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=600&q=80&auto=format&fit=crop", // luxury home pool
   ]
   // Rotate hero image based on day of month for variety
-  const hero = heroImages[new Date().getDate() % heroImages.length]
+  const hero = opts.heroImage || heroImages[new Date().getDate() % heroImages.length]
+  // Images get blocked by default in plenty of clients, so the alt text is
+  // often the only thing that lands. Worth it being about this email.
+  const heroAlt = (opts.heroAlt || "Miami Real Estate").replace(/"/g, "&quot;")
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -330,7 +341,7 @@ ${opts.preheader ? `<div style="display:none;max-height:0;overflow:hidden;mso-hi
 
   <!-- Hero image -->
   <tr><td style="border-radius:16px 16px 0 0;overflow:hidden;line-height:0;padding:0">
-    <img src="${hero}" alt="Miami Real Estate" width="600" style="width:100%;max-width:600px;height:200px;object-fit:cover;display:block"/>
+    <img src="${hero}" alt="${heroAlt}" width="600" style="width:100%;max-width:600px;height:${opts.heroImage ? "auto" : "200px"};object-fit:cover;display:block"/>
   </td></tr>
 
   <!-- Hero text banner (separate row — avoids CSS position overlap in email clients) -->
