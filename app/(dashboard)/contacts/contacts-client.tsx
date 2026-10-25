@@ -582,7 +582,8 @@ function BulkSMSModal({ contactIds, onClose }: { contactIds: string[]; onClose: 
   )
 }
 
-function BulkEmailModal({ contactIds, onClose }: { contactIds: string[]; onClose: () => void }) {
+function BulkEmailModal({ contactIds, tags, onClose }: { contactIds: string[]; tags: any[]; onClose: () => void }) {
+  const [tagIds, setTagIds] = useState<string[]>([])
   const [subject, setSubject] = useState("")
   const [body, setBody] = useState("")
   const [sending, setSending] = useState(false)
@@ -606,14 +607,16 @@ function BulkEmailModal({ contactIds, onClose }: { contactIds: string[]; onClose
     }
   }
 
+  const hasRecipients = contactIds.length > 0 || tagIds.length > 0
+
   async function send() {
-    if (!subject.trim() || !body.trim()) return
+    if (!subject.trim() || !body.trim() || !hasRecipients) return
     setSending(true)
     try {
       const res = await fetch("/api/bulk/email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contactIds, subject, body, imageUrl }),
+        body: JSON.stringify({ contactIds, tagIds, subject, body, imageUrl }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
@@ -636,14 +639,34 @@ function BulkEmailModal({ contactIds, onClose }: { contactIds: string[]; onClose
             </div>
             <div>
               <h2 className="font-bold text-gray-900">Bulk Email</h2>
-              <p className="text-xs text-gray-500">{contactIds.length} recipients · Use {"{first_name}"} for personalization</p>
+              <p className="text-xs text-gray-500">{contactIds.length} selected{tagIds.length > 0 ? ` + ${tagIds.length} tag${tagIds.length > 1 ? "s" : ""}` : ""} · Use {"{first_name}"} for personalization</p>
             </div>
           </div>
           <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg">
             <X className="w-4 h-4 text-gray-500" />
           </button>
         </div>
-        <div className="p-5 space-y-4">
+        <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+          {tags.length > 0 && (
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1.5 block">Send to tags (optional, pick several)</label>
+              <div className="flex flex-wrap gap-1.5">
+                {tags.map((t: any) => {
+                  const on = tagIds.includes(t.id)
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setTagIds(prev => on ? prev.filter(x => x !== t.id) : [...prev, t.id])}
+                      className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${on ? "bg-lofty-600 text-white border-lofty-600" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}
+                    >
+                      {t.name}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
           <div>
             <label className="text-sm font-medium text-gray-700 mb-1.5 block">Subject</label>
             <input
@@ -694,9 +717,9 @@ function BulkEmailModal({ contactIds, onClose }: { contactIds: string[]; onClose
           </div>
         </div>
         <div className="flex gap-3 p-5 border-t bg-gray-50 rounded-b-2xl">
-          <Button onClick={send} disabled={sending || !subject.trim() || !body.trim()} className="flex-1 bg-lofty-600 hover:bg-lofty-700 gap-2">
+          <Button onClick={send} disabled={sending || uploading || !hasRecipients || !subject.trim() || !body.trim()} className="flex-1 bg-lofty-600 hover:bg-lofty-700 gap-2">
             <Send className="w-4 h-4" />
-            {sending ? "Sending..." : `Send to ${contactIds.length}`}
+            {sending ? "Sending..." : tagIds.length ? "Send" : `Send to ${contactIds.length}`}
           </Button>
           <Button onClick={onClose} variant="outline" className="flex-1">Cancel</Button>
         </div>
@@ -2040,7 +2063,7 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
     <div className="p-4 md:p-6 space-y-4 md:space-y-5 animate-fade-in">
       {showImport && <ImportModal onClose={() => setShowImport(false)} onImported={() => router.refresh()} />}
       {showBulkSMS && <BulkSMSModal contactIds={selectedIds} onClose={() => setShowBulkSMS(false)} />}
-      {showBulkEmail && <BulkEmailModal contactIds={selectedIds} onClose={() => setShowBulkEmail(false)} />}
+      {showBulkEmail && <BulkEmailModal contactIds={selectedIds} tags={tags} onClose={() => setShowBulkEmail(false)} />}
       {showPowerDialer && (
         <PowerDialerModal
           contactIds={Array.from(selected)}
