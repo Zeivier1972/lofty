@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
-  DropdownMenuTrigger, DropdownMenuSeparator,
+  DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn, formatPhone, getInitials } from "@/lib/utils"
@@ -49,7 +49,7 @@ interface ContactsClientProps {
   page: number
   pageSize: number
   tags: any[]
-  filters: { status?: string; search?: string; source?: string; tags?: string; smartPlanId?: string; smartPlanEnrolled?: string }
+  filters: { status?: string; statusNot?: string; search?: string; source?: string; tags?: string; tagMode?: string; smartPlanId?: string; smartPlanEnrolled?: string }
   activeTab: string
   stageCounts: Record<string, number>
   stages: Stage[]
@@ -1693,7 +1693,7 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
   const [search, setSearch] = useState(filters.search || "")
   const getInitialCategory = () => {
     if (filters.source) return "source"
-    if (filters.status) return "status"
+    if (filters.status || filters.statusNot) return "status"
     if (filters.tags) return "tag"
     return ""
   }
@@ -1932,8 +1932,10 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
     const base: Record<string, string | undefined> = {
       search: filters.search,
       status: filters.status,
+      statusNot: filters.statusNot,
       source: filters.source,
       tags: filters.tags,
+      tagMode: filters.tagMode,
       smartPlanId: filters.smartPlanId,
       smartPlanEnrolled: filters.smartPlanEnrolled,
       tab: activeTab !== "all" ? activeTab : undefined,
@@ -1967,11 +1969,11 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
 
   const clearAllFilters = () => {
     setFilterCategory("")
-    const params = buildParams({ source: undefined, status: undefined, tags: undefined, smartPlanId: undefined, smartPlanEnrolled: undefined })
+    const params = buildParams({ source: undefined, status: undefined, statusNot: undefined, tags: undefined, tagMode: undefined, smartPlanId: undefined, smartPlanEnrolled: undefined })
     router.push(`/contacts?${params.toString()}`)
   }
 
-  const hasActiveFilter = !!(filters.source || filters.status || filters.tags || filters.smartPlanId)
+  const hasActiveFilter = !!(filters.source || filters.status || filters.statusNot || filters.tags || filters.smartPlanId)
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -2334,7 +2336,7 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
               if (v === "none") { clearAllFilters(); return }
               if (v !== filterCategory) {
                 // Clear existing filter value when switching category
-                const params = buildParams({ source: undefined, status: undefined, tags: undefined })
+                const params = buildParams({ source: undefined, status: undefined, statusNot: undefined, tags: undefined, tagMode: undefined })
                 router.push(`/contacts?${params.toString()}`)
               }
               setFilterCategory(v)
@@ -2367,42 +2369,98 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
           )}
 
           {filterCategory === "status" && (
-            <Select value={filters.status || "ALL"} onValueChange={(v) => updateFilter("status", v)}>
-              <SelectTrigger className="w-44 h-9">
-                <SelectValue placeholder="Select status..." />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All Statuses</SelectItem>
-                {STATUSES.map((s) => (
-                  <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <>
+              {/* Excluding is its own question, and the one she actually had:
+                  "everyone except the leads" cannot be expressed by picking one
+                  status, and picking four is not the same list. */}
+              <Select
+                value={filters.statusNot ? "not" : "is"}
+                onValueChange={(v) => {
+                  const current = filters.statusNot || filters.status
+                  router.push(`/contacts?${buildParams(
+                    v === "not" ? { status: undefined, statusNot: current } : { statusNot: undefined, status: current },
+                  )}`)
+                }}
+              >
+                <SelectTrigger className="w-32 h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="is">Que sean</SelectItem>
+                  <SelectItem value="not">Que NO sean</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={filters.statusNot || filters.status || "ALL"}
+                onValueChange={(v) => {
+                  const key = filters.statusNot ? "statusNot" : "status"
+                  router.push(`/contacts?${buildParams({ [key]: v !== "ALL" ? v : undefined })}`)
+                }}
+              >
+                <SelectTrigger className="w-44 h-9">
+                  <SelectValue placeholder="Select status..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All Statuses</SelectItem>
+                  {STATUSES.map((s) => (
+                    <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </>
           )}
 
           {filterCategory === "tag" && (
-            <Select
-              value={activeTagIds[0] || "ALL"}
-              onValueChange={(v) => {
-                if (v === "ALL") clearTagFilter()
-                else router.push(`/contacts?${buildParams({ tags: v })}`)
-              }}
-            >
-              <SelectTrigger className="w-56 h-9">
-                <SelectValue placeholder="Select tag..." />
-              </SelectTrigger>
-              <SelectContent className="max-h-72">
-                <SelectItem value="ALL">All Tags</SelectItem>
-                {tags.map((t: any) => (
-                  <SelectItem key={t.id} value={t.id}>
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: t.color || "#6366F1" }} />
-                      {t.name}
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <>
+              {/* Checkboxes, not a picker. The multi-tag query and
+                  toggleTagFilter were both already here and correct — the
+                  single Select above them threw the selection away on every
+                  click, so picking a second tag replaced the first. */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-9 w-56 justify-between font-normal">
+                    <span className="truncate">
+                      {activeTagIds.length === 0
+                        ? "Select tags..."
+                        : activeTagIds.length === 1
+                        ? tags.find((t: any) => t.id === activeTagIds[0])?.name || "1 tag"
+                        : `${activeTagIds.length} tags`}
+                    </span>
+                    <ChevronDown className="w-4 h-4 opacity-50 flex-shrink-0" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56 max-h-72 overflow-y-auto">
+                  {tags.length > 0 ? tags.map((t: any) => (
+                    <DropdownMenuCheckboxItem
+                      key={t.id}
+                      checked={activeTagIds.includes(t.id)}
+                      onCheckedChange={() => toggleTagFilter(t.id)}
+                      onSelect={e => e.preventDefault()}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: t.color || "#6366F1" }} />
+                        {t.name}
+                      </div>
+                    </DropdownMenuCheckboxItem>
+                  )) : (
+                    <DropdownMenuItem disabled className="text-gray-400 text-xs">No tags created yet</DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {/* Only means anything once there are two. */}
+              {activeTagIds.length > 1 && (
+                <Select
+                  value={filters.tagMode === "all" ? "all" : "any"}
+                  onValueChange={(v) => router.push(`/contacts?${buildParams({ tagMode: v === "all" ? "all" : undefined })}`)}
+                >
+                  <SelectTrigger className="w-44 h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="any">Con cualquiera</SelectItem>
+                    <SelectItem value="all">Con todas</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            </>
           )}
 
           {/* Clear button */}
@@ -2427,9 +2485,10 @@ export default function ContactsClient({ contacts, total, page, pageSize, tags, 
               <button onClick={clearAllFilters} className="hover:opacity-70"><X className="w-3 h-3" /></button>
             </span>
           )}
-          {filters.status && (
+          {(filters.status || filters.statusNot) && (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-lofty-100 text-lofty-700">
-              Status: {STATUSES.find(s => s.value === filters.status)?.label || filters.status}
+              {filters.statusNot ? "NO son: " : "Status: "}
+              {STATUSES.find(s => s.value === (filters.statusNot || filters.status))?.label || filters.statusNot || filters.status}
               <button onClick={clearAllFilters} className="hover:opacity-70"><X className="w-3 h-3" /></button>
             </span>
           )}
