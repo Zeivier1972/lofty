@@ -62,7 +62,7 @@ export function WebinarsClient() {
 
   const [form, setForm] = useState({
     title: "", description: "", startsAt: "", durationMins: 60,
-    series: "inversion-miami", projectSlug: "",
+    series: "inversion-miami", projectSlug: "", recorded: false,
   })
 
   const load = async () => {
@@ -84,13 +84,23 @@ export function WebinarsClient() {
       const res = await fetch("/api/webinars", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, startsAt: toUtcIso(form.startsAt), timezone: ZONE }),
+        body: JSON.stringify({
+          ...form,
+          // A recording has no start time to convert — the server dates it now.
+          startsAt: form.recorded ? undefined : toUtcIso(form.startsAt),
+          timezone: ZONE,
+        }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "No se pudo crear")
-      setMsg({ kind: "ok", text: `Creado. ${data.zoomNote || ""} Página: ${SITE}/webinar/${data.slug}` })
+      setMsg({
+        kind: "ok",
+        text: form.recorded
+          ? "Grabación creada. Pégale el enlace de YouTube en su fila, abajo."
+          : `Creado. ${data.zoomNote || ""} Página: ${SITE}/webinar/${data.slug}`,
+      })
       setShowForm(false)
-      setForm({ title: "", description: "", startsAt: "", durationMins: 60, series: "inversion-miami", projectSlug: "" })
+      setForm({ title: "", description: "", startsAt: "", durationMins: 60, series: "inversion-miami", projectSlug: "", recorded: false })
       load()
     } catch (err: any) {
       setMsg({ kind: "err", text: err.message })
@@ -155,6 +165,44 @@ export function WebinarsClient() {
 
       {showForm && (
         <form onSubmit={create} className="space-y-3 rounded-2xl border border-gray-200 bg-white p-5">
+          {/* First question, before anything else: is this a session with an
+              audience, or a video? They need different fields, and asking up
+              front is what stops somebody hunting for a recording box on a
+              webinar that has not happened yet. */}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setForm(f => ({ ...f, recorded: false }))}
+              className={`rounded-xl border-2 px-3 py-3 text-left text-sm ${
+                form.recorded
+                  ? "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+                  : "border-indigo-500 bg-indigo-50 text-indigo-900"}`}
+            >
+              <span className="block font-bold">Sesión en vivo</span>
+              <span className="block text-xs">Con fecha. Zoom, recordatorios y registro.</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setForm(f => ({ ...f, recorded: true }))}
+              className={`rounded-xl border-2 px-3 py-3 text-left text-sm ${
+                form.recorded
+                  ? "border-indigo-500 bg-indigo-50 text-indigo-900"
+                  : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"}`}
+            >
+              <span className="block font-bold">Grabación</span>
+              <span className="block text-xs">Un video que ya grabaste. Sin fecha ni Zoom.</span>
+            </button>
+          </div>
+
+          {form.recorded && (
+            <p className="rounded-xl bg-sky-50 px-3 py-2.5 text-xs leading-relaxed text-sky-900">
+              Al crearla vas a poder pegarle el enlace de YouTube de una vez. A partir de
+              ahí, a todo el que se registre a una sesión en vivo <strong>de esta misma serie</strong> con
+              más de 20 horas de anticipación, el correo de confirmación le va a ofrecer ver
+              esta grabación sin esperar.
+            </p>
+          )}
+
           <div>
             <label className="mb-1 block text-xs font-semibold text-gray-600">Título *</label>
             <input
@@ -177,15 +225,17 @@ export function WebinarsClient() {
             />
           </div>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-gray-600">Fecha y hora (Miami) *</label>
-              <input
-                required type="datetime-local" value={form.startsAt}
-                onChange={e => setForm(f => ({ ...f, startsAt: e.target.value }))}
-                className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
+          <div className={`grid grid-cols-1 gap-3 ${form.recorded ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}>
+            {!form.recorded && (
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-600">Fecha y hora (Miami) *</label>
+                <input
+                  required type="datetime-local" value={form.startsAt}
+                  onChange={e => setForm(f => ({ ...f, startsAt: e.target.value }))}
+                  className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+            )}
             <div>
               <label className="mb-1 block text-xs font-semibold text-gray-600">Duración (min)</label>
               <input
@@ -390,19 +440,34 @@ function WebinarRow({
   const [replay, setReplay] = useState(w.replayUrl || "")
   const past = new Date(w.startsAt).getTime() < Date.now()
   const pageUrl = `${SITE}/webinar/${w.slug}`
+  // A standalone recording: ended, and no Zoom meeting was ever booked for it.
+  // Worth telling apart from a live session that finished, because the two want
+  // different things from her — one is an asset, the other needs its recording
+  // uploaded and its attendance read.
+  const isRecording = w.status === "ENDED" && !w.zoomMeetingId
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="font-bold text-gray-900">{w.title}</p>
-          <p className="text-sm capitalize text-gray-500">{fmt(w.startsAt, w.timezone)} · {w.durationMins} min</p>
+          {/* A recording has no meeting time worth showing — the date it was
+              filed is not something she scheduled. Its series is, because that
+              is what decides which live sessions get to offer it. */}
+          <p className="text-sm capitalize text-gray-500">
+            {isRecording
+              ? `Grabación · ${w.durationMins} min${w.series ? ` · serie: ${w.series}` : ""}`
+              : `${fmt(w.startsAt, w.timezone)} · ${w.durationMins} min`}
+          </p>
         </div>
         <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
           w.status === "CANCELLED" ? "bg-red-50 text-red-700"
             : w.status === "LIVE" ? "bg-emerald-50 text-emerald-700"
             : past ? "bg-gray-100 text-gray-600" : "bg-blue-50 text-blue-700"}`}>
-          {w.status === "CANCELLED" ? "Cancelado" : w.status === "LIVE" ? "En vivo" : past ? "Terminado" : "Programado"}
+          {w.status === "CANCELLED" ? "Cancelado"
+            : w.status === "LIVE" ? "En vivo"
+            : isRecording ? "Grabación"
+            : past ? "Terminado" : "Programado"}
         </span>
       </div>
 
@@ -433,7 +498,7 @@ function WebinarRow({
             <ExternalLink className="h-4 w-4" /> Enlace de los asistentes
           </a>
         )}
-        {!w.zoomMeetingId && w.status !== "CANCELLED" && (
+        {!w.zoomMeetingId && w.status !== "CANCELLED" && !isRecording && !past && (
           <span className="text-xs text-amber-700">Zoom se crea 3 días antes</span>
         )}
       </div>

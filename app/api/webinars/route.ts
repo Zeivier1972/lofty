@@ -82,11 +82,23 @@ export async function POST(req: Request) {
 
   const title = String(body.title || "").trim()
   const description = String(body.description || "").trim()
-  const startsAtRaw = String(body.startsAt || "")
   if (!title) return NextResponse.json({ error: "Falta el título" }, { status: 400 })
   if (!description) return NextResponse.json({ error: "Falta la descripción — es lo que se ve en la página y en Google" }, { status: 400 })
 
-  const startsAt = new Date(startsAtRaw)
+  // A session recorded on its own, with no live audience — the evergreen half
+  // of the series. It is a real session that already happened, so it is stored
+  // as one: dated now and already ENDED. That matters beyond tidiness, because
+  // "ended, in this series, has a recording" is exactly what the confirmation
+  // mail looks for when it offers somebody the previous session rather than
+  // making them wait until Thursday.
+  //
+  // Before this existed the only way to file one was to invent a past date,
+  // which is a workaround dressed up as a feature, and the recording field
+  // only appears on a session that has already happened — so anyone looking
+  // for it on an upcoming webinar found nothing and had no way to know why.
+  const recorded = body.recorded === true
+
+  const startsAt = recorded ? new Date(Date.now() - 60000) : new Date(String(body.startsAt || ""))
   if (isNaN(startsAt.getTime())) return NextResponse.json({ error: "Fecha inválida" }, { status: 400 })
 
   const wantedProject = String(body.projectSlug || "").trim()
@@ -115,6 +127,10 @@ export async function POST(req: Request) {
       title,
       description,
       startsAt,
+      // ENDED keeps it out of the reminder job's way: that job only creates
+      // Zoom meetings for SCHEDULED sessions in the future, so a recording
+      // never books a meeting nobody is going to attend.
+      ...(recorded ? { status: "ENDED" } : {}),
       series: body.series ? String(body.series).trim() : null,
       // Validated rather than trusted: an unknown slug used to be rendered
       // into a link that 404'd for every visitor to the public page.
