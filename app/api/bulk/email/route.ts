@@ -15,22 +15,32 @@ export async function POST(req: Request) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   try {
-    const { contactIds, subject, body, campaignId } = await req.json()
-    if (!contactIds?.length) return NextResponse.json({ error: "No contacts selected" }, { status: 400 })
+    const { contactIds = [], tagIds = [], imageUrls = [], subject, body, campaignId } = await req.json()
+    if (!contactIds.length && !tagIds.length) return NextResponse.json({ error: "No contacts or tags selected" }, { status: 400 })
     if (!subject?.trim()) return NextResponse.json({ error: "Subject is required" }, { status: 400 })
     if (!body?.trim()) return NextResponse.json({ error: "Body is required" }, { status: 400 })
 
-    // Fetch contacts who haven't opted out
+    // Fetch contacts who haven't opted out: explicitly selected OR carrying any chosen tag
     const contacts = await prisma.contact.findMany({
       where: {
-        id: { in: contactIds },
+        OR: [
+          ...(contactIds.length ? [{ id: { in: contactIds as string[] } }] : []),
+          ...(tagIds.length ? [{ tags: { some: { tagId: { in: tagIds as string[] } } } }] : []),
+        ],
         email: { not: null },
         doNotEmail: false,
       },
       select: { id: true, firstName: true, lastName: true, email: true },
     })
 
-    const skipped = contactIds.length - contacts.length
+    const skipped = Math.max(0, contactIds.length - contacts.length)
+
+    // Uploaded pictures (https only) are appended below the message
+    const imagesHtml = (imageUrls as string[])
+      .filter(u => typeof u === "string" && /^https:\/\//i.test(u))
+      .map(u => `<p style="margin:16px 0"><img src="${u.replace(/"/g, "%22")}" alt="" style="max-width:100%;height:auto;border-radius:8px;display:block"/></p>`)
+      .join("")
+    const bodyHtml = (/<[a-z][\s\S]*>/i.test(body) ? body : body.replace(/\n/g, "<br/>")) + imagesHtml
 
     // Get agent name for footer
     const aiConfig = await prisma.aIConfig.findFirst()
@@ -49,7 +59,7 @@ export async function POST(req: Request) {
 
     // Wrap body with unsubscribe footer
     const wrappedHtml = wrapEmail(
-      body
+      bodyHtml
         .replace(/\{first_name\}/gi, "{first_name}")
         .replace(/\{last_name\}/gi, "{last_name}"),
       {
