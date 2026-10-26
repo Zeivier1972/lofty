@@ -274,19 +274,9 @@ Responde ÚNICAMENTE con este JSON (sin texto adicional):
     // Send SMS — skip if contact opted out
     if (parsed.sms && contact.phone && config.autoRespondSMS && !contact.doNotCall) {
       try {
-        await sendSMS(contact.phone, parsed.sms)
+        // sendSMS logs the outbound row itself.
+        await sendSMS(contact.phone, parsed.sms, undefined, { contactId: contact.id })
         executedActions.push("SMS enviado")
-
-        await prisma.sMSMessage.create({
-          data: {
-            body: parsed.sms,
-            fromNumber: process.env.TWILIO_PHONE_NUMBER || "system",
-            toNumber: contact.phone,
-            direction: "OUTBOUND",
-            status: "SENT",
-            contactId: contact.id,
-          },
-        })
 
         const conv = await prisma.aIConversation.upsert({
           where: { id: `conv-${contact.id}` },

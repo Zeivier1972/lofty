@@ -68,6 +68,20 @@ export async function GET(req: Request) {
 
     const step = steps[stepIndex]
 
+    // Claim this step before sending anything. If two cron runs overlap (or two
+    // cron triggers point here) both would read the same ACTIVE enrollment and
+    // both would send. Only the run whose conditional update matches wins; the
+    // other sees count 0 and skips. Pushing nextStepAt forward also means a
+    // crash mid-send is retried next hour rather than instantly.
+    const claimed = await prisma.smartPlanEnrollment.updateMany({
+      where: { id: enrollment.id, status: "ACTIVE", currentStep: stepIndex, nextStepAt: enrollment.nextStepAt },
+      data: { nextStepAt: new Date(now.getTime() + 60 * 60 * 1000) },
+    })
+    if (claimed.count === 0) {
+      results.push({ enrollmentId: enrollment.id, contactId: contact.id, status: "skipped-claimed", step: stepIndex })
+      continue
+    }
+
     const fill = (text: string) =>
       text
         .replace(/\{first_name\}/gi, contact.firstName)
@@ -109,16 +123,7 @@ export async function GET(req: Request) {
           const toPhone = toE164(contact.phone)
           const sid = await sendSMS(toPhone, fill(step.content), undefined, { automated: true, contactId: contact.id })
           if (sid) {
-            await prisma.sMSMessage.create({
-              data: {
-                body: fill(step.content),
-                fromNumber: process.env.TWILIO_PHONE_NUMBER || "",
-                toNumber: toPhone,
-                direction: "OUTBOUND",
-                status: "SENT",
-                contactId: contact.id,
-              },
-            })
+            // sendSMS already logged the SMSMessage row.
             await prisma.activity.create({
               data: {
                 type: "SMS",

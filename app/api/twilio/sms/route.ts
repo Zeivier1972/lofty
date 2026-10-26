@@ -126,19 +126,8 @@ export async function POST(req: Request) {
     })
 
     // Send reply via SMS
-    await sendSMS(from, reply)
-
-    // Store outbound
-    await prisma.sMSMessage.create({
-      data: {
-        toNumber: from,
-        fromNumber: process.env.TWILIO_PHONE_NUMBER || "",
-        body: reply,
-        direction: "OUTBOUND",
-        status: "SENT",
-        contactId: contact.id,
-      },
-    })
+    // sendSMS logs the outbound row itself (with the contact attached).
+    await sendSMS(from, reply, undefined, { contactId: contact.id })
 
     // Log Sofía's outbound reply as activity
     prisma.activity.create({

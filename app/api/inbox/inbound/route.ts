@@ -560,18 +560,14 @@ export async function POST(req: Request) {
     if (isWhatsApp) {
       // WhatsApp isn't billed per segment and shows images inline for free, so
       // keep the hero photo + emojis here.
-      await sendWhatsApp(toNum, combined, firstPhoto)
-      await prisma.whatsAppMessage.create({
-        data: { body: combined, fromNumber: to, toNumber: phone, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
-      })
+      // sendWhatsApp logs the outbound row itself.
+      await sendWhatsApp(toNum, combined, firstPhoto, { contactId: contact.id })
     } else {
       // SMS: link-only (no MMS) + GSM-7 sanitized so the whole reply stays a
       // single cheap segment. The per-property link opens the full photo gallery.
       const cheap = sanitizeSmsBody(combined)
-      await sendSMS(toNum, cheap)
-      await prisma.sMSMessage.create({
-        data: { body: cheap, fromNumber: to, toNumber: phone, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
-      })
+      // sendSMS logs the outbound row itself.
+      await sendSMS(toNum, cheap, undefined, { contactId: contact.id })
     }
 
     const channel = isWhatsApp ? "WhatsApp" : "SMS"
