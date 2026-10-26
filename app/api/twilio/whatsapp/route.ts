@@ -83,18 +83,8 @@ export async function POST(req: Request) {
 
     await prisma.aIMessage.create({ data: { conversationId: conversation.id, role: "assistant", content: reply } })
 
-    await sendWhatsApp(from, reply)
-
-    await prisma.whatsAppMessage.create({
-      data: {
-        fromNumber: `whatsapp:${process.env.TWILIO_PHONE_NUMBER}`,
-        toNumber: from,
-        body: reply,
-        direction: "OUTBOUND",
-        status: "SENT",
-        contactId: contact.id,
-      },
-    })
+    // sendWhatsApp logs the outbound row itself.
+    await sendWhatsApp(from, reply, undefined, { contactId: contact.id })
 
     // Log Sofía's outbound reply as activity
     prisma.activity.create({

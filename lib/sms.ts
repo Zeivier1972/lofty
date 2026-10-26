@@ -307,8 +307,9 @@ export async function sendSMS(
       return null
     }
   }
-  // Fire-and-forget DB log (don't await, don't fail the send)
-  prisma.sMSMessage.create({
+  // Awaited (but never fatal): the repeat guard reads this row, so a second
+  // send that starts right after must be able to see it.
+  await prisma.sMSMessage.create({
     data: {
       direction: "OUTBOUND",
       body,
@@ -400,7 +401,7 @@ export async function sendWhatsApp(
   // Record it. This function never logged its sends, which is why the SMS
   // cooldown could not see a WhatsApp message and why the same copy could go
   // out on both channels. The guard above is only as good as this row.
-  prisma.whatsAppMessage.create({
+  await prisma.whatsAppMessage.create({
     data: {
       body,
       fromNumber,

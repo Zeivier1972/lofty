@@ -67,7 +67,8 @@ export async function POST(req: Request, { params }: { params: { contactId: stri
       if (templateSid) {
         await sendWhatsAppTemplate(toNumber, templateSid, { "1": contact.firstName })
       } else {
-        await sendWhatsApp(toNumber, message, mediaUrl || undefined)
+        // sendWhatsApp logs the outbound row itself.
+        await sendWhatsApp(toNumber, message, mediaUrl || undefined, { contactId: contact.id })
       }
     } catch (e: any) {
       return NextResponse.json(
@@ -75,15 +76,15 @@ export async function POST(req: Request, { params }: { params: { contactId: stri
         { status: 502 }
       )
     }
-    await prisma.whatsAppMessage.create({
-      data: { body: message, fromNumber: waFromNumber, toNumber, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
-    })
+    if (templateSid) {
+      await prisma.whatsAppMessage.create({
+        data: { body: message, fromNumber: waFromNumber, toNumber, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
+      })
+    }
   } else {
     // ── SMS ───────────────────────────────────────────────────────────────────
-    await sendSMS(toNumber, message, mediaUrl ? [mediaUrl] : undefined)
-    await prisma.sMSMessage.create({
-      data: { body: message, fromNumber, toNumber, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
-    })
+    // sendSMS logs the outbound row itself.
+    await sendSMS(toNumber, message, mediaUrl ? [mediaUrl] : undefined, { contactId: contact.id })
   }
 
   await Promise.all([

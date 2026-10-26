@@ -156,9 +156,6 @@ async function sendOutreachMessages(contact: any, stageName: string, config: any
         prisma.activity.create({
           data: { type: "SMS", title: "Sofía sent outreach SMS", description: smsBody.slice(0, 200), contactId: contact.id },
         }).catch(() => {})
-        prisma.sMSMessage.create({
-          data: { toNumber: toPhone, fromNumber: process.env.TWILIO_PHONE_NUMBER || "", body: smsBody, direction: "OUTBOUND", status: "SENT", contactId: contact.id },
-        }).catch(() => {})
       })
       .catch(() => {})
   }

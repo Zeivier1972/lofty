@@ -59,9 +59,7 @@ export async function POST(req: Request) {
   const to = toE164(phone)
   const sid = await sendSMS(to, body, undefined, { contactId }) // not automated → skips cooldown; still respects do-not-text + kill switch
   if (sid) {
-    await prisma.sMSMessage.create({
-      data: { body, fromNumber: process.env.TWILIO_PHONE_NUMBER || "", toNumber: to, direction: "OUTBOUND", status: "SENT", contactId: contactId || undefined },
-    }).catch(() => {})
+    // sendSMS already logged the SMSMessage row.
     if (contactId) {
       await prisma.activity.create({
         data: { type: "SMS", title: "Dialer: mensaje de voz (texto) enviado", description: body.slice(0, 140), contactId },

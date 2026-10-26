@@ -20,19 +20,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Contact has no phone number" }, { status: 400 })
     }
 
-    const sid = await sendSMS(contact.phone, message.trim(), mediaUrls?.length ? mediaUrls : undefined)
+    const sid = await sendSMS(contact.phone, message.trim(), mediaUrls?.length ? mediaUrls : undefined, { contactId })
 
-    // Save to SMSMessage log
-    await prisma.sMSMessage.create({
-      data: {
-        contactId,
-        direction: "OUTBOUND",
-        body: message.trim(),
-        status: sid ? "SENT" : "FAILED",
-        fromNumber: process.env.TWILIO_PHONE_NUMBER || "",
-        toNumber: contact.phone,
-      },
-    })
+    // sendSMS already logged this send (SMSMessage); logging it again here
+    // is what showed every text twice in the inbox.
 
     // Log activity
     await prisma.activity.create({
