@@ -210,6 +210,10 @@ export async function GET(req: Request) {
   for (const w of justEnded) {
     const endedAt = w.startsAt.getTime() + w.durationMins * 60000
     if (now < endedAt + 30 * 60000) continue
+    // A follow-up days late reads as spam ("te perdiste el webinar" about a
+    // session from last week). If the job missed the window — it was never
+    // scheduled until now, or it was down — skip rather than send late.
+    if (now > endedAt + 24 * 3600000) continue
 
     // Which recording this follow-up can honestly point at.
     //
