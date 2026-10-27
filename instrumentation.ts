@@ -47,6 +47,15 @@ export async function register() {
       .catch(e => console.error("[cron] event-reminders error:", e))
   })
 
+  // Webinar sequence every 15 min: creates the Zoom meeting 3 days out, sends
+  // the 1-day / 1-hour / live reminders and the post-session follow-up.
+  // Listed in railway.toml too, but those [[crons]] entries never run — this
+  // job had zero calls in production before it was added here.
+  schedule("2,17,32,47 * * * *", () => {
+    fetch(`${base}/api/cron/webinar-reminders`, { headers })
+      .catch(e => console.error("[cron] webinar-reminders error:", e))
+  })
+
   // Every hour: fire smart plans, SOI check, score decay, HeyGen video check
   schedule("0 * * * *", () => {
     Promise.allSettled([
