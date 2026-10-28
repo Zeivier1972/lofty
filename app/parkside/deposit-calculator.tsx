@@ -1,10 +1,9 @@
 "use client"
 
 /**
- * "¿Cuánto capital necesito en cada etapa?" — applies the announced deposit
- * schedule to a price the visitor types. No price is pre-filled: the brief is
- * explicit that current prices are not published without confirmation, so the
- * visitor brings the number and the page only does the arithmetic.
+ * "¿Cuánto capital necesito en cada etapa?" — applies the developer's deposit
+ * schedule to a price the visitor types (the input starts on the lowest
+ * studio price, which they can overwrite).
  */
 
 import { useState } from "react"
@@ -14,8 +13,8 @@ export type DepositStage = { pct: number; when: string }
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })
 
-export default function DepositCalculator({ stages }: { stages: DepositStage[] }) {
-  const [raw, setRaw] = useState("")
+export default function DepositCalculator({ stages, initialPrice }: { stages: DepositStage[]; initialPrice?: number }) {
+  const [raw, setRaw] = useState(initialPrice ? String(initialPrice) : "")
   const price = Number(raw.replace(/[^\d]/g, "")) || 0
   const beforeClosing = stages.slice(0, -1).reduce((s, x) => s + x.pct, 0)
 
@@ -45,7 +44,7 @@ export default function DepositCalculator({ stages }: { stages: DepositStage[] }
         </div>
       </dl>
       <p className="mt-4 text-xs leading-relaxed text-[#8A857A]">
-        Cálculo ilustrativo con el calendario anunciado. No incluye gastos de cierre, impuestos ni
+        Cálculo ilustrativo con el calendario del desarrollador. No incluye gastos de cierre, impuestos ni
         cuotas de mantenimiento, que se confirman con la documentación vigente del desarrollador.
       </p>
     </div>

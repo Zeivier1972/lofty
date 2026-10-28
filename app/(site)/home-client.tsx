@@ -40,6 +40,7 @@ const NAV_LINKS = [
   { label: "BUY",              href: "/homes" },
   { label: "SELL",             href: "/valuacion" },
   { label: "PRE-CONSTRUCTION", href: "/new-construction" },
+  { label: "PROJECTS",         href: "/proyectos" },
   { label: "ABOUT",            href: "/site#about" },
   { label: "MARKET SNAPSHOT",  href: "/site#market" },
 ]
@@ -326,7 +327,7 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
           <nav className="hidden lg:flex items-center gap-1">
             {NAV_LINKS.map(l => (
               <Link key={l.label} href={l.href}
-                className="px-3 py-2 text-xs font-bold tracking-wider text-gray-600 hover:text-[#c9a84c] transition-colors rounded-lg hover:bg-[#c9a84c]/5">
+                className="whitespace-nowrap px-2 xl:px-3 py-2 text-[11px] xl:text-xs font-bold tracking-wider text-gray-600 hover:text-[#c9a84c] transition-colors rounded-lg hover:bg-[#c9a84c]/5">
                 {l.label}
               </Link>
             ))}
@@ -334,7 +335,7 @@ export default function HomeClient({ config, websiteConfig, featuredProperties }
 
           <div className="hidden lg:flex items-center gap-3">
             <a href={`tel:${agentPhone.replace(/\D/g,"")}`}
-              className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-[#1a3a5c] transition-colors">
+              className="hidden xl:flex items-center gap-1.5 whitespace-nowrap text-xs font-semibold text-gray-600 hover:text-[#1a3a5c] transition-colors">
               <Phone className="w-3.5 h-3.5" />{agentPhone}
             </a>
             <Link href="/portal/register"

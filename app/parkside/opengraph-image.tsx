@@ -13,7 +13,7 @@ import { join } from "path"
 
 export const runtime = "nodejs"
 export const alt =
-  "Parkside Residences at Brickell, Miami — edificio boutique de 187 residencias amuebladas frente a Simpson Park"
+  "Parkside Residences at Brickell, Miami — estudios desde $490,000 USD, 187 residencias amuebladas frente a Simpson Park"
 export const size = { width: 1200, height: 630 }
 export const contentType = "image/png"
 
@@ -83,7 +83,7 @@ export default async function Image() {
             187 residencias amuebladas frente a Simpson Park
           </div>
           <div style={{ display: "flex", marginTop: 18, fontSize: 22, color: "#D9C7A0" }}>
-            Solicite su análisis de inversión personalizado
+            Estudios desde $490,000 USD · 20% al contrato
           </div>
         </div>
       </div>

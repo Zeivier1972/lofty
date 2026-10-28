@@ -13,10 +13,11 @@ import DepositCalculator, { type DepositStage } from "./deposit-calculator"
  * investors arriving from Meta ads.
  *
  * Content rule for this page, from the client's brief: only what the
- * developer's presentation says. No starting price, no inventory, no delivery
- * date, no HOA, no ROI, and the Wello "two years without commission" incentive
- * stays off until the developer confirms it. Where a visitor needs one of
- * those, the page sends them to the qualification form instead.
+ * developer's material says. Prices and the deposit calendar come from the
+ * developer's availability sheet dated 2026-10-27 ("desde" prices only, units
+ * with a reservation note left out). No inventory list, no HOA, no ROI, and
+ * the Wello "two years without commission" incentive stays off until the
+ * developer confirms it.
  */
 
 const display = Cormorant_Garamond({
@@ -42,9 +43,13 @@ const PAGE_URL = `${BASE}/parkside`
 const IMG_DIR = "/parkside"
 const HERO = `${IMG_DIR}/fachada-atardecer.jpg`
 
-const TITLE = "Parkside Residences at Brickell — Invertir en Miami frente a Simpson Park | Catherine Gomez"
+/** From the developer's availability sheet dated 2026-10-27. */
+const PRICES_AS_OF = "27 de octubre de 2026"
+const STUDIO_FROM = 490000
+
+const TITLE = "Parkside Residences at Brickell — Estudios desde $490,000 frente a Simpson Park | Catherine Gomez"
 const DESCRIPTION =
-  "Parkside Residences at Brickell: edificio boutique de 8 pisos con 187 residencias amuebladas frente a Simpson Park, en Brickell, Miami. Estudios, 1 y 2 habitaciones, 16,500 pies² de amenidades y programa de administración de alquileres. Solicite su análisis de inversión personalizado con Catherine Gomez."
+  "Parkside Residences at Brickell: edificio boutique de 8 pisos con 187 residencias amuebladas frente a Simpson Park, en Brickell, Miami. Estudios desde $490,000 USD, 1 y 2 habitaciones, 16,500 pies² de amenidades y programa de administración de alquileres. Solicite su análisis de inversión personalizado con Catherine Gomez."
 
 export const metadata: Metadata = {
   metadataBase: new URL(BASE),
@@ -125,10 +130,10 @@ const RESIDENCE_FEATURES = [
   "Baños con acabados de porcelanato",
 ]
 
-const UNIT_TYPES: { type: string; body: string }[] = [
-  { type: "Estudios", body: "Distribución eficiente y amueblada, pensada para quien busca una primera inversión en Brickell." },
-  { type: "1 habitación", body: "Más espacio para vivir o para recibir huéspedes, con cocina y lavandería dentro de la residencia." },
-  { type: "2 habitaciones", body: "La opción para familias o para quien quiere un pie de casa en Miami con espacio para todos." },
+const UNIT_TYPES: { type: string; body: string; size: string; from: string; price: number }[] = [
+  { type: "Estudios", body: "Distribución eficiente y amueblada, pensada para quien busca una primera inversión en Brickell.", size: "417 – 510 pies² (39 – 47 m²)", from: "$490,000", price: 490000 },
+  { type: "1 habitación", body: "Más espacio para vivir o para recibir huéspedes, con cocina y lavandería dentro de la residencia. Incluye opciones Junior 1 habitación.", size: "488 – 689 pies² (45 – 64 m²)", from: "$582,750", price: 582750 },
+  { type: "2 habitaciones", body: "La opción para familias o para quien quiere un pie de casa en Miami con espacio para todos.", size: "842 – 992 pies² (78 – 92 m²)", from: "$1,160,250", price: 1160250 },
 ]
 
 const AMENITIES = [
@@ -154,12 +159,12 @@ const WELLO_SERVICES = [
   "Coordinación de limpieza y mantenimiento",
 ]
 
-/** As announced in the developer's deposit-structure sheet. */
+/** From the developer's availability sheet dated 2026-10-27. */
 const DEPOSITS: DepositStage[] = [
   { pct: 20, when: "Al firmar el contrato" },
-  { pct: 10, when: "A los 90 días" },
-  { pct: 10, when: "Al top-off de la construcción" },
-  { pct: 60, when: "Al cierre" },
+  { pct: 10, when: "Top-off · enero de 2027" },
+  { pct: 10, when: "Abril de 2027" },
+  { pct: 60, when: "Al cierre · entrega estimada 1er trimestre de 2028" },
 ]
 
 const LOCATION: [string, string][] = [
@@ -195,11 +200,11 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: "¿Cuál es la estructura de depósitos?",
-    a: "El calendario anunciado es 20% al firmar el contrato, 10% a los 90 días, 10% al alcanzar el top-off de la construcción y el 60% restante al cierre. Debe confirmarse con la documentación comercial vigente antes de firmar.",
+    a: "Según el calendario vigente del desarrollador: 20% al firmar el contrato, 10% al top-off de la construcción (enero de 2027), 10% en abril de 2027 y el 60% restante al cierre, con entrega estimada en el primer trimestre de 2028. Para un estudio de $490,000, el 20% inicial es $98,000. Se confirma por escrito en el contrato.",
   },
   {
     q: "¿Cuánto cuesta un apartamento en Parkside?",
-    a: "Los precios y la disponibilidad cambian con frecuencia, por eso no los publicamos aquí. Al solicitar su análisis personalizado le enviamos los precios vigentes, los planos disponibles y el cálculo de depósitos para la residencia que le interese.",
+    a: "Según la lista del desarrollador del 27 de octubre de 2026: estudios desde $490,000 USD, residencias de 1 habitación desde $582,750 USD y de 2 habitaciones desde $1,160,250 USD. El precio depende del piso, la vista y la disponibilidad, que cambian con frecuencia. En su análisis personalizado le enviamos los precios vigentes y los planos de las residencias disponibles.",
   },
   {
     q: "¿Puedo alquilar mi residencia?",
@@ -215,7 +220,7 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: "¿Cuándo se entrega el proyecto?",
-    a: "La fecha de entrega la confirma el desarrollador en la documentación vigente y queda establecida en el contrato. Se la indicamos en su análisis personalizado.",
+    a: "El calendario del desarrollador estima la entrega en el primer trimestre de 2028. La fecha definitiva queda establecida en el contrato y la documentación del desarrollador.",
   },
 ]
 
@@ -269,8 +274,20 @@ export default async function ParksidePage() {
         itemListElement: UNIT_TYPES.map((u, i) => ({
           "@type": "ListItem",
           position: i + 1,
-          name: u.type,
-          description: u.body,
+          item: {
+            "@type": "Product",
+            name: `Parkside Residences at Brickell — ${u.type}`,
+            description: `${u.body} ${u.size}.`,
+            image: `${BASE}${HERO}`,
+            offers: {
+              "@type": "Offer",
+              price: u.price,
+              priceCurrency: "USD",
+              availability: "https://schema.org/PreOrder",
+              url: PAGE_URL,
+              seller: { "@id": `${BASE}#agent` },
+            },
+          },
         })),
       },
       {
@@ -313,6 +330,19 @@ export default async function ParksidePage() {
           <p className="mt-7 max-w-xl text-xl font-light leading-relaxed text-white/85 sm:text-2xl" style={{ fontFamily: serif }}>
             Invierta con información en un proyecto boutique frente a Simpson Park, en el corazón de Brickell.
           </p>
+          <div className="mt-10 flex flex-wrap gap-x-14 gap-y-6">
+            {[
+              ["Estudios desde", `$${STUDIO_FROM.toLocaleString("en-US")}`],
+              ["20% al contrato, desde", `$${(STUDIO_FROM * 0.2).toLocaleString("en-US")}`],
+            ].map(([label, value]) => (
+              <div key={label}>
+                <p className={`${EYEBROW} text-white/55`}>{label}</p>
+                <p className="mt-2 text-4xl font-light sm:text-5xl" style={{ fontFamily: serif }}>
+                  {value} <span className="text-sm tracking-widest text-white/55">USD</span>
+                </p>
+              </div>
+            ))}
+          </div>
           <div className="mt-11 flex flex-wrap gap-4">
             <a href="#analisis" className={btnPrimary} style={{ background: SAND, color: FOREST }}>
               Solicitar mi análisis personalizado
@@ -420,12 +450,19 @@ export default async function ParksidePage() {
           <div>
             {UNIT_TYPES.map(u => (
               <div key={u.type} className="border-t py-6" style={{ borderColor: "rgba(30,43,35,.14)" }}>
-                <h3 className="text-2xl font-light" style={{ fontFamily: serif }}>{u.type}</h3>
+                <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
+                  <h3 className="text-2xl font-light" style={{ fontFamily: serif }}>{u.type}</h3>
+                  <p className="text-xl font-light" style={{ fontFamily: serif, color: GREEN }}>
+                    desde {u.from} <span className="text-xs tracking-widest text-[#6B7068]">USD</span>
+                  </p>
+                </div>
+                <p className="mt-1 text-sm text-[#6B7068]">{u.size}</p>
                 <p className="mt-2 leading-relaxed text-[#4F5A52]">{u.body}</p>
               </div>
             ))}
             <p className="border-t pt-6 text-sm leading-relaxed text-[#6B7068]" style={{ borderColor: "rgba(30,43,35,.14)" }}>
-              Planos, precios y disponibilidad vigentes:{" "}
+              Precios según la lista del desarrollador del {PRICES_AS_OF}; cambian según piso, vista
+              y disponibilidad. Planos y unidades disponibles hoy:{" "}
               <a href="#analisis" className="underline underline-offset-4" style={{ color: GREEN }}>
                 solicítelos en su análisis personalizado
               </a>.
@@ -515,10 +552,10 @@ export default async function ParksidePage() {
                 </li>
               ))}
             </ol>
-            <DepositCalculator stages={DEPOSITS} />
+            <DepositCalculator stages={DEPOSITS} initialPrice={STUDIO_FROM} />
           </div>
           <p className="mt-8 text-xs leading-relaxed text-[#8A857A]">
-            Calendario anunciado por el desarrollador, sujeto a la documentación comercial vigente.
+            Calendario del desarrollador al {PRICES_AS_OF}, sujeto a la documentación comercial vigente.
           </p>
         </div>
       </section>
@@ -614,7 +651,7 @@ export default async function ParksidePage() {
       <section className="py-20 text-center text-white sm:py-24" style={{ background: FOREST }}>
         <div className="mx-auto max-w-3xl px-6">
           <h2 className="text-[2.1rem] font-light leading-[1.12] sm:text-[3rem]" style={{ fontFamily: serif }}>
-            Decida con información, no con prisa
+            Estudios desde $490,000 frente a Simpson Park
           </h2>
           <p className="mt-6 text-lg leading-relaxed text-white/60">
             Solicite una asesoría personalizada con Catherine Gomez y reciba el análisis de Parkside
