@@ -51,6 +51,14 @@ export const INVESTMENT_PROJECTS: InvestmentProject[] = [
     og: "/house-of-wellness/hero-brickell.jpg",
     hero: "/house-of-wellness/hero-brickell.jpg",
   },
+  {
+    // Also at the root, like House of Wellness: it is the Meta ads landing page.
+    slug: "parkside",
+    name: "Parkside Residences — Brickell (frente a Simpson Park)",
+    path: "/parkside",
+    og: "/parkside/fachada-atardecer.jpg",
+    hero: "/parkside/fachada-atardecer.jpg",
+  },
 ]
 
 export function findProject(slug: string | null | undefined): InvestmentProject | null {
