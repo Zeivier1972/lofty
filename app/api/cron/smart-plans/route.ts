@@ -6,6 +6,33 @@ import { isAssignedToPartner } from "@/lib/referral"
 import { sendEmail } from "@/lib/email"
 import { sendSMS, sendWhatsApp, toE164 } from "@/lib/sms"
 
+/**
+ * When this contact can next receive an automated text, if not now.
+ *
+ * sendSMS enforces "one automated text per contact per SMS_MIN_GAP_HOURS"
+ * and, when a send falls inside that window, returns null without sending.
+ * This cron used to advance the enrollment anyway, so the step was silently
+ * lost — and it hit every new lead: the instant welcome text from lead
+ * ingest starts the window, and the plan's first step comes due within the
+ * hour. Same window, same filter as sendSMS, so the two cannot disagree.
+ */
+async function textCooldownUntil(contactId: string, phone: string): Promise<Date | null> {
+  const gapMs = Number(process.env.SMS_MIN_GAP_HOURS || 20) * 3600 * 1000
+  const digits10 = phone.replace(/\D/g, "").slice(-10)
+  const last = await prisma.sMSMessage.findFirst({
+    where: {
+      direction: "OUTBOUND",
+      createdAt: { gte: new Date(Date.now() - gapMs) },
+      status: { notIn: ["FAILED", "UNDELIVERED", "BLOCKED"] },
+      OR: [{ contactId }, ...(digits10.length >= 7 ? [{ toNumber: { contains: digits10 } }] : [])],
+    },
+    orderBy: { createdAt: "desc" },
+    select: { createdAt: true },
+  })
+  // Five minutes of slack so the retry lands clearly outside the window.
+  return last ? new Date(last.createdAt.getTime() + gapMs + 5 * 60 * 1000) : null
+}
+
 // GET /api/cron/smart-plans
 // Called by Railway cron every hour.
 // Fires due smart plan steps: email, SMS, or task creation.
@@ -90,6 +117,10 @@ export async function GET(req: Request) {
         .replace(/\{agent_name\}/gi, aiConfig?.realtorName || "Catherine")
         .replace(/\{agent_phone\}/gi, aiConfig?.realtorPhone || "305-283-0872")
 
+    // Set when a text step has to wait out the SMS cooldown: the enrollment
+    // stays on this step and retries then, instead of advancing past it.
+    let deferUntil: Date | null = null
+
     try {
       if (step.type === "EMAIL" && step.subject && step.content) {
         if (!contact.doNotEmail && contact.email) {
@@ -120,6 +151,9 @@ export async function GET(req: Request) {
       } else if (step.type === "SMS" && step.content) {
         // doNotText (not doNotCall) is the correct gate for text messages
         if (!contact.doNotText && contact.phone) {
+          deferUntil = await textCooldownUntil(contact.id, contact.phone)
+        }
+        if (!deferUntil && !contact.doNotText && contact.phone) {
           const toPhone = toE164(contact.phone)
           const sid = await sendSMS(toPhone, fill(step.content), undefined, { automated: true, contactId: contact.id })
           if (sid) {
@@ -150,8 +184,14 @@ export async function GET(req: Request) {
             },
           })
 
+          // No open WhatsApp session means this goes out as an SMS, so it is
+          // subject to the same cooldown as an SMS step.
+          if (!recentInbound) deferUntil = await textCooldownUntil(contact.id, contact.phone)
+
           let channel: "WHATSAPP" | "SMS" = "SMS"
-          if (recentInbound) {
+          if (deferUntil) {
+            // Waiting out the SMS cooldown — handled below, nothing sent now.
+          } else if (recentInbound) {
             try {
               await sendWhatsApp(toPhone, filledContent, undefined, { automated: true, contactId: contact.id })
               channel = "WHATSAPP"
@@ -163,7 +203,7 @@ export async function GET(req: Request) {
             await sendSMS(toPhone, filledContent, undefined, { automated: true, contactId: contact.id }).catch(e => console.error("[smart-plans] SMS failed:", e))
           }
 
-          await prisma.activity.create({
+          if (!deferUntil) await prisma.activity.create({
             data: {
               type: channel,
               title: channel === "WHATSAPP" ? "Smart Plan WhatsApp" : "Smart Plan SMS (no open WA session)",
@@ -196,6 +236,15 @@ export async function GET(req: Request) {
             contactId: contact.id,
           },
         })
+      }
+
+      if (deferUntil) {
+        await prisma.smartPlanEnrollment.update({
+          where: { id: enrollment.id },
+          data: { nextStepAt: deferUntil },
+        })
+        results.push({ enrollmentId: enrollment.id, contactId: contact.id, status: "deferred-sms-cooldown", step: stepIndex })
+        continue
       }
 
       // Advance to next step
