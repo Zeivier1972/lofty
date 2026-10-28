@@ -74,6 +74,21 @@ export async function register() {
       .catch(e => console.error("[cron] hot-buyer-followup error:", e))
   })
 
+  // Property-alert emails, also railway.toml-only until now.
+  // Hourly (:05): Sofía emails buyers new MLS matches for their search —
+  // bounded by EMAIL_DAILY_LIMIT, with a 60-day per-listing dedup.
+  schedule("5 * * * *", () => {
+    fetch(`${base}/api/cron/match-alerts`, { headers })
+      .catch(e => console.error("[cron] match-alerts error:", e))
+  })
+
+  // Daily 12:47 UTC (~8:47 AM ET): one email per active saved search with
+  // new listings that match it.
+  schedule("47 12 * * *", () => {
+    fetch(`${base}/api/cron/saved-search-alerts`, { headers })
+      .catch(e => console.error("[cron] saved-search-alerts error:", e))
+  })
+
   // Every hour: fire smart plans, SOI check, score decay, HeyGen video check
   schedule("0 * * * *", () => {
     Promise.allSettled([
