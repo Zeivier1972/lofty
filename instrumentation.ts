@@ -56,6 +56,24 @@ export async function register() {
       .catch(e => console.error("[cron] webinar-reminders error:", e))
   })
 
+  // Sofía's lead-attention jobs. Both were only listed in railway.toml, whose
+  // [[crons]] entries never run — neither had a single request in production.
+  //
+  // 14:00 UTC (~9-10 AM ET): Warm → Hot pacing. Expires stale call tasks,
+  // releases the next batch of queued Warm enrollments only while Catherine's
+  // open call queue is under the cap, and builds her daily call-list task.
+  schedule("0 14 * * *", () => {
+    fetch(`${base}/api/cron/warm-plan-release`, { headers })
+      .catch(e => console.error("[cron] warm-plan-release error:", e))
+  })
+
+  // 16:00 UTC (~noon ET): Sofía nudges hot buyers (3+ saves/views) toward a
+  // call with Catherine — capped per run, once per lead every 3 days.
+  schedule("0 16 * * *", () => {
+    fetch(`${base}/api/cron/hot-buyer-followup`, { headers })
+      .catch(e => console.error("[cron] hot-buyer-followup error:", e))
+  })
+
   // Every hour: fire smart plans, SOI check, score decay, HeyGen video check
   schedule("0 * * * *", () => {
     Promise.allSettled([
