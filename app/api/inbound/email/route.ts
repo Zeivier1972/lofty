@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { handleEmailKeywordReply } from "@/lib/email-keywords"
 
 // Resend inbound email webhook (event type: email.received)
 // Resend wraps the payload as { type: "email.received", data: { email: {...} } }
@@ -61,7 +62,23 @@ export async function POST(req: Request) {
       console.warn(`[Inbound email] No contact found for email: ${fromEmail}`)
     }
 
-    return NextResponse.json({ ok: true, emailId: inboundEmail.id })
+    // Keyword replies to an email blast ("responde BOO y te mando el link").
+    // Plain text first: the HTML version would make quoted-text stripping guesswork.
+    const html: string = email.html || ""
+    const keywordText: string = email.text || email.plain_text || html
+      // HTML-only replies: drop the quoted original (Gmail/Outlook wrap it in
+      // a blockquote or gmail_quote div), then the tags.
+      .replace(/<blockquote[\s\S]*$/i, "")
+      .replace(/<div[^>]*class="[^"]*gmail_quote[\s\S]*$/i, "")
+      .replace(/<br\s*\/?>|<\/p>|<\/div>/gi, "\n")
+      .replace(/<[^>]+>/g, " ")
+    const fromName = (fromRaw.match(/^\s*"?([^"<]+?)"?\s*</) || [])[1]
+    const keyword = keywordText
+      ? await handleEmailKeywordReply({ fromEmail, fromName, text: keywordText, contactId: contact?.id || null })
+          .catch(e => { console.error("[Inbound email] keyword reply failed:", e); return null })
+      : null
+
+    return NextResponse.json({ ok: true, emailId: inboundEmail.id, keyword })
   } catch (e: any) {
     console.error("[Inbound email] Error:", e)
     return NextResponse.json({ error: e.message }, { status: 500 })
