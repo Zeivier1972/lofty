@@ -155,7 +155,7 @@ function StepEditor({ step, onChange, onSave, onCancel }: {
             </label>
             <textarea value={step.content || ""}
               onChange={e => onChange({ ...step, content: e.target.value })}
-              rows={4} placeholder="Message text... Use {first_name}, {calendly_url}, {agent_phone}"
+              rows={4} placeholder="Message text... Use {first_name}, {calendly_url}, {agent_phone}, {time_options} (SMS: offers 2 open times, a 1/2 reply books the call)"
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-lofty-500 outline-none resize-none" />
             {step.type === "WHATSAPP" && (
               <p className="text-xs text-[#128C7E] mt-1">Sent via WhatsApp · Supports line breaks &amp; emojis</p>

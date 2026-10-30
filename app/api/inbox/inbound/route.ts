@@ -6,6 +6,7 @@ import { searchIdxListings, fetchPrimaryPhotos } from "@/lib/bridge"
 import { findEventByAdText, findEventByTag, type EventInfo } from "@/lib/events"
 import { applyTagAndEnroll } from "@/lib/lead-ingest"
 import { appendEventLeadToSheet } from "@/lib/google-sheets"
+import { handleSlotReply } from "@/lib/slot-offer"
 import Anthropic from "@anthropic-ai/sdk"
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -457,6 +458,16 @@ export async function POST(req: Request) {
           contactId: contact.id,
         },
       }).catch(() => {})
+    }
+
+    // Answering one of the two times Sofía offered ("1", "2", "a las 3")?
+    // Book it now instead of handing the reply to the AI.
+    const slotReply = await handleSlotReply(contact.id, body, isWhatsApp ? "WhatsApp" : "texto")
+      .catch(e => { console.error("[Inbound SMS] slot reply failed:", e); return null })
+    if (slotReply) {
+      if (isWhatsApp) await sendWhatsApp(toE164(phone), slotReply, undefined, { contactId: contact.id })
+      else await sendSMS(toE164(phone), sanitizeSmsBody(slotReply), undefined, { contactId: contact.id })
+      return new Response(`<Response></Response>`, { headers: { "Content-Type": "text/xml" } })
     }
 
     // Build contact context for Claude

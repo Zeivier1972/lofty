@@ -7,6 +7,7 @@ import { sendEmail, wrapEmail } from "@/lib/email"
 import { isAssignedToPartner } from "@/lib/referral"
 import { computeBuyerIntent } from "@/lib/buyer-intent"
 import { markHot, resumeQuietWarmPlans } from "@/lib/lead-flow"
+import { pickTwoTimes, offerQuestion, recordOffer } from "@/lib/slot-offer"
 
 // Daily (~noon ET): the buy-now playbook.
 //
@@ -48,6 +49,9 @@ export async function GET(req: Request) {
   const agentPhone = cfg?.realtorPhone || "305-283-0872"
   const bookUrl = cfg?.calendlyUrl || `${process.env.NEXT_PUBLIC_APP_URL || "https://www.catherinegomezrealtor.com"}/book`
   const agent = await prisma.user.findFirst({ where: { isActive: true }, select: { id: true } })
+  // Two real open times with Catherine — answering "1" or "2" books the call.
+  const offered = await pickTwoTimes().catch(() => [])
+  const question = offerQuestion(offered)
 
   let sms = 0, email = 0, tasks = 0, promoted = 0
   for (const lead of due) {
@@ -110,9 +114,13 @@ export async function GET(req: Request) {
     if (working) {
       // no outreach from Sofía
     } else if (lead.canText) {
-      const body = `Hola ${lead.firstName}, soy Sofia del equipo de ${agentName} Gomez. Vi ${lead.hook}. ${agentName} puede llamarte 15 min para contarte lo que no sale en el anuncio y ayudarte a verlas. ¿Te queda mejor hoy o mañana? Elige tu hora: ${bookUrl}`
+      const ask = question
+        ? `${question} O elige otra hora: ${bookUrl}`
+        : `¿Te queda mejor hoy o mañana? Elige tu hora: ${bookUrl}`
+      const body = `Hola ${lead.firstName}, soy Sofia del equipo de ${agentName} Gomez. Vi ${lead.hook}. ${agentName} puede llamarte 15 min para contarte lo que no sale en el anuncio y ayudarte a verlas. ${ask}`
       const sid = await sendSMS(lead.phone!, body, undefined, { automated: true, contactId: lead.contactId, quietHours: true }).catch(() => null)
       if (sid) { sms++; sent = true }
+      if (sid && question) await recordOffer(lead.contactId, offered)
     }
     if (!working && !sent && lead.canEmail) {
       const html = wrapEmail(`

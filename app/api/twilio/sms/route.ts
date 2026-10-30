@@ -4,6 +4,7 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { chatWithAI } from "@/lib/ai-agent"
 import { sendSMS } from "@/lib/sms"
+import { handleSlotReply } from "@/lib/slot-offer"
 import { scoreContact } from "@/lib/scoring"
 import { handleLeadEngaged, notifyAgentOfLeadReply } from "@/lib/lead-flow"
 import { detectKeyword, deliverLeadMagnet } from "@/lib/lead-magnet-delivery"
@@ -75,6 +76,17 @@ export async function POST(req: Request) {
       : { firstName: "Hola", phone: from }
     await deliverLeadMagnet(keyword, deliveryContact, { sms: true, email: true, fbDm: false, igDm: false })
     return new NextResponse("", { status: 200 })
+  }
+
+  // Answering one of the two times Sofía offered ("1", "2", "a las 3")?
+  // Book it now instead of handing the reply to the AI.
+  if (contact) {
+    const slotReply = await handleSlotReply(contact.id, body, "texto")
+      .catch(e => { console.error("[SMS] slot reply failed:", e); return null })
+    if (slotReply) {
+      await sendSMS(from, slotReply, undefined, { contactId: contact.id })
+      return new NextResponse("", { status: 200 })
+    }
   }
 
   // Log conversation in AI system
