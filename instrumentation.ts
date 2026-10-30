@@ -67,8 +67,21 @@ export async function register() {
       .catch(e => console.error("[cron] warm-plan-release error:", e))
   })
 
-  // 16:00 UTC (~noon ET): Sofía nudges hot buyers (3+ saves/views) toward a
-  // call with Catherine — capped per run, once per lead every 3 days.
+  // 11:37 UTC (~7:30am ET): Sofía's morning briefing email for Catherine —
+  // today's appointments, buy-now leads to call, replies, new leads.
+  schedule("37 11 * * *", () => {
+    fetch(`${base}/api/cron/sofia-briefing`, { headers })
+      .catch(e => console.error("[cron] sofia-briefing error:", e))
+  })
+
+  // Every 15 min: appointment reminders (24 h and 1 h before).
+  schedule("4,19,34,49 * * * *", () => {
+    fetch(`${base}/api/cron/appointment-reminders`, { headers })
+      .catch(e => console.error("[cron] appointment-reminders error:", e))
+  })
+
+  // 16:00 UTC (~noon ET): the buy-now playbook — buy-now leads (lib/buyer-intent)
+  // get a call task for Catherine, a call invite from Sofía and the Hot stage.
   schedule("0 16 * * *", () => {
     fetch(`${base}/api/cron/hot-buyer-followup`, { headers })
       .catch(e => console.error("[cron] hot-buyer-followup error:", e))

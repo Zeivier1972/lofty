@@ -5,6 +5,9 @@ import { prisma } from "@/lib/prisma"
 import { isAssignedToPartner } from "@/lib/referral"
 import { applyTagAndEnroll } from "@/lib/lead-ingest"
 import { sendEmail } from "@/lib/email"
+import { sendSMS } from "@/lib/sms"
+import { handleAppointmentBooked } from "@/lib/lead-flow"
+import { easternWallTime, formatEastern, AGENT_TZ } from "@/lib/eastern-time"
 
 export async function POST(req: Request) {
   try {
@@ -39,7 +42,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Faltan campos requeridos" }, { status: 400 })
     }
 
-    const startTime = new Date(`${date}T${time}:00`)
+    // The slot is Catherine's (Miami) wall-clock time, not the server's.
+    const startTime = easternWallTime(date, time)
     const endTime = new Date(startTime.getTime() + slotMinutes * 60000)
 
     if (isNaN(startTime.getTime())) {
@@ -52,7 +56,12 @@ export async function POST(req: Request) {
       contact = await prisma.contact.findFirst({ where: { email } })
     }
     if (!contact && phone) {
-      contact = await prisma.contact.findFirst({ where: { phone } })
+      // Match on the last 10 digits: the same person is often saved as
+      // "+1 305…" in one place and "305-…" in another.
+      const digits10 = String(phone).replace(/\D/g, "").slice(-10)
+      contact = digits10.length >= 10
+        ? await prisma.contact.findFirst({ where: { phone: { contains: digits10 } } })
+        : await prisma.contact.findFirst({ where: { phone } })
     }
     if (!contact) {
       contact = await prisma.contact.create({
@@ -97,6 +106,9 @@ export async function POST(req: Request) {
       },
     })
 
+    // Booked: stop the "¿agendamos?" sequences and move to Appointment Set.
+    await handleAppointmentBooked(contact.id).catch(e => console.error("[BOOKING] post-booking flow failed:", e))
+
     // Tag campaign leads so they enter that campaign's smart plan — the same
     // sequence Facebook leads land in. Never blocks the booking.
     const campaignTag = safeSource ? CAMPAIGN_TAGS[safeSource] : undefined
@@ -134,7 +146,7 @@ export async function POST(req: Request) {
     // Notify Catherine by email and SMS
     const cfg = aiCfg
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://lofty-production.up.railway.app"
-    const formattedDateCath = new Date(startTime).toLocaleDateString("es-US", {
+    const formattedDateCath = new Date(startTime).toLocaleDateString("es-US", { timeZone: AGENT_TZ,
       weekday: "long", year: "numeric", month: "long", day: "numeric",
     })
 
@@ -161,7 +173,7 @@ export async function POST(req: Request) {
     await prisma.aINotification.create({
       data: {
         title: `📅 Nueva cita: ${firstName} ${lastName}`,
-        body: `${topic || "Consulta"} el ${new Date(startTime).toLocaleDateString("es-US", { weekday: "long", month: "long", day: "numeric" })} a las ${time}`,
+        body: `${topic || "Consulta"} el ${new Date(startTime).toLocaleDateString("es-US", { timeZone: AGENT_TZ, weekday: "long", month: "long", day: "numeric" })} a las ${time}`,
         type: "APPOINTMENT_REQUEST",
         priority: "HIGH",
         contactId: contact.id,
@@ -169,9 +181,25 @@ export async function POST(req: Request) {
       },
     })
 
+    // Text confirmation — a confirmed time in their messages is the single
+    // best show-rate lever. Not automated: it answers their own booking.
+    const when = formatEastern(startTime)
+    if (phone) {
+      sendSMS(
+        phone,
+        `Hola ${firstName}, tu cita con ${cfg?.realtorName || "Catherine"} quedo confirmada para el ${when} (hora de Miami). ${meetingType === "ZOOM" ? `Zoom: ${zoomLink}` : "Ella te llamara a este numero."} Si necesitas cambiarla, responde a este mensaje.`,
+        undefined,
+        { contactId: contact.id },
+      ).catch(e => console.error("[BOOKING] SMS confirmation failed:", e))
+    }
+    if (cfg?.realtorPhone) {
+      sendSMS(cfg.realtorPhone, `📅 Nueva cita: ${firstName} ${lastName} — ${when}. ${topic || "Consulta"}${phone ? ` · ${phone}` : ""}`)
+        .catch(() => {})
+    }
+
     // Send confirmation email to lead
     if (email) {
-      const formattedDate = new Date(startTime).toLocaleDateString("es-US", {
+      const formattedDate = new Date(startTime).toLocaleDateString("es-US", { timeZone: AGENT_TZ,
         weekday: "long", year: "numeric", month: "long", day: "numeric",
       })
       try {

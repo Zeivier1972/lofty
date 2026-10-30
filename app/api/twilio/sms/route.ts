@@ -44,6 +44,22 @@ export async function POST(req: Request) {
     },
   })
 
+  // Opt-out: stop every automated text to this number and don't let Sofía
+  // answer it. (Twilio's own STOP handling blocks sends at the carrier, but
+  // the CRM has to know too, or drips keep trying and Sofía replies "STOP".)
+  const optOutWord = body.trim().toUpperCase().replace(/[.!¡]/g, "")
+  if (["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT", "CANCELAR", "PARAR", "BAJA", "ALTO", "NO MAS", "NO MÁS"].includes(optOutWord)) {
+    await prisma.contact.updateMany({
+      where: { OR: [{ phone: { contains: phone.slice(-10) } }, { phone2: { contains: phone.slice(-10) } }] },
+      data: { doNotText: true },
+    }).catch(() => {})
+    if (contact) {
+      await prisma.smartPlanEnrollment.updateMany({ where: { contactId: contact.id, status: "ACTIVE" }, data: { status: "PAUSED" } }).catch(() => {})
+      await prisma.activity.create({ data: { type: "NOTE", title: "Pidió no recibir más textos (STOP)", contactId: contact.id } }).catch(() => {})
+    }
+    return new NextResponse("<Response></Response>", { status: 200, headers: { "Content-Type": "text/xml" } })
+  }
+
   // Log inbound SMS as activity
   if (contact) {
     prisma.activity.create({

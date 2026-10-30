@@ -275,7 +275,8 @@ Responde ÚNICAMENTE con este JSON (sin texto adicional):
     if (parsed.sms && contact.phone && config.autoRespondSMS && !contact.doNotCall) {
       try {
         // sendSMS logs the outbound row itself.
-        await sendSMS(contact.phone, parsed.sms, undefined, { contactId: contact.id })
+        // automated: Sofía-initiated, so the cooldown, monthly cap and dedupe apply.
+        await sendSMS(contact.phone, parsed.sms, undefined, { automated: true, contactId: contact.id })
         executedActions.push("SMS enviado")
 
         const conv = await prisma.aIConversation.upsert({

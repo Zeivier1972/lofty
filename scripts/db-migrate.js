@@ -1250,13 +1250,13 @@ async function seedWarmToHotPlan(db) {
           {
             order: 0,
             type: "SMS",
-            delay: 1,
+            delay: 1,  // day 1
             content: "Hola {first_name}! Soy Sofía 😊 Catherine apartó 2 espacios esta semana para hablar contigo 15 minutitos sobre lo que buscas. ¿Te viene mejor hoy en la tarde o mañana? También puedes elegir tu hora aquí: {calendly_url}",
           },
           {
             order: 1,
             type: "TASK",
-            delay: 2,
+            delay: 1,  // day 2
             taskType: "CALL",
             taskTitle: "☎️ Llamar a {first_name} — Warm sin cita (día 2)",
             content: "Este lead respondió pero aún no agenda. Revisa la última conversación y llámalo personalmente. Ángulo sugerido: pregunta abierta sobre qué busca + ofrece pre-aprobación gratis con lender en español.",
@@ -1264,7 +1264,7 @@ async function seedWarmToHotPlan(db) {
           {
             order: 2,
             type: "EMAIL",
-            delay: 3,
+            delay: 1,  // day 3
             subject: "{first_name}, 15 minutos que te pueden ahorrar meses 🏠",
             content: emailShell(
               "3 cosas que resolvemos en una llamada de 15 minutos",
@@ -1279,13 +1279,13 @@ async function seedWarmToHotPlan(db) {
           {
             order: 3,
             type: "SMS",
-            delay: 5,
+            delay: 2,  // day 5
             content: "{first_name}, dato importante 💡 La pre-aprobación es GRATIS, no te compromete a nada, y te dice exactamente cuánto te presta el banco. Catherine te conecta con un lender en español en 1 día. ¿Te lo coordino? Responde SÍ o llámanos: {agent_phone}",
           },
           {
             order: 4,
             type: "EMAIL",
-            delay: 7,
+            delay: 2,  // day 7
             subject: "🏗️ Proyectos nuevos con precio de lanzamiento — detalles solo por teléfono",
             content: emailShell(
               "Lo que no puedo poner por escrito 🤫",
@@ -1300,7 +1300,7 @@ async function seedWarmToHotPlan(db) {
           {
             order: 5,
             type: "TASK",
-            delay: 9,
+            delay: 2,  // day 9
             taskType: "CALL",
             taskTitle: "☎️ Llamar a {first_name} — Warm sin cita (día 9, segundo intento)",
             content: "Segundo intento personal. Ángulo sugerido: menciona los proyectos de pre-construcción con precio de lanzamiento (el email del día 7) — pregúntale si lo vio y ofrécele los detalles por teléfono.",
@@ -1308,13 +1308,13 @@ async function seedWarmToHotPlan(db) {
           {
             order: 6,
             type: "SMS",
-            delay: 10,
+            delay: 1,  // day 10
             content: "Hola {first_name}! Catherine está armando las visitas del fin de semana 🏠🔑 ¿Te aparto un espacio el sábado o el domingo para ver opciones en tu zona? Responde SÁBADO o DOMINGO y quedas dentro. — Sofía",
           },
           {
             order: 7,
             type: "EMAIL",
-            delay: 12,
+            delay: 2,  // day 12
             subject: "De \"solo estoy mirando\" a las llaves en la mano 🔑",
             content: emailShell(
               "La familia que casi no llama",
@@ -1329,7 +1329,7 @@ async function seedWarmToHotPlan(db) {
           {
             order: 8,
             type: "SMS",
-            delay: 14,
+            delay: 2,  // day 14
             content: "{first_name}, no quiero llenarte de mensajes 🙏 Dime tú: ¿sigues buscando casa y quieres que Catherine te llame, o prefieres que pausemos por ahora? Un \"LLÁMAME\" o un \"PAUSA\" me basta. — Sofía 😊",
           },
         ],
@@ -1479,6 +1479,44 @@ async function backfillTeamAssignedStage(db) {
   console.log(`[db-migrate] Team-assigned backfill → ${summary}`)
 }
 
+// ─── Warm → Hot delays: absolute days → gaps ───────────────────────────────
+// The cron schedules each step `delay` days after the PREVIOUS one, but the
+// Warm → Hot plan was seeded with absolute days (1, 2, 3, 5 … 14), which
+// stretched its "14 days" to ~49. Rewrite them as gaps once.
+
+async function fixWarmToHotDelays(db) {
+  const MARKER = "migration_warm_hot_relative_delays"
+  if (await db.setting.findUnique({ where: { key: MARKER } })) return
+  const plan = await db.smartPlan.findFirst({ where: { name: "Warm → Hot: Camino a la Llamada" } })
+  if (plan) {
+    const steps = await db.smartPlanStep.findMany({ where: { planId: plan.id }, orderBy: { order: "asc" } })
+    const absolute = steps.length > 2 && steps.every((s, i) => i === 0 || s.delay > steps[i - 1].delay)
+    if (absolute) {
+      for (let i = steps.length - 1; i > 0; i--) {
+        await db.smartPlanStep.update({ where: { id: steps[i].id }, data: { delay: steps[i].delay - steps[i - 1].delay } })
+      }
+      console.log("[db-migrate] Warm → Hot delays rewritten as gaps")
+    }
+  }
+  await db.setting.create({ data: { key: MARKER, value: new Date().toISOString() } })
+}
+
+// ─── First-time buyer enrollments stuck with no nextStepAt ─────────────────
+// Ingest enrolled leads without nextStepAt, so the cron never ran them. Start
+// only the recent ones (last 14 days); older leads stay as they are rather
+// than all receiving step 1 at once.
+
+async function startStuckEnrollments(db) {
+  const MARKER = "migration_start_stuck_enrollments"
+  if (await db.setting.findUnique({ where: { key: MARKER } })) return
+  const r = await db.smartPlanEnrollment.updateMany({
+    where: { status: "ACTIVE", nextStepAt: null, currentStep: 0, enrolledAt: { gte: new Date(Date.now() - 14 * 86400000) } },
+    data: { nextStepAt: new Date() },
+  })
+  await db.setting.create({ data: { key: MARKER, value: `started=${r.count}` } })
+  console.log(`[db-migrate] started ${r.count} stuck enrollments`)
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -1492,6 +1530,8 @@ async function main() {
   await seedBookingUrl(db).catch(e => console.warn("[db-migrate] booking url skip:", e.message))
   await seedReIgniteDrip(db).catch(e => console.warn("[db-migrate] Re-Ignite drip skip:", e.message))
   await seedWarmToHotPlan(db).catch(e => console.warn("[db-migrate] Warm→Hot plan skip:", e.message))
+  await fixWarmToHotDelays(db).catch(e => console.warn("[db-migrate] Warm→Hot delays skip:", e.message))
+  await startStuckEnrollments(db).catch(e => console.warn("[db-migrate] stuck enrollments skip:", e.message))
   await dedupPipelineLeads(db).catch(e => console.warn("[db-migrate] dedup pipeline leads skip:", e.message))
   await seedBrickellKeywords(db).catch(e => console.warn("[db-migrate] Brickell keywords skip:", e.message))
   await backfillPartnerTokens(db).catch(e => console.warn("[db-migrate] partner tokens skip:", e.message))
