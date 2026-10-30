@@ -17,6 +17,7 @@ import {
   parseIntent,
 } from "@/lib/facebook"
 import { ingestLead, enrollContactInPlanByName } from "@/lib/lead-ingest"
+import { isFormFollowup, findFormLead, contactCampaign, formFollowupReply, formFollowupNotification } from "@/lib/form-followup"
 import { generateSocialAIReply, getMatchingProperties, getMatchingPreConstruction, notifyCatherineAboutLead } from "@/lib/social-ai-chat"
 
 /** See the Instagram webhook: how quiet a stranded ASKED_NAME conversation must
@@ -688,8 +689,11 @@ export async function POST(req: Request) {
         const generalKeywords = (botConfig?.triggerKeywords || "")
           .split(",").map((k: string) => k.trim().toLowerCase()).filter(Boolean)
         const matchesGeneral = generalKeywords.some(k => tDm.includes(normDm(k)))
+        // Meta's pre-filled "Completé el formulario…" after an instant form: we
+        // already have their details, so never start the name-asking bot on it.
+        const formFollowup = isFormFollowup(text)
 
-        if (botOn && !convo && (matchedCampaign || matchesGeneral)) {
+        if (botOn && !convo && !formFollowup && (matchedCampaign || matchesGeneral)) {
           const greeting = matchedCampaign?.greeting
             || `¡Hola! 🏠 Quiero enviarte más información. Solo necesito un par de datos rápidos. ¿Cuál es tu nombre?`
           await prisma.facebookBotConversation.create({
@@ -720,6 +724,7 @@ export async function POST(req: Request) {
         } else {
         // ── Non-bot Messenger DM handling ───────────────────────────────────
         let contact = await prisma.contact.findFirst({ where: { facebookPsid: psid } })
+        let formCampaign: string | null = null
 
         if (!contact) {
           // Avoid duplicates: click-to-Messenger leads already exist as a
@@ -732,10 +737,19 @@ export async function POST(req: Request) {
           if (msgEmail) contact = await prisma.contact.findFirst({ where: { email: msgEmail } })
           if (!contact && msgPhoneDigits) contact = await prisma.contact.findFirst({ where: { phone: { contains: msgPhoneDigits } } })
 
+          const profile = contact ? null : await getFacebookUserProfile(psid)
+          if (!contact && formFollowup) {
+            // The form gave no Messenger id, so match by the profile name.
+            const lead = await findFormLead("facebook", profile?.firstName, profile?.lastName)
+            if (lead) {
+              contact = await prisma.contact.findUnique({ where: { id: lead.id } })
+              formCampaign = lead.campaign
+            }
+          }
+
           if (contact) {
             await prisma.contact.update({ where: { id: contact.id }, data: { facebookPsid: psid } }).catch(() => {})
           } else {
-            const profile = await getFacebookUserProfile(psid)
             contact = await prisma.contact.create({
               data: {
                 firstName: profile?.firstName || "Facebook",
@@ -776,14 +790,18 @@ export async function POST(req: Request) {
 
         // Ping Catherine that a lead messaged/replied by Messenger, so she can
         // respond from the Inbox without missing it.
+        if (formFollowup && !formCampaign) formCampaign = await contactCampaign(contact.id)
+        const contactName = `${contact.firstName} ${contact.lastName || ""}`.trim() || "Un lead"
         await prisma.aINotification.create({
-          data: {
-            type: "FACEBOOK_REPLY",
-            title: `💬 ${`${contact.firstName} ${contact.lastName || ""}`.trim() || "Un lead"} escribió por Messenger`,
-            body: text.slice(0, 200),
-            priority: "HIGH",
-            contactId: contact.id,
-          },
+          data: formFollowup
+            ? { ...formFollowupNotification(contactName, formCampaign, "Messenger"), contactId: contact.id }
+            : {
+                type: "FACEBOOK_REPLY",
+                title: `💬 ${contactName} escribió por Messenger`,
+                body: text.slice(0, 200),
+                priority: "HIGH",
+                contactId: contact.id,
+              },
         }).catch(() => {})
 
         // Answer them. Until now this branch logged the message, rang the bell and
@@ -796,6 +814,19 @@ export async function POST(req: Request) {
           // notified above; nobody answers automatically.
         } else if (isOptOut(text)) {
           await sendFacebookMessage(psid, "Entendido, no te enviaremos más mensajes. ¡Que tengas un buen día! 👋").catch(() => {})
+        } else if (formFollowup) {
+          // Pick up from the form: their info and a booking link, no questions.
+          const reply = await formFollowupReply(contact.firstName, formCampaign)
+          const sentId = await sendFacebookMessage(psid, reply)
+          await prisma.facebookMessage.create({
+            data: {
+              psid, pageId, body: reply, direction: "OUTBOUND",
+              status: sentId ? "SENT" : "FAILED",
+              messageId: sentId || undefined,
+              contactId: contact.id,
+            },
+          }).catch(() => {})
+          if (!sentId) console.error(`[FB form follow-up] reply NOT delivered to ${psid}`)
         } else {
           const result = await generateSocialAIReply(text, {
             firstName: contact.firstName,
