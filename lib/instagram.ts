@@ -98,6 +98,39 @@ export async function replyToComment(commentId: string, text: string): Promise<b
   }
 }
 
+// Public reply under a comment (visible on the post). Used for the short
+// "check your DMs" note — the greeting itself goes by private reply above.
+export async function publicReplyToComment(commentId: string, text: string): Promise<boolean> {
+  const token = getToken()
+  if (!token) return false
+  try {
+    const res = await fetch(`${IG_API}/${commentId}/replies`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+      body: JSON.stringify({ message: text }),
+    })
+    if (!res.ok) console.error("[INSTAGRAM] public comment reply error:", await res.json().catch(() => ({})))
+    return res.ok
+  } catch (e) {
+    console.error("[INSTAGRAM] publicReplyToComment exception:", e)
+    return false
+  }
+}
+
+/**
+ * Deliver the bot greeting to someone who commented.
+ *
+ * A plain DM (recipient.id) to somebody who has never written to the account
+ * is rejected by Instagram — production logs showed "greeting NOT delivered"
+ * for most first-time commenters. The private reply (recipient.comment_id) is
+ * the channel Instagram allows for exactly this case, so it goes first; the
+ * plain DM stays as the fallback for people who already have an open thread.
+ */
+export async function sendCommentGreeting(commentId: string, igUserId: string, text: string): Promise<boolean> {
+  if (await replyToComment(commentId, text)) return true
+  return sendInstagramDM(igUserId, text)
+}
+
 // Verify webhook signature
 export function verifyWebhookToken(token: string): boolean {
   return token === (process.env.INSTAGRAM_WEBHOOK_VERIFY_TOKEN || "lofty_ig_verify")

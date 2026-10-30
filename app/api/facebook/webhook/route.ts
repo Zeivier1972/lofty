@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
+import { readMetaWebhook } from "@/lib/meta-webhook"
 import { prisma } from "@/lib/prisma"
 import { detectKeyword, deliverLeadMagnet } from "@/lib/lead-magnet-delivery"
 import {
@@ -99,7 +100,9 @@ export async function GET(req: Request) {
 
 // POST — Receive Messenger messages, Lead Ad submissions, and page comment events
 export async function POST(req: Request) {
-  const body = await req.json()
+  const read = await readMetaWebhook(req, "facebook")
+  if (read.reject) return read.reject
+  const body = read.body
 
   if (body.object !== "page") return NextResponse.json({ ok: true })
 
@@ -541,6 +544,8 @@ export async function POST(req: Request) {
             campaign: convo.intent ? `Facebook Bot — ${convo.intent.replace(/_/g, " ")}` : "Facebook Bot",
             notes: `FB Comment Bot · PSID: ${psid}${convo.intent ? ` | Interés: ${convo.intent.replace(/_/g, " ")}` : ""}`,
             smsConsent: true,
+            // Already thanked (and sent the guide) in this DM thread.
+            skipWelcome: true,
           })
 
           // Intent tag
@@ -601,7 +606,7 @@ export async function POST(req: Request) {
                 firstName: convo.firstName?.split(" ")[0] || "",
                 phone,
                 email: convo.email || undefined,
-              }, { sms: true, email: !!convo.email, fbDm: false, igDm: false }).catch(e =>
+              }, { sms: false, email: !!convo.email, fbDm: false, igDm: false }).catch(e =>
                 console.error("[FB bot] SMS/email guide delivery failed:", e)
               )
             } else {
@@ -663,8 +668,13 @@ export async function POST(req: Request) {
           }
         }
 
-      } else if (botConfig?.isEnabled && !convo) {
-        // ── No active convo: check if DM text matches a campaign or general keyword ──
+      } else {
+        // ── No active bot convo (or the bot is switched off) ──
+        // This branch used to require the bot to be on, so with it off every
+        // Messenger DM was dropped: no Inbox row, no bell, no reply. Now the
+        // keyword start below stays gated on the bot, and everything else falls
+        // through to the regular DM handling (logged + Catherine notified).
+        const botOn = !!botConfig?.isEnabled
         const normDm = (s: string) => s.toLowerCase()
           .replace(/[áä]/g, "a").replace(/[éë]/g, "e").replace(/[íï]/g, "i")
           .replace(/[óö]/g, "o").replace(/[úü]/g, "u").replace(/ñ/g, "n")
@@ -675,11 +685,11 @@ export async function POST(req: Request) {
           allKws.push(c.keyword)
           return allKws.some((kw: string) => tDm.includes(normDm(kw)))
         })
-        const generalKeywords = botConfig.triggerKeywords
+        const generalKeywords = (botConfig?.triggerKeywords || "")
           .split(",").map((k: string) => k.trim().toLowerCase()).filter(Boolean)
         const matchesGeneral = generalKeywords.some(k => tDm.includes(normDm(k)))
 
-        if (matchedCampaign || matchesGeneral) {
+        if (botOn && !convo && (matchedCampaign || matchesGeneral)) {
           const greeting = matchedCampaign?.greeting
             || `¡Hola! 🏠 Quiero enviarte más información. Solo necesito un par de datos rápidos. ¿Cuál es tu nombre?`
           await prisma.facebookBotConversation.create({
@@ -781,7 +791,10 @@ export async function POST(req: Request) {
         // got total silence from Sofía, which is most organic replies. Facebook's
         // 24h messaging window is open (they just wrote to us), so a free-form reply
         // is allowed here.
-        if (isOptOut(text)) {
+        if (!botOn) {
+          // Bot switched off: the message is in the Inbox and Catherine has been
+          // notified above; nobody answers automatically.
+        } else if (isOptOut(text)) {
           await sendFacebookMessage(psid, "Entendido, no te enviaremos más mensajes. ¡Que tengas un buen día! 👋").catch(() => {})
         } else {
           const result = await generateSocialAIReply(text, {

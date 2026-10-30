@@ -14,6 +14,7 @@ export const dynamic = "force-dynamic"
  */
 
 import { NextResponse } from "next/server"
+import { readMetaWebhook } from "@/lib/meta-webhook"
 import { prisma } from "@/lib/prisma"
 import { detectKeyword, deliverLeadMagnet } from "@/lib/lead-magnet-delivery"
 
@@ -34,7 +35,9 @@ export async function GET(req: Request) {
 // ── Incoming events ───────────────────────────────────────────────────────────
 export async function POST(req: Request) {
   try {
-    const body = await req.json()
+    const read = await readMetaWebhook(req, "social-comments")
+    if (read.reject) return read.reject
+    const body = read.body
 
     // Facebook sends array of entry objects
     const entries = body.entry ?? []
