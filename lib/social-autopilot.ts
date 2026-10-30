@@ -319,7 +319,7 @@ async function generateAndUploadImage(
     console.warn("[social-autopilot] Pexels photo fetch failed, falling back to DALL-E:", err)
   }
 
-  // 2nd priority: DALL-E + Cloudinary
+  // 2nd priority: OpenAI image + Cloudinary
   try {
     const now = new Date()
     const dateStr = now.toISOString().slice(0, 10)
@@ -336,7 +336,10 @@ async function generateAndUploadImage(
     // response shapes are handled: the newer models always return b64_json,
     // and dall-e-3 with no format defaults to a url.
     const response = await getOpenAI().images.generate({
-      model: "dall-e-3",
+      // dall-e-3 was retired by OpenAI ("The model 'dall-e-3' does not exist"),
+      // which sent every post to the stock-photo fallback. gpt-image-1 returns
+      // b64_json, already handled below. OPENAI_IMAGE_MODEL overrides it.
+      model: process.env.OPENAI_IMAGE_MODEL || "gpt-image-1",
       prompt: imagePrompt,
       n: 1,
       size: "1024x1024",
@@ -803,7 +806,10 @@ async function generateSectionImage(prompt: string, folder = "lofty-blog", usedU
   try {
     const angle = BLOG_PHOTO_ANGLES[Math.floor(Math.random() * BLOG_PHOTO_ANGLES.length)]
     const response = await getOpenAI().images.generate({
-      model: "dall-e-3",
+      // dall-e-3 was retired by OpenAI ("The model 'dall-e-3' does not exist"),
+      // which sent every post to the stock-photo fallback. gpt-image-1 returns
+      // b64_json, already handled below. OPENAI_IMAGE_MODEL overrides it.
+      model: process.env.OPENAI_IMAGE_MODEL || "gpt-image-1",
       prompt: `Professional Miami real estate photography. ${prompt}. Perspective: ${angle}. Luxury properties, blue sky, palm trees, modern architecture. Photorealistic, bright daylight, no text or watermarks.`,
       n: 1,
       size: "1024x1024",

@@ -23,7 +23,10 @@ async function generateAndUploadImage(prompt: string): Promise<string | null> {
   ]
   try {
     const response = await openai.images.generate({
-      model: "dall-e-3",
+      // dall-e-3 was retired by OpenAI ("The model 'dall-e-3' does not exist"),
+      // which sent every post to the stock-photo fallback. gpt-image-1 returns
+      // b64_json, already handled below. OPENAI_IMAGE_MODEL overrides it.
+      model: process.env.OPENAI_IMAGE_MODEL || "gpt-image-1",
       prompt: `Professional Miami real estate photography. ${prompt}. Luxury properties, modern architecture. Photorealistic, bright daylight, no text or watermarks.`,
       n: 1,
       size: "1024x1024",
