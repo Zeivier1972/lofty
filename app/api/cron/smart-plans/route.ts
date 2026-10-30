@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { isAssignedToPartner } from "@/lib/referral"
 import { sendEmail } from "@/lib/email"
 import { sendSMS, sendWhatsApp, toE164 } from "@/lib/sms"
+import { nextTextingWindow } from "@/lib/calling-hours"
 
 /**
  * When this contact can next receive an automated text, if not now.
@@ -30,7 +31,11 @@ async function textCooldownUntil(contactId: string, phone: string): Promise<Date
     select: { createdAt: true },
   })
   // Five minutes of slack so the retry lands clearly outside the window.
-  return last ? new Date(last.createdAt.getTime() + gapMs + 5 * 60 * 1000) : null
+  const cooldown = last ? new Date(last.createdAt.getTime() + gapMs + 5 * 60 * 1000) : null
+  // Nurture texts also wait for the lead's daytime (no 3am smart-plan texts).
+  const window = nextTextingWindow(phone, cooldown && cooldown > new Date() ? cooldown : new Date())
+  if (window.getTime() > Date.now() + 60 * 1000) return window
+  return cooldown
 }
 
 // GET /api/cron/smart-plans
@@ -155,7 +160,7 @@ export async function GET(req: Request) {
         }
         if (!deferUntil && !contact.doNotText && contact.phone) {
           const toPhone = toE164(contact.phone)
-          const sid = await sendSMS(toPhone, fill(step.content), undefined, { automated: true, contactId: contact.id })
+          const sid = await sendSMS(toPhone, fill(step.content), undefined, { automated: true, contactId: contact.id, quietHours: true })
           if (sid) {
             // sendSMS already logged the SMSMessage row.
             await prisma.activity.create({
@@ -197,10 +202,10 @@ export async function GET(req: Request) {
               channel = "WHATSAPP"
             } catch (waErr: any) {
               console.warn("[smart-plans] WhatsApp failed despite open session, falling back to SMS:", waErr?.message)
-              await sendSMS(toPhone, filledContent, undefined, { automated: true, contactId: contact.id }).catch(e => console.error("[smart-plans] SMS also failed:", e))
+              await sendSMS(toPhone, filledContent, undefined, { automated: true, contactId: contact.id, quietHours: true }).catch(e => console.error("[smart-plans] SMS also failed:", e))
             }
           } else {
-            await sendSMS(toPhone, filledContent, undefined, { automated: true, contactId: contact.id }).catch(e => console.error("[smart-plans] SMS failed:", e))
+            await sendSMS(toPhone, filledContent, undefined, { automated: true, contactId: contact.id, quietHours: true }).catch(e => console.error("[smart-plans] SMS failed:", e))
           }
 
           if (!deferUntil) await prisma.activity.create({

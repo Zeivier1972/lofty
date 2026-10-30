@@ -88,3 +88,32 @@ export function isWithinCallingWindow(phone: string | null | undefined, now: Dat
   const earliest = isEasternAreaCode(phone) ? 8 : 11
   return hour >= earliest && hour < 21
 }
+
+/**
+ * May an automated *text* go out to this number right now?
+ *
+ * Nurture texts are held to daytime in the lead's own clock: 9am–8pm for
+ * Eastern numbers (Florida's telephone-solicitation law stops at 8pm), noon–8pm
+ * ET for other US zones (9am Pacific), and 10am–8pm ET for international
+ * numbers — most of Catherine's are Colombia and the rest of Latin America,
+ * which sit at or an hour behind Eastern.
+ */
+export function isWithinTextingWindow(phone: string | null | undefined, now: Date = new Date()): boolean {
+  const { hour } = easternParts(now)
+  const digits = String(phone || "").replace(/\D/g, "")
+  const international = !areaCodeOf(phone) && digits.length > 10
+  const earliest = isEasternAreaCode(phone) ? 9 : international ? 10 : 12
+  return hour >= earliest && hour < 20
+}
+
+/** The next moment (on the hour) the texting window is open for this number. */
+export function nextTextingWindow(phone: string | null | undefined, now: Date = new Date()): Date {
+  if (isWithinTextingWindow(phone, now)) return now
+  const t = new Date(now)
+  t.setUTCMinutes(5, 0, 0)
+  for (let i = 0; i < 48; i++) {
+    t.setTime(t.getTime() + 3600 * 1000)
+    if (isWithinTextingWindow(phone, t)) return t
+  }
+  return t
+}

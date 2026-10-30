@@ -410,3 +410,86 @@ export async function handleLeadEngaged(contactId: string, channel: string, mess
     },
   })
 }
+
+/** Stages at or past a booked appointment — a booking never moves a lead back. */
+const AT_OR_PAST_APPOINTMENT = ["Appointment Set", "Showing", "Pending", "Pre approval", "Won", "Closed"]
+
+/**
+ * A lead booked a call/appointment: the sales sequences have done their job.
+ * Stop everything still asking them to book (drips, Sofía's retry calls) and
+ * move them to Appointment Set, so nobody gets "¿agendamos?" after agendar.
+ */
+export async function handleAppointmentBooked(contactId: string) {
+  const [calls, paused] = await Promise.all([
+    prisma.scheduledCall.updateMany({ where: { contactId, status: "PENDING" }, data: { status: "CANCELLED" } }),
+    // Before the move, so plans the Appointment Set stage enrolls stay active.
+    prisma.smartPlanEnrollment.updateMany({ where: { contactId, status: "ACTIVE" }, data: { status: "PAUSED" } }),
+  ])
+
+  const current = await getCurrentStage(contactId)
+  if (!AT_OR_PAST_APPOINTMENT.includes(current?.name ?? "")) {
+    const pipeline = await getPipeline()
+    const stage = pipeline?.stages.find(s => s.name === "Appointment Set")
+    if (stage) await moveToStage(contactId, stage.id, "Appointment Set")
+  }
+
+  if (calls.count || paused.count) {
+    await prisma.activity.create({
+      data: {
+        type: "NOTE",
+        title: "Cita agendada — secuencias detenidas",
+        description: `Se pausaron ${paused.count} secuencia(s) y se cancelaron ${calls.count} llamada(s) de Sofía.`,
+        contactId,
+      },
+    }).catch(() => {})
+  }
+}
+
+/**
+ * Warm leads whose plan was paused by a reply, and who then went quiet, get
+ * the plan back. Without this, one "gracias" paused the Warm → Hot sequence
+ * forever and the lead was never asked for the call again.
+ */
+export async function resumeQuietWarmPlans(quietDays = 5): Promise<number> {
+  const since = new Date(Date.now() - quietDays * 86400000)
+  const rows = await prisma.smartPlanEnrollment.findMany({
+    where: { status: "PAUSED", plan: { isActive: true, trigger: "PIPELINE_STAGE:Warm" } },
+    select: { id: true, contactId: true },
+    take: 200,
+  })
+  let resumed = 0
+  for (const r of rows) {
+    const stage = await getCurrentStage(r.contactId)
+    if (stage?.name !== "Warm") continue
+    const [inbound, appt] = await Promise.all([
+      Promise.all([
+        prisma.sMSMessage.findFirst({ where: { contactId: r.contactId, direction: "INBOUND", createdAt: { gte: since } }, select: { id: true } }),
+        prisma.whatsAppMessage.findFirst({ where: { contactId: r.contactId, direction: "INBOUND", createdAt: { gte: since } }, select: { id: true } }),
+        prisma.email.findFirst({ where: { contactId: r.contactId, direction: "INBOUND", createdAt: { gte: since } }, select: { id: true } }),
+        prisma.facebookMessage.findFirst({ where: { contactId: r.contactId, direction: "INBOUND", createdAt: { gte: since } }, select: { id: true } }),
+      ]),
+      prisma.appointment.findFirst({
+        where: { contactId: r.contactId, status: { not: "CANCELLED" }, startTime: { gte: new Date(Date.now() - 30 * 86400000) } },
+        select: { id: true },
+      }),
+    ])
+    if (inbound.some(Boolean) || appt) continue
+    await prisma.smartPlanEnrollment.update({ where: { id: r.id }, data: { status: "ACTIVE", nextStepAt: new Date() } })
+    resumed++
+  }
+  return resumed
+}
+
+/** Stages a buy-now signal may promote to Hot. Campaign/segment stages are left alone. */
+const PROMOTABLE_TO_HOT = ["New", "New Leads", ...CONTACTED_STAGES, "Drip Campaign", "Warm"]
+
+/** Buy-now signals detected: move the lead to Hot (only from early stages). Returns true if moved. */
+export async function markHot(contactId: string): Promise<boolean> {
+  const current = await getCurrentStage(contactId)
+  if (current && !PROMOTABLE_TO_HOT.includes(current.name)) return false
+  const pipeline = await getPipeline()
+  const hot = pipeline?.stages.find(s => s.name === "Hot")
+  if (!hot) return false
+  await moveToStage(contactId, hot.id, "Hot")
+  return true
+}

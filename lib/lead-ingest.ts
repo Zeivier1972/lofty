@@ -289,7 +289,12 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
         if (!plan) return
         const already = await prisma.smartPlanEnrollment.findFirst({ where: { contactId: contact.id, planId: plan.id } })
         if (!already) {
-          await prisma.smartPlanEnrollment.create({ data: { contactId: contact.id, planId: plan.id, status: "ACTIVE" } })
+          // nextStepAt is required: the smart-plans cron only picks up rows
+          // whose nextStepAt has passed, so a null here never fires at all.
+          const first = await prisma.smartPlanStep.findFirst({ where: { planId: plan.id }, orderBy: { order: "asc" }, select: { delay: true } })
+          await prisma.smartPlanEnrollment.create({
+            data: { contactId: contact.id, planId: plan.id, status: "ACTIVE", nextStepAt: new Date(Date.now() + (first?.delay ?? 0) * 86400000) },
+          })
           console.log(`[INGEST] Enrolled ${contact.id} in plan: ${plan.name}`)
         }
       })

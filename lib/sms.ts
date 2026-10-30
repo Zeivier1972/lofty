@@ -1,6 +1,7 @@
 import twilio from "twilio"
 import { prisma } from "@/lib/prisma"
 import { wasRecentlySent } from "@/lib/message-dedupe"
+import { isWithinTextingWindow } from "@/lib/calling-hours"
 
 // Normalize any stored phone to E.164 WITHOUT assuming it's a US number.
 // The old pattern (`+1` + last 10 digits) silently converted international
@@ -145,7 +146,7 @@ export async function sendSMS(
   to: string,
   body: string,
   mediaUrls?: string[],
-  opts?: { automated?: boolean; contactId?: string; minGapHours?: number },
+  opts?: { automated?: boolean; contactId?: string; minGapHours?: number; quietHours?: boolean },
 ): Promise<string | null> {
   to = toE164(to) || to
   const allDigits = (to || "").replace(/\D/g, "")
@@ -191,6 +192,14 @@ export async function sendSMS(
       }
     }
   } catch { /* guard is best-effort — never break sending for everyone */ }
+
+  // Nurture texts (callers pass quietHours) only go out in the lead's daytime.
+  // Replies and instant confirmations don't pass it: the person just wrote or
+  // acted, so answering them is expected whatever the hour.
+  if (opts?.quietHours && !isWithinTextingWindow(to)) {
+    console.log(`[SMS QUIET HOURS] ${to}: nurture text held — outside the texting window`)
+    return null
+  }
 
   // Global kill switch: when the agent pauses automated texting (Settings →
   // to control cost/budget), no automated SMS goes out. Manual sends unaffected.

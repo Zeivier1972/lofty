@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { easternWallTime } from "@/lib/eastern-time"
 
 function timeToMinutes(t: string): number {
   const [h, m] = t.split(":").map(Number)
@@ -56,8 +57,8 @@ export async function GET(req: Request) {
     }
 
     // Get existing appointments for this date
-    const dayStart = new Date(dateStr + "T00:00:00")
-    const dayEnd = new Date(dateStr + "T23:59:59")
+    const dayStart = easternWallTime(dateStr, "00:00")
+    const dayEnd = easternWallTime(dateStr, "23:59", "59")
     const bookedAppointments = await prisma.appointment.findMany({
       where: {
         startTime: { gte: dayStart, lte: dayEnd },
@@ -87,8 +88,8 @@ export async function GET(req: Request) {
       if (blockedByTime) continue
 
       // Check against booked appointments
-      const slotDate = new Date(`${dateStr}T${slotStart}:00`)
-      const slotEndDate = new Date(`${dateStr}T${slotEnd}:00`)
+      const slotDate = easternWallTime(dateStr, slotStart)
+      const slotEndDate = easternWallTime(dateStr, slotEnd)
       const isBooked = bookedAppointments.some(apt => {
         const aptStart = new Date(apt.startTime)
         const aptEnd = new Date(apt.endTime)
