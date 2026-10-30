@@ -17,6 +17,7 @@ import {
   parseIntent,
 } from "@/lib/facebook"
 import { ingestLead, enrollContactInPlanByName } from "@/lib/lead-ingest"
+import { detectProject, projectReply, type Project } from "@/lib/projects"
 import { isFormFollowup, findFormLead, contactCampaign, formFollowupReply, formFollowupNotification } from "@/lib/form-followup"
 import { generateSocialAIReply, getMatchingProperties, getMatchingPreConstruction, notifyCatherineAboutLead } from "@/lib/social-ai-chat"
 
@@ -50,6 +51,13 @@ const normKw = (s: string) => s.toLowerCase()
 
 // Match an incoming message to an active campaign / lead-magnet trigger keyword.
 // Returns the canonical campaign keyword (so we deliver the right PDF).
+/** Sofía's reply to a DM that names one of our projects: its page + a call. */
+async function projectAnswer(p: Project, firstName: string | null | undefined): Promise<string> {
+  const cfg = await prisma.aIConfig.findFirst({ select: { calendlyUrl: true } }).catch(() => null)
+  const bookUrl = cfg?.calendlyUrl || `${process.env.NEXT_PUBLIC_APP_URL || "https://www.catherinegomezrealtor.com"}/book`
+  return projectReply(p, firstName, bookUrl)
+}
+
 async function matchTriggerKeyword(text: string): Promise<string | null> {
   const t = normKw(text)
   try {
@@ -406,8 +414,19 @@ export async function POST(req: Request) {
 
       if (!text) continue
 
+      // A DM that names one of our projects ("me interesa House of Wellness")
+      // gets that project's page right away — never the sign-up questions
+      // (name → email → phone) about something they already told us.
+      const project = detectProject(text)
+
       // Check if this PSID has an active bot conversation
-      const convo = await prisma.facebookBotConversation.findUnique({ where: { psid } })
+      let convo = await prisma.facebookBotConversation.findUnique({ where: { psid } })
+      if (project && convo && convo.state.startsWith("ASKED_")) {
+        // Mid sign-up and they asked about a project instead of answering:
+        // drop the questionnaire and answer them (handled as a regular DM below).
+        await prisma.facebookBotConversation.delete({ where: { psid } }).catch(() => {})
+        convo = null
+      }
 
       if (botConfig?.isEnabled && convo) {
         // ── Bot conversation state machine ──────────────────────────────────
@@ -448,6 +467,11 @@ export async function POST(req: Request) {
                 continue
               }
             }
+          }
+
+          if (project) {
+            await sendFacebookMessage(psid, await projectAnswer(project, convo.firstName))
+            continue
           }
 
           const result = await generateSocialAIReply(text, {
@@ -693,7 +717,7 @@ export async function POST(req: Request) {
         // already have their details, so never start the name-asking bot on it.
         const formFollowup = isFormFollowup(text)
 
-        if (botOn && !convo && !formFollowup && (matchedCampaign || matchesGeneral)) {
+        if (botOn && !convo && !formFollowup && !project && (matchedCampaign || matchesGeneral)) {
           const greeting = matchedCampaign?.greeting
             || `¡Hola! 🏠 Quiero enviarte más información. Solo necesito un par de datos rápidos. ¿Cuál es tu nombre?`
           await prisma.facebookBotConversation.create({
@@ -797,7 +821,9 @@ export async function POST(req: Request) {
             ? { ...formFollowupNotification(contactName, formCampaign, "Messenger"), contactId: contact.id }
             : {
                 type: "FACEBOOK_REPLY",
-                title: `💬 ${contactName} escribió por Messenger`,
+                title: project
+                  ? `💬 ${contactName} preguntó por ${project.name} (Messenger)`
+                  : `💬 ${contactName} escribió por Messenger`,
                 body: text.slice(0, 200),
                 priority: "HIGH",
                 contactId: contact.id,
@@ -814,6 +840,19 @@ export async function POST(req: Request) {
           // notified above; nobody answers automatically.
         } else if (isOptOut(text)) {
           await sendFacebookMessage(psid, "Entendido, no te enviaremos más mensajes. ¡Que tengas un buen día! 👋").catch(() => {})
+        } else if (project && !formFollowup) {
+          // Named a project: send its page, no questions.
+          const reply = await projectAnswer(project, contact.firstName)
+          const sentId = await sendFacebookMessage(psid, reply)
+          await prisma.facebookMessage.create({
+            data: {
+              psid, pageId, body: reply, direction: "OUTBOUND",
+              status: sentId ? "SENT" : "FAILED",
+              messageId: sentId || undefined,
+              contactId: contact.id,
+            },
+          }).catch(() => {})
+          if (!sentId) console.error(`[FB project DM] reply NOT delivered to ${psid}`)
         } else if (formFollowup) {
           // Pick up from the form: their info and a booking link, no questions.
           const reply = await formFollowupReply(contact.firstName, formCampaign)

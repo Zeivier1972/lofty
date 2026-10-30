@@ -8,6 +8,7 @@ import {
   sendInstagramDM, replyToComment, verifyWebhookToken, sendCommentGreeting, publicReplyToComment,
   extractEmail, extractPhone, isOptOut, getInstagramUserProfile,
 } from "@/lib/instagram"
+import { detectProject, projectReply } from "@/lib/projects"
 import { isFormFollowup, findFormLead, contactCampaign, formFollowupReply, formFollowupNotification } from "@/lib/form-followup"
 import { ingestLead } from "@/lib/lead-ingest"
 import { generateSocialAIReply, getMatchingProperties, getMatchingPreConstruction, notifyCatherineAboutLead } from "@/lib/social-ai-chat"
@@ -23,6 +24,34 @@ const INTENT_TAG_COLORS: Record<string, string> = {
   comprador_vivienda: "#22C55E",
   inversionista_airbnb: "#8B5CF6",
   solo_explorando: "#94A3B8",
+}
+
+/** Send a project's page to an Instagram DM and tell Catherine who asked. */
+async function answerProjectDM(
+  igUserId: string,
+  project: NonNullable<ReturnType<typeof detectProject>>,
+  contact: { id: string; firstName: string; lastName: string | null } | null,
+  convoName: string | null,
+) {
+  const cfg = await prisma.aIConfig.findFirst({ select: { calendlyUrl: true } }).catch(() => null)
+  const bookUrl = cfg?.calendlyUrl || `${process.env.NEXT_PUBLIC_APP_URL || "https://www.catherinegomezrealtor.com"}/book`
+  const sent = await sendInstagramDM(igUserId, projectReply(project, contact?.firstName || convoName, bookUrl))
+  if (!sent) console.error(`[IG project DM] reply NOT delivered to ${igUserId}`)
+  const who = contact ? `${contact.firstName} ${contact.lastName || ""}`.trim() : convoName || "Alguien"
+  await prisma.aINotification.create({
+    data: {
+      type: "INSTAGRAM_REPLY",
+      title: `💬 ${who} preguntó por ${project.name} (Instagram)`,
+      body: sent ? "Sofía le envió el link del proyecto y el enlace para agendar con Catherine." : "No se pudo enviar el link automáticamente — respóndele desde Instagram.",
+      priority: "HIGH",
+      ...(contact && { contactId: contact.id }),
+    },
+  }).catch(() => {})
+  if (contact) {
+    await prisma.activity.create({
+      data: { type: "NOTE", title: `Preguntó por ${project.name} en Instagram — se le envió el link`, contactId: contact.id },
+    }).catch(() => {})
+  }
 }
 
 // GET — Meta webhook verification handshake
@@ -194,6 +223,27 @@ export async function POST(req: Request) {
         if (!igUserId || igUserId === accountId || msg.message?.is_echo || !text) continue
 
         let convo = await prisma.instagramConversation.findUnique({ where: { igUserId } })
+
+        // A DM that names one of our projects ("me interesa House of Wellness")
+        // gets that project's page right away — not the sign-up questions about
+        // something they already told us. Mid sign-up, the questionnaire is
+        // dropped; once COMPLETE, it replaces the generic AI answer.
+        const project = detectProject(text)
+        if (project && convo && convo.state !== "OPTED_OUT") {
+          if (convo.state.startsWith("ASKED_")) {
+            await prisma.instagramConversation.delete({ where: { igUserId } }).catch(() => {})
+          }
+          const contact = convo.contactId
+            ? await prisma.contact.findUnique({ where: { id: convo.contactId }, select: { id: true, firstName: true, lastName: true } })
+            : await prisma.contact.findFirst({ where: { instagramIgsid: igUserId }, select: { id: true, firstName: true, lastName: true } })
+          await answerProjectDM(igUserId, project, contact, convo.firstName)
+          continue
+        }
+        if (project && !convo) {
+          const contact = await prisma.contact.findFirst({ where: { instagramIgsid: igUserId }, select: { id: true, firstName: true, lastName: true } })
+          await answerProjectDM(igUserId, project, contact, null)
+          continue
+        }
 
         // Meta's pre-filled "Completé el formulario…" after an instant form: we
         // already have their details, so answer from the form instead of
