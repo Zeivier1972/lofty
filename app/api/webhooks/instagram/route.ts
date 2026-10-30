@@ -1,10 +1,11 @@
 export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
+import { readMetaWebhook } from "@/lib/meta-webhook"
 import { prisma } from "@/lib/prisma"
 import { detectKeyword, deliverLeadMagnet } from "@/lib/lead-magnet-delivery"
 import {
-  sendInstagramDM, replyToComment, verifyWebhookToken,
+  sendInstagramDM, replyToComment, verifyWebhookToken, sendCommentGreeting, publicReplyToComment,
   extractEmail, extractPhone, isOptOut,
 } from "@/lib/instagram"
 import { ingestLead } from "@/lib/lead-ingest"
@@ -40,7 +41,9 @@ export async function GET(req: Request) {
 // POST — Incoming Instagram events
 export async function POST(req: Request) {
   try {
-    const body = await req.json()
+    const read = await readMetaWebhook(req, "instagram")
+    if (read.reject) return read.reject
+    const body = read.body
 
     if (body.object !== "instagram") {
       return NextResponse.json({ ok: true })
@@ -107,6 +110,9 @@ export async function POST(req: Request) {
         const commentId: string = val?.id
 
         if (!igUserId || !commentId) continue
+        // The account's own comments (Auto-Pilot posts "Comenta MIAMI" under
+        // every post) matched the keywords and made the bot DM itself.
+        if (igUserId === entry.id || igUserId === process.env.INSTAGRAM_ACCOUNT_ID) continue
         if (!matchesKeyword(commentText)) continue
 
         const existing = await prisma.instagramConversation.findUnique({ where: { igUserId } })
@@ -125,12 +131,12 @@ export async function POST(req: Request) {
           const quietMs = Date.now() - new Date(existing.updatedAt).getTime()
           if (existing.state === "ASKED_NAME" && !existing.firstName && quietMs > RESEND_GREETING_AFTER_MS) {
             const { greeting: retryGreeting } = await buildGreeting(commentText)
-            if (await sendInstagramDM(igUserId, retryGreeting)) {
+            if (await sendCommentGreeting(commentId, igUserId, retryGreeting)) {
               // Touching the row restarts the quiet window above.
               await prisma.instagramConversation
                 .update({ where: { igUserId }, data: { igUsername: igUsername || existing.igUsername } })
                 .catch(() => {})
-              replyToComment(commentId, "¡Hola! Te acabo de enviar un mensaje privado 📩").catch(() => {})
+              publicReplyToComment(commentId, "¡Hola! Te acabo de enviar un mensaje privado 📩").catch(() => {})
             }
             continue
           }
@@ -150,7 +156,7 @@ export async function POST(req: Request) {
           data: { igUserId, igUsername, state: "ASKED_NAME", sourceCommentId: commentId, campaignKeyword },
         })
 
-        if (!(await sendInstagramDM(igUserId, greeting))) {
+        if (!(await sendCommentGreeting(commentId, igUserId, greeting))) {
           // Leaving the row behind strands this person: every later comment
           // would take the branch above and answer "ya te escribí" about a DM
           // that never arrived. Roll it back so their next comment starts
@@ -173,7 +179,9 @@ export async function POST(req: Request) {
           },
         }).catch(() => {})
 
-        replyToComment(commentId, "¡Hola! Te acabo de enviar un mensaje privado 📩").catch(() => {})
+        // Public, so the commenter sees it on the post: the greeting itself
+        // already used the comment's one private reply.
+        publicReplyToComment(commentId, "¡Hola! Te acabo de enviar un mensaje privado 📩").catch(() => {})
       }
 
       // ── DM events ─────────────────────────────────────────────────────────
@@ -315,6 +323,8 @@ export async function POST(req: Request) {
               : "Instagram Bot",
             notes: `IG: @${convo.igUsername || igUserId}`,
             smsConsent: true,
+            // Already thanked (and sent the guide) in this DM thread.
+            skipWelcome: true,
           })
 
           await prisma.contact.update({
@@ -354,13 +364,14 @@ export async function POST(req: Request) {
                   `📚 Aquí está tu guía "${magnet.title}":\n${magnet.guideUrl}\n\n¡Cualquier pregunta, escríbeme aquí! 😊`
                 )
               }
-              // Also send via SMS and email (fire and forget)
+              // Email copy of the guide (fire and forget). No SMS: the guide was
+              // just sent in the DM, and a text on top only added cost and noise.
               deliverLeadMagnet(leadKw, {
                 id: contactId,
                 firstName: nameParts[0],
                 phone,
                 email: convo.email || undefined,
-              }, { sms: true, email: !!convo.email, fbDm: false, igDm: false }).catch(e =>
+              }, { sms: false, email: !!convo.email, fbDm: false, igDm: false }).catch(e =>
                 console.error("[IG bot] SMS/email guide delivery failed:", e)
               )
             } else {

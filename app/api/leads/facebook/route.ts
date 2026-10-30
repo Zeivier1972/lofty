@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
+import { readMetaWebhook } from "@/lib/meta-webhook"
 import { prisma } from "@/lib/prisma"
 import { ingestLead } from "@/lib/lead-ingest"
 
@@ -33,7 +34,9 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json()
+    const read = await readMetaWebhook(req, "leads-facebook")
+    if (read.reject) return read.reject
+    const body = read.body
 
     for (const entry of body.entry || []) {
       for (const change of entry.changes || []) {
