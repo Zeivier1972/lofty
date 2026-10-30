@@ -6,8 +6,9 @@ import { prisma } from "@/lib/prisma"
 import { detectKeyword, deliverLeadMagnet } from "@/lib/lead-magnet-delivery"
 import {
   sendInstagramDM, replyToComment, verifyWebhookToken, sendCommentGreeting, publicReplyToComment,
-  extractEmail, extractPhone, isOptOut,
+  extractEmail, extractPhone, isOptOut, getInstagramUserProfile,
 } from "@/lib/instagram"
+import { isFormFollowup, findFormLead, contactCampaign, formFollowupReply, formFollowupNotification } from "@/lib/form-followup"
 import { ingestLead } from "@/lib/lead-ingest"
 import { generateSocialAIReply, getMatchingProperties, getMatchingPreConstruction, notifyCatherineAboutLead } from "@/lib/social-ai-chat"
 
@@ -193,6 +194,44 @@ export async function POST(req: Request) {
         if (!igUserId || igUserId === accountId || msg.message?.is_echo || !text) continue
 
         let convo = await prisma.instagramConversation.findUnique({ where: { igUserId } })
+
+        // Meta's pre-filled "Completé el formulario…" after an instant form: we
+        // already have their details, so answer from the form instead of
+        // starting the bot that asks for their name.
+        if (!convo && isFormFollowup(text)) {
+          let contact = await prisma.contact.findFirst({ where: { instagramIgsid: igUserId } })
+          let campaign: string | null = null
+          const profile = await getInstagramUserProfile(igUserId)
+          if (!contact) {
+            const [first, ...rest] = (profile?.name || "").trim().split(/\s+/)
+            const lead = await findFormLead("instagram", first, rest.join(" "))
+            if (lead) {
+              contact = await prisma.contact.findUnique({ where: { id: lead.id } })
+              campaign = lead.campaign
+              await prisma.contact.update({
+                where: { id: lead.id },
+                data: { instagramIgsid: igUserId, ...(profile?.username ? { socialInstagram: profile.username } : {}) },
+              }).catch(() => {})
+            }
+          } else {
+            campaign = await contactCampaign(contact.id)
+          }
+
+          const sent = await sendInstagramDM(igUserId, await formFollowupReply(contact?.firstName || profile?.name || null, campaign))
+          if (!sent) console.error(`[IG form follow-up] reply NOT delivered to ${igUserId}`)
+          const name = contact
+            ? `${contact.firstName} ${contact.lastName || ""}`.trim()
+            : profile?.username ? `@${profile.username}` : "Un lead"
+          await prisma.aINotification.create({
+            data: { ...formFollowupNotification(name, campaign, "Instagram"), contactId: contact?.id },
+          }).catch(() => {})
+          if (contact) {
+            await prisma.activity.create({
+              data: { type: "NOTE", title: "Escribió por Instagram después de llenar el formulario", description: text.slice(0, 120), contactId: contact.id },
+            }).catch(() => {})
+          }
+          continue
+        }
 
         // No conversation — only start one if they used a keyword
         if (!convo) {

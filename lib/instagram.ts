@@ -36,6 +36,20 @@ export async function sendInstagramDM(igUserId: string, text: string): Promise<b
   }
 }
 
+// The sender's display name and @username (Instagram API with Instagram Login).
+export async function getInstagramUserProfile(igUserId: string): Promise<{ name: string; username: string } | null> {
+  const token = getToken()
+  if (!token) return null
+  try {
+    const res = await fetch(`${IG_API}/${igUserId}?fields=name,username`, {
+      headers: { "Authorization": `Bearer ${token}` },
+    })
+    if (!res.ok) return null
+    const d = await res.json()
+    return { name: d.name || "", username: d.username || "" }
+  } catch { return null }
+}
+
 type QuickReply = { title: string; payload: string }
 
 export async function sendInstagramDMWithQuickReplies(
