@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk"
 import { prisma } from "@/lib/prisma"
+import { projectsForPrompt } from "@/lib/projects"
 import { sendSMS } from "@/lib/sms"
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -79,6 +80,9 @@ Reglas:
 - Si quieren hablar con ${realtorName}, confirma que le avisarás${calendlyUrl ? ` y que pueden agendar directo: ${calendlyUrl}` : ""}
 - Si quieren avanzar o agendar, dirígelos con ${realtorName}: ${realtorPhone}${scheduleLine}
 - NUNCA vuelvas a pedir nombre, email ni teléfono — ya los tenemos
+- Si mencionan uno de estos proyectos, comparte SU link y no le preguntes qué busca — ya lo dijo:
+${projectsForPrompt()}
+- No hagas preguntas que el lead ya respondió en la conversación
 - El gentilicio de Costa Rica es "costarricense". NUNCA digas "costaricano" ni "costaricanos"
 - No asumas el país del lead a menos que lo confirme
 - Responde siempre en español`,

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import { detectProject, projectUrl } from "@/lib/projects"
 
 /**
  * "¡Hola! Completé el formulario y me gustaría obtener más información."
@@ -73,12 +74,8 @@ export async function contactCampaign(contactId: string): Promise<string | null>
 
 /** The landing page for a campaign's project, or the projects index. */
 function projectPage(campaign: string | null): { label: string; url: string } {
-  const c = norm(campaign || "")
-  if (c.includes("wellness")) return { label: "House of Wellness", url: `${BASE}/house-of-wellness` }
-  if (c.includes("parkside")) return { label: "Parkside Residences", url: `${BASE}/parkside` }
-  if (c.includes("millenia")) return { label: "Millenia Park", url: `${BASE}/inversion/millenia-park` }
-  if (c.includes("gz")) return { label: "GZ Tower", url: `${BASE}/inversion/gz-tower` }
-  return { label: "nuestros proyectos", url: `${BASE}/proyectos` }
+  const p = detectProject(campaign)
+  return p ? { label: p.name, url: projectUrl(p) } : { label: "nuestros proyectos", url: `${BASE}/proyectos` }
 }
 
 export async function formFollowupReply(firstName: string | null, campaign: string | null): Promise<string> {

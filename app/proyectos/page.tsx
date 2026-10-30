@@ -1,12 +1,13 @@
 import type { Metadata } from "next"
 import Link from "next/link"
+import { PROJECTS } from "@/lib/projects"
 
 /**
  * /proyectos — one page that links every project landing page on the site,
  * reached from the "PROJECTS" tab in the home navigation.
  *
- * Static on purpose: each card's copy is taken from that project page's own
- * title/description, so update both together when a project changes.
+ * The cards come from lib/projects.ts — the same list Sofía uses to answer
+ * DMs about a project — so update that file when a project changes.
  */
 
 const BASE = "https://www.catherinegomezrealtor.com"
@@ -55,64 +56,6 @@ export const metadata: Metadata = {
     images: [`${BASE}/parkside/fachada-atardecer.jpg`],
   },
 }
-
-type Project = {
-  name: string
-  place: string
-  href: string
-  img: string
-  alt: string
-  summary: string
-  highlight: string
-}
-
-const PROJECTS: Project[] = [
-  {
-    name: "Parkside Residences at Brickell",
-    place: "Brickell, Miami",
-    href: "/parkside",
-    img: "/parkside/fachada-atardecer.jpg",
-    alt: "Parkside Residences at Brickell al atardecer, edificio boutique de 8 pisos frente a Simpson Park",
-    summary: "Edificio boutique de 8 pisos con 187 residencias amuebladas frente a Simpson Park, con 16,500 pies² de amenidades y programa de administración de alquileres.",
-    highlight: "Estudios desde $490,000",
-  },
-  {
-    name: "House of Wellness",
-    place: "Brickell, Miami",
-    href: "/house-of-wellness",
-    img: "/house-of-wellness/hero-brickell.jpg",
-    alt: "House of Wellness Brickell: terraza en la azotea con piscina y vista al skyline de Miami",
-    summary: "34 pisos y 656 residencias en el corazón de Brickell, con más de 22,000 pies² de amenidades de bienestar: spa, gimnasio, yoga y piscina en la azotea.",
-    highlight: "Estudios desde $419,900",
-  },
-  {
-    name: "Millenia Park",
-    place: "Orlando",
-    href: "/inversion/millenia-park",
-    img: "/inversion/millenia-park/hero.jpg",
-    alt: "Millenia Park en Orlando, proyecto de preconstrucción con renta garantizada",
-    summary: "Preconstrucción con lease-back del 7% y renta garantizada por 2 años, a 1 milla de The Mall at Millenia y 2 de Epic Universe.",
-    highlight: "Desde $289,900",
-  },
-  {
-    name: "GZ Tower",
-    place: "Orlando",
-    href: "/inversion/gz-tower",
-    img: "/inversion/gz-tower/hero.jpg",
-    alt: "GZ Tower en Orlando, hotel-residencias amuebladas cerca de Universal Studios",
-    summary: "357 residencias amuebladas tipo hotel a una milla de Universal Studios, con unidades lockout de dos llaves y programa de administración.",
-    highlight: "Desde $219,900",
-  },
-  {
-    name: "Guía: invertir en Miami desde Costa Rica",
-    place: "One Twenty Brickell, Miami",
-    href: "/guias/inversionista-costa-rica",
-    img: "/guias/one-twenty-brickell/01-exterior.jpg",
-    alt: "Exterior de One Twenty Brickell en Miami",
-    summary: "Cómo comprar preconstrucción en Miami siendo extranjero: financiamiento, rentabilidad y el proceso paso a paso, con One Twenty Brickell como ejemplo.",
-    highlight: "Guía para inversionistas",
-  },
-]
 
 const FAQS: { q: string; a: string }[] = [
   {
