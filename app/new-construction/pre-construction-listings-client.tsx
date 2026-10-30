@@ -1,5 +1,6 @@
 "use client"
 
+import { NEW_CONSTRUCTION_CITIES } from "@/lib/new-construction-cities"
 import { useState, useCallback, useEffect } from "react"
 import Link from "next/link"
 import {
@@ -32,11 +33,7 @@ interface Props {
   agentPhone: string | null
 }
 
-const CITIES = [
-  "All Cities", "Miami", "Miami Beach", "Doral", "Coral Gables",
-  "Aventura", "Sunny Isles Beach", "Brickell", "Edgewater", "Wynwood",
-  "Hialeah", "Kendall", "Pinecrest", "South Miami",
-]
+const CITIES = ["All Cities", ...NEW_CONSTRUCTION_CITIES]
 
 const YEAR_OPTIONS = [
   { label: "All Years", value: "" },
@@ -234,7 +231,8 @@ export default function PreConstructionListingsClient({ initialResults, calendly
     const p = new URLSearchParams()
     p.set("limit", "24")
     p.set("minYear", minYear || "2025")
-    if (city && city !== "All Cities") p.set("city", city)
+    // "All Cities" = every city in the list; no city at all returns nothing.
+    p.set("city", city && city !== "All Cities" ? city : NEW_CONSTRUCTION_CITIES.join(","))
     if (selectedPrice.min != null) p.set("minPrice", String(selectedPrice.min))
     if (selectedPrice.max != null) p.set("maxPrice", String(selectedPrice.max))
     if (minBeds != null) p.set("minBeds", String(minBeds))

@@ -1,5 +1,6 @@
 import { searchIdxListings, buildDisplayAddress, fetchPrimaryPhotos } from "@/lib/bridge"
 import { prisma } from "@/lib/prisma"
+import { NEW_CONSTRUCTION_CITIES } from "@/lib/new-construction-cities"
 import type { Metadata } from "next"
 import PreConstructionListingsClient from "./pre-construction-listings-client"
 
@@ -32,7 +33,7 @@ export const metadata: Metadata = {
 export default async function PreConstructionPage() {
   const [config, listings] = await Promise.all([
     prisma.aIConfig.findFirst({ select: { calendlyUrl: true, realtorPhone: true, realtorName: true } }).catch(() => null),
-    searchIdxListings({ minYear: 2025, limit: 24, sort: "price_asc" }).catch(() => []),
+    searchIdxListings({ cities: NEW_CONSTRUCTION_CITIES, minYear: 2025, limit: 24, sort: "price_asc" }).catch(() => []),
   ])
 
   const keys = listings.map((l: any) => l.ListingKey).filter(Boolean)
