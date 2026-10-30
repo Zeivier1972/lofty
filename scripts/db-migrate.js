@@ -1251,7 +1251,7 @@ async function seedWarmToHotPlan(db) {
             order: 0,
             type: "SMS",
             delay: 1,  // day 1
-            content: "Hola {first_name}! Soy Sofía 😊 Catherine apartó 2 espacios esta semana para hablar contigo 15 minutitos sobre lo que buscas. ¿Te viene mejor hoy en la tarde o mañana? También puedes elegir tu hora aquí: {calendly_url}",
+            content: "Hola {first_name}! Soy Sofía 😊 Catherine apartó 2 espacios para hablar contigo 15 minutitos sobre lo que buscas. {time_options} También puedes elegir otra hora aquí: {calendly_url}",
           },
           {
             order: 1,
@@ -1501,6 +1501,18 @@ async function fixWarmToHotDelays(db) {
   await db.setting.create({ data: { key: MARKER, value: new Date().toISOString() } })
 }
 
+// ─── Warm → Hot first text offers two real times ───────────────────────────
+// {time_options} becomes "¿mañana a las 11 (responde 1) o el martes a las 3
+// (responde 2)?" from Catherine's open slots, and a 1/2 reply books the call.
+// Only rewrites the step if it still has the seeded wording.
+
+async function warmToHotTimeOptions(db) {
+  const OLD = "Hola {first_name}! Soy Sofía 😊 Catherine apartó 2 espacios esta semana para hablar contigo 15 minutitos sobre lo que buscas. ¿Te viene mejor hoy en la tarde o mañana? También puedes elegir tu hora aquí: {calendly_url}"
+  const NEW = "Hola {first_name}! Soy Sofía 😊 Catherine apartó 2 espacios para hablar contigo 15 minutitos sobre lo que buscas. {time_options} También puedes elegir otra hora aquí: {calendly_url}"
+  const r = await db.smartPlanStep.updateMany({ where: { content: OLD }, data: { content: NEW } })
+  if (r.count) console.log(`[db-migrate] Warm → Hot first text now offers two times (${r.count})`)
+}
+
 // ─── First-time buyer enrollments stuck with no nextStepAt ─────────────────
 // Ingest enrolled leads without nextStepAt, so the cron never ran them. Start
 // only the recent ones (last 14 days); older leads stay as they are rather
@@ -1531,6 +1543,7 @@ async function main() {
   await seedReIgniteDrip(db).catch(e => console.warn("[db-migrate] Re-Ignite drip skip:", e.message))
   await seedWarmToHotPlan(db).catch(e => console.warn("[db-migrate] Warm→Hot plan skip:", e.message))
   await fixWarmToHotDelays(db).catch(e => console.warn("[db-migrate] Warm→Hot delays skip:", e.message))
+  await warmToHotTimeOptions(db).catch(e => console.warn("[db-migrate] Warm→Hot time options skip:", e.message))
   await startStuckEnrollments(db).catch(e => console.warn("[db-migrate] stuck enrollments skip:", e.message))
   await dedupPipelineLeads(db).catch(e => console.warn("[db-migrate] dedup pipeline leads skip:", e.message))
   await seedBrickellKeywords(db).catch(e => console.warn("[db-migrate] Brickell keywords skip:", e.message))

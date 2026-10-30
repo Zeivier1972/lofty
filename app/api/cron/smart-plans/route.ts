@@ -6,6 +6,7 @@ import { isAssignedToPartner } from "@/lib/referral"
 import { sendEmail } from "@/lib/email"
 import { sendSMS, sendWhatsApp, toE164 } from "@/lib/sms"
 import { nextTextingWindow } from "@/lib/calling-hours"
+import { pickTwoTimes, offerQuestion, recordOffer, type OfferedSlot } from "@/lib/slot-offer"
 
 /**
  * When this contact can next receive an automated text, if not now.
@@ -121,6 +122,9 @@ export async function GET(req: Request) {
         .replace(/\{calendly_url\}/gi, calendlyUrl)
         .replace(/\{agent_name\}/gi, aiConfig?.realtorName || "Catherine")
         .replace(/\{agent_phone\}/gi, aiConfig?.realtorPhone || "305-283-0872")
+        // Real times are only offered in SMS steps (below), where a "1"/"2"
+        // reply can be booked; any other channel gets the plain question.
+        .replace(/\{time_options\}/gi, "¿Qué día te queda mejor esta semana?")
 
     // Set when a text step has to wait out the SMS cooldown: the enrollment
     // stays on this step and retries then, instead of advancing past it.
@@ -160,7 +164,17 @@ export async function GET(req: Request) {
         }
         if (!deferUntil && !contact.doNotText && contact.phone) {
           const toPhone = toE164(contact.phone)
-          const sid = await sendSMS(toPhone, fill(step.content), undefined, { automated: true, contactId: contact.id, quietHours: true })
+          // {time_options} → two real open times with Catherine; a "1"/"2"
+          // reply books the call (lib/slot-offer).
+          let offered: OfferedSlot[] = []
+          let content = step.content
+          if (/\{time_options\}/i.test(content)) {
+            offered = await pickTwoTimes().catch(() => [])
+            const q = offerQuestion(offered)
+            if (q) content = content.replace(/\{time_options\}/gi, q)
+          }
+          const sid = await sendSMS(toPhone, fill(content), undefined, { automated: true, contactId: contact.id, quietHours: true })
+          if (sid && offered.length) await recordOffer(contact.id, offered)
           if (sid) {
             // sendSMS already logged the SMSMessage row.
             await prisma.activity.create({
