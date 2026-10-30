@@ -30,9 +30,9 @@ const KEYWORDS: EmailKeyword[] = [
     tag: "Halloween BOO",
     subject: "🎃 ¡BOO! Aquí está tu link de preconstrucción",
     heading: "¡BOO! 🎃 Aquí lo tienes",
-    intro: "Gracias por responder. Estos son los proyectos de preconstrucción en Miami y Orlando que estamos recomendando ahora, con precios y planes de pago:",
+    intro: "Gracias por responder. Aquí puedes ver todos los proyectos de preconstrucción en Miami, con precios, fotos y fechas de entrega:",
     linkLabel: "Ver proyectos de preconstrucción →",
-    url: `${BASE}/proyectos`,
+    url: `${BASE}/new-construction`,
   },
 ]
 
