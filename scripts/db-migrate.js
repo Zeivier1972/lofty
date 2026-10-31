@@ -1529,6 +1529,41 @@ async function startStuckEnrollments(db) {
   console.log(`[db-migrate] started ${r.count} stuck enrollments`)
 }
 
+// ─── Archive bot leads from the valuation form ──────────────────────────────
+// Spam bots filled /valuacion with random strings, and each became a "quiere
+// vender" contact with a HIGH notification. Archive them (not delete) and
+// mark their notifications read. Same test as lib/spam-guard looksRandom.
+
+function looksRandom(s) {
+  for (const w of String(s || "").trim().split(/\s+/)) {
+    if (w.length < 10 || !/^[A-Za-z]+$/.test(w)) continue
+    let flips = 0
+    for (let i = 1; i < w.length; i++) {
+      if ((w[i - 1] === w[i - 1].toUpperCase()) !== (w[i] === w[i].toUpperCase())) flips++
+    }
+    const vowels = (w.match(/[aeiouAEIOU]/g) || []).length / w.length
+    if (flips >= 4 || (w.length >= 14 && vowels < 0.2)) return true
+  }
+  return false
+}
+
+async function archiveValuationSpam(db) {
+  const MARKER = "migration_archive_valuation_spam"
+  if (await db.setting.findUnique({ where: { key: MARKER } })) return
+  const rows = await db.contact.findMany({
+    where: { source: "SELLER_VALUATION", isArchived: false },
+    select: { id: true, firstName: true, lastName: true, sellerAddress: true },
+  })
+  const spam = rows.filter(c => looksRandom(c.firstName) || looksRandom(c.lastName) || looksRandom(c.sellerAddress))
+  const ids = spam.map(c => c.id)
+  if (ids.length) {
+    await db.contact.updateMany({ where: { id: { in: ids } }, data: { isArchived: true } })
+    await db.aINotification.updateMany({ where: { contactId: { in: ids } }, data: { isRead: true } })
+  }
+  await db.setting.create({ data: { key: MARKER, value: `archived=${ids.length} of ${rows.length}` } })
+  console.log(`[db-migrate] archived ${ids.length} bot valuation leads (of ${rows.length})`)
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -1544,6 +1579,7 @@ async function main() {
   await seedWarmToHotPlan(db).catch(e => console.warn("[db-migrate] Warm→Hot plan skip:", e.message))
   await fixWarmToHotDelays(db).catch(e => console.warn("[db-migrate] Warm→Hot delays skip:", e.message))
   await warmToHotTimeOptions(db).catch(e => console.warn("[db-migrate] Warm→Hot time options skip:", e.message))
+  await archiveValuationSpam(db).catch(e => console.warn("[db-migrate] valuation spam skip:", e.message))
   await startStuckEnrollments(db).catch(e => console.warn("[db-migrate] stuck enrollments skip:", e.message))
   await dedupPipelineLeads(db).catch(e => console.warn("[db-migrate] dedup pipeline leads skip:", e.message))
   await seedBrickellKeywords(db).catch(e => console.warn("[db-migrate] Brickell keywords skip:", e.message))

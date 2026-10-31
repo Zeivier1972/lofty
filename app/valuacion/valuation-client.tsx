@@ -18,7 +18,9 @@ export default function ValuationClient() {
   const [form, setForm] = useState({
     address: "", city: "", zip: "", beds: "", baths: "", sqft: "",
     firstName: "", lastName: "", email: "", phone: "",
+    company_website: "", // honeypot (HONEYPOT_FIELD) — hidden from people, filled by bots
   })
+  const [loadedAt] = useState(() => Date.now())
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<Result | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -29,7 +31,7 @@ export default function ValuationClient() {
     setLoading(true); setError(null)
     try {
       const res = await fetch("/api/idx/valuation", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, elapsedMs: Date.now() - loadedAt }),
       })
       const data = await res.json()
       if (!data.ok) throw new Error(data.error || "Error")
@@ -84,6 +86,10 @@ export default function ValuationClient() {
           </div>
         ) : (
           <form onSubmit={submit} className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-4">
+            {/* Honeypot — hidden from people, filled in by bots. */}
+            <div aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
+              <label>No llenar <input tabIndex={-1} autoComplete="off" value={form.company_website} onChange={e => set("company_website", e.target.value)} /></label>
+            </div>
             <div className="flex items-center gap-2 text-gray-800 font-semibold"><Home className="w-4 h-4 text-lofty-600" /> Sobre tu propiedad</div>
             <input required value={form.address} onChange={e => set("address", e.target.value)} placeholder="Dirección *"
               className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-lofty-400" />
