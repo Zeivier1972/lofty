@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { searchIdxListings } from "@/lib/bridge"
+import { isBotSubmission, clientIp, rateLimit } from "@/lib/spam-guard"
 
 // Public: "What's my home worth" — estimates a value from active comps (aggregate
 // $/sqft, not redistributing listings) and captures the seller as a CRM lead.
@@ -10,6 +11,15 @@ export async function POST(req: Request) {
   try {
     const b = await req.json()
     const { address, city, zip, beds, baths, sqft, firstName, lastName, email, phone } = b || {}
+
+    // Spam bots fill this form with random strings. Answer like a success so
+    // they don't adapt, but create no contact, notification or outreach.
+    const bot = isBotSubmission({ body: b, elapsedMs: b?.elapsedMs, fields: [firstName, lastName, address, city] })
+      || (rateLimit(`valuation:${clientIp(req)}`, 5, 3600 * 1000).ok ? null : "rate-limit")
+    if (bot) {
+      console.warn(`[valuation] bot submission dropped (${bot})`)
+      return NextResponse.json({ ok: true, contactId: null, estimateLow: null, estimateHigh: null, compCount: 0 })
+    }
     if (!address || (!email && !phone)) {
       return NextResponse.json({ error: "Necesitamos la dirección y tu email o teléfono." }, { status: 400 })
     }

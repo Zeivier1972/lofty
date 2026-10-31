@@ -4,6 +4,7 @@ import { NextResponse } from "next/server"
 import { ingestLead } from "@/lib/lead-ingest"
 import { sendEmail } from "@/lib/email"
 import { prisma } from "@/lib/prisma"
+import { isBotSubmission } from "@/lib/spam-guard"
 import { scoreContact } from "@/lib/scoring"
 
 export async function POST(req: Request) {
@@ -11,6 +12,10 @@ export async function POST(req: Request) {
     const body = await req.json()
     const { firstName, lastName, phone, email, message, mlsId, city, price, propertyType, beds, year } = body
 
+    if (isBotSubmission({ body, fields: [firstName, lastName] })) {
+      console.warn("[inquiry] bot submission dropped")
+      return NextResponse.json({ success: true })
+    }
     if (!firstName || (!phone && !email)) {
       return NextResponse.json({ ok: false, error: "Name and phone or email required" }, { status: 400 })
     }

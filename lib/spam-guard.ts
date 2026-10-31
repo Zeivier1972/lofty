@@ -126,3 +126,44 @@ export function checkFormToken(token: unknown, scope: string, now = Date.now()):
 }
 
 export const PORTAL_FORM_SCOPE = "portal-register"
+
+// ── Texto al azar ────────────────────────────────────────────────────────────
+// Los bots del formulario de valuación escriben cadenas al azar en cada campo
+// ("sGVHSOufHQKbnrbhAYLSbg", dirección "hgLdhYOTDEbMCpDeooOg"), y cada envío
+// terminaba como un lead "quiere vender" con notificación HIGH.
+
+/** ¿Alguna palabra parece generada por máquina? Larga, sin espacios, con
+ *  mayúsculas y minúsculas alternándose a mitad de palabra, o casi sin vocales.
+ *  Un nombre real cambia como mucho una vez ("McDonald", "DeLeon"). */
+export function looksRandom(s: string | null | undefined): boolean {
+  const t = String(s || "").trim()
+  if (!t) return false
+  for (const w of t.split(/\s+/)) {
+    if (w.length < 10 || !/^[A-Za-z]+$/.test(w)) continue
+    let flips = 0
+    for (let i = 1; i < w.length; i++) {
+      const a = w[i - 1], b = w[i]
+      if ((a === a.toUpperCase()) !== (b === b.toUpperCase())) flips++
+    }
+    const vowels = (w.match(/[aeiouAEIOU]/g) || []).length / w.length
+    if (flips >= 4 || (w.length >= 14 && vowels < 0.2)) return true
+  }
+  return false
+}
+
+/**
+ * El motivo si el envío parece de un bot, o null: el honeypot lleno, enviado
+ * más rápido de lo que una persona escribe (si el formulario manda cuánto
+ * tardó), o texto al azar en los campos que una persona teclea.
+ */
+export function isBotSubmission(opts: {
+  body?: Record<string, any>
+  elapsedMs?: unknown
+  fields: (string | null | undefined)[]
+}): string | null {
+  if (opts.body && looksLikeBot(opts.body)) return "honeypot"
+  const ms = Number(opts.elapsedMs)
+  if (Number.isFinite(ms) && ms > 0 && ms < 2500) return "too-fast"
+  if (opts.fields.some(looksRandom)) return "random-text"
+  return null
+}

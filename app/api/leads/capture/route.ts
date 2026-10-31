@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { isBotSubmission } from "@/lib/spam-guard"
 import { scoreContact } from "@/lib/scoring"
 import { triggerOutboundCall } from "@/lib/vapi"
 import { sendCapiEvent, capiSignalsFromRequest } from "@/lib/facebook"
@@ -13,6 +14,10 @@ export async function POST(req: Request) {
   try {
     const { firstName, lastName, email, phone, message, source, smsConsent, budget, area, type } = await req.json()
 
+    if (isBotSubmission({ fields: [firstName, lastName] })) {
+      console.warn("[leads/capture] bot submission dropped")
+      return NextResponse.json({ success: true })
+    }
     if (!firstName || (!email && !phone)) {
       return NextResponse.json({ error: "Name and contact info required" }, { status: 400 })
     }
