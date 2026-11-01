@@ -85,6 +85,8 @@ model Contact {
   socialTwitter         String?
   doNotCall             Boolean               @default(false)
   doNotEmail            Boolean               @default(false)
+  /// Catherine took this lead over: Sofía sends nothing automatic (texts, calls, emails, DM replies). Catherine's own messages still go out.
+  sofiaPausedAt         DateTime?
   doNotText             Boolean               @default(false)
   smsTCPAConsent        Boolean               @default(false)
   smsTCPAConsentDate    DateTime?

@@ -2,6 +2,7 @@ import twilio from "twilio"
 import { prisma } from "@/lib/prisma"
 import { wasRecentlySent } from "@/lib/message-dedupe"
 import { isWithinTextingWindow } from "@/lib/calling-hours"
+import { isSofiaPaused } from "@/lib/sofia-control"
 
 // Normalize any stored phone to E.164 WITHOUT assuming it's a US number.
 // The old pattern (`+1` + last 10 digits) silently converted international
@@ -167,6 +168,13 @@ export async function sendSMS(
     if (opts?.contactId) {
       await flagNumberUndeliverable(digits10, "número inválido")
     }
+    return null
+  }
+
+  // Sofía paused for this person (Catherine took the lead over): nothing
+  // automated goes out. Catherine's own (non-automated) texts are unaffected.
+  if (opts?.automated && await isSofiaPaused({ contactId: opts.contactId, phone: to })) {
+    console.log(`[SMS SKIPPED — Sofía paused] ${to}: automated send held`)
     return null
   }
 
@@ -368,6 +376,11 @@ export async function sendWhatsApp(
   const fromNumber = `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER || process.env.TWILIO_PHONE_NUMBER}`
 
   const digits10 = (e164 || "").replace(/\D/g, "").slice(-10)
+
+  if (opts?.automated && await isSofiaPaused({ contactId: opts.contactId, phone: e164 })) {
+    console.log(`[WhatsApp SKIPPED — Sofía paused] ${e164}: automated send held`)
+    return null
+  }
 
   // Opt-outs apply to WhatsApp too. sendSMS has blocked a flagged number
   // centrally for a while; this path did not, so a contact who replied STOP

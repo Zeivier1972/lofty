@@ -110,8 +110,9 @@ export async function GET(req: Request) {
       },
       select: { id: true },
     })
+    const paused = await prisma.contact.findFirst({ where: { id: lead.contactId, sofiaPausedAt: { not: null } }, select: { id: true } })
     let sent = false
-    if (working) {
+    if (working || paused) {
       // no outreach from Sofía
     } else if (lead.canText) {
       const ask = question
@@ -122,7 +123,7 @@ export async function GET(req: Request) {
       if (sid) { sms++; sent = true }
       if (sid && question) await recordOffer(lead.contactId, offered)
     }
-    if (!working && !sent && lead.canEmail) {
+    if (!working && !paused && !sent && lead.canEmail) {
       const html = wrapEmail(`
         <p style="color:#374151;font-size:15px;margin:0 0 12px">¡Hola ${lead.firstName}! 👋</p>
         <p style="color:#374151;font-size:14px;margin:0 0 16px">

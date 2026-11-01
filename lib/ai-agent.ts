@@ -3,6 +3,7 @@ import { prisma } from "./prisma"
 import { isAssignedToPartner } from "./referral"
 import { sendSMS } from "./sms"
 import { sendEmail } from "./email"
+import { isSofiaPaused } from "./sofia-control"
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || "" })
 
@@ -130,6 +131,8 @@ IMPORTANTE: Cuando la respuesta incluya un appointmentCta, asegúrate de que est
 export async function runAIAgent(context: AgentContext): Promise<void> {
   const config = await getAIConfig()
   const { contact, trigger, property } = context
+  // Catherine took this lead over — Sofía stays quiet.
+  if (await isSofiaPaused({ contactId: contact.id })) return
 
   const systemPrompt = buildSystemPrompt(config)
 

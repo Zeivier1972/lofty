@@ -99,6 +99,7 @@ const STMTS = [
     CONSTRAINT "LeadMagnetDelivery_pkey" PRIMARY KEY ("id")
   )`,
   `ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "instagramIgsid" TEXT`,
+  `ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "sofiaPausedAt" TIMESTAMP(3)`,
   `ALTER TABLE "SocialAutoPilotConfig" ADD COLUMN IF NOT EXISTS "videoEnabled" BOOLEAN NOT NULL DEFAULT TRUE`,
   // Saved IDX searches (new-listing alerts)
   `CREATE TABLE IF NOT EXISTS "SavedSearch" (

@@ -38,8 +38,8 @@ export async function GET(req: Request) {
   for (const sc of pending) {
     const contact = sc.contact
 
-    // Skip if opted out
-    if (contact.doNotCall) {
+    // Skip if opted out, or Sofía is paused for them (Catherine took over)
+    if (contact.doNotCall || contact.sofiaPausedAt) {
       await prisma.scheduledCall.update({ where: { id: sc.id }, data: { status: "CANCELLED" } })
       results.push({ contactId: contact.id, status: "cancelled_do_not_call" })
       continue
