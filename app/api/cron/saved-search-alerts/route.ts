@@ -47,7 +47,7 @@ export async function GET(req: Request) {
   const log: string[] = []
 
   for (const s of searches) {
-    if (!s.contact?.email || s.contact.doNotEmail) continue
+    if (!s.contact?.email || s.contact.doNotEmail || s.contact.sofiaPausedAt) continue
     try {
       const savedIncomeTypes = propertyTypesForSubTypes((s.propertySubType || "").split(","))
       const listings = await searchIdxListings({

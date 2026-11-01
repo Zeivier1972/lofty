@@ -222,6 +222,25 @@ export async function POST(req: Request) {
 
         if (!igUserId || igUserId === accountId || msg.message?.is_echo || !text) continue
 
+        // Sofía paused for this person (Catherine took over): ring Catherine's
+        // bell, but no bot, no project link, no AI reply.
+        const pausedFor = await prisma.contact.findFirst({
+          where: { instagramIgsid: igUserId, sofiaPausedAt: { not: null } },
+          select: { id: true, firstName: true, lastName: true },
+        })
+        if (pausedFor) {
+          await prisma.aINotification.create({
+            data: {
+              type: "INSTAGRAM_REPLY",
+              title: `💬 ${`${pausedFor.firstName} ${pausedFor.lastName || ""}`.trim()} escribió por Instagram (Sofía en pausa)`,
+              body: text.slice(0, 200),
+              priority: "HIGH",
+              contactId: pausedFor.id,
+            },
+          }).catch(() => {})
+          continue
+        }
+
         let convo = await prisma.instagramConversation.findUnique({ where: { igUserId } })
 
         // A DM that names one of our projects ("me interesa House of Wellness")

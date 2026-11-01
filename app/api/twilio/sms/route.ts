@@ -68,6 +68,13 @@ export async function POST(req: Request) {
     }).catch(() => {})
   }
 
+  // Sofía paused for this person: Catherine is handling them. Log it and let
+  // Catherine know, but no automatic reply of any kind.
+  if (contact?.sofiaPausedAt) {
+    notifyAgentOfLeadReply(contact, "SMS", body).catch(() => {})
+    return new NextResponse("", { status: 200 })
+  }
+
   // ── Lead magnet keyword detection ─────────────────────────────────────────
   const keyword = await detectKeyword(body)
   if (keyword) {

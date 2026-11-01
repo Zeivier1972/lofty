@@ -109,6 +109,7 @@ export async function triggerMatchAlert(contactId: string): Promise<{ sent: bool
     if (!contact) return { sent: false, reason: "Contact not found" }
     if (!contact.email) return { sent: false, reason: "No email" }
     if (contact.doNotEmail) return { sent: false, reason: "doNotEmail" }
+    if (contact.sofiaPausedAt) return { sent: false, reason: "sofiaPaused" }
 
     const prefs = {
       buyerBudgetMin: contact.buyerBudgetMin,

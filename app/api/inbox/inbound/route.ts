@@ -354,7 +354,7 @@ export async function POST(req: Request) {
       select: {
         id: true, firstName: true, lastName: true, phone: true, status: true,
         buyerBudgetMin: true, buyerBudgetMax: true, buyerBedroomsMin: true,
-        buyerLocation: true, buyerPropertyType: true, doNotText: true,
+        buyerLocation: true, buyerPropertyType: true, doNotText: true, sofiaPausedAt: true,
         tags: { select: { tag: { select: { name: true } } } },
       },
     })
@@ -379,7 +379,7 @@ export async function POST(req: Request) {
         select: {
           id: true, firstName: true, lastName: true, phone: true, status: true,
           buyerBudgetMin: true, buyerBudgetMax: true, buyerBedroomsMin: true,
-          buyerLocation: true, buyerPropertyType: true, doNotText: true,
+          buyerLocation: true, buyerPropertyType: true, doNotText: true, sofiaPausedAt: true,
           tags: { select: { tag: { select: { name: true } } } },
         },
       })
@@ -458,6 +458,12 @@ export async function POST(req: Request) {
           contactId: contact.id,
         },
       }).catch(() => {})
+    }
+
+    // Sofía paused for this person: Catherine is handling them. The message is
+    // logged and the bell rang above; no automatic reply.
+    if (contact.sofiaPausedAt) {
+      return new Response(`<Response></Response>`, { headers: { "Content-Type": "text/xml" } })
     }
 
     // Answering one of the two times Sofía offered ("1", "2", "a las 3")?

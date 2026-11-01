@@ -4,9 +4,13 @@ import { prisma } from "@/lib/prisma"
 import { buildProjectContext, buildMarketInsightsContext, buildStrMarketContext } from "@/lib/preconstruction-context"
 import Anthropic from "@anthropic-ai/sdk"
 import { sendSMS } from "@/lib/sms"
-import { sendEmail } from "@/lib/email"
+import { sendEmail, wrapEmail } from "@/lib/email"
 import { applyTagAndEnroll } from "@/lib/lead-ingest"
 import { sendPortalInvites } from "@/lib/portal-invite"
+import { pauseSofia, resumeSofia } from "@/lib/sofia-control"
+import { pickTwoTimes, offerQuestion, recordOffer } from "@/lib/slot-offer"
+import { PROJECTS, detectProject, projectUrl } from "@/lib/projects"
+import { isWithinTextingWindow } from "@/lib/calling-hours"
 
 const MODEL = "claude-sonnet-5"
 
@@ -197,6 +201,67 @@ const TOOLS: Anthropic.Tool[] = [
         location:    { type: "string" },
       },
       required: ["title", "startTime"],
+    },
+  },
+  {
+    name: "sofia_pause",
+    description: "Tell Sofía (the automatic follow-up assistant) to STOP all automatic contact with one person — texts, calls, drip emails, property alerts and Messenger/Instagram/SMS auto-replies — because Catherine is handling them personally. Catherine's own texts/emails/calls still work. Use for 'dile a Sofía que deje de llamar/escribirle a X'.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        contactId: { type: "string" },
+        reason:    { type: "string", description: "Short reason, e.g. 'Catherine lo atiende personalmente'" },
+      },
+      required: ["contactId"],
+    },
+  },
+  {
+    name: "sofia_resume",
+    description: "Let Sofía resume automatic follow-up with a person she was paused for (restarts the drips that the pause stopped).",
+    input_schema: {
+      type: "object" as const,
+      properties: { contactId: { type: "string" } },
+      required: ["contactId"],
+    },
+  },
+  {
+    name: "list_sofia_paused",
+    description: "List the contacts Sofía is currently paused for.",
+    input_schema: { type: "object" as const, properties: {} },
+  },
+  {
+    name: "set_contact_preferences",
+    description: "Set a person's permanent communication blocks — for when THEY asked not to be contacted a certain way. doNotText blocks every text (including Catherine's), doNotCall removes them from all calls, doNotEmail stops all marketing email. Only pass the fields to change.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        contactId:  { type: "string" },
+        doNotText:  { type: "boolean" },
+        doNotCall:  { type: "boolean" },
+        doNotEmail: { type: "boolean" },
+      },
+      required: ["contactId"],
+    },
+  },
+  {
+    name: "sofia_offer_times",
+    description: "Have Sofía text a person two real open times for a 15-minute call with Catherine (from Catherine's calendar). If they reply 1 or 2, the call books itself. Only when Catherine asks.",
+    input_schema: {
+      type: "object" as const,
+      properties: { contactId: { type: "string" } },
+      required: ["contactId"],
+    },
+  },
+  {
+    name: "sofia_send_project",
+    description: `Have Sofía send a person the landing page of one of Catherine's projects (by text, or email if they have no usable phone). Projects: ${PROJECTS.map(p => p.name).join(", ")}.`,
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        contactId: { type: "string" },
+        project:   { type: "string", description: "Project name, e.g. 'House of Wellness' or 'Parkside'" },
+      },
+      required: ["contactId", "project"],
     },
   },
   {
@@ -516,6 +581,95 @@ async function executeTool(name: string, input: Record<string, unknown>, ctx: { 
         return JSON.stringify({ success: true, ...result })
       }
 
+      case "sofia_pause": {
+        const r = await pauseSofia(input.contactId as string, "Aria", (input.reason as string) || undefined)
+        return JSON.stringify({ success: true, ...r, note: "Sofía no le enviará nada automático. Catherine puede seguir escribiéndole y llamándole." })
+      }
+
+      case "sofia_resume": {
+        const r = await resumeSofia(input.contactId as string, "Aria")
+        return JSON.stringify({ success: true, ...r })
+      }
+
+      case "list_sofia_paused": {
+        const rows = await prisma.contact.findMany({
+          where: { sofiaPausedAt: { not: null } },
+          orderBy: { sofiaPausedAt: "desc" },
+          take: 100,
+          select: { id: true, firstName: true, lastName: true, phone: true, sofiaPausedAt: true },
+        })
+        return JSON.stringify({ count: rows.length, contacts: rows })
+      }
+
+      case "set_contact_preferences": {
+        const data: Record<string, boolean> = {}
+        for (const k of ["doNotText", "doNotCall", "doNotEmail"] as const) {
+          if (typeof input[k] === "boolean") data[k] = input[k] as boolean
+        }
+        if (!Object.keys(data).length) return JSON.stringify({ error: "Nothing to change" })
+        await prisma.contact.update({ where: { id: input.contactId as string }, data })
+        if (data.doNotCall) {
+          await prisma.scheduledCall.updateMany({ where: { contactId: input.contactId as string, status: "PENDING" }, data: { status: "CANCELLED" } })
+        }
+        await prisma.activity.create({
+          data: { type: "NOTE", title: "Preferencias de contacto actualizadas por Aria", description: JSON.stringify(data), contactId: input.contactId as string, userId: ctx.userId },
+        }).catch(() => {})
+        return JSON.stringify({ success: true, ...data })
+      }
+
+      case "sofia_offer_times": {
+        const c = await prisma.contact.findUnique({
+          where: { id: input.contactId as string },
+          select: { id: true, firstName: true, phone: true, doNotText: true, sofiaPausedAt: true },
+        })
+        if (!c) return JSON.stringify({ error: "Contact not found" })
+        if (c.sofiaPausedAt) return JSON.stringify({ error: "Sofía está en pausa para este contacto — reactívala primero o escríbele tú." })
+        if (!c.phone || c.doNotText) return JSON.stringify({ error: "No se le puede enviar texto (sin teléfono o Do Not Text)." })
+        if (!isWithinTextingWindow(c.phone)) return JSON.stringify({ error: "Fuera de horario para textos (9am–8pm de su zona). Pídeselo a Sofía de nuevo en horario de día." })
+        const slots = await pickTwoTimes()
+        const question = offerQuestion(slots)
+        if (!question) return JSON.stringify({ error: "No hay horarios libres en los próximos 7 días en el calendario de Catherine." })
+        const cfg = await prisma.aIConfig.findFirst({ select: { realtorName: true, calendlyUrl: true } }).catch(() => null)
+        const agent = (cfg?.realtorName || "Catherine").split(" ")[0]
+        const book = cfg?.calendlyUrl || `${process.env.NEXT_PUBLIC_APP_URL || "https://www.catherinegomezrealtor.com"}/book`
+        const msg = `Hola ${c.firstName}, soy Sofia del equipo de ${agent} Gomez. ${agent} quiere hablar contigo 15 minutos. ${question} O elige otra hora: ${book}`
+        const sid = await sendSMS(c.phone, msg, undefined, { contactId: c.id })
+        if (!sid) return JSON.stringify({ error: "El texto no salió (revisa el número o el límite de textos)." })
+        await recordOffer(c.id, slots)
+        return JSON.stringify({ success: true, offered: slots.map(x => x.label), message: msg })
+      }
+
+      case "sofia_send_project": {
+        const p = detectProject(input.project as string) || PROJECTS.find(x => x.name.toLowerCase().includes(String(input.project).toLowerCase()))
+        if (!p) return JSON.stringify({ error: `No conozco ese proyecto. Proyectos: ${PROJECTS.map(x => x.name).join(", ")}` })
+        const c = await prisma.contact.findUnique({
+          where: { id: input.contactId as string },
+          select: { id: true, firstName: true, phone: true, email: true, doNotText: true, doNotEmail: true, sofiaPausedAt: true },
+        })
+        if (!c) return JSON.stringify({ error: "Contact not found" })
+        if (c.sofiaPausedAt) return JSON.stringify({ error: "Sofía está en pausa para este contacto — reactívala primero o envíaselo tú con send_sms." })
+        const url = projectUrl(p)
+        if (c.phone && !c.doNotText && isWithinTextingWindow(c.phone)) {
+          const sid = await sendSMS(c.phone, `Hola ${c.firstName}, soy Sofia del equipo de Catherine Gomez. Aqui tienes toda la informacion de ${p.name}: precios, fotos y plan de pagos: ${url}`, undefined, { contactId: c.id })
+          if (sid) {
+            await prisma.activity.create({ data: { type: "SMS", title: `Sofía le envió ${p.name} (pedido por Aria)`, description: url, contactId: c.id, userId: ctx.userId } }).catch(() => {})
+            return JSON.stringify({ success: true, channel: "SMS", project: p.name, url })
+          }
+        }
+        if (c.email && !c.doNotEmail) {
+          const ok = await sendEmail({
+            to: c.email,
+            subject: `${p.name} — toda la información`,
+            html: wrapEmail(`<p>Hola ${c.firstName},</p><p>Aquí tienes toda la información de <strong>${p.name}</strong> (${p.place}): ${p.highlight}. ${p.summary}</p><p><a href="${url}" style="display:inline-block;background:#0e1f3d;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700">Ver ${p.name} →</a></p>`, { agentName: "Catherine Gomez" }),
+          })
+          if (ok) {
+            await prisma.activity.create({ data: { type: "EMAIL", title: `Sofía le envió ${p.name} por email (pedido por Aria)`, description: url, contactId: c.id, userId: ctx.userId } }).catch(() => {})
+            return JSON.stringify({ success: true, channel: "EMAIL", project: p.name, url })
+          }
+        }
+        return JSON.stringify({ error: "No se pudo enviar (sin teléfono/email utilizable, o fuera de horario para textos)." })
+      }
+
       default:
         return JSON.stringify({ error: `Unknown tool: ${name}` })
     }
@@ -601,6 +755,8 @@ Miami market dynamics, contract timelines (inspection 10 days, financing 21 days
 Follow-up cadence: New lead → contact within 5 min. Day 1, 3, 7, 14, 30 for nurture. Hot lead → daily touch. Going cold → reactivation sequence.
 
 Lead temperature: 🔴 Hot (engaged last 48h, high score, active search) · 🟡 Warm (engaged last week) · ⚪ Cold (7+ days silent) · 🧊 Frozen (30+ days, needs reactivation).
+
+About Sofía: Sofía is the automatic follow-up assistant that texts, calls, emails and answers DMs to leads on her own. You can give her instructions: when Catherine says "dile a Sofía que deje de llamar/escribirle a X" or "yo me encargo de X", find the contact and use sofia_pause (Catherine can still contact them). "Sofía puede volver con X" → sofia_resume. If the PERSON asked not to be texted/called/emailed, use set_contact_preferences instead (a permanent block). "Que Sofía le ofrezca horarios a X" → sofia_offer_times; "que Sofía le mande el link de <proyecto> a X" → sofia_send_project. Always search_contacts first and confirm which person when the name matches more than one.
 
 Respond in English or Spanish based on what the user writes. Be direct, sharp, and specific. Use bullet points for lists. Bold key names and numbers. When you recommend an action, offer to execute it with your tools.${inventoryBlock}`
 

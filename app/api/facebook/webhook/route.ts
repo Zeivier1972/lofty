@@ -414,6 +414,28 @@ export async function POST(req: Request) {
 
       if (!text) continue
 
+      // Sofía paused for this person (Catherine took over): log the message and
+      // ring Catherine's bell, but no bot, no project link, no AI reply.
+      const pausedFor = await prisma.contact.findFirst({
+        where: { facebookPsid: psid, sofiaPausedAt: { not: null } },
+        select: { id: true, firstName: true, lastName: true },
+      })
+      if (pausedFor) {
+        await prisma.facebookMessage.create({
+          data: { psid, pageId, body: text, direction: "INBOUND", status: "RECEIVED", messageId: fbMid, contactId: pausedFor.id },
+        }).catch(() => {})
+        await prisma.aINotification.create({
+          data: {
+            type: "FACEBOOK_REPLY",
+            title: `💬 ${`${pausedFor.firstName} ${pausedFor.lastName || ""}`.trim()} escribió por Messenger (Sofía en pausa)`,
+            body: text.slice(0, 200),
+            priority: "HIGH",
+            contactId: pausedFor.id,
+          },
+        }).catch(() => {})
+        continue
+      }
+
       // A DM that names one of our projects ("me interesa House of Wellness")
       // gets that project's page right away — never the sign-up questions
       // (name → email → phone) about something they already told us.

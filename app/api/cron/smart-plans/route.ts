@@ -69,6 +69,7 @@ export async function GET(req: Request) {
           doNotEmail: true,
           doNotCall: true,
           doNotText: true,
+          sofiaPausedAt: true,
         },
       },
       plan: {
@@ -100,6 +101,15 @@ export async function GET(req: Request) {
     }
 
     const step = steps[stepIndex]
+
+    // Sofía paused for this person: hold the plan, check again tomorrow.
+    // (Plans running when she was paused are PAUSED by pauseSofia; this
+    // catches ones added later, e.g. by a tag.)
+    if (contact.sofiaPausedAt) {
+      await prisma.smartPlanEnrollment.update({ where: { id: enrollment.id }, data: { nextStepAt: new Date(now.getTime() + 24 * 3600 * 1000) } }).catch(() => {})
+      results.push({ enrollmentId: enrollment.id, contactId: contact.id, status: "held-sofia-paused", step: stepIndex })
+      continue
+    }
 
     // Claim this step before sending anything. If two cron runs overlap (or two
     // cron triggers point here) both would read the same ACTIVE enrollment and

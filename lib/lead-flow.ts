@@ -453,7 +453,7 @@ export async function handleAppointmentBooked(contactId: string) {
 export async function resumeQuietWarmPlans(quietDays = 5): Promise<number> {
   const since = new Date(Date.now() - quietDays * 86400000)
   const rows = await prisma.smartPlanEnrollment.findMany({
-    where: { status: "PAUSED", plan: { isActive: true, trigger: "PIPELINE_STAGE:Warm" } },
+    where: { status: "PAUSED", plan: { isActive: true, trigger: "PIPELINE_STAGE:Warm" }, contact: { sofiaPausedAt: null } },
     select: { id: true, contactId: true },
     take: 200,
   })

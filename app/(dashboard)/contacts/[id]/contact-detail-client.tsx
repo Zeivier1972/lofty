@@ -83,6 +83,65 @@ const ACTIVITY_ICONS: Record<string, { icon: string; color: string }> = {
   CONTACT_CREATED: { icon: "👤", color: "bg-gray-100" },
 }
 
+/**
+ * "Pausar a Sofía": Catherine takes this lead over. Sofía stops everything
+ * automatic for them (texts, calls, drips, alerts, DM replies); Catherine's own
+ * messages still go out. Same switch Aria uses (lib/sofia-control).
+ */
+function SofiaPauseBar({ contact }: { contact: any }) {
+  const { toast } = useToast()
+  const [pausedAt, setPausedAt] = useState<string | null>(contact.sofiaPausedAt || null)
+  const [busy, setBusy] = useState(false)
+
+  const toggle = async () => {
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/contacts/${contact.id}/sofia`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: pausedAt ? "resume" : "pause" }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Error")
+      if (data.paused) {
+        setPausedAt(new Date().toISOString())
+        toast({ title: "Sofía en pausa", description: `Se pausaron ${data.pausedPlans} secuencia(s) y ${data.cancelledCalls} llamada(s). Tú sigues pudiendo escribirle y llamarle.` })
+      } else {
+        setPausedAt(null)
+        toast({ title: "Sofía reactivada", description: data.resumedPlans ? `Se reanudaron ${data.resumedPlans} secuencia(s).` : "Sofía vuelve a dar seguimiento." })
+      }
+    } catch (e: any) {
+      toast({ title: "No se pudo actualizar", description: e.message, variant: "destructive" })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className={cn(
+      "mx-6 mt-4 rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-sm",
+      pausedAt ? "bg-amber-50 border border-amber-200 text-amber-900" : "bg-gray-50 border border-gray-200 text-gray-600",
+    )}>
+      <span>
+        {pausedAt
+          ? <>⏸️ <strong>Sofía en pausa</strong> desde {new Date(pausedAt).toLocaleDateString("es-US", { day: "numeric", month: "short" })} — tú manejas este contacto. Sofía no le envía nada automático.</>
+          : <>🤖 Sofía está dando seguimiento automático a este contacto.</>}
+      </span>
+      <button
+        onClick={toggle}
+        disabled={busy}
+        className={cn(
+          "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50",
+          pausedAt ? "bg-amber-600 text-white hover:bg-amber-700" : "bg-white border border-gray-300 text-gray-700 hover:bg-gray-100",
+        )}
+      >
+        {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+        {pausedAt ? "▶️ Reactivar a Sofía" : "⏸️ Pausar a Sofía"}
+      </button>
+    </div>
+  )
+}
+
 type TabId = "overview" | "properties" | "searches" | "transactions" | "documents" | "automations" | "calls"
 
 function BuyerPrefsPanel({ contact }: { contact: any }) {
@@ -708,6 +767,8 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
   return (
     <>
     <div className="h-full flex flex-col">
+      <SofiaPauseBar contact={contact} />
+
       {/* AI Insight Banner */}
       {insight && (
         <div className="mx-6 mt-4 rounded-2xl p-4 flex items-start gap-4 shadow-sm"
