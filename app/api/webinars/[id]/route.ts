@@ -6,6 +6,8 @@ import { auth } from "@/lib/auth"
 import { findProject } from "@/lib/investment-projects"
 import { deleteMeeting } from "@/lib/zoom"
 import { sendEmail, wrapEmail } from "@/lib/email"
+import { parseTags } from "@/lib/webinar-invite"
+import { slugify } from "@/lib/webinar-recurrence"
 
 const BASE = process.env.NEXT_PUBLIC_APP_URL || "https://www.catherinegomezrealtor.com"
 
@@ -88,9 +90,16 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   }
   const current = await prisma.webinar.findUnique({
     where: { id: params.id },
-    select: { startsAt: true, durationMins: true, status: true, zoomMeetingId: true },
+    select: { startsAt: true, durationMins: true, status: true, zoomMeetingId: true, series: true, title: true },
   })
   if (!current) return NextResponse.json({ error: "No existe ese webinar" }, { status: 404 })
+
+  // Weekly series on/off. Needs a series name to chain the weeks together.
+  if (body.repeatWeekly !== undefined) {
+    data.repeatWeekly = body.repeatWeekly === true
+    if (data.repeatWeekly && !current.series) data.series = slugify(current.title) || "webinar"
+  }
+  if (body.autoInviteTags !== undefined) data.autoInviteTags = JSON.stringify(parseTags(body.autoInviteTags))
 
   // Moving the date or the length: only for a session that hasn't happened.
   let moved = false

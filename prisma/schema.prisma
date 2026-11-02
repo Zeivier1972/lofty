@@ -1251,6 +1251,16 @@ model Webinar {
   /// re-sending has to be asked for on purpose.
   invitedAt    DateTime?
   invitedCount Int       @default(0)
+  /// Who the invitation went to: a JSON array of tag names, "[]" = whole list.
+  invitedTags  String    @default("[]")
+
+  /// Weekly series. Only the newest session of a series carries it: when that
+  /// one ends (or is cancelled) the reminder job creates next week's copy and
+  /// hands the flag on, so switching it off on the current one stops the chain.
+  repeatWeekly   Boolean @default(false)
+  /// JSON array of tag names the weekly copy is emailed to automatically two
+  /// days before. "[]" = no automatic invitation.
+  autoInviteTags String  @default("[]")
 
   coverImageUrl String?
   registrations WebinarRegistration[]
