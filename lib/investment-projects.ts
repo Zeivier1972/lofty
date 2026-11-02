@@ -59,6 +59,13 @@ export const INVESTMENT_PROJECTS: InvestmentProject[] = [
     og: "/parkside/fachada-atardecer.jpg",
     hero: "/parkside/fachada-atardecer.jpg",
   },
+  {
+    slug: "domus",
+    name: "Domus Brickell Center — Brickell (FLATS amueblados)",
+    path: "/domus",
+    og: "/domus/aerea-bahia.jpg",
+    hero: "/domus/aerea-bahia.jpg",
+  },
 ]
 
 export function findProject(slug: string | null | undefined): InvestmentProject | null {

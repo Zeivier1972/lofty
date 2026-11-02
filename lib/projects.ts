@@ -32,6 +32,16 @@ export const PROJECTS: Project[] = [
     match: /\bpark\s?side\b/,
   },
   {
+    name: "Domus Brickell Center",
+    place: "Brickell, Miami",
+    href: "/domus",
+    img: "/domus/aerea-bahia.jpg",
+    alt: "Torre Domus Brickell Center con el skyline de Brickell y la bahía de Biscayne",
+    summary: "Torre de 35 pisos con 579 FLATS totalmente amueblados y servicio tipo hotel en el centro de Brickell, con app Domus y portal de alquiler para propietarios.",
+    highlight: "Estudios desde $532,900",
+    match: /\bdomus\b/,
+  },
+  {
     name: "House of Wellness",
     place: "Brickell, Miami",
     href: "/house-of-wellness",

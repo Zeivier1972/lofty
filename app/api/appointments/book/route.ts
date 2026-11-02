@@ -25,6 +25,7 @@ export async function POST(req: Request) {
     // allowlist: this endpoint is public, so a caller cannot invent tags.
     const CAMPAIGN_TAGS: Record<string, string> = {
       HOUSE_OF_WELLNESS: "House of Wellness",
+      DOMUS: "Domus Brickell Center",
     }
 
     // Landing pages (e.g. /house-of-wellness) tag the lead with their own

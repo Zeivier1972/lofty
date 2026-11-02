@@ -17,7 +17,7 @@ const GOLD = "#c9a84c"
 
 const TITLE = "Proyectos de inversión en Miami y Orlando | Catherine Gomez Realtor"
 const DESCRIPTION =
-  "Todos los proyectos de preconstrucción e inversión que presenta Catherine Gomez: Parkside Residences y House of Wellness en Brickell, Millenia Park y GZ Tower en Orlando, y la guía One Twenty Brickell. Precios, planes de pago y asesoría en español."
+  "Todos los proyectos de preconstrucción e inversión que presenta Catherine Gomez: Parkside Residences, Domus Brickell Center y House of Wellness en Brickell, Millenia Park y GZ Tower en Orlando, y la guía One Twenty Brickell. Precios, planes de pago y asesoría en español."
 
 export const metadata: Metadata = {
   metadataBase: new URL(BASE),
@@ -29,6 +29,7 @@ export const metadata: Metadata = {
     "invertir en Orlando",
     "apartamentos en Brickell",
     "Parkside Residences at Brickell",
+    "Domus Brickell Center",
     "House of Wellness Brickell",
     "Millenia Park Orlando",
     "GZ Tower Orlando",
@@ -60,7 +61,7 @@ export const metadata: Metadata = {
 const FAQS: { q: string; a: string }[] = [
   {
     q: "¿Qué proyectos de inversión presenta Catherine Gomez?",
-    a: "Parkside Residences at Brickell y House of Wellness en Brickell, Miami; Millenia Park y GZ Tower en Orlando; y una guía para invertir en One Twenty Brickell. Cada proyecto tiene su propia página con precios, plan de pagos y amenidades.",
+    a: "Parkside Residences at Brickell, Domus Brickell Center y House of Wellness en Brickell, Miami; Millenia Park y GZ Tower en Orlando; y una guía para invertir en One Twenty Brickell. Cada proyecto tiene su propia página con precios, plan de pagos y amenidades.",
   },
   {
     q: "¿Puedo comprar estos proyectos desde fuera de Estados Unidos?",
