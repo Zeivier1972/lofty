@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
+import { projectKnowledgeFor } from "@/lib/project-knowledge"
 import Anthropic from "@anthropic-ai/sdk"
 import { prisma } from "@/lib/prisma"
 import { recordSofiaEvent } from "@/lib/sofia-metrics"
@@ -171,6 +172,7 @@ export async function POST(req: Request) {
       .filter((m: any) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
       .slice(-12)
     const pageContext = String(body.pageContext || "").slice(0, 300)
+    const pagePath = typeof body.pagePath === "string" ? body.pagePath.slice(0, 200) : ""
     const listingKey = typeof body.listingKey === "string" ? body.listingKey.trim() : ""
     let contactId: string | null = typeof body.contactId === "string" ? body.contactId : null
     if (!messages.length) return NextResponse.json({ error: "No messages" }, { status: 400 })
@@ -200,6 +202,8 @@ export async function POST(req: Request) {
     const realtorPhone = cfg?.realtorPhone || "305-283-0872"
     const calendly = cfg?.calendlyUrl || ""
     const bookUrl = calendly || `${process.env.NEXT_PUBLIC_APP_URL || "https://www.catherinegomezrealtor.com"}/book`
+    // On a project page (e.g. /domus) Sofía gets that project's real facts.
+    const projectKnowledge = projectKnowledgeFor(pagePath, bookUrl)
 
     // Known lead? (id arrives from email/portal links)
     let knownName: string | null = null
@@ -249,7 +253,8 @@ export async function POST(req: Request) {
       listingNote = listings.length
         ? `Le estás mostrando ${listings.length} propiedades de reventa (resale) en tarjetas abajo del chat. Preséntalas con entusiasmo y pregunta si quiere que ${realtorName} le agende una visita.`
         : `No hay reventa que calce con esos criterios ahora mismo. Dile que ${realtorName} tiene acceso a propiedades exclusivas fuera del mercado y ofrécele agendar una llamada.`
-    } else if (analysis?.wantsListings && analysis.listingType === "PRECONSTRUCTION") {
+    } else if (analysis?.wantsListings && analysis.listingType === "PRECONSTRUCTION" && !projectKnowledge) {
+      // (On a project page the project itself is the pre-construction answer.)
       const pre = await getMatchingPreConstruction(lastUser, calendly, 3).catch(() => [] as string[])
       projectsUrl = `${APP}/new-construction`
       listingNote = pre.length
@@ -264,7 +269,7 @@ export async function POST(req: Request) {
 MISIÓN: aportar valor real y, cuando el visitante muestre interés, llevarlo a AGENDAR una llamada con ${realtorName}.
 
 CONTEXTO DE LA PÁGINA: ${pageContext || "Explorando el sitio"}
-${propertyContext ? `\n${propertyContext}\n` : ""}${knownName ? `El visitante es ${knownName} (ya es un lead registrado). Salúdalo por su nombre y NO le pidas de nuevo sus datos.` : "Aún no sabemos quién es."}
+${projectKnowledge ? `\n${projectKnowledge}\n` : ""}${propertyContext ? `\n${propertyContext}\n` : ""}${knownName ? `El visitante es ${knownName} (ya es un lead registrado). Salúdalo por su nombre y NO le pidas de nuevo sus datos.` : "Aún no sabemos quién es."}
 
 PRECONSTRUCCIÓN vs REVENTA — clave para asesorar bien:
 - Si aún no sabes qué busca, PREGÚNTALE si le interesa PRECONSTRUCCIÓN (proyectos nuevos, en planos) o REVENTA (propiedades existentes), y explícale la diferencia en 1-2 frases:
