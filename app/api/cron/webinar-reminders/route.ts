@@ -7,6 +7,7 @@ import { sendEmail } from "@/lib/email"
 import { sendSMS, toE164 } from "@/lib/sms"
 import { createMeeting, zoomConfigured } from "@/lib/zoom"
 import { ATTENDED_PCT_THRESHOLD, replayWatchUrl } from "@/lib/webinar"
+import { ensureWeeklyWebinars } from "@/lib/webinar-recurrence"
 
 /**
  * The webinar reminder sequence, and the follow-up that is the actual point.
@@ -65,6 +66,14 @@ export async function GET(req: Request) {
   const now = Date.now()
   const sent: Record<string, number> = { REMINDER_1D: 0, REMINDER_1H: 0, LIVE: 0, FOLLOWUP: 0, REPLAY_READY: 0 }
   const notes: string[] = []
+
+  // ── Weekly series: next week's session, and its automatic invitation ────
+  try {
+    notes.push(...await ensureWeeklyWebinars(now))
+  } catch (e: any) {
+    console.error("[webinar-reminders] weekly series failed:", e)
+    notes.push(`✗ Serie semanal: ${e?.message || e}`)
+  }
 
   // ── 0. Create the Zoom meeting for anything starting in the next 3 days ───
   // Done here rather than at creation time so a webinar can be published and

@@ -23,6 +23,65 @@ type Webinar = {
   attendedCount: number
   replayWatchedCount: number
   invitedAt: string | null
+  invitedTags: string
+  repeatWeekly: boolean
+  autoInviteTags: string
+}
+
+const tagsOf = (raw: string | null | undefined): string[] => {
+  try { const v = JSON.parse(raw || "[]"); return Array.isArray(v) ? v.map(String) : [] } catch { return [] }
+}
+
+/**
+ * Pick CRM tags ("Domus", "Colombia"…). None selected means everyone.
+ * The list is fetched once per page and shared.
+ */
+let tagCache: Promise<string[]> | null = null
+function loadTags(): Promise<string[]> {
+  if (!tagCache) {
+    tagCache = fetch("/api/tags").then(r => r.ok ? r.json() : []).then((t: any[]) =>
+      Array.isArray(t) ? t.map(x => String(x.name)).filter(Boolean) : []).catch(() => [])
+  }
+  return tagCache
+}
+
+function TagPicker({ value, onChange, emptyLabel }: {
+  value: string[]
+  onChange: (v: string[]) => void
+  emptyLabel: string
+}) {
+  const [all, setAll] = useState<string[]>([])
+  const [q, setQ] = useState("")
+  useEffect(() => { loadTags().then(setAll) }, [])
+  const shown = all.filter(t => !q || t.toLowerCase().includes(q.toLowerCase())).slice(0, 40)
+  const toggle = (t: string) => onChange(value.includes(t) ? value.filter(x => x !== t) : [...value, t])
+  return (
+    <div>
+      <div className="mb-2 flex flex-wrap items-center gap-1.5">
+        {value.length === 0
+          ? <span className="text-xs text-gray-500">{emptyLabel}</span>
+          : value.map(t => (
+            <button key={t} type="button" onClick={() => toggle(t)}
+              className="rounded-full bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-indigo-700">
+              {t} ✕
+            </button>
+          ))}
+      </div>
+      {all.length > 8 && (
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar etiqueta…"
+          className="mb-2 w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500" />
+      )}
+      <div className="flex max-h-32 flex-wrap gap-1.5 overflow-y-auto">
+        {shown.filter(t => !value.includes(t)).map(t => (
+          <button key={t} type="button" onClick={() => toggle(t)}
+            className="rounded-full border border-gray-300 bg-white px-2.5 py-1 text-xs text-gray-700 hover:border-indigo-400 hover:text-indigo-700">
+            + {t}
+          </button>
+        ))}
+        {all.length === 0 && <span className="text-xs text-gray-400">No hay etiquetas en el CRM todavía.</span>}
+      </div>
+    </div>
+  )
 }
 
 const SITE = "https://www.catherinegomezrealtor.com"
@@ -73,6 +132,7 @@ export function WebinarsClient() {
   const [form, setForm] = useState({
     title: "", description: "", startsAt: "", durationMins: 60,
     series: "inversion-miami", projectSlug: "", recorded: false,
+    repeatWeekly: false, autoInviteTags: [] as string[],
   })
 
   const load = async () => {
@@ -107,10 +167,12 @@ export function WebinarsClient() {
         kind: "ok",
         text: form.recorded
           ? "Grabación creada. Pégale el enlace de YouTube en su fila, abajo."
-          : `Creado. ${data.zoomNote || ""} Página: ${SITE}/webinar/${data.slug}`,
+          : form.repeatWeekly && data.series
+            ? `Creado y se repite cada semana. ${data.zoomNote || ""} Enlace fijo para tu bio: ${SITE}/webinar/serie/${data.series}`
+            : `Creado. ${data.zoomNote || ""} Página: ${SITE}/webinar/${data.slug}`,
       })
       setShowForm(false)
-      setForm({ title: "", description: "", startsAt: "", durationMins: 60, series: "inversion-miami", projectSlug: "", recorded: false })
+      setForm({ title: "", description: "", startsAt: "", durationMins: 60, series: "inversion-miami", projectSlug: "", recorded: false, repeatWeekly: false, autoInviteTags: [] })
       load()
     } catch (err: any) {
       setMsg({ kind: "err", text: err.message })
@@ -282,6 +344,33 @@ export function WebinarsClient() {
             </select>
           </div>
 
+          {!form.recorded && (
+            <div className="rounded-xl border border-gray-200 p-3">
+              <label className="flex items-start gap-2 text-sm text-gray-800">
+                <input type="checkbox" checked={form.repeatWeekly}
+                  onChange={e => setForm(f => ({ ...f, repeatWeekly: e.target.checked }))}
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300" />
+                <span>
+                  <strong>Repetir cada semana</strong> el mismo día y a la misma hora
+                  <span className="block text-xs text-gray-500">
+                    Al terminar cada sesión se crea sola la de la semana siguiente, con su Zoom y sus recordatorios.
+                    Tendrás un enlace fijo que siempre lleva a la próxima sesión.
+                  </span>
+                </span>
+              </label>
+              {form.repeatWeekly && (
+                <div className="mt-3 border-t border-gray-100 pt-3">
+                  <p className="mb-1.5 text-xs font-semibold text-gray-600">
+                    Invitar automáticamente por correo, 2 días antes, a los contactos con estas etiquetas:
+                  </p>
+                  <TagPicker value={form.autoInviteTags}
+                    onChange={v => setForm(f => ({ ...f, autoInviteTags: v }))}
+                    emptyLabel="Ninguna — invitas tú con el botón cada semana." />
+                </div>
+              )}
+            </div>
+          )}
+
           <button
             type="submit" disabled={creating}
             className="w-full rounded-xl bg-indigo-600 py-3 font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
@@ -330,13 +419,15 @@ function InviteList({
   const [withSms, setWithSms] = useState(false)
   const [sending, setSending] = useState(false)
   const [result, setResult] = useState<string | null>(null)
+  const [tags, setTags] = useState<string[]>([])
 
-  const preview = async () => {
-    setOpen(true)
+  const count = async (t: string[]) => {
     setCounts(null)
-    const res = await fetch(`/api/webinars/${webinarId}/invite`)
+    const res = await fetch(`/api/webinars/${webinarId}/invite?tags=${encodeURIComponent(JSON.stringify(t))}`)
     if (res.ok) setCounts(await res.json())
   }
+  const preview = async () => { setOpen(true); count(tags) }
+  const pickTags = (t: string[]) => { setTags(t); count(t) }
 
   const send = async () => {
     if (!counts) return
@@ -347,7 +438,7 @@ function InviteList({
         headers: { "Content-Type": "application/json" },
         // force: the preview already told her it had been sent before, so
         // reaching this button again is the deliberate re-send.
-        body: JSON.stringify({ email: true, sms: withSms, force: !!invitedAt }),
+        body: JSON.stringify({ email: true, sms: withSms, force: !!invitedAt, tags }),
       })
       const data = await res.json()
       if (!res.ok) { setResult(data.error || "No se pudo enviar."); return }
@@ -382,13 +473,20 @@ function InviteList({
     <div className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50/60 p-4">
       {result ? (
         <p className="text-sm font-semibold text-indigo-900">{result}</p>
-      ) : !counts ? (
-        <p className="text-sm text-gray-600">Contando a quién le llegaría…</p>
       ) : (
         <>
+          <div className="mb-3">
+            <p className="mb-1.5 text-xs font-semibold text-gray-700">¿A quién? Elige etiquetas o deja vacío para toda tu base.</p>
+            <TagPicker value={tags} onChange={pickTags} emptyLabel="Toda tu base de contactos" />
+          </div>
+          {!counts ? (
+            <p className="text-sm text-gray-600">Contando a quién le llegaría…</p>
+          ) : (
+          <>
           <p className="text-sm text-gray-800">
             Le llega por correo a <strong>{counts.emailCount}</strong>{" "}
-            {counts.emailCount === 1 ? "persona" : "personas"} de tu base.
+            {counts.emailCount === 1 ? "persona" : "personas"}{" "}
+            {tags.length ? <>con {tags.length === 1 ? "la etiqueta" : "las etiquetas"} <strong>{tags.join(", ")}</strong></> : "de tu base"}.
             {counts.alreadyRegistered > 0 && (
               <span className="text-gray-600">
                 {" "}({counts.alreadyRegistered} ya {counts.alreadyRegistered === 1 ? "está registrada" : "están registradas"} y{" "}
@@ -434,6 +532,8 @@ function InviteList({
               Cancelar
             </button>
           </div>
+          </>
+          )}
         </>
       )}
     </div>
@@ -465,7 +565,10 @@ function WebinarRow({
   const [edit, setEdit] = useState({
     title: w.title, description: w.description || "", projectSlug: w.projectSlug || "",
     startsAt: toMiamiLocal(w.startsAt), durationMins: String(w.durationMins), notify: true,
+    repeatWeekly: w.repeatWeekly, autoInviteTags: tagsOf(w.autoInviteTags),
   })
+  const seriesUrl = w.series ? `${SITE}/webinar/serie/${w.series}` : null
+  const [copied, setCopied] = useState(false)
   const dateChanged = canMove && edit.startsAt !== toMiamiLocal(w.startsAt)
 
   async function call(method: "PATCH" | "DELETE", body?: Record<string, unknown>) {
@@ -496,6 +599,8 @@ function WebinarRow({
         body.notify = edit.notify
       }
       if (Number(edit.durationMins) !== w.durationMins) body.durationMins = Number(edit.durationMins)
+      body.repeatWeekly = edit.repeatWeekly
+      body.autoInviteTags = edit.repeatWeekly ? edit.autoInviteTags : []
     }
     const data = await call("PATCH", body)
     if (!data) return
@@ -505,7 +610,8 @@ function WebinarRow({
   }
 
   async function cancelWebinar() {
-    if (!confirm(`¿Cancelar "${w.title}"? Se borra la reunión de Zoom y dejan de salir los recordatorios.`)) return
+    if (!confirm(`¿Cancelar "${w.title}"? Se borra la reunión de Zoom y dejan de salir los recordatorios.` +
+      (w.repeatWeekly ? "\n\nSolo se cancela esta semana: la serie sigue y se crea la sesión de la semana siguiente." : ""))) return
     const notify = w.registrations > 0 && confirm(`¿Enviar un correo a los ${w.registrations} registrados avisando que se canceló?`)
     const data = await call("PATCH", { status: "CANCELLED", notify })
     if (!data) return
@@ -514,7 +620,8 @@ function WebinarRow({
   }
 
   async function deleteWebinar() {
-    if (!confirm(`¿Eliminar "${w.title}" para siempre? Esto no se puede deshacer.`)) return
+    if (!confirm(`¿Eliminar "${w.title}" para siempre? Esto no se puede deshacer.` +
+      (w.repeatWeekly ? "\n\nOjo: es la sesión que mantiene la serie semanal. Si la eliminas, la serie se detiene. Para saltarte solo esta semana usa Cancelar." : ""))) return
     const data = await call("DELETE")
     if (data) onReload()
   }
@@ -543,6 +650,22 @@ function WebinarRow({
             : past ? "Terminado" : "Programado"}
         </span>
       </div>
+
+      {w.repeatWeekly && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+          <span className="rounded-full bg-violet-50 px-2.5 py-1 font-semibold text-violet-700">🔁 Se repite cada semana</span>
+          {tagsOf(w.autoInviteTags).length > 0 && (
+            <span className="text-gray-600">Invitación automática 2 días antes a: <strong>{tagsOf(w.autoInviteTags).join(", ")}</strong></span>
+          )}
+          {seriesUrl && (
+            <button type="button"
+              onClick={() => { navigator.clipboard?.writeText(seriesUrl).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) }) }}
+              className="font-semibold text-indigo-600 hover:text-indigo-800">
+              {copied ? "✓ Enlace copiado" : "Copiar enlace fijo para la bio"}
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="mt-3 flex flex-wrap items-center gap-4 text-sm">
         <span className="flex items-center gap-1.5 text-gray-700">
@@ -623,6 +746,24 @@ function WebinarRow({
                 <input type="number" min={10} max={480} value={edit.durationMins} onChange={e => setEdit(f => ({ ...f, durationMins: e.target.value }))}
                   className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
+            </div>
+          )}
+          {canMove && (
+            <div className="rounded-xl border border-gray-200 bg-white p-3">
+              <label className="flex items-center gap-2 text-sm text-gray-800">
+                <input type="checkbox" checked={edit.repeatWeekly}
+                  onChange={e => setEdit(f => ({ ...f, repeatWeekly: e.target.checked }))} />
+                <strong>Repetir cada semana</strong>
+                <span className="text-xs text-gray-500">(desmárcalo para que esta sea la última)</span>
+              </label>
+              {edit.repeatWeekly && (
+                <div className="mt-2">
+                  <p className="mb-1.5 text-xs font-semibold text-gray-600">Invitar automáticamente por correo, 2 días antes, a:</p>
+                  <TagPicker value={edit.autoInviteTags}
+                    onChange={v => setEdit(f => ({ ...f, autoInviteTags: v }))}
+                    emptyLabel="Ninguna — invitas tú con el botón." />
+                </div>
+              )}
             </div>
           )}
           {dateChanged && w.registrations > 0 && (

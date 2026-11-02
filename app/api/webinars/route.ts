@@ -6,6 +6,7 @@ import { auth } from "@/lib/auth"
 import { createMeeting, zoomConfigured } from "@/lib/zoom"
 import { findProject } from "@/lib/investment-projects"
 import { REPLAY_ENGAGED_PCT } from "@/lib/webinar"
+import { parseTags } from "@/lib/webinar-invite"
 
 /**
  * Webinars, from the dashboard. Authenticated — the public side is
@@ -36,7 +37,7 @@ export async function GET() {
       id: true, slug: true, series: true, title: true, description: true,
       startsAt: true, durationMins: true, timezone: true, status: true,
       zoomJoinUrl: true, zoomMeetingId: true, replayUrl: true, projectSlug: true, coverImageUrl: true,
-      invitedAt: true,
+      invitedAt: true, invitedTags: true, repeatWeekly: true, autoInviteTags: true,
       _count: { select: { registrations: true } },
     },
   })
@@ -131,7 +132,11 @@ export async function POST(req: Request) {
       // Zoom meetings for SCHEDULED sessions in the future, so a recording
       // never books a meeting nobody is going to attend.
       ...(recorded ? { status: "ENDED" } : {}),
-      series: body.series ? String(body.series).trim() : null,
+      // A weekly series needs a series name: it is what the fixed link
+      // (/webinar/serie/<series>) and the hand-off between weeks go by.
+      series: body.series ? slugify(String(body.series)) || null : (body.repeatWeekly === true && !recorded ? slugify(title) : null),
+      repeatWeekly: body.repeatWeekly === true && !recorded,
+      autoInviteTags: JSON.stringify(body.repeatWeekly === true && !recorded ? parseTags(body.autoInviteTags) : []),
       // Validated rather than trusted: an unknown slug used to be rendered
       // into a link that 404'd for every visitor to the public page.
       projectSlug: project?.slug ?? null,
@@ -171,5 +176,5 @@ export async function POST(req: Request) {
     zoomNote = "La reunión de Zoom se crea sola 3 días antes."
   }
 
-  return NextResponse.json({ ok: true, id: webinar.id, slug: webinar.slug, zoomNote })
+  return NextResponse.json({ ok: true, id: webinar.id, slug: webinar.slug, series: webinar.series, zoomNote })
 }
