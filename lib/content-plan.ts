@@ -56,6 +56,9 @@ const LOCAL_THEMES = [
   "incentivos del builder: costos de cierre pagados y tasas reducidas — cómo pedirlos",
   "por qué tener tu propio Realtor al comprar al builder no te cuesta nada",
   "casa nueva vs casa usada en Homestead y Florida City: qué te conviene",
+  "comprar directo al builder (Lennar, D.R. Horton…) vs con tu Realtor: qué cambia para ti",
+  "sur o norte de Miami-Dade: dónde rinde más tu presupuesto para una casa nueva",
+  "qué incluye una casa nueva de builder y qué se paga aparte (upgrades, cortinas, nevera)",
   "townhome vs casa unifamiliar: pago mensual, HOA y espacio",
   "préstamo FHA o convencional para construcción nueva: requisitos reales",
   "qué revisar en la inspección y el walkthrough de una casa nueva antes de cerrar",
@@ -96,7 +99,8 @@ const AUDIENCE_RULES: Record<Audience, string> = {
     "Trátalos de USTED. Lo que les importa: proteger patrimonio en dólares, confianza (miedo a estafas), comprar sin viajar, papeleo en su país, rentas. " +
     "Nunca prometas rentabilidad, ocupación ni valorización por tu cuenta; si un proyecto tiene un programa del desarrollador (renta garantizada, lease-back), preséntalo como oferta del desarrollador, con sus condiciones.",
   LOCAL:
-    "AUDIENCIA: familias hispanas que viven en South Florida y quieren comprar casa o townhome NUEVO para vivir (Homestead, Florida City, Kendall, Doral y comunidades nuevas de Miami-Dade). " +
+    "AUDIENCIA: familias hispanas que viven en South Florida y quieren comprar casa o townhome NUEVO para vivir, en TODO el sur y el norte de Miami-Dade (sur: Homestead, Florida City, Cutler Bay, Kendall; norte: Miami Gardens, Hialeah, Miami Lakes, North Miami), con builders como Lennar, D.R. Horton y otros. " +
+    "Catherine trabaja con todos los builders: el comprador no paga más por tener su propia Realtor. No inventes nombres de comunidades, precios ni incentivos concretos. " +
     "Trátalos de TÚ, cercano y familiar. Lo que les importa: el pago mensual, cuánto necesitan para mudarse, programas de ayuda, incentivos del builder, escuelas y HOA. " +
     "No hables de inversión desde el extranjero.",
 }
@@ -126,7 +130,7 @@ function keywordFor(project: Project): string {
 }
 
 const INTL_TAGS = ["#InvertirEnMiami", "#Preconstruccion", "#BrickellMiami", "#InversionistasColombianos", "#BienesRaicesMiami", "#ComprarEnMiami", "#Orlando"]
-const LOCAL_TAGS = ["#CasaNueva", "#CompraTuCasa", "#HomesteadFL", "#MiamiDade", "#PrimeraCasa", "#TownhomesMiami", "#FloridaCity"]
+const LOCAL_TAGS = ["#CasaNueva", "#CompraTuCasa", "#HomesteadFL", "#MiamiDade", "#PrimeraCasa", "#TownhomesMiami", "#FloridaCity", "#MiamiGardens", "#CutlerBay", "#NuevaConstruccion"]
 
 function pick<T>(arr: T[], seed: number, n: number): T[] {
   const out: T[] = []
