@@ -715,17 +715,15 @@ ESTRUCTURA del artículo (600-800 palabras):
 
 SEO/AIO: Escribe como responderías a una búsqueda en Google o una pregunta en ChatGPT. Usa el lenguaje natural que usaría alguien buscando "comprar casa en Miami" o "invertir en Miami real estate".
 
-Devuelve SOLO JSON válido con este formato exacto:
-{
-  "title": "Título SEO del artículo (máx 70 caracteres, incluye keyword principal)",
-  "excerpt": "Meta descripción de 150-160 caracteres para SEO — resume con keyword principal y año",
-  "content": "TODO el HTML del artículo con los placeholders [IMG_SECTION_1] y [IMG_SECTION_2] incluidos",
-  "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
-  "sectionImagePrompts": [
-    "Descripción en inglés para imagen 1 (estilo fotorrealista, real estate Miami, sin texto)",
-    "Descripción en inglés para imagen 2 (estilo fotorrealista, real estate Miami, sin texto)"
-  ]
-}`
+Devuelve SOLO estas etiquetas, en este orden, sin JSON ni markdown:
+<title>Título SEO del artículo (máx 70 caracteres, incluye keyword principal)</title>
+<excerpt>Meta descripción de 150-160 caracteres para SEO — resume con keyword principal y año</excerpt>
+<tags>tag1, tag2, tag3, tag4, tag5</tags>
+<image1>Descripción en inglés para imagen 1 (estilo fotorrealista, real estate Miami, sin texto)</image1>
+<image2>Descripción en inglés para imagen 2 (estilo fotorrealista, real estate Miami, sin texto)</image2>
+<content>
+TODO el HTML del artículo con los placeholders [IMG_SECTION_1] y [IMG_SECTION_2] incluidos
+</content>`
 
   try {
     const message = await anthropic.messages.create({
@@ -736,8 +734,7 @@ Devuelve SOLO JSON válido con este formato exacto:
     })
 
     const text = message.content[0].type === "text" ? message.content[0].text.trim() : ""
-    const clean = text.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim()
-    return JSON.parse(clean) as BlogPostData
+    return parseBlogPost(text)
   } catch (err) {
     console.error("[social-autopilot] Blog post generation failed:", err)
     return null
@@ -1767,4 +1764,32 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
 
   console.log(`[social-autopilot] Done — slot=${slot} day=${dayOfWeek}`, result)
   return result
+}
+
+/**
+ * The blog article comes back as tagged sections, not JSON: an article is
+ * HTML full of class="…" quotes, and one unescaped quote inside a JSON
+ * string threw away the whole post (SyntaxError at position 4302). JSON is
+ * still accepted in case the model answers in the old shape.
+ */
+function parseBlogPost(text: string): BlogPostData | null {
+  const pick = (tag: string) => {
+    const m = text.match(new RegExp(`<${tag}>([\\s\\S]*?)(?:</${tag}>|$)`, "i"))
+    return m ? m[1].trim() : ""
+  }
+  const title = pick("title")
+  const content = pick("content")
+  if (title && content) {
+    return {
+      title,
+      excerpt: pick("excerpt"),
+      content,
+      tags: pick("tags").split(",").map(t => t.trim()).filter(Boolean).slice(0, 8),
+      sectionImagePrompts: [pick("image1"), pick("image2")].filter(Boolean),
+    } as BlogPostData
+  }
+  const clean = text.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim()
+  try { return JSON.parse(clean) as BlogPostData } catch {}
+  console.error("[social-autopilot] Blog post: could not read the model's answer")
+  return null
 }
