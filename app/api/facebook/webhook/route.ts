@@ -18,6 +18,7 @@ import {
 } from "@/lib/facebook"
 import { ingestLead, enrollContactInPlanByName } from "@/lib/lead-ingest"
 import { detectProject, projectReply, type Project } from "@/lib/projects"
+import { handleCommentKeyword } from "@/lib/comment-keywords"
 import { isFormFollowup, findFormLead, contactCampaign, formFollowupReply, formFollowupNotification } from "@/lib/form-followup"
 import { generateSocialAIReply, getMatchingProperties, getMatchingPreConstruction, notifyCatherineAboutLead } from "@/lib/social-ai-chat"
 
@@ -271,6 +272,18 @@ export async function POST(req: Request) {
         if (!botConfig?.isEnabled) continue
         // Skip comments posted by the page itself (prevents processing bot's own replies)
         if (commenterId === pageId) continue
+
+        // Auto-Pilot keywords ("Comenta DOMUS / CASA") get their link right away,
+        // without the name/email/phone sign-up. Skipped if Sofía is paused for them.
+        const pausedCommenter = await prisma.contact.findFirst({ where: { facebookPsid: commenterId, sofiaPausedAt: { not: null } }, select: { id: true } })
+        if (!pausedCommenter && await handleCommentKeyword({
+          platform: "Facebook",
+          userKey: commenterId,
+          who: val.from?.name || "Alguien",
+          text: commentText,
+          sendPrivate: msg => privateReplyToComment(commentId, msg),
+          replyPublic: msg => postPublicCommentReply(commentId, msg),
+        })) continue
 
         // Accent-insensitive normalize for matching
         const normFb = (s: string) => s.toLowerCase()

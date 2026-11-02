@@ -9,6 +9,7 @@ import {
   extractEmail, extractPhone, isOptOut, getInstagramUserProfile,
 } from "@/lib/instagram"
 import { detectProject, projectReply } from "@/lib/projects"
+import { handleCommentKeyword } from "@/lib/comment-keywords"
 import { isFormFollowup, findFormLead, contactCampaign, formFollowupReply, formFollowupNotification } from "@/lib/form-followup"
 import { ingestLead } from "@/lib/lead-ingest"
 import { generateSocialAIReply, getMatchingProperties, getMatchingPreConstruction, notifyCatherineAboutLead } from "@/lib/social-ai-chat"
@@ -143,6 +144,19 @@ export async function POST(req: Request) {
         // The account's own comments (Auto-Pilot posts "Comenta MIAMI" under
         // every post) matched the keywords and made the bot DM itself.
         if (igUserId === entry.id || igUserId === process.env.INSTAGRAM_ACCOUNT_ID) continue
+
+        // Auto-Pilot keywords ("Comenta DOMUS / CASA") get their link right away,
+        // without the name/email sign-up. Skipped if Catherine paused Sofía for them.
+        const pausedCommenter = await prisma.contact.findFirst({ where: { instagramIgsid: igUserId, sofiaPausedAt: { not: null } }, select: { id: true } })
+        if (!pausedCommenter && await handleCommentKeyword({
+          platform: "Instagram",
+          userKey: igUserId,
+          who: igUsername ? `@${igUsername}` : "Alguien",
+          text: commentText,
+          sendPrivate: msg => sendCommentGreeting(commentId, igUserId, msg),
+          replyPublic: msg => publicReplyToComment(commentId, msg),
+        })) continue
+
         if (!matchesKeyword(commentText)) continue
 
         const existing = await prisma.instagramConversation.findUnique({ where: { igUserId } })

@@ -115,3 +115,35 @@ export function projectReply(p: Project, firstName: string | null | undefined, b
 export function projectsForPrompt(): string {
   return PROJECTS.map(p => `- ${p.name} (${p.place}) — ${p.highlight}: ${projectUrl(p)}`).join("\n")
 }
+
+/**
+ * The DM sent when someone comments one of the Auto-Pilot's keywords under a
+ * post: a project name ("DOMUS", "PARKSIDE"…), "CASA" (local new-construction
+ * buyers) or "INVERTIR" (international investors). CASA/INVERTIR only count
+ * in short comments, so "qué linda casa" on a photo doesn't trigger a DM.
+ */
+export function commentKeywordReply(text: string, bookUrl: string): { label: string; message: string } | null {
+  const project = detectProject(text)
+  if (project) return { label: project.name, message: projectReply(project, null, bookUrl) }
+
+  const t = norm(text).replace(/[^\w\s]/g, " ").trim()
+  const short = t.split(/\s+/).filter(Boolean).length <= 4
+  if (short && /\bcasas?\b/.test(t)) {
+    return {
+      label: "Casas nuevas (CASA)",
+      message:
+        `¡Hola! 🏡 Aquí tienes las casas y townhomes nuevos en South Florida, con precios y fotos:\n${BASE}/new-construction\n\n` +
+        `Con el builder muchas veces hay incentivos (costos de cierre o tasa reducida) y tener tu propia Realtor no te cuesta nada. ` +
+        `Si quieres, te ayudo a calcular cuánto necesitas para mudarte. Agenda una llamada de 20 minutos aquí: ${bookUrl}`,
+    }
+  }
+  if (short && /\binvert(ir|ir en miami)?\b/.test(t)) {
+    return {
+      label: "Invertir desde el exterior (INVERTIR)",
+      message:
+        `¡Hola! 🌎 Aquí tiene los proyectos de preconstrucción que presento, con precios y planes de pago:\n${BASE}/proyectos\n\n` +
+        `Le acompaño en español a comprar desde su país, sin viajar. Si quiere, revisamos su caso en una llamada de 20 minutos: ${bookUrl}`,
+    }
+  }
+  return null
+}
