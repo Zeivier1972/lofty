@@ -33,53 +33,91 @@ const tagsOf = (raw: string | null | undefined): string[] => {
 }
 
 /**
- * Pick CRM tags ("Domus", "Colombia"…). None selected means everyone.
- * The list is fetched once per page and shared.
+ * Pick CRM tags ("Domus", "Investor_colombia"…) from a dropdown with
+ * checkboxes; several can be chosen. None selected means everyone.
+ * The list (with contact counts) is fetched once per page and shared.
  */
-let tagCache: Promise<string[]> | null = null
-function loadTags(): Promise<string[]> {
+type TagOpt = { name: string; count: number }
+let tagCache: Promise<TagOpt[]> | null = null
+function loadTags(): Promise<TagOpt[]> {
   if (!tagCache) {
-    tagCache = fetch("/api/tags").then(r => r.ok ? r.json() : []).then((t: any[]) =>
-      Array.isArray(t) ? t.map(x => String(x.name)).filter(Boolean) : []).catch(() => [])
+    tagCache = fetch("/api/tags?counts=1").then(r => r.ok ? r.json() : []).then((t: any[]) =>
+      Array.isArray(t) ? t.map(x => ({ name: String(x.name), count: Number(x.count) || 0 })).filter(x => x.name) : []).catch(() => [])
   }
   return tagCache
 }
+
+/** Tags that mark the Colombian investor audience. */
+const COLOMBIA_RX = /colombia|bogot|medell|\bcali\b|barranquilla|cartagena|domus/i
 
 function TagPicker({ value, onChange, emptyLabel }: {
   value: string[]
   onChange: (v: string[]) => void
   emptyLabel: string
 }) {
-  const [all, setAll] = useState<string[]>([])
+  const [all, setAll] = useState<TagOpt[]>([])
+  const [open, setOpen] = useState(false)
   const [q, setQ] = useState("")
   useEffect(() => { loadTags().then(setAll) }, [])
-  const shown = all.filter(t => !q || t.toLowerCase().includes(q.toLowerCase())).slice(0, 40)
+  const shown = all.filter(t => !q || t.name.toLowerCase().includes(q.toLowerCase()))
   const toggle = (t: string) => onChange(value.includes(t) ? value.filter(x => x !== t) : [...value, t])
+  const colombia = all.filter(t => COLOMBIA_RX.test(t.name)).map(t => t.name)
+
   return (
-    <div>
-      <div className="mb-2 flex flex-wrap items-center gap-1.5">
-        {value.length === 0
-          ? <span className="text-xs text-gray-500">{emptyLabel}</span>
-          : value.map(t => (
+    <div className="relative">
+      <button type="button" onClick={() => setOpen(o => !o)}
+        className="flex w-full items-center justify-between gap-2 rounded-xl border border-gray-300 bg-white px-3 py-2 text-left text-sm hover:border-indigo-400">
+        <span className={value.length ? "text-gray-900" : "text-gray-500"}>
+          {value.length ? `${value.length} ${value.length === 1 ? "etiqueta elegida" : "etiquetas elegidas"}` : emptyLabel}
+        </span>
+        <span className="text-gray-400">{open ? "▲" : "▼"}</span>
+      </button>
+
+      {value.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {value.map(t => (
             <button key={t} type="button" onClick={() => toggle(t)}
               className="rounded-full bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-indigo-700">
               {t} ✕
             </button>
           ))}
-      </div>
-      {all.length > 8 && (
-        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar etiqueta…"
-          className="mb-2 w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500" />
-      )}
-      <div className="flex max-h-32 flex-wrap gap-1.5 overflow-y-auto">
-        {shown.filter(t => !value.includes(t)).map(t => (
-          <button key={t} type="button" onClick={() => toggle(t)}
-            className="rounded-full border border-gray-300 bg-white px-2.5 py-1 text-xs text-gray-700 hover:border-indigo-400 hover:text-indigo-700">
-            + {t}
+          <button type="button" onClick={() => onChange([])} className="text-xs font-semibold text-gray-500 hover:text-gray-800">
+            Quitar todas
           </button>
-        ))}
-        {all.length === 0 && <span className="text-xs text-gray-400">No hay etiquetas en el CRM todavía.</span>}
-      </div>
+        </div>
+      )}
+
+      {open && (
+        <div className="absolute z-20 mt-1 w-full rounded-xl border border-gray-200 bg-white p-2 shadow-lg">
+          <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar etiqueta…"
+            className="mb-2 w-full rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500" />
+          {colombia.length > 0 && !q && (
+            <button type="button"
+              onClick={() => onChange(Array.from(new Set([...value, ...colombia])))}
+              className="mb-2 w-full rounded-lg bg-amber-50 px-2.5 py-2 text-left text-xs font-semibold text-amber-900 hover:bg-amber-100">
+              🇨🇴 Agregar todas las de inversionistas colombianos ({colombia.join(", ")})
+            </button>
+          )}
+          <div className="max-h-64 overflow-y-auto">
+            {shown.map(t => (
+              <label key={t.name} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-gray-50">
+                <input type="checkbox" checked={value.includes(t.name)} onChange={() => toggle(t.name)}
+                  className="h-4 w-4 rounded border-gray-300" />
+                <span className="flex-1 text-gray-800">{t.name}</span>
+                <span className="text-xs text-gray-400">{t.count}</span>
+              </label>
+            ))}
+            {all.length === 0 && <p className="px-2 py-1.5 text-xs text-gray-400">No hay etiquetas en el CRM todavía.</p>}
+            {all.length > 0 && shown.length === 0 && <p className="px-2 py-1.5 text-xs text-gray-400">Ninguna coincide.</p>}
+          </div>
+          <div className="mt-2 flex justify-end border-t border-gray-100 pt-2">
+            <button type="button" onClick={() => setOpen(false)}
+              className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-gray-800">
+              Listo
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
