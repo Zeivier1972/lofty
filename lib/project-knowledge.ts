@@ -41,10 +41,47 @@ ${line("2 habitaciones")}
 AGENDAR: en esta misma página está el calendario ("Agende una llamada", más abajo) para elegir día y hora con Catherine por teléfono o Zoom; o el enlace ${bookUrl}. Cuando muestre interés en una unidad, recomiéndale agendar para confirmar disponibilidad.`
 }
 
+// Parkside and House of Wellness: written from the facts on their own pages
+// (app/parkside/page.tsx, app/house-of-wellness/page.tsx). Next does not let a
+// page.tsx export its data, so when a price or date changes there, change it
+// here too.
+
+function parksideKnowledge(bookUrl: string): string {
+  return `EL VISITANTE ESTÁ EN LA PÁGINA DE PARKSIDE RESIDENCES AT BRICKELL. Responde con estos datos (del desarrollador; no inventes otros):
+- Edificio boutique de 8 pisos con 187 residencias amuebladas, frente a Simpson Park en Brickell, Miami. Desarrollador: BI Group USA (30 años, 400+ proyectos, ~95 millones de pies² — antecedentes corporativos, no garantía). Arquitectura e interiores: Kobi Karp.
+- Precios (lista del desarrollador del 27 de octubre de 2026): estudios desde $490,000 (417–510 pies², 39–47 m²); 1 habitación desde $582,750 (488–689 pies², incluye opciones Junior 1 habitación); 2 habitaciones desde $1,160,250 (842–992 pies²). Cambian según piso, vista y disponibilidad.
+- Plan de depósitos: 20% al firmar ($98,000 en un estudio de $490,000), 10% al top-off (enero de 2027), 10% en abril de 2027 y 60% al cierre. Entrega estimada: primer trimestre de 2028.
+- Cada residencia: amueblada, ventanales de piso a techo, cocinas Italkraft, encimeras de cuarzo, electrodomésticos Bosch, lavadora y secadora, baños en porcelanato.
+- Amenidades (The Infinity Level, ~16,500 pies²): piscina, spa, gimnasio, estudio de yoga, sala de spinning, coworking lounge, sala de conferencias, health market, lounge exterior con bar.
+- Alquiler: programa de administración con Wello (reservaciones, marketing y fotos, distribución en plataformas, ingresos, reportes, atención a huéspedes, limpieza y mantenimiento). Condiciones y costos se confirman con el desarrollador. NO prometas ingresos ni ocupación.
+- Ubicación: frente a Simpson Park, cerca de The Underline, Brickell City Centre y el distrito financiero.
+- No hay datos de HOA ni de rentabilidad: no los inventes; Catherine los revisa en la llamada.
+- No le preguntes si busca preconstrucción o reventa: ya está viendo Parkside.
+AGENDAR: en esta página está el formulario "Solicitar mi análisis personalizado" y el botón de WhatsApp; para una llamada con Catherine comparte ${bookUrl}.`
+}
+
+function houseOfWellnessKnowledge(bookUrl: string): string {
+  return `EL VISITANTE ESTÁ EN LA PÁGINA DE HOUSE OF WELLNESS BRICKELL. Responde con estos datos (no inventes otros):
+- 152 SW 9th Street, Brickell, Miami: junto a The Underline, a una cuadra de Brickell City Centre, con tren directo al aeropuerto. Torre de 34 pisos, 656 residencias, más de 22,000 pies² de amenidades de bienestar. Desarrollador: North Development (Oak Capital + Edifica).
+- Precios: estudios con balcón desde $419,900 (371 pies², 34 m²). 1 habitación y 2 habitaciones (620 pies², 58 m²): el precio depende del piso y la vista; Catherine envía la lista vigente el mismo día de la cita.
+- Plan de pagos: 10% al contrato (desde $41,990), 10% durante 2026, 10% en junio de 2027, 10% durante 2028 y 60% al cierre.
+- Gastos mensuales: HOA estimado en $1.70 por pie² al mes (≈$630 en un estudio de 371 pies²) e impuestos de propiedad ≈1.8% del valor al año.
+- Las unidades NO se entregan amuebladas (Catherine puede conectar con proveedores de mobiliario).
+- Alquiler: permitido con un mínimo de 15 días; no hay programa de administración obligatorio. El dueño puede quedarse sin límite de días.
+- Amenidades: gimnasio con entrenador personal, spa con sauna y hammam, cold plunge, estudios de yoga y meditación, piscina en la azotea con vista a la bahía, juice bar con vitaminas IV y nutricionista, administración on-site y cinco niveles de estacionamiento.
+- Extranjeros pueden comprar a su nombre o con una LLC; hay préstamos para extranjeros con ~30–40% de enganche.
+- Fecha de entrega: el desarrollador la confirma al reservar; queda en el contrato.
+- No prometas rentabilidad ni ocupación.
+- No le preguntes si busca preconstrucción o reventa: ya está viendo House of Wellness.
+AGENDAR: en esta misma página está el calendario para elegir día y hora con Catherine (teléfono o Zoom); también ${bookUrl}.`
+}
+
 /** Instructions for Sofía about the project page at `path`, or "" if it isn't one. */
 export function projectKnowledgeFor(path: string | null | undefined, bookUrl: string): string {
   const p = String(path || "").split(/[?#]/)[0].replace(/\/+$/, "")
   if (p === "/domus") return domusKnowledge(bookUrl)
+  if (p === "/parkside") return parksideKnowledge(bookUrl)
+  if (p === "/house-of-wellness") return houseOfWellnessKnowledge(bookUrl)
   if (p === "/proyectos") {
     return `EL VISITANTE ESTÁ VIENDO LA LISTA DE PROYECTOS DE CATHERINE. Estos son (usa solo estos datos y comparte el link del que le interese):\n${PROJECTS.map(x => `- ${x.name} (${x.place}) — ${x.highlight}. ${x.summary} ${projectUrl(x)}`).join("\n")}\nNo le preguntes si busca preconstrucción o reventa: ayúdale a elegir entre estos proyectos según su objetivo y presupuesto, y ofrece agendar con Catherine: ${bookUrl}.`
   }

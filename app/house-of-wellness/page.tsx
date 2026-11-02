@@ -134,6 +134,8 @@ const AMENITIES: { title: string; body: string }[] = [
   { title: "Juice bar y nutrición", body: "Wellness bar con jugos, vitaminas IV y acompañamiento de nutricionista." },
 ]
 
+// Sofía's chat repeats these prices, payments and FAQs — update
+// lib/project-knowledge.ts too when they change.
 const UNITS: { type: string; size: string; note: string }[] = [
   { type: "Estudio con balcón", size: "371 pies² (34 m²)", note: "La entrada al proyecto — desde $419,900 USD." },
   { type: "1 recámara", size: "Consultar plano disponible", note: "Ideal para rentar a ejecutivos de Brickell." },
