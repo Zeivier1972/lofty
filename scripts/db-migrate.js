@@ -1565,6 +1565,160 @@ async function archiveValuationSpam(db) {
   console.log(`[db-migrate] archived ${ids.length} bot valuation leads (of ${rows.length})`)
 }
 
+// ─── Domus Brickell Center smart plan (Colombian investors) ──────────────────
+// Trigger: the tag "Domus" — set it as the Facebook lead form's hidden
+// tag / utm_campaign (exact spelling) and the /domus page form applies it too.
+// Built for the Colombian investor: trust first (escrow, the 15-day right to
+// cancel, buying without travelling, the Colombian side: Banco de la
+// República and DIAN), then Domus's real numbers, then a call with Catherine.
+// Texts offer two real times ({time_options}); a reply or a booking pauses
+// the plan (handleLeadEngaged / handleAppointmentBooked).
+
+async function seedDomusPlan(db) {
+  const NAME = "Domus Brickell Center — Inversionistas Colombia"
+  const tag = await db.tag.upsert({ where: { name: "Domus" }, update: {}, create: { name: "Domus", color: "#A9844C" } })
+  if (await db.smartPlan.findFirst({ where: { name: NAME } })) return
+
+  const PAGE = "https://www.catherinegomezrealtor.com/domus"
+  const shell = (title, inner) => `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;">
+<div style="background:#17191C;padding:30px;text-align:center;">
+  <p style="color:#E2CB9C;margin:0;font-size:26px;letter-spacing:4px;font-weight:300;">domus</p>
+  <p style="color:#fff;margin:4px 0 0;font-size:11px;letter-spacing:5px;opacity:.75;">BRICKELL CENTER</p>
+</div>
+<div style="padding:32px 30px;color:#374151;font-size:15px;line-height:1.6;">
+  <h2 style="color:#17191C;font-size:21px;margin:0 0 16px;font-weight:600;">${title}</h2>
+  ${inner}
+</div>
+<div style="background:#17191C;padding:20px 30px;text-align:center;">
+  <p style="color:#E2CB9C;margin:0 0 4px;font-weight:700;">Catherine Gomez, Realtor</p>
+  <p style="color:#fff;margin:0;font-size:12px;opacity:.85;">📞 {agent_phone} &bull; WhatsApp &bull; catherinegomezrealtor.com</p>
+  <p style="color:#9CA3AF;margin:10px 0 0;font-size:10px;">Información del desarrollador; precios y disponibilidad sujetos a cambio. No constituye asesoría legal ni tributaria.</p>
+</div>
+</div>`
+  const cta = (label) => `<div style="text-align:center;margin:26px 0;">
+    <a href="{calendly_url}" style="background:#A9844C;color:#fff;padding:14px 30px;border-radius:4px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block;">${label}</a>
+    <p style="color:#888;font-size:11px;margin:8px 0 0;">20 minutos &bull; Por teléfono, WhatsApp o Zoom &bull; En español</p>
+  </div>`
+  const li = (items) => `<ul style="padding-left:18px;margin:0 0 16px;">${items.map(i => `<li style="margin:0 0 8px;">${i}</li>`).join("")}</ul>`
+
+  await db.smartPlan.create({
+    data: {
+      name: NAME,
+      description: "Para leads de Domus (tag \"Domus\", formulario de Facebook y página /domus). 30 días que construyen confianza y llevan a una llamada con Catherine: el proyecto, por qué Brickell, cómo comprar desde Colombia sin viajar, cómo se protege el dinero, los números reales y dos horarios para agendar. Se pausa si responde o si agenda.",
+      trigger: `CONTACT_TAGGED:${tag.id}`,
+      isActive: true,
+      steps: {
+        create: [
+          {
+            order: 0, type: "EMAIL", delay: 0,
+            subject: "{first_name}, aquí está la información de Domus Brickell Center",
+            content: shell("Gracias por su interés en Domus, {first_name}", `
+  <p>Soy Catherine Gomez, Realtor en Miami. Acompaño a inversionistas colombianos a comprar en Florida de principio a fin, en español y a distancia. Esta es la información que pidió:</p>
+  ${li([
+    "<strong>Domus Brickell Center</strong>: torre de 35 pisos con 579 FLATS que se entregan <strong>terminados y amueblados</strong>, en el corazón de Brickell.",
+    "Estudios desde <strong>$532,900</strong> · 1 habitación desde <strong>$754,900</strong> · 2 habitaciones desde <strong>$919,900</strong> USD.",
+    "Plan de depósitos: <strong>10% al contrato</strong>, 10% al inicio de obra, tres pagos de 5% en los seis meses siguientes y 65% al cierre.",
+    "Servicio tipo hotel: recepción y valet 24/7, limpieza de hotelería y app Domus con portal de alquiler para propietarios.",
+  ])}
+  <p>En la página tiene las 50 unidades disponibles con su precio, fotos y el plan de depósitos:</p>
+  <p style="text-align:center;margin:20px 0;"><a href="${PAGE}" style="color:#A9844C;font-weight:700;">Ver Domus Brickell Center →</a></p>
+  <p>Mi recomendación: antes de enamorarse de una unidad, hablemos 20 minutos de su objetivo (renta, vivienda o proteger ahorros en dólares) y de su presupuesto. Así le muestro solo lo que tiene sentido para usted.</p>
+  ${cta("Agendar mi llamada con Catherine")}`),
+          },
+          {
+            order: 1, type: "SMS", delay: 1,
+            content: "Hola {first_name}, soy Catherine Gomez, Realtor en Miami. Le envie por correo la info de Domus Brickell. Para orientarle mejor: busca renta, vivienda o proteger ahorros en dolares? Respondame aqui con una palabra.",
+          },
+          {
+            order: 2, type: "EMAIL", delay: 2,
+            subject: "Por qué tantos colombianos están comprando en Brickell",
+            content: shell("Brickell: donde su dinero queda en dólares", `
+  <p>{first_name}, cuando un colombiano me pregunta por qué Miami, casi siempre la conversación empieza por lo mismo: <strong>proteger el patrimonio en una moneda fuerte</strong>. Una propiedad en Florida es un activo en dólares, a su nombre, en un mercado con reglas claras.</p>
+  <p><strong>¿Por qué Brickell?</strong> Es el distrito financiero de Miami: bancos, oficinas, restaurantes y vida todo el año. Domus está a 2 minutos del Metrorail y del Metromover, a 5 de Mary Brickell Village y a 18 del aeropuerto de Miami, con vuelos directos a las principales ciudades de Colombia.</p>
+  <p><strong>¿Qué tiene de diferente Domus?</strong> Está pensado como un hotel: usted compra un FLAT amueblado, y el edificio tiene recepción, limpieza de hotelería y una app con portal de alquiler para propietarios. Según el desarrollador, la plataforma conecta con más de 100 sitios de reservas y con alianzas de Hyatt y Marriott.</p>
+  <p style="font-size:13px;color:#6B7280;">Le hablo con números reales: no le voy a prometer rentabilidades. Las reglas de alquiler, costos y cuotas se revisan con la documentación del desarrollador, y eso hacemos juntos en la llamada.</p>
+  ${cta("Quiero revisar mi caso con Catherine")}`),
+          },
+          {
+            order: 3, type: "TASK", delay: 1, taskType: "CALL",
+            taskTitle: "Domus: llamar o enviar nota de voz por WhatsApp a {first_name}",
+            content: "Lead de Domus, primera semana. Presentarse en persona (una nota de voz de 30 segundos funciona muy bien con colombianos), preguntar objetivo y presupuesto, y ofrecer la llamada.",
+          },
+          {
+            order: 4, type: "SMS", delay: 2,
+            content: "{first_name}, Catherine aparto tiempo esta semana para hablar de Domus con usted 20 minutos, sin compromiso. {time_options} Tambien puede elegir otra hora: {calendly_url}",
+          },
+          {
+            order: 5, type: "EMAIL", delay: 2,
+            subject: "{first_name}, cómo se compra en Miami desde Colombia (sin viajar)",
+            content: shell("Comprar desde Colombia, paso a paso", `
+  <p>Esta es la pregunta que más me hacen, así que se la dejo por escrito:</p>
+  <ol style="padding-left:18px;margin:0 0 16px;">
+    <li style="margin:0 0 10px;"><strong>Elegimos la unidad</strong> con la lista de disponibilidad del día y su objetivo.</li>
+    <li style="margin:0 0 10px;"><strong>Firma electrónica del contrato</strong>, a su nombre o de una sociedad (LLC). No necesita visa ni residencia.</li>
+    <li style="margin:0 0 10px;"><strong>15 días para arrepentirse</strong>: la ley de condominios de Florida le da derecho a cancelar dentro de los 15 días siguientes a firmar y recibir los documentos del condominio.</li>
+    <li style="margin:0 0 10px;"><strong>Depósitos por transferencia internacional</strong> a la cuenta de depósito en garantía (escrow) que indica el contrato; la ley de Florida regula cómo se manejan.</li>
+    <li style="margin:0 0 10px;"><strong>Del lado colombiano</strong>: la inversión en el exterior se registra ante el Banco de la República y el inmueble se declara ante la DIAN. Su contador en Colombia le ayuda; yo le doy todos los documentos.</li>
+    <li style="margin:0 0 10px;"><strong>Al cierre</strong> paga el saldo de contado o con un préstamo para extranjeros, y firma también a distancia.</li>
+  </ol>
+  <p>Yo coordino cada paso con el desarrollador, el abogado y el banco, y le explico todo en español.</p>
+  ${cta("Agendar una llamada para mi caso")}`),
+          },
+          {
+            order: 6, type: "SMS", delay: 3,
+            content: "{first_name}, una pregunta que me hacen mucho: como se si es seguro? En Florida tiene 15 dias para cancelar tras firmar, y los depositos van a escrow segun la ley. Se lo explico en una llamada cuando quiera: {calendly_url}",
+          },
+          {
+            order: 7, type: "EMAIL", delay: 3,
+            subject: "Los números de Domus: cuánto necesita y cuándo",
+            content: shell("Cuánto capital necesita, etapa por etapa", `
+  <p>{first_name}, en preconstrucción no paga todo de una vez. Ejemplo con un estudio de <strong>$532,900</strong>:</p>
+  <table style="width:100%;border-collapse:collapse;font-size:14px;margin:0 0 16px;">
+    <tr><td style="padding:8px 0;border-bottom:1px solid #eee;">10% al firmar</td><td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right;">$53,290</td></tr>
+    <tr><td style="padding:8px 0;border-bottom:1px solid #eee;">10% al inicio de obra</td><td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right;">$53,290</td></tr>
+    <tr><td style="padding:8px 0;border-bottom:1px solid #eee;">5% + 5% + 5% (meses 2, 4 y 6 de obra)</td><td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right;">$79,935</td></tr>
+    <tr><td style="padding:8px 0;font-weight:700;">Total antes del cierre (35%)</td><td style="padding:8px 0;text-align:right;font-weight:700;">$186,515</td></tr>
+  </table>
+  <p>El 65% restante se paga al cierre, de contado o con un <strong>préstamo para extranjeros</strong> (suelen pedir entre 30% y 40% de inicial, sin historial de crédito en EE. UU.).</p>
+  <p>Además del precio hay que considerar gastos de cierre, cuotas del condominio e impuestos. En la llamada le armo el cálculo completo para la unidad que le interese, con la documentación vigente.</p>
+  <p style="text-align:center;margin:20px 0;"><a href="${PAGE}#depositos" style="color:#A9844C;font-weight:700;">Probar la calculadora con otra unidad →</a></p>
+  ${cta("Quiero mi cálculo personalizado")}`),
+          },
+          {
+            order: 8, type: "SMS", delay: 4,
+            content: "Hola {first_name}, las unidades de Domus se mueven y la lista cambia cada semana. Si quiere que le aparte tiempo para revisar las disponibles hoy: {time_options} O elija otra hora: {calendly_url}",
+          },
+          {
+            order: 9, type: "TASK", delay: 1, taskType: "CALL",
+            taskTitle: "Domus: segunda llamada a {first_name}",
+            content: "Casi tres semanas en el plan de Domus sin agendar. Llamar o escribir por WhatsApp con 2-3 unidades concretas de la lista según su presupuesto.",
+          },
+          {
+            order: 10, type: "EMAIL", delay: 4,
+            subject: "{first_name}, las 5 preguntas que todo inversionista colombiano debería hacer",
+            content: shell("Antes de invertir, pregunte esto", `
+  <p>Sea Domus o cualquier otro proyecto, estas son las preguntas que yo haría en su lugar:</p>
+  ${li([
+    "<strong>¿Quién desarrolla y qué ha entregado?</strong> Domus: North Development (Oak Capital y Edifica, con más de 60 proyectos entregados), arquitectura de Studio Mc+G y ventas de Cervera.",
+    "<strong>¿Cómo se protegen mis depósitos?</strong> Escrow y los 15 días de cancelación que da la ley de Florida.",
+    "<strong>¿Qué reglas de alquiler tiene el edificio?</strong> Se revisan en los documentos del condominio antes de comprometerse.",
+    "<strong>¿Cuánto cuesta mantenerlo?</strong> Cuotas, seguro e impuestos, además del precio.",
+    "<strong>¿Cómo saco el dinero de Colombia y cómo lo declaro?</strong> Registro ante el Banco de la República y declaración ante la DIAN.",
+  ])}
+  <p>Mi trabajo es que usted tenga esas respuestas por escrito antes de decidir. Si quiere, las repasamos juntos con la unidad que le guste.</p>
+  ${cta("Agendar mi llamada de 20 minutos")}`),
+          },
+          {
+            order: 11, type: "SMS", delay: 7,
+            content: "{first_name}, no quiero llenarle el telefono. Sigue interesado en Domus o prefiere que le escriba mas adelante? Responda SI o MAS ADELANTE. Gracias! Catherine",
+          },
+        ],
+      },
+    },
+  })
+  console.log("[db-migrate] Domus smart plan created (tag Domus, 12 steps, 30 days)")
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -1582,6 +1736,7 @@ async function main() {
   await warmToHotTimeOptions(db).catch(e => console.warn("[db-migrate] Warm→Hot time options skip:", e.message))
   await archiveValuationSpam(db).catch(e => console.warn("[db-migrate] valuation spam skip:", e.message))
   await startStuckEnrollments(db).catch(e => console.warn("[db-migrate] stuck enrollments skip:", e.message))
+  await seedDomusPlan(db).catch(e => console.warn("[db-migrate] Domus plan skip:", e.message))
   await dedupPipelineLeads(db).catch(e => console.warn("[db-migrate] dedup pipeline leads skip:", e.message))
   await seedBrickellKeywords(db).catch(e => console.warn("[db-migrate] Brickell keywords skip:", e.message))
   await backfillPartnerTokens(db).catch(e => console.warn("[db-migrate] partner tokens skip:", e.message))

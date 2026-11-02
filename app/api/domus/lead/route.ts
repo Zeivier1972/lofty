@@ -99,7 +99,9 @@ export async function POST(req: Request) {
       message: answers,
       notes: sourceDetail ? `Origen: ${sourceDetail}` : undefined,
       smsConsent: body.smsConsent === true,
-      tags: ["Domus Brickell Center"],
+      // "Domus" is the tag the Domus smart plan listens on (same as the
+      // Facebook form); "Domus Brickell Center" marks where they came from.
+      tags: ["Domus Brickell Center", "Domus"],
       capi: capiSignalsFromRequest(req),
     })
     return NextResponse.json({ ok: true, contactId, isNew })
