@@ -4,8 +4,17 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth"
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    // ?counts=1 adds how many contacts carry each tag (for pickers that
+    // show "Domus (42)"). Off by default so existing callers are unchanged.
+    if (new URL(req.url).searchParams.get("counts") === "1") {
+      const tags = await prisma.tag.findMany({
+        orderBy: { name: "asc" },
+        include: { _count: { select: { contacts: true } } },
+      })
+      return NextResponse.json(tags.map(({ _count, ...t }) => ({ ...t, count: _count.contacts })))
+    }
     const tags = await prisma.tag.findMany({ orderBy: { name: "asc" } })
     return NextResponse.json(tags)
   } catch {
