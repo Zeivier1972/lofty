@@ -43,7 +43,8 @@ const PAGE_URL = `${BASE}/parkside`
 const IMG_DIR = "/parkside"
 const HERO = `${IMG_DIR}/fachada-atardecer.jpg`
 
-/** From the developer's availability sheet dated 2026-10-27. */
+/** From the developer's availability sheet dated 2026-10-27.
+ *  Sofía's chat repeats these facts — update lib/project-knowledge.ts too. */
 const PRICES_AS_OF = "27 de octubre de 2026"
 const STUDIO_FROM = 490000
 
