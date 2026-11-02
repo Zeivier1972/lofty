@@ -19,6 +19,7 @@ import { publishGoogleBusinessPost } from "./google-business"
 import { createVideo, getVideoStatus, isFinished, isFailed, type HeyGenScene } from "./heygen"
 import { fetchSceneVideoUrl, getFallbackBackground, fetchPexelsPhoto } from "./pexels-video"
 import { generateGuideFromScript } from "./generate-guide"
+import { contentPlanFor, type ContentPlan } from "./content-plan"
 
 // ─── SDK init ────────────────────────────────────────────────────────────────
 
@@ -124,10 +125,14 @@ function pickKeywords(dayOfWeek: number): string[] {
 // ─── Platform-specific prompt guides ─────────────────────────────────────────
 
 const PLATFORM_GUIDES: Record<string, string> = {
+  // Short on purpose: Facebook cuts after ~3 lines ("Ver más"), so the hook
+  // and the point have to land before that.
   FACEBOOK:
-    "Formato Facebook: 200-300 palabras, tono conversacional, usa emojis de forma moderada, termina con una CTA clara (ej: escríbeme, agenda una llamada, etc).",
+    "Formato Facebook: 60-120 palabras, párrafos de 1-2 líneas, máximo 2 emojis, sin hashtags o con 2 como mucho.",
+  // {HASHTAGS} is replaced with 4-6 tags that fit the day's audience — the
+  // same 12 tags on every post read as copy-paste to the algorithm.
   INSTAGRAM:
-    "Formato Instagram: primera línea debe ser un gancho poderoso, máximo 150 palabras, termina con exactamente estos 12 hashtags en orden: #MiamiRealEstate #BrickellMiami #HomesteadFlorida #OrlandoFlorida #PropiedadesMiami #InversionMiami #CatherineGomezRealtor #MiamiCondos #FloridaRealEstate #BieneRaiz #ComprarCasaMiami #SouthFlorida",
+    "Formato Instagram: máximo 120 palabras, párrafos cortos, termina con estos hashtags: {HASHTAGS} #CatherineGomezRealtor",
   LINKEDIN:
     "Formato LinkedIn: tono profesional, 200 palabras, incluye insights del mercado, establece autoridad, termina con una pregunta para generar comentarios.",
   TIKTOK:
@@ -156,7 +161,8 @@ async function generateContent(
   platform: string,
   dayOfWeek: number,
   research?: ResearchBrief,
-  blogUrl?: string | null
+  blogUrl?: string | null,
+  plan?: ContentPlan,
 ): Promise<string> {
   // For YouTube, use pre-built SEO description from research brief
   if (platform === "YOUTUBE" && research?.youtubeDescription) {
@@ -169,17 +175,24 @@ async function generateContent(
   const realtorName = cfg?.realtorName || "Catherine Gomez"
   const realtorPhone = cfg?.realtorPhone || "305-283-0872"
 
-  const theme = research?.trendingTopic ?? DAILY_THEMES[Math.floor(Math.random() * DAILY_THEMES.length)]
+  // The day's plan (audience, format, topic) wins over the random research
+  // topic; research still supplies YouTube metadata.
+  const theme = plan?.theme ?? research?.trendingTopic ?? DAILY_THEMES[Math.floor(Math.random() * DAILY_THEMES.length)]
   const keywords = research?.additionalKeywords?.length
     ? research.additionalKeywords
     : pickKeywords(dayOfWeek)
-  const platformGuide = PLATFORM_GUIDES[platform] ?? PLATFORM_GUIDES.FACEBOOK
+  const platformGuide = (PLATFORM_GUIDES[platform] ?? PLATFORM_GUIDES.FACEBOOK)
+    .replace("{HASHTAGS}", (plan?.hashtags ?? ["#MiamiRealEstate", "#BienesRaicesMiami", "#SouthFlorida", "#InvertirEnMiami"]).join(" "))
 
-  const systemPrompt = research
+  const systemPrompt = plan
+    ? `Eres Catherine Gomez, Realtor en Miami. Escribes en primera persona, en español, como hablas tú — no como una agencia ni como una IA.\n\n${plan.instructions}`
+    : research
     ? buildAIOSystemPrompt()
     : `Eres Catherine Gomez, Realtor en Miami con más de 15 años de experiencia en el mercado inmobiliario de South Florida. Escribes en primera persona, siempre en español, con autenticidad y expertise. Nunca usas frases genéricas o de relleno. Tu audiencia son compradores e inversores hispanohablantes.`
 
-  const hookInstruction = research?.viralHook
+  const hookInstruction = plan
+    ? "\n\nAntes de escribir, piensa 3 ganchos posibles y usa SOLO el más fuerte como primera línea (no muestres los otros)."
+    : research?.viralHook
     ? `\n\nGancho de apertura (usa esta primera línea exactamente o adáptala mínimamente): "${research.viralHook}"\nÁngulo de engagement: ${research.engagementAngle}`
     : ""
 
@@ -189,9 +202,9 @@ async function generateContent(
 
   const userPrompt = `Escribe un post de redes sociales sobre el tema del día: ${theme}.${hookInstruction}
 
-Palabras clave SEO que DEBES incluir de forma natural (2-3 de ellas): ${keywords.join(", ")}.
+${plan ? "" : `Palabras clave SEO que DEBES incluir de forma natural (2-3 de ellas): ${keywords.join(", ")}.
 
-Audiencia objetivo: ${research?.targetAudience ?? "compradores e inversores hispanohablantes en South Florida"}.
+Audiencia objetivo: ${research?.targetAudience ?? "compradores e inversores hispanohablantes en South Florida"}.`}
 
 ${platformGuide}
 ${blogInstruction}
@@ -301,9 +314,10 @@ const PHOTO_SUBJECTS = [
 async function generateAndUploadImage(
   dayOfWeek: number,
   research?: ResearchBrief,
-  usedUrls = new Set<string>()
+  usedUrls = new Set<string>(),
+  themeOverride?: string,
 ): Promise<string | null> {
-  const theme = research?.trendingTopic ?? DAILY_THEMES[Math.floor(Math.random() * DAILY_THEMES.length)]
+  const theme = themeOverride ?? research?.trendingTopic ?? DAILY_THEMES[Math.floor(Math.random() * DAILY_THEMES.length)]
 
   // 1st priority: Pexels professional real estate photos — free, public CDN, Facebook-compatible.
   // Pass the recently-used set + a variety seed so each post gets a DIFFERENT photo
@@ -1342,13 +1356,18 @@ export async function postInstagramComment(mediaId: string, accessToken: string,
 }
 
 async function generateEngagementComment(platform: string, postContent: string): Promise<string> {
+  // Posts end with "Comenta DOMUS / CASA…", which the DM automation answers
+  // (lib/projects commentKeywordReply). Echo that keyword instead of inventing
+  // a different one the automation doesn't know.
+  const kw = postContent.match(/Comenta\s+([A-ZÁÉÍÓÚÑ]{2,})\b/)?.[1]
+  if (kw) return `👇 Comenta ${kw} aquí y te llega la información por mensaje privado.`
   try {
     const res = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 120,
       messages: [{
         role: "user",
-        content: `Escribe UN comentario corto en español (máx 2 oraciones) para publicar justo después de este post en ${platform}. El objetivo es generar engagement: debe hacer UNA pregunta directa al lector o pedirles que comenten algo específico (ej: "¿SÍ o NO?", "Comenta MIAMI", "¿Cuál es tu duda?"). Solo el texto del comentario, sin comillas.\n\nPost: ${postContent.slice(0, 300)}`,
+        content: `Escribe UN comentario corto en español (máx 2 oraciones) para publicar justo después de este post en ${platform}. El objetivo es generar engagement: debe hacer UNA pregunta directa al lector o pedirles que comenten algo específico (ej: "¿SÍ o NO?", "¿Cuál es tu duda?"). Solo el texto del comentario, sin comillas.\n\nPost: ${postContent.slice(0, 300)}`,
       }],
     })
     return res.content[0].type === "text" ? res.content[0].text.trim() : "¿Tienes preguntas sobre el mercado de Miami? ¡Comenta abajo! 👇"
@@ -1706,10 +1725,17 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
     result.heygenError = "HEYGEN_API_KEY not set"
   }
 
+  // 5b. Today's plan for this slot: audience, format, topic, comment keyword.
+  const plan = contentPlanFor(now, slot)
+  console.log(`[social-autopilot] Plan ${slot}: ${plan.audience} · ${plan.format} · Comenta ${plan.commentKeyword} · ${plan.theme.slice(0, 80)}`)
+
   // 6. Build prompt metadata to store with each post (YouTube uses this for title/tags)
   const promptMeta = research
     ? JSON.stringify({
-        theme: research.trendingTopic,
+        theme: plan.theme,
+        audience: plan.audience,
+        format: plan.format,
+        commentKeyword: plan.commentKeyword,
         youtubeTitle: research.youtubeTitle,
         youtubeDescription: research.youtubeDescription,
         youtubeTags: research.youtubeTags,
@@ -1734,7 +1760,10 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
         continue
       }
       // 7a. Generate platform-specific content (research-enriched + AIO optimized)
-      const content = await generateContent(account.platform, dayOfWeek, research, morningBlogUrl)
+      // The plan's "Comenta X" is only answered on Facebook and Instagram
+      // (lib/comment-keywords), so other platforms keep their own prompt.
+      const usesPlan = account.platform === "FACEBOOK" || account.platform === "INSTAGRAM"
+      const content = await generateContent(account.platform, dayOfWeek, research, morningBlogUrl, usesPlan ? plan : undefined)
 
       // 7b. Determine media handling
       let mediaUrl: string | null = null
@@ -1749,8 +1778,13 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
       }
 
       if (!useVideoFlow) {
-        // Generate unique AI image → Cloudinary, fall back to unused Unsplash photo
-        mediaUrl = await generateAndUploadImage(dayOfWeek, research, usedMediaUrls)
+        // A post about a real project shows that project's real render — an
+        // AI picture of "Domus" would not be Domus. Otherwise: stock/AI image
+        // on the day's topic, falling back to an unused Unsplash photo.
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.catherinegomezrealtor.com"
+        mediaUrl = usesPlan && plan.project
+          ? `${appUrl}${plan.project.img}`
+          : await generateAndUploadImage(dayOfWeek, research, usedMediaUrls, plan.theme)
         if (!mediaUrl) {
           mediaUrl = pickUnusedFallback(usedMediaUrls)
           console.log("[social-autopilot] Using fallback Unsplash image (AI image generation failed):", mediaUrl)
