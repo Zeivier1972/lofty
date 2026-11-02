@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Loader2, Video, Users, Link2, Plus, ExternalLink, AlertTriangle, Radio } from "lucide-react"
+import { Loader2, Video, Users, Link2, Plus, ExternalLink, AlertTriangle, Radio, Pencil, Ban, Trash2 } from "lucide-react"
 import { INVESTMENT_PROJECTS } from "@/lib/investment-projects"
 
 type Webinar = {
@@ -44,6 +44,16 @@ function toUtcIso(dt: string): string {
   const inZone = new Date(naive.toLocaleString("en-US", { timeZone: ZONE }))
   const inUtc = new Date(naive.toLocaleString("en-US", { timeZone: "UTC" }))
   return new Date(naive.getTime() + (inUtc.getTime() - inZone.getTime())).toISOString()
+}
+
+/** The reverse of toUtcIso: a UTC instant as a Miami `datetime-local` value. */
+function toMiamiLocal(iso: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: ZONE, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).formatToParts(new Date(iso))
+  const get = (t: string) => parts.find(p => p.type === t)?.value || "00"
+  return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}`
 }
 
 const fmt = (iso: string, tz: string) =>
@@ -445,6 +455,69 @@ function WebinarRow({
   // different things from her — one is an asset, the other needs its recording
   // uploaded and its attendance read.
   const isRecording = w.status === "ENDED" && !w.zoomMeetingId
+  // The date and length only move for a session that hasn't happened yet.
+  const canMove = w.status === "SCHEDULED" && !past && !isRecording
+  const canCancel = !past && w.status !== "CANCELLED" && w.status !== "ENDED" && !isRecording
+
+  const [editing, setEditing] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [edit, setEdit] = useState({
+    title: w.title, description: w.description || "", projectSlug: w.projectSlug || "",
+    startsAt: toMiamiLocal(w.startsAt), durationMins: String(w.durationMins), notify: true,
+  })
+  const dateChanged = canMove && edit.startsAt !== toMiamiLocal(w.startsAt)
+
+  async function call(method: "PATCH" | "DELETE", body?: Record<string, unknown>) {
+    setBusy(true); setMsg(null)
+    try {
+      const res = await fetch(`/api/webinars/${w.id}`, {
+        method,
+        headers: body ? { "Content-Type": "application/json" } : undefined,
+        body: body ? JSON.stringify(body) : undefined,
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { setMsg({ ok: false, text: data.error || "No se pudo guardar" }); return null }
+      return data
+    } catch {
+      setMsg({ ok: false, text: "Error de conexión" }); return null
+    } finally { setBusy(false) }
+  }
+
+  async function saveEdit() {
+    const body: Record<string, unknown> = {
+      title: edit.title, description: edit.description, projectSlug: edit.projectSlug || null,
+    }
+    if (canMove) {
+      if (dateChanged) {
+        const iso = toUtcIso(edit.startsAt)
+        if (!iso) { setMsg({ ok: false, text: "Fecha inválida" }); return }
+        body.startsAt = iso
+        body.notify = edit.notify
+      }
+      if (Number(edit.durationMins) !== w.durationMins) body.durationMins = Number(edit.durationMins)
+    }
+    const data = await call("PATCH", body)
+    if (!data) return
+    setEditing(false)
+    setMsg({ ok: true, text: data.notified ? `Guardado. Se avisó a ${data.notified} registrado(s) de la nueva fecha.` : "Cambios guardados." })
+    onReload()
+  }
+
+  async function cancelWebinar() {
+    if (!confirm(`¿Cancelar "${w.title}"? Se borra la reunión de Zoom y dejan de salir los recordatorios.`)) return
+    const notify = w.registrations > 0 && confirm(`¿Enviar un correo a los ${w.registrations} registrados avisando que se canceló?`)
+    const data = await call("PATCH", { status: "CANCELLED", notify })
+    if (!data) return
+    setMsg({ ok: true, text: data.notified ? `Cancelado. Se avisó a ${data.notified} registrado(s).` : "Webinar cancelado." })
+    onReload()
+  }
+
+  async function deleteWebinar() {
+    if (!confirm(`¿Eliminar "${w.title}" para siempre? Esto no se puede deshacer.`)) return
+    const data = await call("DELETE")
+    if (data) onReload()
+  }
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-5">
@@ -502,6 +575,79 @@ function WebinarRow({
           <span className="text-xs text-amber-700">Zoom se crea 3 días antes</span>
         )}
       </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+        <button onClick={() => { setEditing(e => !e); setMsg(null) }} disabled={busy}
+          className="flex items-center gap-1 rounded-lg border border-gray-300 px-2.5 py-1.5 font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60">
+          <Pencil className="h-3.5 w-3.5" /> {editing ? "Cerrar" : "Editar"}
+        </button>
+        {canCancel && (
+          <button onClick={cancelWebinar} disabled={busy}
+            className="flex items-center gap-1 rounded-lg border border-amber-300 px-2.5 py-1.5 font-semibold text-amber-800 hover:bg-amber-50 disabled:opacity-60">
+            <Ban className="h-3.5 w-3.5" /> Cancelar webinar
+          </button>
+        )}
+        {w.registrations === 0 ? (
+          <button onClick={deleteWebinar} disabled={busy}
+            className="flex items-center gap-1 rounded-lg border border-red-300 px-2.5 py-1.5 font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60">
+            <Trash2 className="h-3.5 w-3.5" /> Eliminar
+          </button>
+        ) : (
+          <span className="text-gray-400">Con registrados no se elimina — cancélalo para conservar los contactos.</span>
+        )}
+        {busy && <Loader2 className="h-4 w-4 animate-spin text-gray-400" />}
+      </div>
+      {msg && <p className={`mt-2 text-sm ${msg.ok ? "text-emerald-700" : "text-red-600"}`}>{msg.text}</p>}
+
+      {editing && (
+        <div className="mt-3 space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-gray-600">Título</label>
+            <input value={edit.title} onChange={e => setEdit(f => ({ ...f, title: e.target.value }))}
+              className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-gray-600">Descripción</label>
+            <textarea rows={3} value={edit.description} onChange={e => setEdit(f => ({ ...f, description: e.target.value }))}
+              className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
+          {canMove && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-600">Fecha y hora (Miami)</label>
+                <input type="datetime-local" value={edit.startsAt} onChange={e => setEdit(f => ({ ...f, startsAt: e.target.value }))}
+                  className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-600">Duración (min)</label>
+                <input type="number" min={10} max={480} value={edit.durationMins} onChange={e => setEdit(f => ({ ...f, durationMins: e.target.value }))}
+                  className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+            </div>
+          )}
+          {dateChanged && w.registrations > 0 && (
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" checked={edit.notify} onChange={e => setEdit(f => ({ ...f, notify: e.target.checked }))} />
+              Avisar por correo a los {w.registrations} registrados de la nueva fecha
+            </label>
+          )}
+          {dateChanged && w.zoomMeetingId && (
+            <p className="text-xs text-amber-700">La reunión de Zoom actual se borra y se crea una nueva 3 días antes de la nueva fecha. Los recordatorios se vuelven a enviar.</p>
+          )}
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-gray-600">Proyecto</label>
+            <select value={edit.projectSlug} onChange={e => setEdit(f => ({ ...f, projectSlug: e.target.value }))}
+              className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+              <option value="">Sin proyecto</option>
+              {INVESTMENT_PROJECTS.map(p => <option key={p.slug} value={p.slug}>{p.name}</option>)}
+            </select>
+          </div>
+          <button onClick={saveEdit} disabled={busy || !edit.title.trim()}
+            className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60">
+            {busy ? "Guardando…" : "Guardar cambios"}
+          </button>
+        </div>
+      )}
 
       {/* The free seat-filler. Only before the session — after it, the thing to
           send is the recording, which is the field further down. */}
