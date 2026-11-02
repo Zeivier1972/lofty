@@ -9,9 +9,9 @@
  * via YouTube Data API + Claude, then optimizes content for SEO + AIO.
  */
 
+import { readdirSync } from "fs"
+import { join } from "path"
 import Anthropic from "@anthropic-ai/sdk"
-import OpenAI from "openai"
-import { v2 as cloudinary } from "cloudinary"
 import { prisma } from "@/lib/prisma"
 import { researchViralContent, buildAIOSystemPrompt, ResearchBrief } from "./content-research"
 import { uploadVideoToYouTube } from "./youtube-upload"
@@ -25,19 +25,6 @@ import { getVoiceSamples, voiceBlock } from "./voice-samples"
 // ─── SDK init ────────────────────────────────────────────────────────────────
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-
-// Lazy so Docker build (no env vars) doesn't throw during module load
-let _openai: OpenAI | null = null
-function getOpenAI(): OpenAI {
-  if (!_openai) _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-  return _openai
-}
-
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-})
 
 // ─── Daily theme rotation — 28 topics covering all buyer/seller/investor needs ─
 
@@ -294,91 +281,59 @@ function pickUnusedFallback(usedUrls: Set<string>): string {
   return pool[Math.floor(Math.random() * pool.length)]
 }
 
-// Photo variety arrays to make each DALL-E prompt unique
-const PHOTO_ANGLES = [
-  "aerial drone perspective", "street-level view", "golden hour twilight shot",
-  "poolside view looking up", "rooftop terrace vantage point",
-  "wide-angle interior living area", "balcony view of city skyline",
-  "driveway approach shot", "garden patio perspective",
-]
+// ─── Post image: real photos only ────────────────────────────────────────────
+// No AI-generated images (the algorithm and the audience both read them as
+// generic). International posts use a real render from one of Catherine's
+// project pages; everything else a real Pexels photo on the topic; the caller
+// falls back to an unused Unsplash photo.
 
-const PHOTO_SUBJECTS = [
-  "Brickell high-rise luxury condo", "Coral Gables Mediterranean estate",
-  "Doral family home with pool", "Coconut Grove waterfront villa",
-  "Aventura oceanfront high-rise", "Homestead modern suburban home",
-  "Edgewater bay-view apartment building", "South Beach Art Deco property",
-  "Key Biscayne luxury waterfront home", "Wynwood modern loft building",
-  "Sunny Isles Beach tower", "Kendall single-family home with palm trees",
-]
-
-// ─── Image generation with DALL-E → Cloudinary ───────────────────────────────
+/** Real project renders under public/, as absolute URLs. */
+function projectRenders(): string[] {
+  const base = process.env.NEXT_PUBLIC_APP_URL || "https://www.catherinegomezrealtor.com"
+  const dirs = ["domus", "parkside", "house-of-wellness", "inversion/millenia-park", "inversion/gz-tower"]
+  const out: string[] = []
+  for (const d of dirs) {
+    try {
+      for (const f of readdirSync(join(process.cwd(), "public", d))) {
+        if (/\.(jpe?g|png|webp)$/i.test(f) && !/^og\./i.test(f)) out.push(`${base}/${d}/${f}`)
+      }
+    } catch { /* folder missing — skip */ }
+  }
+  return out
+}
 
 async function generateAndUploadImage(
   dayOfWeek: number,
   research?: ResearchBrief,
   usedUrls = new Set<string>(),
   themeOverride?: string,
+  audience?: "INTERNACIONAL" | "LOCAL",
 ): Promise<string | null> {
   const theme = themeOverride ?? research?.trendingTopic ?? DAILY_THEMES[Math.floor(Math.random() * DAILY_THEMES.length)]
 
-  // 1st priority: Pexels professional real estate photos — free, public CDN, Facebook-compatible.
-  // Pass the recently-used set + a variety seed so each post gets a DIFFERENT photo
-  // (widens the query and skips any photo we've used in the last 30 days).
+  if (audience === "INTERNACIONAL") {
+    const renders = projectRenders().filter(u => !usedUrls.has(u))
+    if (renders.length) {
+      const url = renders[(getDayIndex() + usedUrls.size) % renders.length]
+      console.log(`[social-autopilot] Using project render: ${url}`)
+      return url
+    }
+  }
+
+  // Pexels real photos. The recently-used set + a variety seed keep each post
+  // on a different photo.
   try {
     const variety = getDayIndex() + usedUrls.size + Math.floor(Math.random() * 8)
-    const pexelsUrl = await fetchPexelsPhoto(theme, "landscape", usedUrls, variety)
+    const query = audience === "LOCAL" ? `${theme} familia casa nueva` : theme
+    const pexelsUrl = await fetchPexelsPhoto(query, "landscape", usedUrls, variety)
     if (pexelsUrl && !usedUrls.has(pexelsUrl)) {
       console.log(`[social-autopilot] Using Pexels photo: ${pexelsUrl.slice(0, 80)}`)
       return pexelsUrl
     }
   } catch (err) {
-    console.warn("[social-autopilot] Pexels photo fetch failed, falling back to DALL-E:", err)
+    console.warn("[social-autopilot] Pexels photo fetch failed:", err)
   }
-
-  // 2nd priority: OpenAI image + Cloudinary
-  try {
-    const now = new Date()
-    const dateStr = now.toISOString().slice(0, 10)
-    const angle = PHOTO_ANGLES[Math.floor(Math.random() * PHOTO_ANGLES.length)]
-    const subject = PHOTO_SUBJECTS[Math.floor(Math.random() * PHOTO_SUBJECTS.length)]
-
-    const imagePrompt = `Professional South Florida real estate photography. Subject: ${subject}. Perspective: ${angle}. Thematic context: ${theme}. Clear blue sky, lush tropical landscaping, modern architecture, bright natural daylight. Ultra-realistic, no text, no watermarks, no people. Date reference: ${dateStr}.`
-
-    // `response_format` is NOT sent. OpenAI rejects it with
-    // `unknown_parameter` on the image models — every run was failing with a
-    // 400 and silently falling back to a Pexels stock photo, which is why the
-    // posts looked generic. Reports conflict on whether dall-e-3 still accepts
-    // it, so rather than bet on one answer the parameter is dropped and BOTH
-    // response shapes are handled: the newer models always return b64_json,
-    // and dall-e-3 with no format defaults to a url.
-    const response = await getOpenAI().images.generate({
-      // dall-e-3 was retired by OpenAI ("The model 'dall-e-3' does not exist"),
-      // which sent every post to the stock-photo fallback. gpt-image-1 returns
-      // b64_json, already handled below. OPENAI_IMAGE_MODEL overrides it.
-      model: process.env.OPENAI_IMAGE_MODEL || "gpt-image-1",
-      prompt: imagePrompt,
-      n: 1,
-      size: "1024x1024",
-    } as any)
-
-    const first = (response.data as any[])?.[0]
-    // Cloudinary takes a remote URL as happily as a data URI, so a url
-    // response needs no download step.
-    const source: string | null = first?.b64_json
-      ? `data:image/png;base64,${first.b64_json}`
-      : first?.url || null
-    if (!source) {
-      console.warn("[social-autopilot] image generate returned neither b64_json nor url:", JSON.stringify(first || {}).slice(0, 300))
-      return null
-    }
-
-    const uploadResult = await cloudinary.uploader.upload(source, { folder: "lofty-social" })
-
-    return uploadResult.secure_url
-  } catch (err) {
-    console.error("[social-autopilot] DALL-E/Cloudinary image generation failed:", err)
-    return null
-  }
+  return null
 }
 
 // ─── HeyGen video generation ──────────────────────────────────────────────────
@@ -804,14 +759,10 @@ const BLOG_FALLBACKS = [
   "https://images.unsplash.com/photo-1512918728675-ed5a9ecdebfd?w=1080&q=80",
 ]
 
-// Rotated so each DALL-E blog image is prompted differently → visually distinct
-const BLOG_PHOTO_ANGLES = [
-  "wide exterior twilight shot", "aerial drone view", "bright midday street view",
-  "poolside golden-hour angle", "lush garden approach", "modern interior wide shot",
-  "balcony skyline view", "curb-appeal front elevation",
-]
-
 async function generateSectionImage(prompt: string, folder = "lofty-blog", usedUrls?: Set<string>): Promise<string | null> {
+  // Real photos only (no AI images): a Pexels photo on the section's topic,
+  // else an unused curated Unsplash photo. (`folder` is kept for callers.)
+  void folder
   const pickFallback = (): string => {
     const unused = usedUrls ? BLOG_FALLBACKS.filter(u => !usedUrls.has(u)) : BLOG_FALLBACKS
     const pool = unused.length ? unused : BLOG_FALLBACKS
@@ -820,36 +771,16 @@ async function generateSectionImage(prompt: string, folder = "lofty-blog", usedU
     return url
   }
   try {
-    const angle = BLOG_PHOTO_ANGLES[Math.floor(Math.random() * BLOG_PHOTO_ANGLES.length)]
-    const response = await getOpenAI().images.generate({
-      // dall-e-3 was retired by OpenAI ("The model 'dall-e-3' does not exist"),
-      // which sent every post to the stock-photo fallback. gpt-image-1 returns
-      // b64_json, already handled below. OPENAI_IMAGE_MODEL overrides it.
-      model: process.env.OPENAI_IMAGE_MODEL || "gpt-image-1",
-      prompt: `Professional Miami real estate photography. ${prompt}. Perspective: ${angle}. Luxury properties, blue sky, palm trees, modern architecture. Photorealistic, bright daylight, no text or watermarks.`,
-      n: 1,
-      size: "1024x1024",
-      // No response_format — see the note on the social image generator above:
-      // OpenAI rejects it with `unknown_parameter`, so every blog image was
-      // falling through to a stock fallback.
-    } as any)
-
-    const first = (response.data as any[])?.[0]
-    const source: string | null = first?.b64_json
-      ? `data:image/png;base64,${first.b64_json}`
-      : first?.url || null
-    if (!source) {
-      console.warn("[social-autopilot] image generate returned no image, using fallback:", JSON.stringify(first || {}).slice(0, 300))
-      return pickFallback()
+    const variety = getDayIndex() + (usedUrls?.size ?? 0) + Math.floor(Math.random() * 8)
+    const url = await fetchPexelsPhoto(prompt, "landscape", usedUrls, variety)
+    if (url && !usedUrls?.has(url)) {
+      usedUrls?.add(url)
+      return url
     }
-
-    const uploadResult = await cloudinary.uploader.upload(source, { folder })
-    usedUrls?.add(uploadResult.secure_url)
-    return uploadResult.secure_url
   } catch (err) {
-    console.error("[social-autopilot] Section image generation failed:", err)
-    return pickFallback()
+    console.warn("[social-autopilot] blog Pexels photo failed:", err)
   }
+  return pickFallback()
 }
 
 async function publishBlogPost(dayOfWeek: number, research?: ResearchBrief): Promise<{ slug: string; title: string; coverImage: string | null } | null> {
@@ -1786,7 +1717,7 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.catherinegomezrealtor.com"
         mediaUrl = usesPlan && plan.project
           ? `${appUrl}${plan.project.img}`
-          : await generateAndUploadImage(dayOfWeek, research, usedMediaUrls, plan.theme)
+          : await generateAndUploadImage(dayOfWeek, research, usedMediaUrls, plan.theme, usesPlan ? plan.audience : undefined)
         if (!mediaUrl) {
           mediaUrl = pickUnusedFallback(usedMediaUrls)
           console.log("[social-autopilot] Using fallback Unsplash image (AI image generation failed):", mediaUrl)
