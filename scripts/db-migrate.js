@@ -1719,6 +1719,19 @@ async function seedDomusPlan(db) {
   console.log("[db-migrate] Domus smart plan created (tag Domus, 12 steps, 30 days)")
 }
 
+// ─── Turn off the AI-avatar videos (once) ───────────────────────────────────
+// Catherine asked to stop the HeyGen avatar videos on Tue/Fri. Flip the
+// existing switch (Social → "Videos automáticos") off once; she can turn it
+// back on there, and this will not override her.
+
+async function disableAvatarVideosOnce(db) {
+  const MARKER = "migration_disable_avatar_videos"
+  if (await db.setting.findUnique({ where: { key: MARKER } })) return
+  const r = await db.$executeRawUnsafe(`UPDATE "SocialAutoPilotConfig" SET "videoEnabled" = false`)
+  await db.setting.create({ data: { key: MARKER, value: `updated=${r}` } })
+  console.log(`[db-migrate] avatar videos turned off (${r} config row(s))`)
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -1737,6 +1750,7 @@ async function main() {
   await archiveValuationSpam(db).catch(e => console.warn("[db-migrate] valuation spam skip:", e.message))
   await startStuckEnrollments(db).catch(e => console.warn("[db-migrate] stuck enrollments skip:", e.message))
   await seedDomusPlan(db).catch(e => console.warn("[db-migrate] Domus plan skip:", e.message))
+  await disableAvatarVideosOnce(db).catch(e => console.warn("[db-migrate] avatar videos skip:", e.message))
   await dedupPipelineLeads(db).catch(e => console.warn("[db-migrate] dedup pipeline leads skip:", e.message))
   await seedBrickellKeywords(db).catch(e => console.warn("[db-migrate] Brickell keywords skip:", e.message))
   await backfillPartnerTokens(db).catch(e => console.warn("[db-migrate] partner tokens skip:", e.message))
