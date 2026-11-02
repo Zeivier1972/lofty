@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { usePathname } from "next/navigation"
+import { PROJECTS } from "@/lib/projects"
 import { X, Send, Loader2, CalendarDays, Building2, Mic, Square } from "lucide-react"
 import SofiaAvatar from "@/components/sofia-avatar"
 import { useSpeechRecognition, speechErrorMessage } from "@/lib/use-speech-recognition"
@@ -14,7 +15,8 @@ import { useSpeechRecognition, speechErrorMessage } from "@/lib/use-speech-recog
 const PUBLIC_PREFIXES = [
   "/homes", "/search", "/comprar", "/new-construction", "/guias", "/guides",
   "/property", "/book", "/brochure", "/valuacion", "/site", "/capture", "/privacy",
-  "/domus",
+  // Project landing pages — Sofía knows each one (lib/project-knowledge).
+  "/domus", "/parkside", "/house-of-wellness", "/inversion", "/proyectos",
 ]
 function isPublicPage(path: string): boolean {
   if (path === "/") return true
@@ -39,6 +41,13 @@ function greetingFor(path: string): string {
   if (path.startsWith("/domus")) {
     return "¡Hola! 👋 Soy Sofía, la asistente de Catherine Gómez. ¿Te interesa Domus Brickell Center? Te cuento precios por unidad, el plan de depósitos (10% al contrato) o cómo funciona el alquiler, y si quieres te ayudo a agendar una llamada con Catherine. 🏙️"
   }
+  if (path.startsWith("/proyectos")) {
+    return "¡Hola! 👋 Soy Sofía, la asistente de Catherine Gómez. ¿Qué proyecto te llamó la atención? Te cuento precios, planes de pago y cuál encaja mejor con lo que buscas. 🏙️"
+  }
+  const project = PROJECTS.find(p => path === p.href || path.startsWith(p.href + "/"))
+  if (project) {
+    return `¡Hola! 👋 Soy Sofía, la asistente de Catherine Gómez. ¿Te interesa ${project.name}? Te cuento precios, el plan de pagos y lo que incluye, y si quieres te ayudo a agendar una llamada con Catherine. 🏙️`
+  }
   return "¡Hola! 👋 Soy Sofía, la asistente de Catherine Gómez. ¿Buscas invertir o vivir en Miami/Orlando? Cuéntame qué estás buscando y te ayudo — presupuesto, zonas, financiamiento para extranjeros, lo que sea. 🏙️"
 }
 
@@ -48,7 +57,9 @@ function pageContextFrom(path: string): string {
   if (path.startsWith("/comprar/")) return `El visitante busca propiedades en ${decodeURIComponent(path.split("/")[2] || "").replace(/-/g, " ")}.`
   if (path.startsWith("/homes") || path.startsWith("/search")) return "El visitante está buscando propiedades."
   if (path.startsWith("/guias")) return "El visitante está leyendo una guía de inversión."
-  if (path.startsWith("/domus")) return "El visitante está viendo la página del proyecto Domus Brickell Center."
+  if (path.startsWith("/proyectos")) return "El visitante está viendo la lista de proyectos de inversión de Catherine."
+  const project = PROJECTS.find(p => path === p.href || path.startsWith(p.href + "/"))
+  if (project) return `El visitante está viendo la página del proyecto ${project.name}.`
   return "El visitante está explorando el sitio."
 }
 

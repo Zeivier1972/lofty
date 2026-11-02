@@ -45,7 +45,10 @@ AGENDAR: en esta misma página está el calendario ("Agende una llamada", más a
 export function projectKnowledgeFor(path: string | null | undefined, bookUrl: string): string {
   const p = String(path || "").split(/[?#]/)[0].replace(/\/+$/, "")
   if (p === "/domus") return domusKnowledge(bookUrl)
-  const project = PROJECTS.find(x => x.href === p)
+  if (p === "/proyectos") {
+    return `EL VISITANTE ESTÁ VIENDO LA LISTA DE PROYECTOS DE CATHERINE. Estos son (usa solo estos datos y comparte el link del que le interese):\n${PROJECTS.map(x => `- ${x.name} (${x.place}) — ${x.highlight}. ${x.summary} ${projectUrl(x)}`).join("\n")}\nNo le preguntes si busca preconstrucción o reventa: ayúdale a elegir entre estos proyectos según su objetivo y presupuesto, y ofrece agendar con Catherine: ${bookUrl}.`
+  }
+  const project = PROJECTS.find(x => p === x.href || p.startsWith(x.href + "/"))
   if (!project) return ""
-  return `EL VISITANTE ESTÁ EN LA PÁGINA DE ${project.name.toUpperCase()} (${project.place}): ${project.summary} ${project.highlight}. Página: ${projectUrl(project)}. Usa solo estos datos; para precios por unidad, planos y disponibilidad, ofrece agendar con Catherine: ${bookUrl}.`
+  return `EL VISITANTE ESTÁ EN LA PÁGINA DE ${project.name.toUpperCase()} (${project.place}): ${project.summary} ${project.highlight}. Página: ${projectUrl(project)}. Usa solo estos datos y los que el visitante vea en la página; no inventes precios, fechas ni rentabilidad. Para precios por unidad, planos y disponibilidad, ofrece agendar con Catherine: ${bookUrl}. No le preguntes si busca preconstrucción o reventa: ya está viendo este proyecto.`
 }
