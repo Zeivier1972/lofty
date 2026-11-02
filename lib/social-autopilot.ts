@@ -20,6 +20,7 @@ import { createVideo, getVideoStatus, isFinished, isFailed, type HeyGenScene } f
 import { fetchSceneVideoUrl, getFallbackBackground, fetchPexelsPhoto } from "./pexels-video"
 import { generateGuideFromScript } from "./generate-guide"
 import { contentPlanFor, type ContentPlan } from "./content-plan"
+import { getVoiceSamples, voiceBlock } from "./voice-samples"
 
 // ─── SDK init ────────────────────────────────────────────────────────────────
 
@@ -184,8 +185,9 @@ async function generateContent(
   const platformGuide = (PLATFORM_GUIDES[platform] ?? PLATFORM_GUIDES.FACEBOOK)
     .replace("{HASHTAGS}", (plan?.hashtags ?? ["#MiamiRealEstate", "#BienesRaicesMiami", "#SouthFlorida", "#InvertirEnMiami"]).join(" "))
 
+  const voice = plan ? voiceBlock(await getVoiceSamples().catch(() => [])) : ""
   const systemPrompt = plan
-    ? `Eres Catherine Gomez, Realtor en Miami. Escribes en primera persona, en español, como hablas tú — no como una agencia ni como una IA.\n\n${plan.instructions}`
+    ? `Eres Catherine Gomez, Realtor en Miami. Escribes en primera persona, en español, como hablas tú — no como una agencia ni como una IA.\n\n${plan.instructions}${voice ? `\n\n${voice}` : ""}`
     : research
     ? buildAIOSystemPrompt()
     : `Eres Catherine Gomez, Realtor en Miami con más de 15 años de experiencia en el mercado inmobiliario de South Florida. Escribes en primera persona, siempre en español, con autenticidad y expertise. Nunca usas frases genéricas o de relleno. Tu audiencia son compradores e inversores hispanohablantes.`
