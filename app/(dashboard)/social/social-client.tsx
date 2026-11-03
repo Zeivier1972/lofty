@@ -1219,6 +1219,7 @@ function VideoSample() {
         </button>
       </div>
       {missing.length > 0 && <p className="mt-2 text-xs text-amber-700">Falta configurar en Railway: {missing.join(", ")}</p>}
+      <MusicLibrary />
       {err && <p className="mt-2 text-xs text-red-600">{err}</p>}
       {sample && (
         <div className="mt-3 space-y-2 text-xs text-gray-700">
@@ -1236,6 +1237,53 @@ function VideoSample() {
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+/** Background music for the automatic videos (tracks Catherine has rights to). */
+function MusicLibrary() {
+  const [tracks, setTracks] = useState<{ id: string; name: string }[]>([])
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  useEffect(() => { fetch("/api/social/video-music").then(r => r.json()).then(d => setTracks(d.tracks || [])).catch(() => {}) }, [])
+
+  const upload = async (f: File) => {
+    setBusy(true); setErr(null)
+    try {
+      const fd = new FormData(); fd.append("file", f)
+      const res = await fetch("/api/social/video-music", { method: "POST", body: fd })
+      const d = await res.json()
+      if (!res.ok) setErr(d.error || "No se pudo subir"); else setTracks(d.tracks || [])
+    } finally { setBusy(false) }
+  }
+  const remove = async (id: string) => {
+    const res = await fetch(`/api/social/video-music?id=${id}`, { method: "DELETE" })
+    const d = await res.json(); setTracks(d.tracks || [])
+  }
+
+  return (
+    <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-semibold text-gray-700">🎵 Música de fondo ({tracks.length}) — cada video usa una al azar, más baja cuando habla la voz</p>
+        <label className="cursor-pointer rounded-lg border border-gray-300 bg-white px-2.5 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-100">
+          {busy ? "Subiendo…" : "+ Subir canción (MP3)"}
+          <input type="file" accept="audio/*" className="hidden" disabled={busy}
+            onChange={e => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = "" }} />
+        </label>
+      </div>
+      {err && <p className="mt-1 text-xs text-red-600">{err}</p>}
+      {tracks.length === 0 && (
+        <p className="mt-1 text-xs text-gray-500">Sin música todavía. Usa canciones libres para uso comercial: YouTube Audio Library, Pixabay Music o la biblioteca comercial de CapCut. No uses canciones de radio: Facebook/Instagram silencian el video.</p>
+      )}
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {tracks.map(t => (
+          <span key={t.id} className="flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-xs text-gray-700 ring-1 ring-gray-200">
+            {t.name}
+            <button onClick={() => remove(t.id)} className="text-gray-400 hover:text-red-600">✕</button>
+          </span>
+        ))}
+      </div>
     </div>
   )
 }

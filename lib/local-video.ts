@@ -38,7 +38,9 @@ function run(bin: string, args: string[], timeoutMs = 10 * 60000): Promise<void>
   })
 }
 
-const FONT_BLACK = join(process.cwd(), "public/fonts/Inter-Black.otf")
+const FONT_TITLE = join(process.cwd(), "public/fonts/Anton-Regular.ttf")
+const FONT_SERIF = join(process.cwd(), "public/fonts/DMSerifDisplay-Regular.ttf")
+const FONT_SERIF_TEXT = join(process.cwd(), "public/fonts/DMSerifText-Regular.ttf")
 const FONT_SEMI = join(process.cwd(), "public/fonts/Inter-SemiBold.otf")
 
 /** Break text into lines of at most `max` characters (drawtext does not wrap). */
@@ -112,7 +114,12 @@ export async function renderShort(opts: {
   hook: string
   captions: Caption[]
   cta: string
-  brand?: string
+  /** Giant condensed word across the top (e.g. BRICKELL), like a magazine masthead. */
+  title?: string
+  /** Bottom label (project or brand name). */
+  label?: string
+  /** Background music, ducked under the voice. */
+  music?: { data: Buffer; ext: string }
 }): Promise<Buffer> {
   const ff = ffmpegPath()
   if (!ff) throw new Error("ffmpeg not available")
@@ -165,29 +172,50 @@ export async function renderShort(opts: {
     const clean = (t: string) => t.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]|[\u2600-\u27BF\uFE0F\u200D]/g, "").replace(/\s+/g, " ").trim()
     const tf = (name: string, text: string) => { const p = join(dir, name); writeFileSync(p, text.split("\n").map(clean).join("\n"), "utf8"); return p }
     const filters: string[] = []
-    const hookFile = tf("hook.txt", wrap(opts.hook.toUpperCase(), 16))
-    filters.push(`drawtext=fontfile='${FONT_BLACK}':textfile='${hookFile}':fontsize=82:fontcolor=0x111111:line_spacing=10:` +
-      `box=1:boxcolor=0xC9A84C@0.95:boxborderw=28:x=(w-text_w)/2:y=h*0.17:enable='between(t,0,3.3)'`)
+    const shadow = "shadowcolor=black@0.55:shadowx=3:shadowy=3"
+    // Masthead: one giant condensed word across the top, the whole video.
+    const title = (opts.title || "MIAMI").toUpperCase()
+    const titleSize = Math.min(330, Math.floor((W * 0.94) / Math.max(1, title.length * 0.47)))
+    filters.push(`drawtext=fontfile='${FONT_TITLE}':textfile='${tf("title.txt", title)}':fontsize=${titleSize}:fontcolor=white@0.82:${shadow}:` +
+      `x=(w-text_w)/2:y=h*0.035`)
+    // Hook: elegant serif, first seconds, under the masthead.
+    filters.push(`drawtext=fontfile='${FONT_SERIF}':textfile='${tf("hook.txt", wrap(opts.hook, 20))}':fontsize=86:fontcolor=white:line_spacing=12:${shadow}:` +
+      `x=(w-text_w)/2:y=h*0.25:enable='between(t,0,3.3)'`)
+    // Captions: serif, sentence case, soft shadow — no heavy outline.
     opts.captions.forEach((c, i) => {
-      if (c.end <= 3.3 && c.start < 3.3) return // the hook owns the first seconds
-      const f = tf(`c${i}.txt`, wrap(c.text.toUpperCase(), 18))
-      filters.push(`drawtext=fontfile='${FONT_BLACK}':textfile='${f}':fontsize=70:fontcolor=white:line_spacing=8:` +
-        `borderw=6:bordercolor=black:x=(w-text_w)/2:y=h*0.70:enable='between(t,${Math.max(c.start, 3.3).toFixed(2)},${c.end.toFixed(2)})'`)
+      if (c.end <= 3.3 && c.start < 3.3) return
+      const f = tf(`c${i}.txt`, wrap(c.text, 24))
+      filters.push(`drawtext=fontfile='${FONT_SERIF_TEXT}':textfile='${f}':fontsize=66:fontcolor=white:line_spacing=10:${shadow}:` +
+        `x=(w-text_w)/2:y=h*0.70:enable='between(t,${Math.max(c.start, 3.3).toFixed(2)},${c.end.toFixed(2)})'`)
     })
-    const ctaFile = tf("cta.txt", wrap(opts.cta.toUpperCase(), 18))
-    filters.push(`drawtext=fontfile='${FONT_BLACK}':textfile='${ctaFile}':fontsize=76:fontcolor=white:line_spacing=10:` +
-      `box=1:boxcolor=0x111111@0.85:boxborderw=28:x=(w-text_w)/2:y=h*0.17:enable='gte(t,${Math.max(0, total - 4.5).toFixed(2)})'`)
-    const brandFile = tf("brand.txt", opts.brand || "Catherine Gomez Realtor · Miami")
-    filters.push(`drawtext=fontfile='${FONT_SEMI}':textfile='${brandFile}':fontsize=34:fontcolor=white@0.9:` +
-      `borderw=2:bordercolor=black@0.6:x=(w-text_w)/2:y=h*0.93`)
-    const filterFile = tf("filters.txt", filters.join(",\n"))
-
+    // Closing call to action.
+    filters.push(`drawtext=fontfile='${FONT_TITLE}':textfile='${tf("cta.txt", wrap(opts.cta.toUpperCase(), 16))}':fontsize=110:fontcolor=white:line_spacing=12:` +
+      `box=1:boxcolor=black@0.45:boxborderw=30:x=(w-text_w)/2:y=h*0.40:enable='gte(t,${Math.max(0, total - 4.5).toFixed(2)})'`)
+    // Bottom label.
+    filters.push(`drawtext=fontfile='${FONT_SEMI}':textfile='${tf("label.txt", opts.label || "Catherine Gomez Realtor")}':fontsize=50:fontcolor=white:${shadow}:` +
+      `x=(w-text_w)/2:y=h*0.885`)
     const audio = join(dir, `voice.${opts.audioExt}`)
     writeFileSync(audio, opts.audio)
+    const inputs = ["-i", base, "-i", audio]
+    let graph = `[0:v]${filters.join(",\n")}[v];\n`
+    if (opts.music) {
+      const m = join(dir, `music.${opts.music.ext || "mp3"}`)
+      writeFileSync(m, opts.music.data)
+      inputs.push("-stream_loop", "-1", "-i", m)
+      // Music under the voice: low bed, ducked further while she speaks,
+      // faded in/out so it never starts or stops abruptly.
+      graph += `[1:a]aresample=44100,asplit=2[vo][sc];` +
+        `[2:a]aresample=44100,volume=0.22,afade=t=in:d=1,afade=t=out:st=${Math.max(0, total - 2).toFixed(2)}:d=2[bed];` +
+        `[bed][sc]sidechaincompress=threshold=0.04:ratio=6:attack=30:release=500[duck];` +
+        `[vo][duck]amix=inputs=2:duration=first:normalize=0[a]`
+    } else {
+      graph += `[1:a]anull[a]`
+    }
+    const filterFile = tf("graph.txt", graph)
     const out = join(dir, "short.mp4")
-    await run(ff, ["-y", "-i", base, "-i", audio, "-filter_script:v", filterFile,
-      "-map", "0:v", "-map", "1:a", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
-      "-c:a", "aac", "-b:a", "128k", "-t", total.toFixed(2), "-movflags", "+faststart", out])
+    await run(ff, ["-y", ...inputs, "-filter_complex_script", filterFile,
+      "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
+      "-c:a", "aac", "-b:a", "160k", "-t", total.toFixed(2), "-movflags", "+faststart", out])
     return readFileSync(out)
   } finally {
     rmSync(dir, { recursive: true, force: true })
