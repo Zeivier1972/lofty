@@ -53,6 +53,8 @@ Reglas:
 - Los primeros 3 segundos deciden todo: abre con un número concreto, una pregunta que duele o una afirmación que sorprende.
 - Frases cortas, ritmo rápido, una idea por frase. Nada de saludos ni "en este video".
 - Usa SOLO datos reales que te doy. Si no hay dato, no lo inventes. Nunca prometas rentabilidad, ocupación ni valorización.
+- PROHIBIDO inventar estadísticas de mercado ("se venden 3 apartamentos por minuto", "el inventario dura 2.3 meses", "precios subieron X%"). El gancho sale de los datos del proyecto (precio, depósito, ubicación, amenidades) o de una pregunta, nunca de una cifra que no te di.
+- El título describe exactamente lo que es (un proyecto de condominios en preconstrucción, no "casa en venta").
 - En la NARRACIÓN (<voice>) escribe los números como se dicen en voz alta ("cuatrocientos diecinueve mil dólares"), porque lo lee una voz. En el <hook> y el <title> usa cifras ("$419,900", "$42K", "10%"): se leen en pantalla.
 - Menciona una vez "Catherine Gomez, Realtor en Miami" (en tercera persona: la voz no es Catherine).
 - Termina con: "${cta}" y qué recibe a cambio${intl ? `, y que todos los jueves a las siete de la noche, hora de Colombia, hay un webinar gratis en vivo` : ""}.`,
