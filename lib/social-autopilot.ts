@@ -17,7 +17,7 @@ import { researchViralContent, buildAIOSystemPrompt, ResearchBrief } from "./con
 import { uploadVideoToYouTube } from "./youtube-upload"
 import { publishGoogleBusinessPost } from "./google-business"
 import { createVideo, getVideoStatus, isFinished, isFailed, type HeyGenScene } from "./heygen"
-import { startFacelessRender, facelessConfigured, takeWeeklyScript, WEBINAR_SERIES_URL } from "./faceless-video"
+import { startFacelessRender, facelessConfigured, takeWeeklyScript, getRenderStatus, WEBINAR_SERIES_URL } from "./faceless-video"
 import { fetchSceneVideoUrl, getFallbackBackground, fetchPexelsPhoto } from "./pexels-video"
 import { generateGuideFromScript } from "./generate-guide"
 import { contentPlanFor, type ContentPlan } from "./content-plan"
@@ -1064,8 +1064,8 @@ export async function checkHeygenVideos(): Promise<{ checked: number; completed:
     }
   }
 
-  // ── Step B: Poll Creatomate renders and publish when done ─────────────────
-  if (creatomateKey) {
+  // ── Step B: Poll renders (our own ffmpeg renderer or Creatomate) and publish
+  {
     const captionsPending = await prisma.socialPost.findMany({
       where: { status: "CAPTIONS_PENDING", externalId: { startsWith: "cm_" } },
       include: { account: true },
@@ -1075,26 +1075,22 @@ export async function checkHeygenVideos(): Promise<{ checked: number; completed:
     for (const post of captionsPending) {
       try {
         const renderId = post.externalId!.replace(/^cm_/, "")
-        const ctRes = await fetch(`https://api.creatomate.com/v1/renders/${renderId}`, {
-          headers: { Authorization: `Bearer ${creatomateKey}` },
-        })
-        const ctData = await ctRes.json()
-        const ctRender = Array.isArray(ctData) ? ctData[0] : ctData
+        if (!renderId.startsWith("ff_") && !creatomateKey) continue
+        const st = await getRenderStatus(renderId)
 
-        if (ctRender?.status === "succeeded" && ctRender.url) {
-          await prisma.socialPost.update({ where: { id: post.id }, data: { status: "SCHEDULED", mediaUrl: ctRender.url } })
-          if (post.account) await publishPost({ ...post, mediaUrl: ctRender.url }, post.account)
-          console.log(`[social-autopilot] Kinetic captions done → published post ${post.id}`)
+        if (st.status === "succeeded" && st.url) {
+          await prisma.socialPost.update({ where: { id: post.id }, data: { status: "SCHEDULED", mediaUrl: st.url } })
+          if (post.account) await publishPost({ ...post, mediaUrl: st.url }, post.account)
+          console.log(`[social-autopilot] Video ready → published post ${post.id}`)
           completed++
-        } else if (ctRender?.status === "failed") {
-          // Creatomate failed — fall back to publishing the raw HeyGen video already stored in mediaUrl
-          console.warn(`[social-autopilot] Creatomate render failed for post ${post.id} — publishing HeyGen video as fallback`)
+        } else if (st.status === "failed") {
+          console.warn(`[social-autopilot] Video render failed for post ${post.id}: ${st.error || ""}`)
           if (post.account && post.mediaUrl) await publishPost(post, post.account)
-          else await prisma.socialPost.update({ where: { id: post.id }, data: { status: "FAILED" } })
+          else await prisma.socialPost.update({ where: { id: post.id }, data: { status: "FAILED", errorMessage: `Video: ${st.error || "render failed"}`.slice(0, 500) } })
           completed++
         }
       } catch (err) {
-        console.error(`[social-autopilot] Creatomate caption check failed for post ${post.id}:`, err)
+        console.error(`[social-autopilot] Video render check failed for post ${post.id}:`, err)
       }
     }
   }

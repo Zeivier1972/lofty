@@ -7,6 +7,8 @@ import type { ContentPlan } from "@/lib/content-plan"
 import { projectKnowledgeFor } from "@/lib/project-knowledge"
 import { PROJECTS } from "@/lib/projects"
 import { fetchVideoByQuery } from "@/lib/pexels-video"
+import { randomUUID } from "crypto"
+import { ffmpegPath, renderShort, buildCaptions, estimateWords } from "@/lib/local-video"
 
 /**
  * Faceless short-form video (YouTube Shorts / Reels / TikTok) — no AI avatar.
@@ -27,9 +29,14 @@ export const WEBINAR_SERIES_URL = `${BASE}/webinar/serie/inversion-miami`
 /** "Karly" — natural Colombian Spanish, ElevenLabs professional library voice. */
 const DEFAULT_ELEVEN_VOICE = "sM4f2a6lmttmqTug8V7W"
 
+/** Creatomate only when explicitly chosen; otherwise we render on our own server. */
+function useCreatomate(): boolean {
+  return process.env.VIDEO_RENDERER === "creatomate" && !!process.env.CREATOMATE_API_KEY
+}
+
 export function facelessConfigured(): { ok: boolean; missing: string[] } {
   const missing: string[] = []
-  if (!process.env.CREATOMATE_API_KEY) missing.push("CREATOMATE_API_KEY")
+  if (!useCreatomate() && !ffmpegPath()) missing.push("ffmpeg")
   if (!process.env.ELEVENLABS_API_KEY && !process.env.OPENAI_API_KEY) missing.push("ELEVENLABS_API_KEY")
   return { ok: missing.length === 0, missing }
 }
@@ -92,7 +99,7 @@ Devuelve SOLO estas etiquetas:
  * plan) → OpenAI's Spanish voice → an ElevenLabs default voice (works on the
  * free plan). Upgrading ElevenLabs later switches to Karly with no change here.
  */
-export async function synthesizeVoice(text: string): Promise<{ url: string; seconds: number; provider: string }> {
+export async function synthesizeVoice(text: string): Promise<{ url: string; seconds: number; provider: string; data: Buffer; ext: "mp3" | "wav" }> {
   const errors: string[] = []
   let out: { data: Buffer; mimeType: string; seconds: number; provider: string } | null = null
 
@@ -147,7 +154,8 @@ export async function synthesizeVoice(text: string): Promise<{ url: string; seco
   // Keep the table small: voiceovers are only needed until the render is done.
   await prisma.generatedMedia.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - 14 * 86400000) } } }).catch(() => null)
   const row = await prisma.generatedMedia.create({ data: { mimeType: out.mimeType, data: out.data } })
-  return { url: `${BASE}/api/media/${row.id}`, seconds: Math.max(8, Math.min(90, out.seconds)), provider: out.provider }
+  const ext = out.mimeType === "audio/wav" ? "wav" : "mp3"
+  return { url: `${BASE}/api/media/${row.id}.${ext}`, seconds: Math.max(8, Math.min(90, out.seconds)), provider: out.provider, data: out.data, ext }
 }
 
 function wavSeconds(buf: Buffer): number | null {
@@ -235,15 +243,38 @@ export async function startFacelessRender(
   plan: ContentPlan,
   preset?: ShortScript,
 ): Promise<{ renderId: string; script: ShortScript; provider: string }> {
-  const key = process.env.CREATOMATE_API_KEY
-  if (!key) throw new Error("CREATOMATE_API_KEY not set")
-
   const script = preset || await writeShortScript(research, plan)
   const voice = await synthesizeVoice(script.voice)
   const total = Math.round((voice.seconds + 1.2) * 10) / 10
   const slots = Math.max(5, Math.min(9, Math.round(total / 5)))
   const visuals = await pickVisuals(plan, slots)
   if (!visuals.length) throw new Error("no visuals available")
+
+  if (!useCreatomate()) {
+    // Our own renderer: runs in the background; status lives in Setting.
+    const id = randomUUID().replace(/-/g, "").slice(0, 20)
+    await setJob(id, { status: "rendering", startedAt: new Date().toISOString() })
+    void (async () => {
+      try {
+        const words = await wordTimings(voice.data, voice.ext).catch(() => null)
+        const captions = buildCaptions(words && words.length ? words : estimateWords(script.voice, voice.seconds))
+        const mp4 = await renderShort({
+          visuals, audio: voice.data, audioExt: voice.ext, seconds: total,
+          hook: script.hook, captions, cta: script.cta,
+        })
+        const row = await prisma.generatedMedia.create({ data: { mimeType: "video/mp4", data: mp4 } })
+        await setJob(id, { status: "succeeded", url: `${BASE}/api/media/${row.id}.mp4` })
+        console.log(`[faceless-video] local render ${id} done — ${(mp4.length / 1e6).toFixed(1)} MB, ${total}s`)
+      } catch (e: any) {
+        console.error(`[faceless-video] local render ${id} failed:`, e)
+        await setJob(id, { status: "failed", error: String(e?.message || e).slice(0, 300) })
+      }
+    })()
+    console.log(`[faceless-video] local render ${id} started — ${visuals.length} visuals, ${total}s, voice ${voice.provider}`)
+    return { renderId: `ff_${id}`, script, provider: voice.provider }
+  }
+
+  const key = process.env.CREATOMATE_API_KEY!
   const each = total / visuals.length
 
   const elements: any[] = visuals.map((v, i) => ({
@@ -306,7 +337,43 @@ export async function startFacelessRender(
   return { renderId: render.id, script, provider: voice.provider }
 }
 
+type Job = { status: string; url?: string; error?: string; startedAt?: string }
+
+async function setJob(id: string, patch: Job) {
+  const key = `videojob:${id}`
+  const prev = await prisma.setting.findUnique({ where: { key } }).catch(() => null)
+  const value = JSON.stringify({ ...(prev ? JSON.parse(prev.value) : {}), ...patch })
+  await prisma.setting.upsert({ where: { key }, create: { key, value }, update: { value } })
+}
+
+/** Word-level timings for the captions (OpenAI Whisper); null when unavailable. */
+async function wordTimings(audio: Buffer, ext: "mp3" | "wav"): Promise<{ word: string; start: number; end: number }[] | null> {
+  if (!process.env.OPENAI_API_KEY) return null
+  const form = new FormData()
+  form.append("file", new Blob([new Uint8Array(audio)], { type: ext === "wav" ? "audio/wav" : "audio/mpeg" }), `voice.${ext}`)
+  form.append("model", "whisper-1")
+  form.append("language", "es")
+  form.append("response_format", "verbose_json")
+  form.append("timestamp_granularities[]", "word")
+  const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+    method: "POST", headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }, body: form,
+  })
+  if (!res.ok) return null
+  const d = await res.json()
+  return Array.isArray(d.words) ? d.words.map((w: any) => ({ word: String(w.word).trim(), start: Number(w.start), end: Number(w.end) })) : null
+}
+
 export async function getRenderStatus(renderId: string): Promise<{ status: string; url?: string; error?: string }> {
+  if (renderId.startsWith("ff_")) {
+    const row = await prisma.setting.findUnique({ where: { key: `videojob:${renderId.slice(3)}` } }).catch(() => null)
+    if (!row) return { status: "failed", error: "render not found" }
+    const j: Job = JSON.parse(row.value)
+    // A deploy/restart mid-render kills the job; don't leave it "rendering" forever.
+    if (j.status === "rendering" && j.startedAt && Date.now() - new Date(j.startedAt).getTime() > 30 * 60000) {
+      return { status: "failed", error: "render interrupted (server restarted)" }
+    }
+    return { status: j.status, url: j.url, error: j.error }
+  }
   const key = process.env.CREATOMATE_API_KEY
   if (!key) return { status: "failed", error: "CREATOMATE_API_KEY not set" }
   const res = await fetch(`https://api.creatomate.com/v1/renders/${renderId}`, { headers: { Authorization: `Bearer ${key}` } })
