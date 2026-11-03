@@ -83,54 +83,69 @@ Devuelve SOLO estas etiquetas:
 
 // ─── Voice ───────────────────────────────────────────────────────────────────
 
-/** Narration → { mediaUrl, seconds }. Stored in GeneratedMedia, served publicly. */
+/**
+ * Narration → { mediaUrl, seconds }. Stored in GeneratedMedia, served publicly.
+ *
+ * Voice order: ElevenLabs "Karly" (library voice — needs a paid ElevenLabs
+ * plan) → OpenAI's Spanish voice → an ElevenLabs default voice (works on the
+ * free plan). Upgrading ElevenLabs later switches to Karly with no change here.
+ */
 export async function synthesizeVoice(text: string): Promise<{ url: string; seconds: number; provider: string }> {
-  let data: Buffer
-  let mimeType: string
-  let seconds: number
-  let provider: string
+  const errors: string[] = []
+  let out: { data: Buffer; mimeType: string; seconds: number; provider: string } | null = null
 
-  if (process.env.ELEVENLABS_API_KEY) {
-    const voiceId = process.env.ELEVENLABS_VOICE_ID || DEFAULT_ELEVEN_VOICE
+  const eleven = async (voiceId: string, label: string) => {
     const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`, {
       method: "POST",
-      headers: { "xi-api-key": process.env.ELEVENLABS_API_KEY, "Content-Type": "application/json", Accept: "audio/mpeg" },
+      headers: { "xi-api-key": process.env.ELEVENLABS_API_KEY!, "Content-Type": "application/json", Accept: "audio/mpeg" },
       body: JSON.stringify({
         text,
         model_id: "eleven_multilingual_v2",
         voice_settings: { stability: 0.45, similarity_boost: 0.8, style: 0.25, use_speaker_boost: true },
       }),
     })
-    if (!res.ok) throw new Error(`ElevenLabs ${res.status}: ${(await res.text()).slice(0, 200)}`)
-    data = Buffer.from(await res.arrayBuffer())
-    mimeType = "audio/mpeg"
-    seconds = (data.length * 8) / 128000 // constant 128 kbps
-    provider = "elevenlabs"
-  } else if (process.env.OPENAI_API_KEY) {
-    const res = await fetch("https://api.openai.com/v1/audio/speech", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "gpt-4o-mini-tts",
-        voice: "coral",
-        input: text,
-        instructions: "Locutora profesional latinoamericana, acento colombiano neutro y cálido, ritmo ágil de redes sociales, segura y cercana.",
-        response_format: "wav",
-      }),
-    })
-    if (!res.ok) throw new Error(`OpenAI TTS ${res.status}: ${(await res.text()).slice(0, 200)}`)
-    data = Buffer.from(await res.arrayBuffer())
-    mimeType = "audio/wav"
-    seconds = wavSeconds(data) ?? text.split(/\s+/).length / 2.6
-    provider = "openai"
-  } else {
-    throw new Error("No hay voz configurada (ELEVENLABS_API_KEY)")
+    if (!res.ok) throw new Error(`ElevenLabs ${label} ${res.status}: ${(await res.text()).slice(0, 160)}`)
+    const data = Buffer.from(await res.arrayBuffer())
+    return { data, mimeType: "audio/mpeg", seconds: (data.length * 8) / 128000, provider: `elevenlabs:${label}` }
   }
+
+  if (process.env.ELEVENLABS_API_KEY) {
+    try { out = await eleven(process.env.ELEVENLABS_VOICE_ID || DEFAULT_ELEVEN_VOICE, "karly") }
+    catch (e: any) { errors.push(e.message) }
+  }
+
+  if (!out && process.env.OPENAI_API_KEY) {
+    try {
+      const res = await fetch("https://api.openai.com/v1/audio/speech", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "gpt-4o-mini-tts",
+          voice: "coral",
+          input: text,
+          instructions: "Locutora profesional latinoamericana, acento colombiano neutro y cálido, ritmo ágil de redes sociales, segura y cercana.",
+          response_format: "wav",
+        }),
+      })
+      if (!res.ok) throw new Error(`OpenAI TTS ${res.status}: ${(await res.text()).slice(0, 160)}`)
+      const data = Buffer.from(await res.arrayBuffer())
+      out = { data, mimeType: "audio/wav", seconds: wavSeconds(data) ?? text.split(/\s+/).length / 2.6, provider: "openai" }
+    } catch (e: any) { errors.push(e.message) }
+  }
+
+  if (!out && process.env.ELEVENLABS_API_KEY) {
+    // ElevenLabs default ("premade") voice — allowed on the free plan.
+    try { out = await eleven(process.env.ELEVENLABS_FREE_VOICE_ID || "EXAVITQu4vr4xnSDxMaL", "default") }
+    catch (e: any) { errors.push(e.message) }
+  }
+
+  if (!out) throw new Error(errors.join(" | ") || "No hay voz configurada (ELEVENLABS_API_KEY)")
+  if (errors.length) console.warn(`[faceless-video] voice fallback → ${out.provider}: ${errors.join(" | ")}`)
 
   // Keep the table small: voiceovers are only needed until the render is done.
   await prisma.generatedMedia.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - 14 * 86400000) } } }).catch(() => null)
-  const row = await prisma.generatedMedia.create({ data: { mimeType, data } })
-  return { url: `${BASE}/api/media/${row.id}`, seconds: Math.max(8, Math.min(90, seconds)), provider }
+  const row = await prisma.generatedMedia.create({ data: { mimeType: out.mimeType, data: out.data } })
+  return { url: `${BASE}/api/media/${row.id}`, seconds: Math.max(8, Math.min(90, out.seconds)), provider: out.provider }
 }
 
 function wavSeconds(buf: Buffer): number | null {
