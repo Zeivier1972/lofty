@@ -51,12 +51,12 @@ export async function listMusic(): Promise<MusicTrack[]> {
   try { return row ? JSON.parse(row.value) : [] } catch { return [] }
 }
 
-async function pickMusic(): Promise<{ data: Buffer; ext: string } | undefined> {
+async function pickMusic(): Promise<{ data: Buffer; ext: string; name: string } | undefined> {
   const tracks = await listMusic()
   if (!tracks.length) return undefined
   const t = tracks[Math.floor(Math.random() * tracks.length)]
   const row = await prisma.generatedMedia.findUnique({ where: { id: t.id } }).catch(() => null)
-  return row ? { data: Buffer.from(row.data), ext: t.ext || "mp3" } : undefined
+  return row ? { data: Buffer.from(row.data), ext: t.ext || "mp3", name: t.name } : undefined
 }
 
 // ─── Script ──────────────────────────────────────────────────────────────────
@@ -221,9 +221,10 @@ async function pickVisuals(plan: ContentPlan, count: number): Promise<Visual[]> 
   // Real footage first: an aerial Miami opener stops the scroll better than a still.
   const queries = intl
     ? ["Miami aerial skyline", "Brickell Miami", "Miami ocean drone"]
-    : ["new homes neighborhood aerial", "Florida suburb houses", "Miami aerial"]
+    : ["new homes neighborhood aerial", "modern house exterior", "family new home keys", "luxury kitchen interior", "Florida suburb houses", "Miami aerial"]
   const clips: Visual[] = []
-  for (const q of queries.slice(0, 2)) {
+  // Local (new-construction) videos have no project renders, so they lean on footage.
+  for (const q of queries.slice(0, intl ? 2 : 6)) {
     const url = await fetchVideoByQuery(q, "portrait").catch(() => null)
     if (url) clips.push({ type: "video", source: url })
   }
@@ -280,11 +281,13 @@ export async function startFacelessRender(
         const captions = buildCaptions(words && words.length ? words : estimateWords(script.voice, voice.seconds))
         const place = plan.project?.place || ""
         const title = /brickell/i.test(place) ? "BRICKELL" : /orlando/i.test(place) ? "ORLANDO" : "MIAMI"
+        const music = await pickMusic().catch(() => undefined)
+        console.log(`[faceless-video] local render ${id} music: ${music ? music.name : "none uploaded"}`)
         const mp4 = await renderShort({
           visuals, audio: voice.data, audioExt: voice.ext, seconds: total,
           hook: script.hook, captions, cta: script.cta,
           title, label: plan.project?.name || "Catherine Gomez Realtor",
-          music: await pickMusic().catch(() => undefined),
+          music,
         })
         const row = await prisma.generatedMedia.create({ data: { mimeType: "video/mp4", data: mp4 } })
         await setJob(id, { status: "succeeded", url: `${BASE}/api/media/${row.id}.mp4` })

@@ -205,8 +205,10 @@ export async function renderShort(opts: {
       // Music under the voice: low bed, ducked further while she speaks,
       // faded in/out so it never starts or stops abruptly.
       graph += `[1:a]aresample=44100,asplit=2[vo][sc];` +
-        `[2:a]aresample=44100,volume=0.22,afade=t=in:d=1,afade=t=out:st=${Math.max(0, total - 2).toFixed(2)}:d=2[bed];` +
-        `[bed][sc]sidechaincompress=threshold=0.04:ratio=6:attack=30:release=500[duck];` +
+        // The narration runs almost non-stop, so heavy ducking made the music
+        // inaudible: keep the bed clearly present and dip it only gently.
+        `[2:a]aresample=44100,volume=0.45,afade=t=in:d=1,afade=t=out:st=${Math.max(0, total - 2).toFixed(2)}:d=2[bed];` +
+        `[bed][sc]sidechaincompress=threshold=0.12:ratio=2.5:attack=40:release=350[duck];` +
         `[vo][duck]amix=inputs=2:duration=first:normalize=0[a]`
     } else {
       graph += `[1:a]anull[a]`
