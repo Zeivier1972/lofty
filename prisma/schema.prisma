@@ -1340,3 +1340,12 @@ model WebinarRegistration {
   @@index([webinarId, attended])
   @@index([contactId])
 }
+
+/// Small generated media (voiceovers) served publicly at /api/media/<id>, so a
+/// cloud renderer (Creatomate) can fetch them by URL. Old rows are pruned.
+model GeneratedMedia {
+  id        String   @id @default(cuid())
+  mimeType  String
+  data      Bytes
+  createdAt DateTime @default(now())
+}
