@@ -41,6 +41,24 @@ export function facelessConfigured(): { ok: boolean; missing: string[] } {
   return { ok: missing.length === 0, missing }
 }
 
+// ─── Music library ───────────────────────────────────────────────────────────
+
+export const MUSIC_KEY = "videoMusic"
+export type MusicTrack = { id: string; name: string; ext: string }
+
+export async function listMusic(): Promise<MusicTrack[]> {
+  const row = await prisma.setting.findUnique({ where: { key: MUSIC_KEY } }).catch(() => null)
+  try { return row ? JSON.parse(row.value) : [] } catch { return [] }
+}
+
+async function pickMusic(): Promise<{ data: Buffer; ext: string } | undefined> {
+  const tracks = await listMusic()
+  if (!tracks.length) return undefined
+  const t = tracks[Math.floor(Math.random() * tracks.length)]
+  const row = await prisma.generatedMedia.findUnique({ where: { id: t.id } }).catch(() => null)
+  return row ? { data: Buffer.from(row.data), ext: t.ext || "mp3" } : undefined
+}
+
 // ─── Script ──────────────────────────────────────────────────────────────────
 
 export type ShortScript = { hook: string; voice: string; title: string; cta: string }
@@ -152,7 +170,9 @@ export async function synthesizeVoice(text: string): Promise<{ url: string; seco
   if (errors.length) console.warn(`[faceless-video] voice fallback → ${out.provider}: ${errors.join(" | ")}`)
 
   // Keep the table small: voiceovers are only needed until the render is done.
-  await prisma.generatedMedia.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - 14 * 86400000) } } }).catch(() => null)
+  // (Music tracks live in the same table and are never pruned.)
+  const keep = (await listMusic()).map(t => t.id)
+  await prisma.generatedMedia.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - 14 * 86400000) }, ...(keep.length ? { id: { notIn: keep } } : {}) } }).catch(() => null)
   const row = await prisma.generatedMedia.create({ data: { mimeType: out.mimeType, data: out.data } })
   const ext = out.mimeType === "audio/wav" ? "wav" : "mp3"
   return { url: `${BASE}/api/media/${row.id}.${ext}`, seconds: Math.max(8, Math.min(90, out.seconds)), provider: out.provider, data: out.data, ext }
@@ -258,9 +278,13 @@ export async function startFacelessRender(
       try {
         const words = await wordTimings(voice.data, voice.ext).catch(() => null)
         const captions = buildCaptions(words && words.length ? words : estimateWords(script.voice, voice.seconds))
+        const place = plan.project?.place || ""
+        const title = /brickell/i.test(place) ? "BRICKELL" : /orlando/i.test(place) ? "ORLANDO" : "MIAMI"
         const mp4 = await renderShort({
           visuals, audio: voice.data, audioExt: voice.ext, seconds: total,
           hook: script.hook, captions, cta: script.cta,
+          title, label: plan.project?.name || "Catherine Gomez Realtor",
+          music: await pickMusic().catch(() => undefined),
         })
         const row = await prisma.generatedMedia.create({ data: { mimeType: "video/mp4", data: mp4 } })
         await setJob(id, { status: "succeeded", url: `${BASE}/api/media/${row.id}.mp4` })
