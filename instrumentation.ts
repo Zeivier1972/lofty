@@ -22,6 +22,11 @@ export async function register() {
       .catch(e => console.error("[cron] evening error:", e))
   })
 
+  // Monday 9:30am ET: the week's viral video idea + script, emailed to Catherine
+  schedule("30 13 * * 1", () => {
+    fetch(`${base}/api/cron/weekly-video-idea`, { headers }).catch(e => console.error("[cron] weekly-video-idea error:", e))
+  })
+
   // Every 15 min: fire scheduled VAPI calls (Sofia outbound calls to leads)
   schedule("*/15 * * * *", () => {
     fetch(`${base}/api/cron/calls`, { headers }).catch(e => console.error("[cron] calls error:", e))

@@ -202,6 +202,13 @@ const STMTS = [
   `ALTER TABLE "Webinar" ADD COLUMN IF NOT EXISTS "invitedTags" TEXT NOT NULL DEFAULT '[]'`,
   `ALTER TABLE "Webinar" ADD COLUMN IF NOT EXISTS "repeatWeekly" BOOLEAN NOT NULL DEFAULT false`,
   `ALTER TABLE "Webinar" ADD COLUMN IF NOT EXISTS "autoInviteTags" TEXT NOT NULL DEFAULT '[]'`,
+  `CREATE TABLE IF NOT EXISTS "GeneratedMedia" (
+    "id"        TEXT NOT NULL,
+    "mimeType"  TEXT NOT NULL,
+    "data"      BYTEA NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "GeneratedMedia_pkey" PRIMARY KEY ("id")
+  )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "Webinar_slug_key" ON "Webinar"("slug")`,
   `CREATE INDEX IF NOT EXISTS "Webinar_startsAt_idx" ON "Webinar"("startsAt")`,
   `CREATE INDEX IF NOT EXISTS "Webinar_series_idx" ON "Webinar"("series")`,

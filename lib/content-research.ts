@@ -81,6 +81,60 @@ interface YouTubeVideo {
   viewCount: string
   publishedAt: string
   channelTitle: string
+  /** Views ÷ channel subscribers: >1 means the video broke out of its own audience. */
+  outlier?: number
+}
+
+/** Subscriber counts for a set of channels, in one call. */
+async function channelSubscribers(ids: string[], apiKey: string): Promise<Map<string, number>> {
+  const out = new Map<string, number>()
+  if (!ids.length) return out
+  try {
+    const url = new URL("https://www.googleapis.com/youtube/v3/channels")
+    url.searchParams.set("part", "statistics")
+    url.searchParams.set("id", Array.from(new Set(ids)).slice(0, 50).join(","))
+    url.searchParams.set("key", apiKey)
+    const res = await fetch(url.toString())
+    const data = await res.json()
+    for (const c of data.items || []) out.set(c.id, Number(c.statistics?.subscriberCount) || 0)
+  } catch { /* outlier score just stays unknown */ }
+  return out
+}
+
+/**
+ * Model channels whose formats we study (env YOUTUBE_MODEL_CHANNELS, comma-
+ * separated handles). Returns their best recent uploads with an outlier score
+ * against the channel's own median — the formats that worked for THEM.
+ */
+export async function modelChannelHits(): Promise<YouTubeVideo[]> {
+  const apiKey = process.env.YOUTUBE_API_KEY
+  if (!apiKey) return []
+  const handles = (process.env.YOUTUBE_MODEL_CHANNELS || "WilmarSosaRealtor").split(",").map(h => h.trim().replace(/^@/, "")).filter(Boolean)
+  const hits: YouTubeVideo[] = []
+  for (const handle of handles.slice(0, 3)) {
+    try {
+      const ch = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=contentDetails,snippet&forHandle=${encodeURIComponent("@" + handle)}&key=${apiKey}`).then(r => r.json())
+      const uploads = ch.items?.[0]?.contentDetails?.relatedPlaylists?.uploads
+      if (!uploads) continue
+      const pl = await fetch(`https://www.googleapis.com/youtube/v3/playlistItems?part=contentDetails&maxResults=50&playlistId=${uploads}&key=${apiKey}`).then(r => r.json())
+      const ids = (pl.items || []).map((i: any) => i.contentDetails?.videoId).filter(Boolean)
+      if (!ids.length) continue
+      const vs = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet&id=${ids.join(",")}&key=${apiKey}`).then(r => r.json())
+      const vids: YouTubeVideo[] = (vs.items || []).map((v: any) => ({
+        title: v.snippet?.title || "",
+        viewCount: v.statistics?.viewCount || "0",
+        publishedAt: v.snippet?.publishedAt || "",
+        channelTitle: v.snippet?.channelTitle || handle,
+      }))
+      const sorted = vids.map(v => Number(v.viewCount)).sort((a, b) => a - b)
+      const median = sorted[Math.floor(sorted.length / 2)] || 1
+      for (const v of vids) v.outlier = Math.round((Number(v.viewCount) / median) * 10) / 10
+      hits.push(...vids.sort((a, b) => (b.outlier || 0) - (a.outlier || 0)).slice(0, 6))
+    } catch (err) {
+      console.error(`[content-research] model channel @${handle} failed:`, err)
+    }
+  }
+  return hits
 }
 
 async function searchYouTubeTrending(query: string): Promise<YouTubeVideo[]> {
@@ -98,7 +152,7 @@ async function searchYouTubeTrending(query: string): Promise<YouTubeVideo[]> {
     searchUrl.searchParams.set("regionCode", "US")
     searchUrl.searchParams.set("relevanceLanguage", "es")
     searchUrl.searchParams.set("publishedAfter", oneWeekAgo)
-    searchUrl.searchParams.set("maxResults", "10")
+    searchUrl.searchParams.set("maxResults", "25")
     searchUrl.searchParams.set("key", apiKey)
 
     const res = await fetch(searchUrl.toString())
@@ -117,12 +171,20 @@ async function searchYouTubeTrending(query: string): Promise<YouTubeVideo[]> {
     const statsRes = await fetch(statsUrl.toString())
     const statsData = await statsRes.json()
 
-    return (statsData.items || []).map((item: any) => ({
-      title: item.snippet?.title || "",
-      viewCount: item.statistics?.viewCount || "0",
-      publishedAt: item.snippet?.publishedAt || "",
-      channelTitle: item.snippet?.channelTitle || "",
-    }))
+    const subs = await channelSubscribers((statsData.items || []).map((i: any) => i.snippet?.channelId).filter(Boolean), apiKey)
+    // Rank by breakout (views ÷ subscribers), not raw views: a big channel's
+    // average video says little; a small channel's 50× video is a format that works.
+    return (statsData.items || []).map((item: any) => {
+      const views = Number(item.statistics?.viewCount) || 0
+      const s = subs.get(item.snippet?.channelId) || 0
+      return {
+        title: item.snippet?.title || "",
+        viewCount: String(views),
+        publishedAt: item.snippet?.publishedAt || "",
+        channelTitle: item.snippet?.channelTitle || "",
+        outlier: s > 0 ? Math.round((views / s) * 10) / 10 : undefined,
+      }
+    }).sort((a: YouTubeVideo, b: YouTubeVideo) => (b.outlier ?? 0) - (a.outlier ?? 0))
   } catch (err) {
     console.error("[content-research] YouTube API error:", err)
     return []
@@ -172,7 +234,7 @@ export async function researchViralContent(dayOfWeek: number): Promise<ResearchB
   // calendar day. (Day-locked selection meant every click on the same day produced
   // the identical topic, e.g. always "closing costs".)
   const query = SEARCH_QUERIES[Math.floor(Math.random() * SEARCH_QUERIES.length)]
-  const trendingVideos = await searchYouTubeTrending(query)
+  const [trendingVideos, modelHits] = await Promise.all([searchYouTubeTrending(query), modelChannelHits().catch(() => [])])
 
   // Random format from our expanded library so topics vary on every generation
   const format = VIRAL_FORMATS[Math.floor(Math.random() * VIRAL_FORMATS.length)]
@@ -181,12 +243,17 @@ export async function researchViralContent(dayOfWeek: number): Promise<ResearchB
   const monthYear = now.toLocaleDateString("es-ES", { month: "long", year: "numeric" })
 
   const trendingContext = trendingVideos.length > 0
-    ? `Videos que están funcionando esta semana en YouTube:\n${trendingVideos.slice(0, 5).map(v => `- "${v.title}" (${parseInt(v.viewCount).toLocaleString()} vistas)`).join("\n")}`
+    ? `Videos que ROMPIERON su audiencia esta semana en YouTube (vistas ÷ suscriptores del canal):\n${trendingVideos.slice(0, 6).map(v => `- "${v.title}" (${parseInt(v.viewCount).toLocaleString()} vistas${v.outlier ? `, ${v.outlier}× sus suscriptores` : ""})`).join("\n")}`
     : `No hay datos de YouTube disponibles. Usa los formatos probados.`
+  const modelContext = modelHits.length
+    ? `\n\nCANAL MODELO (estilo que Catherine admira — estudia su FORMATO de títulos y ganchos, no copies): \n${modelHits.map(v => `- "${v.title}" (${parseInt(v.viewCount).toLocaleString()} vistas, ${v.outlier}× su promedio)`).join("\n")}`
+    : ""
 
   const prompt = `Eres un experto en marketing de contenido para bienes raíces en South Florida.
 
-${trendingContext}
+${trendingContext}${modelContext}
+
+Recrea la IDEA y el FORMATO de los que más rompieron (gancho, estructura, promesa del título) adaptados al nicho de Catherine. Nunca copies un título.
 
 Formato viral del día: "${format.hook}" (tipo: ${format.format})
 

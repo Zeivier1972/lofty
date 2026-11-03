@@ -644,7 +644,7 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
                   </p>
                   <p className={`text-xs ${videoEnabled ? "text-blue-700" : "text-gray-500"}`}>
                     {videoEnabled
-                      ? "Los martes y viernes en la noche se genera un video de HeyGen automáticamente"
+                      ? "Martes y viernes 6 PM: video corto con voz profesional, renders reales de tus proyectos e imágenes de Miami (sin avatar IA)"
                       : "Solo se publicarán imágenes y texto — sin video esos días"}
                   </p>
                 </div>
@@ -670,6 +670,8 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
                 <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${videoEnabled ? "translate-x-5" : "translate-x-0"}`} />
               </button>
             </div>
+
+            <VideoSample />
 
             {/* Manual Run Now */}
             <div className="flex items-center gap-3">
@@ -1161,6 +1163,72 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+/** Render one faceless video without publishing it, to approve the style. */
+function VideoSample() {
+  const [sample, setSample] = useState<any>(null)
+  const [missing, setMissing] = useState<string[]>([])
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const load = () =>
+    fetch("/api/social/video-sample").then(r => r.json()).then(d => {
+      setSample(d.sample)
+      setMissing(d.config?.missing || [])
+      return d.sample
+    }).catch(() => null)
+
+  useEffect(() => { load() }, [])
+  // Poll while rendering (Creatomate takes 1–3 minutes).
+  useEffect(() => {
+    if (!sample || sample.status === "succeeded" || sample.status === "failed") return
+    const t = setTimeout(load, 8000)
+    return () => clearTimeout(t)
+  }, [sample])
+
+  const generate = async () => {
+    setBusy(true); setErr(null)
+    try {
+      const res = await fetch("/api/social/video-sample", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
+      const d = await res.json()
+      if (!res.ok) setErr(d.error || "No se pudo generar")
+      else setSample(d.sample)
+    } finally { setBusy(false) }
+  }
+
+  const rendering = sample && sample.status !== "succeeded" && sample.status !== "failed"
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-semibold text-gray-800">🎞️ Video de muestra</p>
+          <p className="text-xs text-gray-500">Genera un video sin publicarlo para ver el estilo antes de activar martes y viernes.</p>
+        </div>
+        <button onClick={generate} disabled={busy || rendering || missing.length > 0}
+          className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-gray-800 disabled:opacity-50">
+          {busy ? "Escribiendo guion y voz…" : rendering ? "Renderizando…" : "Generar video de muestra"}
+        </button>
+      </div>
+      {missing.length > 0 && <p className="mt-2 text-xs text-amber-700">Falta configurar en Railway: {missing.join(", ")}</p>}
+      {err && <p className="mt-2 text-xs text-red-600">{err}</p>}
+      {sample && (
+        <div className="mt-3 space-y-2 text-xs text-gray-700">
+          <p><strong>Título:</strong> {sample.title}</p>
+          <p><strong>Gancho:</strong> {sample.hook}</p>
+          <details><summary className="cursor-pointer font-semibold">Guion de la voz</summary><p className="mt-1 whitespace-pre-wrap">{sample.voice}</p></details>
+          {rendering && <p className="text-blue-700">Renderizando el video (1–3 minutos)…</p>}
+          {sample.status === "failed" && <p className="text-red-600">El render falló: {sample.error || "sin detalle"}</p>}
+          {sample.status === "succeeded" && sample.url && (
+            <div className="flex flex-wrap items-start gap-3">
+              <video src={sample.url} controls playsInline className="h-80 rounded-lg bg-black" />
+              <a href={sample.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-indigo-600 hover:text-indigo-800">Abrir / descargar el video →</a>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

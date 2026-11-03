@@ -3,7 +3,7 @@
  *
  * Runs twice daily via Railway cron:
  *   Morning slot (9 AM ET)  — image + text posts on all connected platforms
- *   Evening slot (6 PM ET)  — HeyGen video on Tue/Fri, otherwise image + text
+ *   Evening slot (6 PM ET)  — faceless video (voice-over + real footage) on Tue/Fri, otherwise image + text
  *
  * Before every post, researches viral South Florida real estate formats
  * via YouTube Data API + Claude, then optimizes content for SEO + AIO.
@@ -17,6 +17,7 @@ import { researchViralContent, buildAIOSystemPrompt, ResearchBrief } from "./con
 import { uploadVideoToYouTube } from "./youtube-upload"
 import { publishGoogleBusinessPost } from "./google-business"
 import { createVideo, getVideoStatus, isFinished, isFailed, type HeyGenScene } from "./heygen"
+import { startFacelessRender, facelessConfigured, takeWeeklyScript, WEBINAR_SERIES_URL } from "./faceless-video"
 import { fetchSceneVideoUrl, getFallbackBackground, fetchPexelsPhoto } from "./pexels-video"
 import { generateGuideFromScript } from "./generate-guide"
 import { contentPlanFor, type ContentPlan } from "./content-plan"
@@ -980,15 +981,12 @@ export async function shareBlogOnSocial(
 // ─── checkHeygenVideos — polls HeyGen → Creatomate captions → publish ────────
 
 export async function checkHeygenVideos(): Promise<{ checked: number; completed: number }> {
-  const apiKey = process.env.HEYGEN_API_KEY
-  if (!apiKey) return { checked: 0, completed: 0 }
-
   const creatomateKey = process.env.CREATOMATE_API_KEY
   let checked = 0
   let completed = 0
 
   // ── Step A: HeyGen → Creatomate (or direct publish if no Creatomate key) ──
-  const heygenPending = await prisma.socialPost.findMany({
+  const heygenPending = !process.env.HEYGEN_API_KEY ? [] : await prisma.socialPost.findMany({
     where: { status: "GENERATING_VIDEO", externalId: { not: null } },
     include: { account: true },
   })
@@ -1631,32 +1629,34 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
   const isVideoSlot = slot === "evening"
     && (dayOfWeek === 2 || dayOfWeek === 5)
     && ((config as any).videoEnabled !== false)
-  const heygenConfigured = !!process.env.HEYGEN_API_KEY
 
-  // 5. Pre-generate shared assets (one script + one HeyGen video for all accounts)
+  // 5. One faceless video (voice-over + real renders/footage) shared by all video platforms.
   let sharedVideoId: string | null = null
-
-  if (isVideoSlot && heygenConfigured) {
-    try {
-      const videoScript = await generateVideoScript(dayOfWeek, research)
-      generateGuideFromScript(videoScript).catch(e => console.error("[social-autopilot] Guide generation failed:", e))
-      sharedVideoId = await triggerHeyGenVideo(videoScript, dayOfWeek)
-      if (sharedVideoId) {
-        console.log(`[social-autopilot] HeyGen video queued — videoId: ${sharedVideoId}`)
-      } else {
-        result.heygenError = "triggerHeyGenVideo returned null — check Railway logs for [social-autopilot] HeyGen errors"
+  let videoTitle: string | null = null
+  const videoPlan = contentPlanFor(now, slot)
+  if (isVideoSlot) {
+    const cfg = facelessConfigured()
+    if (!cfg.ok) {
+      result.heygenError = `Video sin configurar: falta ${cfg.missing.join(", ")}`
+      console.warn(`[social-autopilot] ${result.heygenError}`)
+    } else {
+      try {
+        // Tuesday uses the script emailed to Catherine on Monday, so they match.
+        const preset = dayOfWeek === 2 ? await takeWeeklyScript() : undefined
+        const r = await startFacelessRender(research, videoPlan, preset)
+        sharedVideoId = `cm_${r.renderId}`
+        videoTitle = r.script.title
+        console.log(`[social-autopilot] Faceless video queued — ${sharedVideoId} "${r.script.title}"`)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        console.error("[social-autopilot] Faceless video failed:", err)
+        result.heygenError = msg
       }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      console.error("[social-autopilot] Video script/HeyGen trigger failed:", err)
-      result.heygenError = msg
     }
-  } else if (isVideoSlot && !heygenConfigured) {
-    result.heygenError = "HEYGEN_API_KEY not set"
   }
 
   // 5b. Today's plan for this slot: audience, format, topic, comment keyword.
-  const plan = contentPlanFor(now, slot)
+  const plan = videoPlan
   console.log(`[social-autopilot] Plan ${slot}: ${plan.audience} · ${plan.format} · Comenta ${plan.commentKeyword} · ${plan.theme.slice(0, 80)}`)
 
   // 6. Build prompt metadata to store with each post (YouTube uses this for title/tags)
@@ -1666,7 +1666,7 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
         audience: plan.audience,
         format: plan.format,
         commentKeyword: plan.commentKeyword,
-        youtubeTitle: research.youtubeTitle,
+        youtubeTitle: videoTitle || research.youtubeTitle,
         youtubeDescription: research.youtubeDescription,
         youtubeTags: research.youtubeTags,
       })
@@ -1684,7 +1684,7 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
         if (!isVideoSlot) {
           console.log("[social-autopilot] Skipping YouTube — no video today (use Tue/Fri evening slot)")
         } else {
-          console.log("[social-autopilot] Skipping YouTube — HeyGen video generation failed (check avatar setup)")
+          console.log("[social-autopilot] Skipping YouTube — video generation failed this slot")
         }
         result.skipped++
         continue
@@ -1693,7 +1693,12 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
       // The plan's "Comenta X" is only answered on Facebook and Instagram
       // (lib/comment-keywords), so other platforms keep their own prompt.
       const usesPlan = account.platform === "FACEBOOK" || account.platform === "INSTAGRAM"
-      const content = await generateContent(account.platform, dayOfWeek, research, morningBlogUrl, usesPlan ? plan : undefined)
+      let content = await generateContent(account.platform, dayOfWeek, research, morningBlogUrl, usesPlan ? plan : undefined)
+      // Every Short points somewhere that turns a viewer into a lead.
+      if (account.platform === "YOUTUBE" && sharedVideoId) {
+        content = `${content}\n\n📅 Webinar gratis en vivo, todos los jueves 7 PM (hora de Colombia): ${WEBINAR_SERIES_URL}` +
+          (plan.project ? `\n🏙️ ${plan.project.name}: ${(process.env.NEXT_PUBLIC_APP_URL || "https://www.catherinegomezrealtor.com")}${plan.project.href}` : "")
+      }
 
       // 7b. Determine media handling
       let mediaUrl: string | null = null
@@ -1701,9 +1706,10 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
       let externalId: string | null = null
       let useVideoFlow = false
 
-      if (isVideoSlot && heygenConfigured && sharedVideoId) {
+      if (isVideoSlot && sharedVideoId) {
+        // Creatomate render in flight — the hourly check publishes it.
         externalId = sharedVideoId
-        postStatus = "GENERATING_VIDEO"
+        postStatus = "CAPTIONS_PENDING"
         useVideoFlow = true
       }
 
