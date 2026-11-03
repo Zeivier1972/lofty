@@ -292,7 +292,10 @@ Genera un brief de contenido viral adaptado para Catherine. Devuelve SOLO JSON v
       messages: [{ role: "user", content: prompt }],
     })
     const text = (message.content[0] as any).text.trim()
-    const clean = text.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim()
+    // The model sometimes adds a sentence after the JSON; keep only the object.
+    const first = text.indexOf("{")
+    const last = text.lastIndexOf("}")
+    const clean = first >= 0 && last > first ? text.slice(first, last + 1) : text
     return JSON.parse(clean) as ResearchBrief
   } catch (err) {
     console.error("[content-research] Brief generation failed:", err)
