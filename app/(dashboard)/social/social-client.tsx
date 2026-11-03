@@ -1218,6 +1218,7 @@ function VideoSample() {
         <div className="mt-3 space-y-2 text-xs text-gray-700">
           <p><strong>Título:</strong> {sample.title}</p>
           <p><strong>Gancho:</strong> {sample.hook}</p>
+          {sample.provider && <p><strong>Voz:</strong> {sample.provider === "elevenlabs:karly" ? "Karly (ElevenLabs, colombiana)" : sample.provider === "openai" ? "Voz profesional en español (OpenAI)" : "Voz estándar de ElevenLabs"}</p>}
           <details><summary className="cursor-pointer font-semibold">Guion de la voz</summary><p className="mt-1 whitespace-pre-wrap">{sample.voice}</p></details>
           {rendering && <p className="text-blue-700">Renderizando el video (1–3 minutos)…</p>}
           {sample.status === "failed" && <p className="text-red-600">El render falló: {sample.error || "sin detalle"}</p>}
