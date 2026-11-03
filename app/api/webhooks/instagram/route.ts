@@ -9,7 +9,7 @@ import {
   extractEmail, extractPhone, isOptOut, getInstagramUserProfile,
 } from "@/lib/instagram"
 import { detectProject, projectReply } from "@/lib/projects"
-import { handleCommentKeyword } from "@/lib/comment-keywords"
+import { handleCommentKeyword, handleOtherComment } from "@/lib/comment-keywords"
 import { isFormFollowup, findFormLead, contactCampaign, formFollowupReply, formFollowupNotification } from "@/lib/form-followup"
 import { ingestLead } from "@/lib/lead-ingest"
 import { generateSocialAIReply, getMatchingProperties, getMatchingPreConstruction, notifyCatherineAboutLead } from "@/lib/social-ai-chat"
@@ -157,7 +157,20 @@ export async function POST(req: Request) {
           replyPublic: msg => publicReplyToComment(commentId, msg),
         })) continue
 
-        if (!matchesKeyword(commentText)) continue
+        if (!matchesKeyword(commentText)) {
+          // No keyword: Sofía still answers (question → DM, praise → thanks).
+          if (!pausedCommenter) {
+            await handleOtherComment({
+              platform: "Instagram",
+              userKey: igUserId,
+              who: igUsername ? `@${igUsername}` : "Alguien",
+              text: commentText,
+              sendPrivate: msg => sendCommentGreeting(commentId, igUserId, msg),
+              replyPublic: msg => publicReplyToComment(commentId, msg),
+            }).catch(e => console.error("[IG bot] other-comment reply failed:", e))
+          }
+          continue
+        }
 
         const existing = await prisma.instagramConversation.findUnique({ where: { igUserId } })
 
