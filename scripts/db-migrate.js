@@ -202,6 +202,9 @@ const STMTS = [
   `ALTER TABLE "Webinar" ADD COLUMN IF NOT EXISTS "invitedTags" TEXT NOT NULL DEFAULT '[]'`,
   `ALTER TABLE "Webinar" ADD COLUMN IF NOT EXISTS "repeatWeekly" BOOLEAN NOT NULL DEFAULT false`,
   `ALTER TABLE "Webinar" ADD COLUMN IF NOT EXISTS "autoInviteTags" TEXT NOT NULL DEFAULT '[]'`,
+  // Re-queue the first automatic Reel (Nov 3), which Instagram was still
+  // processing when the publisher gave up; the hourly check now waits for it.
+  `UPDATE "SocialPost" SET "status" = 'CAPTIONS_PENDING', "errorMessage" = NULL WHERE "id" = 'cmw18f1xu000s512ftwpj1hbn' AND "status" = 'FAILED'`,
   `CREATE TABLE IF NOT EXISTS "GeneratedMedia" (
     "id"        TEXT NOT NULL,
     "mimeType"  TEXT NOT NULL,

@@ -1095,6 +1095,40 @@ export async function checkHeygenVideos(): Promise<{ checked: number; completed:
     }
   }
 
+  // ── Step C: Instagram Reels still processing → publish once FINISHED ─────
+  {
+    const igPending = await prisma.socialPost.findMany({
+      where: { status: "IG_PROCESSING", externalId: { startsWith: "igc_" } },
+      include: { account: true },
+    })
+    checked += igPending.length
+    for (const post of igPending) {
+      const token = post.account?.accessToken
+      const pageId = post.account?.pageId
+      if (!token || !pageId) continue
+      const containerId = post.externalId!.slice(4)
+      try {
+        const st = await fetch(`https://graph.facebook.com/v19.0/${containerId}?fields=status_code,status&access_token=${token}`).then(r => r.json())
+        if (st.status_code === "FINISHED") {
+          const pub = await fetch(`https://graph.facebook.com/v19.0/${pageId}/media_publish`, {
+            method: "POST", body: new URLSearchParams({ creation_id: containerId, access_token: token }),
+          }).then(r => r.json())
+          if (pub.error) throw new Error(pub.error.message)
+          await prisma.socialPost.update({ where: { id: post.id }, data: { status: "PUBLISHED", publishedAt: new Date(), externalId: pub.id } })
+          const comment = await generateEngagementComment("INSTAGRAM", post.content)
+          postInstagramComment(pub.id, token, comment)
+          console.log(`[social-autopilot] Instagram Reel published from container ${containerId} (post ${post.id})`)
+          completed++
+        } else if (st.status_code === "ERROR" || st.status_code === "EXPIRED" || Date.now() - post.updatedAt.getTime() > 12 * 3600000) {
+          await prisma.socialPost.update({ where: { id: post.id }, data: { status: "FAILED", errorMessage: `Instagram container ${st.status_code || "timeout"}: ${st.status || ""}`.slice(0, 500) } })
+          completed++
+        }
+      } catch (err) {
+        console.error(`[social-autopilot] Instagram container check failed for post ${post.id}:`, err)
+      }
+    }
+  }
+
   return { checked, completed }
 }
 
@@ -1177,6 +1211,11 @@ async function publishToFacebook(account: AccountLike, post: PostLike): Promise<
   return (data.post_id ?? data.id) as string
 }
 
+/** Instagram is still processing the video; publish later from the container. */
+class IgProcessingError extends Error {
+  constructor(public containerId: string) { super(`Instagram still processing container ${containerId}`) }
+}
+
 async function publishToInstagram(account: AccountLike, post: PostLike): Promise<string> {
   if (!account.accessToken || !account.pageId) throw new Error("Instagram: missing credentials")
 
@@ -1232,7 +1271,9 @@ async function publishToInstagram(account: AccountLike, post: PostLike): Promise
     }
     attempts++
   }
-  if (attempts >= 20) throw new Error("Instagram: video took too long to process — ensure the video URL is a direct public MP4 link")
+  // Longer Reels can take several minutes on Instagram's side. Hand the
+  // container to the hourly check instead of failing the post.
+  if (attempts >= 20) throw new IgProcessingError(container.id)
 
   const publishRes = await fetch(
     `https://graph.facebook.com/v19.0/${account.pageId}/media_publish`,
@@ -1507,6 +1548,14 @@ export async function publishPost(post: PostLike, account: AccountLike): Promise
       }
     }
   } catch (err) {
+    if (err instanceof IgProcessingError) {
+      console.log(`[social-autopilot] Instagram still processing post ${post.id} — will publish from the hourly check`)
+      await prisma.socialPost.update({
+        where: { id: post.id },
+        data: { status: "IG_PROCESSING", externalId: `igc_${err.containerId}` },
+      })
+      return
+    }
     const msg = err instanceof Error ? err.message : String(err)
     console.error(`[social-autopilot] Publish failed for ${post.platform} (post ${post.id}): ${msg}`)
     await prisma.socialPost.update({
