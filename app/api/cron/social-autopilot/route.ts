@@ -65,6 +65,12 @@ export async function GET(req: Request) {
 
   try {
     const videoResult = await checkHeygenVideos()
+    // Hourly: refresh reach/likes/comments from Facebook & Instagram.
+    let metrics: { checked: number; updated: number; errors: number } | null = null
+    if (checkOnly) {
+      const { syncSocialMetrics } = await import("@/lib/social-metrics")
+      metrics = await syncSocialMetrics().catch(e => { console.error("[social-metrics]", e); return null })
+    }
     const autopilotResult = checkOnly ? { posted: 0, failed: 0, videoQueued: 0, skipped: 0 } : await runAutopilot(slot)
 
     // Fetch the last 10 posts so failures show their error context
@@ -87,6 +93,7 @@ export async function GET(req: Request) {
       slot,
       autopilot: autopilotResult,
       heygenVideos: videoResult,
+      metrics,
       timestamp: new Date().toISOString(),
       recent_posts: recentPosts,
     })

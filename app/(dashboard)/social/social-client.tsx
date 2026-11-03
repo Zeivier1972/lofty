@@ -40,9 +40,13 @@ interface SocialPost {
   account: { accountName: string | null } | null
 }
 
+type PlatformStat = { platform: string; posts: number; reach: number; engagement: number }
+
 interface Props {
   accounts: SocialAccount[]
   posts: SocialPost[]
+  /** Totals over ALL published posts (the posts list is only the latest 30). */
+  stats?: PlatformStat[]
 }
 
 const PLATFORMS = [
@@ -69,7 +73,7 @@ const POST_TYPE_LABELS: Record<string, string> = {
   POST: "Post", STORY: "Story", REEL: "Reel/Short", AD: "Ad"
 }
 
-export default function SocialClient({ accounts: initialAccounts, posts: initialPosts }: Props) {
+export default function SocialClient({ accounts: initialAccounts, posts: initialPosts, stats = [] }: Props) {
   const [accounts, setAccounts] = useState<SocialAccount[]>(initialAccounts)
   const [posts, setPosts] = useState<SocialPost[]>(initialPosts)
   const [activeTab, setActiveTab] = useState<"composer" | "calendar" | "analytics" | "accounts" | "blog">("composer")
@@ -816,9 +820,9 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
           <div className="max-w-4xl mx-auto">
             <div className="grid grid-cols-3 gap-4 mb-6">
               {[
-                { label: "Total Posts Published", value: publishedPosts.length, icon: CheckCircle2, color: "text-green-600" },
-                { label: "Total Reach", value: totalReach.toLocaleString(), icon: Eye, color: "text-blue-600" },
-                { label: "Total Engagement", value: totalEngagement.toLocaleString(), icon: TrendingUp, color: "text-lofty-600" },
+                { label: "Total Posts Published", value: stats.length ? stats.reduce((a, x) => a + x.posts, 0) : publishedPosts.length, icon: CheckCircle2, color: "text-green-600" },
+                { label: "Total Reach", value: (stats.length ? stats.reduce((a, x) => a + x.reach, 0) : totalReach).toLocaleString(), icon: Eye, color: "text-blue-600" },
+                { label: "Total Engagement", value: (stats.length ? stats.reduce((a, x) => a + x.engagement, 0) : totalEngagement).toLocaleString(), icon: TrendingUp, color: "text-lofty-600" },
               ].map(({ label, value, icon: Icon, color }) => (
                 <div key={label} className="bg-white rounded-xl border p-5">
                   <div className={cn("w-10 h-10 rounded-lg bg-gray-50 flex items-center justify-center mb-3", color)}>
@@ -835,10 +839,12 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
               <h3 className="font-semibold text-gray-900 mb-4">Platform Breakdown</h3>
               <div className="space-y-3">
                 {PLATFORMS.map(p => {
+                  const st = stats.find(x => x.platform === p.id)
                   const platformPosts = publishedPosts.filter(post => post.platform === p.id)
-                  if (platformPosts.length === 0) return null
-                  const reach = platformPosts.reduce((a, post) => a + (post.reach || 0), 0)
-                  const engagement = platformPosts.reduce((a, post) => a + (post.likes || 0) + (post.comments || 0) + (post.shares || 0), 0)
+                  const postCount = st ? st.posts : platformPosts.length
+                  if (postCount === 0) return null
+                  const reach = st ? st.reach : platformPosts.reduce((a, post) => a + (post.reach || 0), 0)
+                  const engagement = st ? st.engagement : platformPosts.reduce((a, post) => a + (post.likes || 0) + (post.comments || 0) + (post.shares || 0), 0)
                   return (
                     <div key={p.id} className="flex items-center gap-4 p-3 rounded-lg hover:bg-gray-50">
                       <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center text-white flex-shrink-0", p.bg)}>
@@ -847,7 +853,7 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
                       <div className="flex-1">
                         <div className="flex items-center justify-between text-sm">
                           <span className="font-medium text-gray-900">{p.label}</span>
-                          <span className="text-gray-500">{platformPosts.length} posts</span>
+                          <span className="text-gray-500">{postCount} posts</span>
                         </div>
                         <div className="flex gap-4 mt-1 text-xs text-gray-500">
                           <span>{reach.toLocaleString()} reach</span>
