@@ -18,7 +18,7 @@ import {
 } from "@/lib/facebook"
 import { ingestLead, enrollContactInPlanByName } from "@/lib/lead-ingest"
 import { detectProject, projectReply, type Project } from "@/lib/projects"
-import { handleCommentKeyword } from "@/lib/comment-keywords"
+import { handleCommentKeyword, handleOtherComment } from "@/lib/comment-keywords"
 import { isFormFollowup, findFormLead, contactCampaign, formFollowupReply, formFollowupNotification } from "@/lib/form-followup"
 import { generateSocialAIReply, getMatchingProperties, getMatchingPreConstruction, notifyCatherineAboutLead } from "@/lib/social-ai-chat"
 
@@ -303,7 +303,20 @@ export async function POST(req: Request) {
           .split(",").map((k: string) => k.trim().toLowerCase()).filter(Boolean)
         const matchesGeneral = generalKeywords.some(k => t.includes(normFb(k)))
 
-        if (!matchedCampaign && !matchesGeneral) continue
+        if (!matchedCampaign && !matchesGeneral) {
+          // No keyword: Sofía still answers (question → DM, praise → thanks).
+          if (!pausedCommenter) {
+            await handleOtherComment({
+              platform: "Facebook",
+              userKey: commenterId,
+              who: val.from?.name || "Alguien",
+              text: commentText,
+              sendPrivate: msg => privateReplyToComment(commentId, msg),
+              replyPublic: msg => postPublicCommentReply(commentId, msg),
+            }).catch(e => console.error("[FB bot] other-comment reply failed:", e))
+          }
+          continue
+        }
 
         // Build topic-specific greeting: prefer campaign greeting, then magnet title, then generic
         const leadKeyword = await detectKeyword(commentText).catch(() => null)
