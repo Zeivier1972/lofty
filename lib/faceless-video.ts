@@ -53,7 +53,7 @@ Reglas:
 - Los primeros 3 segundos deciden todo: abre con un número concreto, una pregunta que duele o una afirmación que sorprende.
 - Frases cortas, ritmo rápido, una idea por frase. Nada de saludos ni "en este video".
 - Usa SOLO datos reales que te doy. Si no hay dato, no lo inventes. Nunca prometas rentabilidad, ocupación ni valorización.
-- Escribe los números como se dicen en voz alta ("cuatrocientos diecinueve mil dólares"), porque lo lee una voz.
+- En la NARRACIÓN (<voice>) escribe los números como se dicen en voz alta ("cuatrocientos diecinueve mil dólares"), porque lo lee una voz. En el <hook> y el <title> usa cifras ("$419,900", "$42K", "10%"): se leen en pantalla.
 - Menciona una vez "Catherine Gomez, Realtor en Miami" (en tercera persona: la voz no es Catherine).
 - Termina con: "${cta}" y qué recibe a cambio${intl ? `, y que todos los jueves a las siete de la noche, hora de Colombia, hay un webinar gratis en vivo` : ""}.`,
     messages: [{
@@ -64,8 +64,8 @@ ${research ? `Gancho viral de referencia: "${research.viralHook}"\nÁngulo: ${re
 ${facts ? `\nDATOS REALES DEL PROYECTO:\n${facts}` : ""}
 
 Devuelve SOLO estas etiquetas:
-<hook>texto en pantalla de los primeros 3 segundos, máximo 8 palabras, con número si se puede</hook>
-<voice>la narración completa, 95 a 115 palabras (unos 40 segundos)</voice>
+<hook>texto en pantalla de los primeros 3 segundos, máximo 8 palabras, con una cifra si se puede</hook>
+<voice>la narración completa, 80 a 95 palabras (unos 40 segundos). Ni una palabra de relleno.</voice>
 <title>título de YouTube Short, máximo 70 caracteres, con la palabra clave principal</title>`,
     }],
   })
@@ -272,8 +272,8 @@ export async function startFacelessRender(
   // Word-by-word captions from the narration.
   elements.push({
     type: "text", track: 5, transcript: true, transcript_source: "voice",
-    transcript_effect: "highlight", transcript_placement: "word",
-    transcript_highlight_color: "#FFD700", text_transform: "uppercase",
+    transcript_effect: "highlight", transcript_placement: "animate",
+    transcript_highlight_color: "#FFD700",
     y: "74%", width: "88%", height: "auto", font_size: "6vh", ...CAPTION_STYLE,
   })
 
