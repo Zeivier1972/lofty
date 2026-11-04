@@ -11,14 +11,19 @@ export default async function CalendarPage() {
     const session = await auth()
     const userId = session?.user?.id
 
+    // The calendar only loaded the current month (and stopped at midnight of
+    // its last day), while the dashboard counts every upcoming appointment —
+    // so "2 upcoming appointments" pointed at an empty calendar whenever they
+    // were next month. The client switches months without fetching, so load
+    // a window: 2 months back through 12 months ahead.
     const now = new Date()
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+    const from = new Date(now.getFullYear(), now.getMonth() - 2, 1)
+    const to = new Date(now.getFullYear(), now.getMonth() + 13, 1)
 
     appointments = await prisma.appointment.findMany({
       where: {
         ...(userId && { userId }),
-        startTime: { gte: startOfMonth, lte: endOfMonth },
+        startTime: { gte: from, lt: to },
         status: { not: "CANCELLED" },
       },
       include: { contact: { select: { id: true, firstName: true, lastName: true, phone: true } } },
