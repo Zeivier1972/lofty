@@ -1,9 +1,9 @@
 import type { Metadata } from "next"
-import { Cormorant_Garamond, Jost } from "next/font/google"
+import { cormorantMp, jostMp } from "@/app/fonts"
 import { usd, Eyebrow, Rule, FaqList, ContactBlock } from "../_ui"
 
-const serif = Cormorant_Garamond({ subsets: ["latin"], weight: ["400", "500", "600"], variable: "--mp-serif" })
-const sans = Jost({ subsets: ["latin"], weight: ["300", "400", "500", "600"], variable: "--mp-sans" })
+const serif = cormorantMp
+const sans = jostMp
 
 const BASE = "https://www.catherinegomezrealtor.com"
 const PAGE_URL = `${BASE}/inversion/millenia-park`

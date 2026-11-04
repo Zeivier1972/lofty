@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import type { Metadata } from "next"
-import { Cormorant_Garamond } from "next/font/google"
+import { cormorantDisplay } from "@/app/fonts"
 import { prisma } from "@/lib/prisma"
 import Funnel from "./funnel"
 import { UNITS, DEPOSITS, PRICES_AS_OF, MARKET, VIDEO, usd } from "./data"
@@ -20,7 +20,7 @@ import { TrustSection, LICENSE } from "./trust"
  * prices and the deposit schedule of 2026-10-27. No ROI, rent or HOA figures.
  */
 
-const display = Cormorant_Garamond({ subsets: ["latin"], weight: ["300", "400", "500"], variable: "--font-display", display: "swap" })
+const display = cormorantDisplay
 
 const FOREST = "#1E2B23"
 const CREAM = "#F6F3EC"

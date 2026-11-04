@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic"
 import { readdirSync } from "fs"
 import { join } from "path"
 import type { Metadata } from "next"
-import { Cormorant_Garamond } from "next/font/google"
+import { cormorantDisplay } from "@/app/fonts"
 import { prisma } from "@/lib/prisma"
 import LeadForm from "./lead-form"
 import BookingCalendar from "@/components/public/booking-calendar"
@@ -21,12 +21,7 @@ import DepositCalculator, { type DepositStage } from "./deposit-calculator"
  * developer confirms it.
  */
 
-const display = Cormorant_Garamond({
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600"],
-  variable: "--font-display",
-  display: "swap",
-})
+const display = cormorantDisplay
 
 /** Palette taken from the Parkside brand: forest green, cream, sand. */
 const FOREST = "#1E2B23"
