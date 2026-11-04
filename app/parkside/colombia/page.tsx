@@ -4,7 +4,8 @@ import type { Metadata } from "next"
 import { Cormorant_Garamond } from "next/font/google"
 import { prisma } from "@/lib/prisma"
 import Funnel from "./funnel"
-import { UNITS, DEPOSITS, PRICES_AS_OF, usd } from "./data"
+import { UNITS, DEPOSITS, PRICES_AS_OF, MARKET, usd } from "./data"
+import { TrustSection, LICENSE } from "./trust"
 
 /**
  * /parkside/colombia — the Parkside ad funnel for Colombian investors.
@@ -70,6 +71,18 @@ export const metadata: Metadata = {
 }
 
 const FAQ: [string, string][] = [
+  [
+    "¿Cuánto puede rentar un apartamento en Brickell?",
+    `Según el índice de alquiler a corto plazo de PriceLabs para Brickell (${MARKET.asOf}, estudios y 1 habitación, unos 1,000 anuncios activos), la ocupación promedio fue de ${MARKET.occupancy}% con una tarifa promedio de ${usd(MARKET.adr)} por noche; la temporada alta va de enero a marzo y la más baja es octubre. Son datos del mercado, no de Parkside, que está en construcción. El plan de esta página le deja calcular un escenario con sus propios supuestos, y no es una promesa de rentabilidad.`,
+  ],
+  [
+    "¿Mis depósitos en una preconstrucción están protegidos?",
+    "En Florida, el Estatuto 718.202 obliga al desarrollador de un condominio a mantener los depósitos de hasta el 10% del precio en una cuenta de garantía (escrow) independiente, que solo se libera en los casos que fija la ley; los depósitos por encima del 10% solo pueden usarse para la construcción, según lo que permita el contrato. Los pagos se hacen a la cuenta indicada en el contrato, nunca a una cuenta personal.",
+  ],
+  [
+    "¿Cómo sé que Catherine Gomez es una agente real?",
+    `Catherine Gomez tiene licencia de bienes raíces del Estado de Florida número ${LICENSE} y trabaja en el mercado desde 2004. Cualquier persona puede verificar una licencia en el registro oficial del Departamento de Regulación Profesional de Florida (myfloridalicense.com).`,
+  ],
   [
     "¿Un colombiano puede comprar una propiedad en Miami?",
     "Sí. En Estados Unidos no se necesita ser residente ni tener visa para comprar una propiedad; muchos compradores de Parkside invierten desde el exterior. La firma y los pagos se pueden coordinar a distancia, y Catherine le explica cada paso en la presentación.",
@@ -169,6 +182,7 @@ export default async function ParksideColombiaPage() {
               Responda 6 preguntas y vea su plan de inversión en Parkside: la residencia que encaja con su capital y cada
               pago en dólares, con fechas. Luego, si quiere, una presentación privada por Zoom con Catherine Gomez.
             </p>
+            <p className="mt-4 text-sm text-white/70">Sin costo · Sin compromiso · Agente con licencia de Florida #{LICENSE}</p>
             <div className="mt-5 flex flex-wrap gap-x-10 gap-y-4 sm:mt-7">
               <div>
                 <p className="text-[11px] uppercase tracking-[0.25em] text-white/55">Estudios desde</p>
@@ -186,21 +200,7 @@ export default async function ParksideColombiaPage() {
         </div>
       </section>
 
-      {/* Why trust this */}
-      <section className="mx-auto max-w-6xl px-4 py-14 sm:px-6">
-        <ul className="grid gap-6 sm:grid-cols-3">
-          {[
-            ["Compra a distancia", "La firma y los pagos se coordinan desde Colombia, sin viajar en cada paso."],
-            ["En español, de principio a fin", "Catherine Gomez le acompaña desde la primera llamada hasta la entrega."],
-            ["Solo información del desarrollador", `Precios y calendario de depósitos según la lista del ${PRICES_AS_OF}.`],
-          ].map(([t, d]) => (
-            <li key={t} className="border-t pt-5" style={{ borderColor: "rgba(30,43,35,.2)" }}>
-              <h2 className="text-xl font-light" style={{ fontFamily: serif }}>{t}</h2>
-              <p className="mt-2 text-sm leading-relaxed text-[#4F5A52]">{d}</p>
-            </li>
-          ))}
-        </ul>
-      </section>
+      <TrustSection />
 
       {/* The schedule in plain sight (also what answer engines quote) */}
       <section className="py-14" style={{ background: "#EDE7DA" }}>
@@ -219,6 +219,10 @@ export default async function ParksideColombiaPage() {
           </ol>
           <p className="mt-6 text-sm text-[#4F5A52]">
             Estudios desde {usd(UNITS[0].from)} · 1 habitación desde {usd(UNITS[1].from)} · 2 habitaciones desde {usd(UNITS[2].from)} USD.
+          </p>
+          <p className="mt-4 text-sm text-[#4F5A52]">
+            Mercado de alquiler a corto plazo en Brickell ({MARKET.asOf}): ocupación promedio de {MARKET.occupancy}% y {usd(MARKET.adr)} por
+            noche en estudios y 1 habitación. Calcule su escenario en el plan.
           </p>
           <a href="#plan" className="mt-8 inline-block px-7 py-4 text-sm font-semibold uppercase tracking-[0.14em] text-white" style={{ background: FOREST }}>
             Calcular mi plan

@@ -14,8 +14,10 @@
  */
 
 import { useMemo, useState } from "react"
-import { ArrowLeft, ArrowRight, Loader2, Check } from "lucide-react"
+import { ArrowLeft, ArrowRight, Loader2 } from "lucide-react"
 import BookingCalendar from "@/components/public/booking-calendar"
+import RentScenario from "./rent-scenario"
+import { BookingPromise } from "./trust"
 import { CAPITAL, GOALS, PREFS, CLOSING, TIMING, US_BEFORE, buildPlan, usd, PRICES_AS_OF } from "./data"
 
 const FOREST = "#1E2B23"
@@ -179,21 +181,19 @@ export default function Funnel({ waUrl, webinarUrl }: { waUrl: string; webinarUr
           </p>
         </div>
 
+        <RentScenario price={plan.unit.from} unitType={plan.unit.type} />
+
         {plan.tier !== "C" ? (
           <div>
             <h2 className="text-2xl font-light sm:text-3xl" style={{ fontFamily: serif }}>
-              El siguiente paso: su presentación privada por Zoom
+              Revisemos estos números juntos — 30 minutos, sin compromiso
             </h2>
             <p className="mt-3 text-[#4F5A52]">
-              30 minutos con Catherine Gomez, en español. Le muestra las residencias disponibles que encajan con este plan,
-              {a.closing === "Financiamiento hipotecario" ? " las opciones de financiamiento para compradores extranjeros," : ""} los
-              gastos a considerar además del precio y cómo se compra desde {c.country || "Colombia"}, paso a paso.
+              Una conversación por Zoom con Catherine Gomez, en español, para que entienda cómo funciona antes de decidir
+              nada{a.closing === "Financiamiento hipotecario" ? ", incluidas las opciones de financiamiento para compradores extranjeros" : ""}.
+              Si Parkside no es para usted, se lo diremos.
             </p>
-            <ul className="mt-5 grid gap-2 text-sm text-[#4F5A52] sm:grid-cols-2">
-              {["Planos y precios vigentes", "Su calendario de pagos, unidad por unidad", "Cómo se firma y se paga desde el exterior", "Sus preguntas, en vivo"].map(t => (
-                <li key={t} className="flex items-center gap-2"><Check className="h-4 w-4 shrink-0" style={{ color: SAND }} aria-hidden="true" /> {t}</li>
-              ))}
-            </ul>
+            <BookingPromise country={c.country || "Colombia"} />
             <div className="mt-6 shadow-sm">{calendar}</div>
           </div>
         ) : (
