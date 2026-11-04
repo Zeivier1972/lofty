@@ -4,7 +4,7 @@ import type { Metadata } from "next"
 import { Cormorant_Garamond } from "next/font/google"
 import { prisma } from "@/lib/prisma"
 import Funnel from "./funnel"
-import { UNITS, DEPOSITS, PRICES_AS_OF, MARKET, usd } from "./data"
+import { UNITS, DEPOSITS, PRICES_AS_OF, MARKET, VIDEO, usd } from "./data"
 import { TrustSection, LICENSE } from "./trust"
 
 /**
@@ -93,7 +93,7 @@ const FAQ: [string, string][] = [
   ],
   [
     "¿Cómo se paga el 60% al cierre?",
-    "Con fondos propios o con un crédito hipotecario. Existen opciones de financiamiento para compradores extranjeros; las condiciones dependen del banco y de su perfil, y Catherine le explica las alternativas en la presentación.",
+    "Con fondos propios o con un crédito de un banco en Estados Unidos. Los bancos de EE. UU. financian a inversionistas extranjeros: normalmente el comprador aporta cerca del 50% del precio y el banco financia el resto, y en algunos proyectos el aporte es menor. En Parkside, los depósitos antes de la entrega suman el 40%, así que con financiamiento el aporte adicional al cierre suele ser pequeño. Las condiciones dependen del banco y de su perfil; Catherine le explica las opciones en la presentación.",
   ],
   [
     "¿Qué incluye la presentación por Zoom?",
@@ -148,6 +148,15 @@ export default async function ParksideColombiaPage() {
         })),
       },
       {
+        "@type": "VideoObject",
+        name: "Catherine Gomez le cuenta Parkside Residences at Brickell",
+        description: "Entrevista en español sobre Parkside Residences at Brickell e invertir en Miami desde Colombia.",
+        thumbnailUrl: VIDEO.poster,
+        contentUrl: VIDEO.src,
+        uploadDate: VIDEO.uploaded,
+        inLanguage: "es",
+      },
+      {
         "@type": "FAQPage",
         mainEntity: FAQ.map(([q, ans]) => ({ "@type": "Question", name: q, acceptedAnswer: { "@type": "Answer", text: ans } })),
       },
@@ -182,7 +191,7 @@ export default async function ParksideColombiaPage() {
               Responda 6 preguntas y vea su plan de inversión en Parkside: la residencia que encaja con su capital y cada
               pago en dólares, con fechas. Luego, si quiere, una presentación privada por Zoom con Catherine Gomez.
             </p>
-            <p className="mt-4 text-sm text-white/70">Sin costo · Sin compromiso · Agente con licencia de Florida #{LICENSE}</p>
+            <p className="mt-4 text-sm text-white/70">Sin visa · Todo a distancia · Financiamiento con bancos de EE. UU. · Licencia de Florida #{LICENSE}</p>
             <div className="mt-5 flex flex-wrap gap-x-10 gap-y-4 sm:mt-7">
               <div>
                 <p className="text-[11px] uppercase tracking-[0.25em] text-white/55">Estudios desde</p>
@@ -197,6 +206,52 @@ export default async function ParksideColombiaPage() {
           <div id="plan">
             <Funnel waUrl={waUrl} webinarUrl={WEBINAR_URL} />
           </div>
+        </div>
+      </section>
+
+      {/* Catherine on video — the strongest trust signal for a distrustful buyer */}
+      <section className="mx-auto max-w-4xl px-4 py-12 sm:px-6" aria-labelledby="video">
+        <p className={EYEBROW} style={{ color: SAND }}>Conozca a Catherine</p>
+        <h2 id="video" className="mt-4 text-[2rem] font-light leading-tight sm:text-[2.6rem]" style={{ fontFamily: serif }}>
+          Catherine Gomez le cuenta Parkside
+        </h2>
+        <video
+          className="mt-6 aspect-video w-full bg-black"
+          src={VIDEO.src}
+          poster={VIDEO.poster}
+          controls
+          playsInline
+          preload="metadata"
+          aria-label="Entrevista de Catherine Gomez sobre Parkside Residences at Brickell"
+        />
+        <a href="#plan" className="mt-6 inline-block px-7 py-4 text-sm font-semibold uppercase tracking-[0.14em] text-white" style={{ background: FOREST }}>
+          Ver mi plan de inversión
+        </a>
+      </section>
+
+      {/* Buying from abroad is easy — the objection before trust */}
+      <section className="py-14" style={{ background: "#1E2B23" }} aria-labelledby="facil">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6">
+          <p className="text-[11px] font-medium uppercase tracking-[0.3em]" style={{ color: SAND_LIGHT }}>Comprar desde Colombia</p>
+          <h2 id="facil" className="mt-4 text-[2rem] font-light leading-tight text-white sm:text-[2.6rem]" style={{ fontFamily: serif }}>
+            Es más fácil de lo que cree
+          </h2>
+          <ul className="mt-8 grid gap-6 text-white sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              ["Sin visa ni residencia", "Un colombiano puede comprar en Florida a su nombre o con una empresa. No necesita vivir en EE. UU."],
+              ["Todo a distancia", "Contrato, firmas y pagos se hacen desde Colombia, con firma electrónica y transferencias a la cuenta de garantía."],
+              ["Financiamiento en EE. UU.", "Los bancos de Estados Unidos financian a inversionistas extranjeros: normalmente usted aporta cerca del 50% del precio, y en algunos proyectos menos."],
+              ["Acompañamiento en español", "Catherine le guía en cada paso y le presenta bancos, abogados y contadores que trabajan con colombianos."],
+            ].map(([t, d]) => (
+              <li key={t} className="border-t pt-5" style={{ borderColor: "rgba(255,255,255,.2)" }}>
+                <h3 className="text-xl font-light" style={{ fontFamily: serif }}>{t}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-white/70">{d}</p>
+              </li>
+            ))}
+          </ul>
+          <a href="#plan" className="mt-10 inline-block px-7 py-4 text-sm font-semibold uppercase tracking-[0.14em]" style={{ background: SAND, color: "#1E2B23" }}>
+            Ver mi plan con financiamiento
+          </a>
         </div>
       </section>
 
