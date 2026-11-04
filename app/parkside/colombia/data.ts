@@ -104,12 +104,16 @@ export const SQFT: Record<UnitType, number> = { "Estudio": 460, "1 habitación":
 
 export type RentInputs = {
   price: number
-  occupancy: number      // %
-  adr: number            // USD per night
-  mgmtPct: number        // % of gross rent (operator / platform / cleaning coordination)
-  hoaMonthly: number     // USD
-  taxPct: number         // property tax, % of price per year
-  insuranceYear: number  // USD
+  occupancy: number         // %
+  adr: number               // USD per night
+  mgmtPct: number           // % of gross rent (operator / platform / cleaning coordination)
+  hoaMonthly: number        // USD
+  taxPct: number            // property tax, % of price per year
+  insuranceYear: number     // USD (unit policy; the master policy is in the HOA)
+  electricityMonthly: number
+  /** null = paid in cash. */
+  financing: { downPct: number; ratePct: number; years: number } | null
+  closingPct: number        // closing costs, % of price
 }
 
 export type RentResult = {
@@ -118,11 +122,24 @@ export type RentResult = {
   hoa: number
   tax: number
   insurance: number
+  electricity: number
+  /** Income after operating costs, before any mortgage. */
+  noi: number
+  /** Yearly mortgage payment (principal + interest), 0 when paid in cash. */
+  debt: number
+  /** What lands in the owner's pocket: NOI − mortgage. */
   net: number
-  /** Net yearly income / price, %. */
-  netYield: number
-  /** Net yearly income / cash put in (all-cash purchase + ~3% closing), %. */
-  cashYield: number
+  /** Down payment (or full price) + closing costs. */
+  cashIn: number
+  /** net / cashIn, %. With financing this is the cash-on-cash return. */
+  cashOnCash: number
+}
+
+function yearlyPayment(loan: number, ratePct: number, years: number): number {
+  if (loan <= 0) return 0
+  const r = ratePct / 100 / 12
+  const n = years * 12
+  return r === 0 ? loan / years : (loan * r / (1 - Math.pow(1 + r, -n))) * 12
 }
 
 export function rentScenario(i: RentInputs): RentResult {
@@ -131,29 +148,59 @@ export function rentScenario(i: RentInputs): RentResult {
   const hoa = i.hoaMonthly * 12
   const tax = i.price * (i.taxPct / 100)
   const insurance = i.insuranceYear
-  const net = gross - mgmt - hoa - tax - insurance
-  return {
-    gross, mgmt, hoa, tax, insurance, net,
-    netYield: i.price ? (net / i.price) * 100 : 0,
-    cashYield: i.price ? (net / (i.price * 1.03)) * 100 : 0,
-  }
+  const electricity = i.electricityMonthly * 12
+  const noi = gross - mgmt - hoa - tax - insurance - electricity
+  const down = i.financing ? i.price * (i.financing.downPct / 100) : i.price
+  const debt = i.financing ? yearlyPayment(i.price - down, i.financing.ratePct, i.financing.years) : 0
+  const net = noi - debt
+  const cashIn = down + i.price * (i.closingPct / 100)
+  return { gross, mgmt, hoa, tax, insurance, electricity, noi, debt, net, cashIn, cashOnCash: cashIn ? (net / cashIn) * 100 : 0 }
 }
 
-/** Starting assumptions — every one is editable on the page. */
+/**
+ * Parkside cost assumptions, from Catherine's Parkside STR calculators
+ * (docs/parkside/STR_CALCULATOR_*.xlsx): HOA US$1.70 per sq ft per month
+ * (includes water, internet, cable, master insurance and valet parking),
+ * property tax 1.7%, closing costs 4.5%, electricity US$400/month, bank
+ * financing at 6.5% over 30 years with the developer's preferred lenders.
+ * Every one is editable on the page.
+ */
 export const DEFAULTS = {
   mgmtPct: 25,
-  hoaPerSqft: 0.95,
-  taxPct: 1.9,
-  insuranceYear: 1800,
+  hoaPerSqft: 1.7,
+  taxPct: 1.7,
+  insuranceYear: 600,
+  electricityMonthly: 400,
+  closingPct: 4.5,
+  downPct: 40,
+  ratePct: 6.5,
+  years: 30,
 }
+
+/** The two starting points the visitor can switch between. */
+export const SCENARIOS = {
+  market: {
+    label: "Mercado de Brickell hoy",
+    occupancy: Math.round(MARKET.occupancy),
+    adr: Math.round(MARKET.adr / 5) * 5,
+    note: `Datos reales de alquiler a corto plazo en Brickell (${MARKET.asOf}).`,
+  },
+  investor: {
+    label: "Escenario de un inversionista",
+    occupancy: 75,
+    adr: 375,
+    note: "Proyección que nos compartió un inversionista que analiza el proyecto (75% de ocupación, US$375 por noche, para una residencia nueva con servicio de hotel). Es más optimista que el promedio actual del mercado.",
+  },
+} as const
 
 /**
  * Financing for foreign buyers, per Catherine: US banks lend to
  * international investors; the buyer usually puts in about 50% of the
- * price, and on some projects less. Used to show the "con financiamiento"
- * version of the plan. Terms depend on the bank, project and profile.
+ * price, and on some projects less. In Parkside the deposits are 40% and
+ * Catherine's calculators finance the other 60% at closing with the
+ * developer's preferred lenders. Terms depend on the bank and profile.
  */
-export const FINANCING = { ownPct: 50 }
+export const FINANCING = { ownPct: 40, typicalPct: 50 }
 
 /** Catherine's Parkside interview (Cloudinary), exactly as uploaded. */
 export const VIDEO = {
