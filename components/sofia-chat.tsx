@@ -17,6 +17,8 @@ const PUBLIC_PREFIXES = [
   "/property", "/book", "/brochure", "/valuacion", "/site", "/capture", "/privacy",
   // Project landing pages — Sofía knows each one (lib/project-knowledge).
   "/domus", "/parkside", "/house-of-wellness", "/inversion", "/proyectos",
+  // First-time buyer calculator funnel.
+  "/primera-casa",
 ]
 function isPublicPage(path: string): boolean {
   if (path === "/") return true
@@ -38,6 +40,9 @@ function listingKeyFrom(path: string): string | null {
 
 /** First message when the chat opens — project pages get their own. */
 function greetingFor(path: string): string {
+  if (path.startsWith("/primera-casa")) {
+    return "¡Hola! 👋 Soy Sofía, la asistente de Catherine Gómez. ¿Estás pensando en comprar tu primera casa? Te explico cuánto necesitas de entrada, qué crédito piden o cómo funcionan los programas de ayuda, y si quieres te agendo una llamada con Catherine. 🏡"
+  }
   if (path.startsWith("/domus")) {
     return "¡Hola! 👋 Soy Sofía, la asistente de Catherine Gómez. ¿Te interesa Domus Brickell Center? Te cuento precios por unidad, el plan de depósitos (10% al contrato) o cómo funciona el alquiler, y si quieres te ayudo a agendar una llamada con Catherine. 🏙️"
   }
@@ -56,6 +61,7 @@ function pageContextFrom(path: string): string {
   if (path.startsWith("/new-construction")) return "El visitante está viendo proyectos de preconstrucción."
   if (path.startsWith("/comprar/")) return `El visitante busca propiedades en ${decodeURIComponent(path.split("/")[2] || "").replace(/-/g, " ")}.`
   if (path.startsWith("/homes") || path.startsWith("/search")) return "El visitante está buscando propiedades."
+  if (path.startsWith("/primera-casa")) return "El visitante está en la calculadora para compradores de primera vez (¿cuánta casa puedo comprar?). Ayúdale con pago inicial, crédito, préstamos FHA y programas de asistencia (sin inventar montos ni tasas actuales) y ofrécele agendar con Catherine."
   if (path.startsWith("/guias")) return "El visitante está leyendo una guía de inversión."
   if (path.startsWith("/proyectos")) return "El visitante está viendo la lista de proyectos de inversión de Catherine."
   const project = PROJECTS.find(p => path === p.href || path.startsWith(p.href + "/"))

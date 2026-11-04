@@ -6,7 +6,8 @@ import { searchIdxListings, fetchPrimaryPhotos } from "@/lib/bridge"
 import { findEventByAdText, findEventByTag, type EventInfo } from "@/lib/events"
 import { applyTagAndEnroll } from "@/lib/lead-ingest"
 import { appendEventLeadToSheet } from "@/lib/google-sheets"
-import { handleSlotReply } from "@/lib/slot-offer"
+import { handleSlotReply, makeOffer } from "@/lib/slot-offer"
+import { detectProject, projectUrl, type Project } from "@/lib/projects"
 import Anthropic from "@anthropic-ai/sdk"
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -42,9 +43,11 @@ FORMATO DE RESPUESTA PARA SMS:
   [1 oración sobre por qué es buena opción]
 - Después de las propiedades, siempre pregunta: "¿Cuál te llama más la atención?"
 
-PARA AGENDAR CITA:
-- Cuando el lead muestre interés en UNA propiedad, obtén el link con get_appointment_link
-- Di: "¡Perfecto! Catherine puede darte más detalles exclusivos de esa oportunidad. Agenda aquí: [link]"
+PARA AGENDAR CITA (la meta de cada conversación):
+- En cuanto sepas qué busca (comprar, invertir o primera casa) y al menos su presupuesto o su plazo — normalmente después de 2 o 3 respuestas — ofrece una llamada con Catherine usando offer_call_times.
+- offer_call_times te devuelve una pregunta con DOS horarios reales ("responde 1 o 2"). Cópiala TAL CUAL al final de tu mensaje, sin cambiar horas ni días. Si el lead responde 1 o 2 el sistema agenda solo.
+- Ofrece horarios una sola vez por conversación salvo que el lead pida otros. Si no hay horarios o el lead prefiere elegir él mismo, usa get_appointment_link y comparte el link.
+- Antes de los horarios, una frase de por qué vale la pena: "Catherine te explica en 15 minutos [lo que busca] con tus números."
 
 REGLAS:
 - Responde SIEMPRE en español (inglés solo si el lead escribe en inglés)
@@ -89,6 +92,11 @@ const TOOLS: Anthropic.Tool[] = [
       },
       required: [],
     },
+  },
+  {
+    name: "offer_call_times",
+    description: "Obtiene DOS horarios reales libres en el calendario de Catherine y devuelve la pregunta lista para enviar (el lead responde 1 o 2 y queda agendado). Úsala para agendar la llamada.",
+    input_schema: { type: "object" as const, properties: {}, required: [] },
   },
   {
     name: "get_appointment_link",
@@ -262,6 +270,13 @@ async function runTool(name: string, input: any, contactId: string): Promise<{te
     }
   }
 
+  if (name === "offer_call_times") {
+    const q = await makeOffer(contactId).catch(() => "")
+    return q
+      ? {text: `Copia esta pregunta tal cual al final de tu mensaje: ${q}`, imageUrls: []}
+      : {text: "No hay horarios libres en los próximos días. Usa get_appointment_link y comparte el link para que elija.", imageUrls: []}
+  }
+
   if (name === "get_appointment_link") {
     const base = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
     return {text: `${base}/book`, imageUrls: []}
@@ -302,8 +317,26 @@ async function runTool(name: string, input: any, contactId: string): Promise<{te
 // Sofía's first reply to a lead arriving from a click-to-WhatsApp ad. This is the
 // ONE message a cold ad lead sees, so it names the event and ends with a question.
 // Edit the copy here. Only ever used for ad leads (ReferralSourceId present).
-function ctwaGreeting(firstName: string, ev?: EventInfo): string {
+/** What a click-to-WhatsApp ad was about, from its headline/body and the first message. */
+type CtwaTopic = { project?: Project; firstHome?: boolean }
+
+const FIRST_HOME_RX = /primera\s+(casa|vivienda)|first[\s-]*(time\s+)?(home|buyer)|comprador(es)?\s+de\s+primera|cuanta\s+casa\s+puedo|pago\s+inicial|down\s*payment/
+
+function ctwaTopic(...texts: (string | null | undefined)[]): CtwaTopic {
+  const all = texts.filter(Boolean).join(" ")
+  const project = detectProject(all) || undefined
+  const t = all.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+  return { project, firstHome: !project && FIRST_HOME_RX.test(t) }
+}
+
+function ctwaGreeting(firstName: string, ev?: EventInfo, topic: CtwaTopic = {}): string {
   const hi = firstName && firstName !== "Lead" ? `¡Hola ${firstName}! 👋` : "¡Hola! 👋"
+  if (!ev && topic.project) {
+    return `${hi} Soy Sofía, asistente de Catherine Gómez Realtor. Gracias por tu interés en ${topic.project.name} (${topic.project.place}) 🏙️\n\nAquí tienes precios, fotos y plan de pagos: ${projectUrl(topic.project)}\n\nPara orientarte mejor: ¿lo buscas para invertir y rentar, o para vivir?`
+  }
+  if (!ev && topic.firstHome) {
+    return `${hi} Soy Sofía, asistente de Catherine Gómez Realtor 🏡 ¡Qué emoción que estés pensando en tu primera casa!\n\nTe hago 2 preguntas rápidas para orientarte: ¿en qué zona te gustaría comprar y para cuándo más o menos?`
+  }
   if (!ev) {
     return `${hi} Soy Sofía, asistente de Catherine Gómez Realtor. Gracias por escribirnos — te ayudo a invertir en Miami desde Colombia. ¿Qué te gustaría saber?`
   }
@@ -339,6 +372,9 @@ export async function POST(req: Request) {
     const ctwaEvent = isCtwa
       ? findEventByAdText(params.get("ReferralHeadline"), params.get("ReferralBody"))
       : undefined
+    const topic: CtwaTopic = isCtwa && !ctwaEvent
+      ? ctwaTopic(params.get("ReferralHeadline"), params.get("ReferralBody"), body)
+      : {}
 
     // Find or create contact
     let contact = await prisma.contact.findFirst({
@@ -399,6 +435,13 @@ export async function POST(req: Request) {
 
       prisma.note.create({ data: { content: attribution, contactId: contact.id } }).catch(() => {})
 
+      // Not an event ad: tag what the ad was about so the matching smart plan
+      // picks them up and Catherine sees it on the contact.
+      const topicTag = topic.project?.name || (topic.firstHome ? "Primera Casa" : null)
+      if (topicTag) {
+        applyTagAndEnroll(contact.id, topicTag).catch(e => console.error("[CTWA] topic tag error:", e))
+      }
+
       if (ctwaEvent) {
         applyTagAndEnroll(contact.id, ctwaEvent.tag).catch(e => console.error("[CTWA] tag error:", e))
         appendEventLeadToSheet({
@@ -408,7 +451,7 @@ export async function POST(req: Request) {
           tags: [ctwaEvent.tag],
         }).catch(() => {})
       }
-      console.log(`[CTWA] ad lead ${phone} → contact ${contact.id}${ctwaEvent ? ` (${ctwaEvent.city})` : " (no event matched)"}`)
+      console.log(`[CTWA] ad lead ${phone} → contact ${contact.id}${ctwaEvent ? ` (${ctwaEvent.city})` : topicTag ? ` (${topicTag})` : " (no event or topic matched)"}`)
     }
 
     if (contact.doNotText) {
@@ -493,6 +536,11 @@ export async function POST(req: Request) {
         ` — usa SOLO estos datos del evento, nunca inventes fecha, lugar ni link.`
       )
     }
+    if (tags.some(t => /primera casa|first-time buyer/i.test(t))) {
+      ctx.push("Este lead quiere comprar su PRIMERA CASA. Califica: zona, plazo, si ya habló con un prestamista, ingreso aproximado y ahorros. Para ver cuánto puede comprar, comparte la calculadora: https://www.catherinegomezrealtor.com/primera-casa — no inventes tasas ni montos de programas de ayuda. Luego ofrece horarios con offer_call_times.")
+    }
+    const taggedProject = tags.map(t => detectProject(t)).find(Boolean)
+    if (taggedProject) ctx.push(`Proyecto de interés: ${taggedProject.name} (${taggedProject.place}) — página: ${projectUrl(taggedProject)}`)
     if (isInvestor) ctx.push("⚠️ ESTE LEAD ES UN INVERSIONISTA — usa search_preconstruction como primera opción cuando pregunte por propiedades o inversiones.")
     if (contact.buyerBudgetMin || contact.buyerBudgetMax)
       ctx.push(`Presupuesto conocido: $${(contact.buyerBudgetMin || 0).toLocaleString()} – $${(contact.buyerBudgetMax || 0).toLocaleString()}`)
@@ -514,7 +562,7 @@ export async function POST(req: Request) {
     // they immediately see which event they reached and the ticket link. It is saved
     // to the message history below, so Sofía has that context on every later message
     // — from their second message on, this is null and the normal loop runs.
-    const ctwaWelcome = isNewCtwaLead ? ctwaGreeting(contact.firstName, ctwaEvent) : null
+    const ctwaWelcome = isNewCtwaLead ? ctwaGreeting(contact.firstName, ctwaEvent, topic) : null
 
     // Agentic loop — Claude calls tools until it has a final answer
     let reply = ctwaWelcome || "Hola, soy Sofía de Catherine Gomez Realtor. ¿En qué puedo ayudarte hoy?"

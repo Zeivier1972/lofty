@@ -4,6 +4,7 @@ import { sendSMS } from "@/lib/sms"
 import { isAssignedToPartner } from "@/lib/referral"
 import { handleAppointmentBooked } from "@/lib/lead-flow"
 import { AGENT_TZ, easternWallTime, formatEastern } from "@/lib/eastern-time"
+import { sendCapiEvent } from "@/lib/facebook"
 
 /**
  * "¿Te queda mejor mañana a las 11 am o el martes a las 3 pm? Responde 1 o 2."
@@ -267,6 +268,13 @@ export async function bookCallForContact(contactId: string, start: Date, channel
       html: `<p>${name} eligió <strong>${when}</strong> respondiendo a Sofía por ${channel}.</p>${contact.phone ? `<p>Tel: ${contact.phone}</p>` : ""}<p><a href="${appUrl}/contacts/${contactId}">Ver contacto en el CRM →</a></p>`,
     }).catch(() => {})
   }
+
+  // Same "Schedule" signal the /book page sends, so a call booked by replying
+  // "1" on WhatsApp counts as a booked appointment in Ads Manager too.
+  sendCapiEvent("Schedule", {
+    email: contact.email, phone: contact.phone,
+    firstName: contact.firstName, lastName: contact.lastName,
+  }, { eventId: `schedule_${appointment.id}` }).catch(() => {})
 
   await handleAppointmentBooked(contactId).catch(e => console.error("[slot-offer] post-booking flow failed:", e))
   return { appointmentId: appointment.id }

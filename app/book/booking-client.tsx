@@ -25,6 +25,25 @@ interface BookingClientProps {
   agentTitle: string
 }
 
+/**
+ * Where this booking came from. The Facebook Instant Form thank-you button
+ * links here with utm_* on the URL; keeping them on the contact is how a
+ * booked call gets traced back to the ad that produced it.
+ */
+function bookingSource(): { source?: string; sourceDetail?: string } {
+  if (typeof window === "undefined") return {}
+  const q = new URLSearchParams(window.location.search)
+  const keys = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "fbclid"]
+  const parts = keys.map(k => (q.get(k) ? `${k}=${q.get(k)}` : "")).filter(Boolean)
+  if (!parts.length) return {}
+  const src = (q.get("utm_source") || "").toLowerCase()
+  const fromMeta = /facebook|instagram|meta|fb|ig/.test(src)
+  return {
+    source: fromMeta ? (q.get("utm_medium") === "leadform" ? "FACEBOOK_LEADFORM" : "FACEBOOK") : undefined,
+    sourceDetail: ["pagina=/book", ...parts].join(" · "),
+  }
+}
+
 export default function BookingClient({ agentName, agentTitle }: BookingClientProps) {
   const [step, setStep] = useState<"calendar" | "time" | "form" | "success">("calendar")
   const [currentMonth, setCurrentMonth] = useState(new Date())
@@ -98,6 +117,7 @@ export default function BookingClient({ agentName, agentTitle }: BookingClientPr
           ...form,
           type: "BUYER_CONSULTATION",
           meetingType,
+          ...bookingSource(),
         }),
       })
       const data = await res.json()

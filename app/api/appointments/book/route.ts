@@ -8,6 +8,7 @@ import { sendEmail } from "@/lib/email"
 import { sendSMS } from "@/lib/sms"
 import { handleAppointmentBooked } from "@/lib/lead-flow"
 import { easternWallTime, formatEastern, AGENT_TZ } from "@/lib/eastern-time"
+import { sendCapiEvent, capiSignalsFromRequest } from "@/lib/facebook"
 
 export async function POST(req: Request) {
   try {
@@ -26,6 +27,7 @@ export async function POST(req: Request) {
     const CAMPAIGN_TAGS: Record<string, string> = {
       HOUSE_OF_WELLNESS: "House of Wellness",
       DOMUS: "Domus Brickell Center",
+      PRIMERA_CASA: "Primera Casa",
     }
 
     // Landing pages (e.g. /house-of-wellness) tag the lead with their own
@@ -106,6 +108,17 @@ export async function POST(req: Request) {
         ...(agent && { userId: agent.id }),
       },
     })
+
+    // Tell Facebook a real appointment was booked. "Schedule" is the event the
+    // ads can optimise for, so campaigns learn to find people who book — not
+    // just people who fill a form. The appointment id de-duplicates retries.
+    sendCapiEvent("Schedule", {
+      email: email || contact.email,
+      phone: phone || contact.phone,
+      firstName,
+      lastName,
+      ...capiSignalsFromRequest(req),
+    }, { eventId: `schedule_${appointment.id}` }).catch(e => console.error("[BOOKING] CAPI Schedule failed:", e))
 
     // Booked: stop the "¿agendamos?" sequences and move to Appointment Set.
     await handleAppointmentBooked(contact.id).catch(e => console.error("[BOOKING] post-booking flow failed:", e))
