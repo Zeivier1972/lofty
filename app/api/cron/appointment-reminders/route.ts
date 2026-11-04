@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { sendSMS } from "@/lib/sms"
+import { sendAppointmentMessage, whenFor } from "@/lib/appointment-message"
 import { sendEmail, wrapEmail } from "@/lib/email"
 import { formatEastern } from "@/lib/eastern-time"
 
@@ -55,12 +55,21 @@ export async function GET(req: Request) {
       const zoom = a.location?.startsWith("Zoom") ? a.location.replace(/^Zoom\s*—\s*/, "") : null
       const how = zoom ? `Zoom: ${zoom}` : `${agentName} te llamara a este numero.`
       const text = w.kind === "24H"
-        ? `Hola ${c.firstName}, te recuerdo tu cita con ${agentName} manana, ${when} (hora de Miami). ${how} Si necesitas cambiarla, responde a este mensaje.`
+        ? `Hola ${c.firstName}, te recuerdo tu cita con ${agentName} manana, ${whenFor(a.startTime, c.phone)}. ${how} Si necesitas cambiarla, responde a este mensaje.`
         : `Hola ${c.firstName}, tu cita con ${agentName} es en 1 hora (${when}). ${how}`
 
       let ok = false
       if (c.phone && !c.doNotText) {
-        ok = !!(await sendSMS(c.phone, text, undefined, { contactId: c.id }).catch(() => null))
+        // WhatsApp template for international numbers when configured, else SMS.
+        ok = await sendAppointmentMessage({
+          kind: "reminder",
+          phone: c.phone,
+          contactId: c.id,
+          firstName: c.firstName,
+          start: a.startTime,
+          how,
+          smsText: text,
+        }).catch(() => false)
       }
       if (w.kind === "24H" && c.email && !c.doNotEmail) {
         const html = wrapEmail(`

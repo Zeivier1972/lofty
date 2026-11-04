@@ -6,6 +6,7 @@ import type { Metadata } from "next"
 import { Cormorant_Garamond } from "next/font/google"
 import { prisma } from "@/lib/prisma"
 import LeadForm from "./lead-form"
+import BookingCalendar from "@/components/public/booking-calendar"
 import DepositCalculator, { type DepositStage } from "./deposit-calculator"
 
 /**
@@ -184,6 +185,10 @@ const WHY_CATHERINE: [string, string][] = [
 
 const FAQS: { q: string; a: string }[] = [
   {
+    q: "¿Cómo es la presentación por Zoom con Catherine Gomez?",
+    a: "Es una reunión privada de 30 minutos, en español y sin costo, desde Colombia o cualquier país. Catherine le muestra los precios vigentes y planos de Parkside, el calendario de depósitos aplicado a su presupuesto, los gastos a considerar además del precio y cómo se compra desde el exterior, y responde sus preguntas. Puede agendarla directamente en el calendario de esta página; los horarios aparecen en hora de Colombia y de Miami.",
+  },
+  {
     q: "¿Dónde está ubicado Parkside Residences at Brickell?",
     a: "En Brickell, Miami, Florida, frente a Simpson Park. El entorno incluye The Underline, Brickell City Centre y el distrito financiero y residencial de Brickell.",
   },
@@ -345,11 +350,11 @@ export default async function ParksidePage() {
             ))}
           </div>
           <div className="mt-11 flex flex-wrap gap-4">
-            <a href="#analisis" className={btnPrimary} style={{ background: SAND, color: FOREST }}>
-              Solicitar mi análisis personalizado
+            <a href="#agendar" className={btnPrimary} style={{ background: SAND, color: FOREST }}>
+              Agendar presentación por Zoom
             </a>
-            <a href={waUrl} className={btnGhost} style={{ borderColor: "rgba(255,255,255,.35)" }}>
-              WhatsApp
+            <a href="#analisis" className={btnGhost} style={{ borderColor: "rgba(255,255,255,.35)" }}>
+              Solicitar mi análisis
             </a>
           </div>
         </div>
@@ -631,6 +636,42 @@ export default async function ParksidePage() {
         </div>
       </section>
 
+      {/* ------------------------------------------ Book a Zoom directly */}
+      {/* Target of the Instant Form thank-you button and the hero CTA. */}
+      <section id="agendar" className="scroll-mt-4 py-20 sm:py-24" style={{ background: "#EDE7DA" }}>
+        <div className="mx-auto grid max-w-6xl gap-14 px-6 lg:grid-cols-[1fr_1.25fr]">
+          <div>
+            <p className={EYEBROW} style={{ color: SAND }}>Presentación privada</p>
+            <h2 className={H2} style={{ fontFamily: serif }}>Agende su presentación de Parkside por Zoom</h2>
+            <p className="mt-8 text-lg leading-relaxed text-[#4F5A52]">
+              30 minutos con Catherine Gomez, en español, desde Colombia o donde esté. Elija el día y la hora
+              que le queden mejor — los horarios aparecen en su hora local.
+            </p>
+            <ul className="mt-8 space-y-4 text-[#4F5A52]">
+              {[
+                "Precios vigentes y planos de las residencias disponibles",
+                "El calendario de depósitos aplicado a su presupuesto",
+                "Cómo se compra desde el exterior, paso a paso",
+                "Sus preguntas, respondidas en vivo",
+              ].map(t => (
+                <li key={t} className="flex gap-4">
+                  <span className="mt-3 h-px w-5 shrink-0" style={{ background: SAND }} aria-hidden="true" />
+                  {t}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="shadow-sm">
+            <BookingCalendar
+              source="PARKSIDE"
+              topic="Parkside Residences at Brickell — presentación"
+              pageLabel="/parkside#agendar"
+              theme={{ accent: GREEN, accentText: "#fff", ink: FOREST, muted: "#6B6A62", surface: "#fff", line: "rgba(46,66,54,.22)" }}
+            />
+          </div>
+        </div>
+      </section>
+
       {/* ---------------------------------------------------------- FAQ */}
       <section id="preguntas" className="mx-auto max-w-4xl px-6 py-20 sm:py-24">
         <p className={EYEBROW} style={{ color: SAND }}>Preguntas frecuentes</p>
@@ -659,8 +700,8 @@ export default async function ParksidePage() {
             para su caso.
           </p>
           <div className="mt-11 flex flex-wrap justify-center gap-4">
-            <a href="#analisis" className={btnPrimary} style={{ background: SAND, color: FOREST }}>
-              Solicitar mi análisis personalizado
+            <a href="#agendar" className={btnPrimary} style={{ background: SAND, color: FOREST }}>
+              Agendar presentación por Zoom
             </a>
             <a href={waUrl} className={btnGhost} style={{ borderColor: "rgba(255,255,255,.35)" }}>WhatsApp</a>
           </div>

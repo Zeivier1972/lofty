@@ -14,6 +14,7 @@
 
 import { useState } from "react"
 import { CheckCircle2, Loader2 } from "lucide-react"
+import BookingCalendar from "@/components/public/booking-calendar"
 
 const GREEN = "#2E4236"
 const SAND = "#B59A6A"
@@ -84,6 +85,7 @@ export default function LeadForm({ waUrl }: { waUrl: string | null }) {
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
+  const [sentPhone, setSentPhone] = useState("")
 
   const set = (k: keyof typeof f) => (v: string) => setF(p => ({ ...p, [k]: v }))
 
@@ -110,6 +112,8 @@ export default function LeadForm({ waUrl }: { waUrl: string | null }) {
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || "No pudimos enviar su solicitud.")
+      setSentPhone(phone)
+      try { (window as any).fbq?.("track", "Lead", { content_name: "Parkside — análisis" }) } catch {}
       setDone(true)
     } catch (err: any) {
       setError(err.message || "No pudimos enviar su solicitud.")
@@ -118,26 +122,49 @@ export default function LeadForm({ waUrl }: { waUrl: string | null }) {
     }
   }
 
+  // Booked while interest is highest: the calendar opens right where the form
+  // was, already knowing who they are. Self-scheduling at this moment books
+  // far more calls than "we'll contact you" followed by unanswered calls.
   if (done) {
+    const summary = [
+      "Formulario Parkside",
+      f.goal && `Objetivo: ${f.goal}`,
+      f.budget && `Presupuesto: ${f.budget}`,
+      f.unitType && `Unidad: ${f.unitType}`,
+      f.payment && `Pago: ${f.payment}`,
+      f.timing && `Plazo: ${f.timing}`,
+    ].filter(Boolean).join(" | ")
     return (
-      <div className="bg-white p-8 sm:p-10" role="status">
-        <CheckCircle2 className="h-10 w-10" style={{ color: GREEN }} aria-hidden="true" />
-        <h3 className="mt-5 text-2xl font-light" style={{ fontFamily: "var(--font-display), Georgia, serif" }}>
-          Gracias, {f.firstName.split(" ")[0]}. Recibimos su solicitud.
-        </h3>
-        <p className="mt-4 leading-relaxed text-[#57534B]">
-          El equipo de Catherine Gomez revisará sus respuestas y le contactará para preparar su
-          análisis de Parkside: planos, precios vigentes y el calendario de depósitos aplicado a
-          su caso.
-        </p>
+      <div className="bg-white" role="status">
+        <div className="p-8 pb-2 sm:p-10 sm:pb-2">
+          <CheckCircle2 className="h-10 w-10" style={{ color: GREEN }} aria-hidden="true" />
+          <h3 className="mt-5 text-2xl font-light" style={{ fontFamily: "var(--font-display), Georgia, serif" }}>
+            Gracias, {f.firstName.split(" ")[0]}. Último paso: elija la hora de su presentación.
+          </h3>
+          <p className="mt-4 leading-relaxed text-[#57534B]">
+            En 30 minutos por Zoom, Catherine le muestra los precios vigentes, los planos, el calendario de
+            depósitos aplicado a su presupuesto y cómo se compra desde {f.country || "Colombia"}, paso a paso.
+          </p>
+        </div>
+        <BookingCalendar
+          source="PARKSIDE"
+          topic="Parkside Residences at Brickell — presentación"
+          pageLabel="/parkside"
+          theme={{ accent: GREEN, accentText: "#fff", ink: "#1E2B23", muted: "#6B6A62", surface: "#fff", line: "rgba(46,66,54,.22)" }}
+          prefill={{
+            firstName: f.firstName.trim(),
+            lastName: f.lastName.trim(),
+            email: f.email.trim(),
+            phone: sentPhone,
+            country: f.country,
+            summary,
+          }}
+        />
         {waUrl && (
-          <a
-            href={waUrl}
-            className="mt-7 inline-block px-7 py-3.5 text-[13px] font-medium uppercase tracking-[0.16em] text-white"
-            style={{ background: GREEN }}
-          >
-            Escribir ahora por WhatsApp
-          </a>
+          <p className="px-8 pb-8 text-center text-sm text-[#57534B] sm:px-10">
+            ¿Prefiere escribir primero?{" "}
+            <a href={waUrl} className="font-medium underline" style={{ color: GREEN }}>Escríbanos por WhatsApp</a>
+          </p>
         )}
       </div>
     )
