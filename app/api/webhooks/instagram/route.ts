@@ -9,7 +9,8 @@ import {
   extractEmail, extractPhone, isOptOut, getInstagramUserProfile,
 } from "@/lib/instagram"
 import { detectProject, projectReply } from "@/lib/projects"
-import { handleCommentKeyword, handleOtherComment } from "@/lib/comment-keywords"
+import { handleCommentKeyword, handleOtherComment, postContextFor } from "@/lib/comment-keywords"
+import { getInstagramMediaCaption } from "@/lib/instagram"
 import { isFormFollowup, findFormLead, contactCampaign, formFollowupReply, formFollowupNotification } from "@/lib/form-followup"
 import { ingestLead } from "@/lib/lead-ingest"
 import { generateSocialAIReply, getMatchingProperties, getMatchingPreConstruction, notifyCatherineAboutLead } from "@/lib/social-ai-chat"
@@ -167,6 +168,7 @@ export async function POST(req: Request) {
               text: commentText,
               sendPrivate: msg => sendCommentGreeting(commentId, igUserId, msg),
               replyPublic: msg => publicReplyToComment(commentId, msg),
+              postContext: await postContextFor(val?.media?.id, () => getInstagramMediaCaption(val?.media?.id)),
             }).catch(e => console.error("[IG bot] other-comment reply failed:", e))
           }
           continue

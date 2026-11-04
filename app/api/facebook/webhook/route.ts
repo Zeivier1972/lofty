@@ -18,7 +18,8 @@ import {
 } from "@/lib/facebook"
 import { ingestLead, enrollContactInPlanByName } from "@/lib/lead-ingest"
 import { detectProject, projectReply, type Project } from "@/lib/projects"
-import { handleCommentKeyword, handleOtherComment } from "@/lib/comment-keywords"
+import { handleCommentKeyword, handleOtherComment, postContextFor } from "@/lib/comment-keywords"
+import { getFacebookPostMessage } from "@/lib/facebook"
 import { isFormFollowup, findFormLead, contactCampaign, formFollowupReply, formFollowupNotification } from "@/lib/form-followup"
 import { generateSocialAIReply, getMatchingProperties, getMatchingPreConstruction, notifyCatherineAboutLead } from "@/lib/social-ai-chat"
 
@@ -313,6 +314,7 @@ export async function POST(req: Request) {
               text: commentText,
               sendPrivate: msg => privateReplyToComment(commentId, msg),
               replyPublic: msg => postPublicCommentReply(commentId, msg),
+              postContext: await postContextFor(val.post_id, () => getFacebookPostMessage(val.post_id)),
             }).catch(e => console.error("[FB bot] other-comment reply failed:", e))
           }
           continue

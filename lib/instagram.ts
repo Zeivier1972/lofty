@@ -186,3 +186,14 @@ export function parseIntent(text: string): string | null {
   if (/explorando|explorar|curios|solo/.test(lower)) return "solo_explorando"
   return null
 }
+
+/** Caption of one of our own Instagram media (for context-aware comment replies). */
+export async function getInstagramMediaCaption(mediaId: string): Promise<string | null> {
+  const token = getToken()
+  if (!token || !mediaId) return null
+  try {
+    const res = await fetch(`${IG_API}/${mediaId}?fields=caption`, { headers: { Authorization: `Bearer ${token}` } })
+    const d = await res.json()
+    return typeof d.caption === "string" ? d.caption : null
+  } catch { return null }
+}
