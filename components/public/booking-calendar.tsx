@@ -68,7 +68,7 @@ const clock = (d: Date, tz: string) =>
     .replace(/\s?a\.\s?m\./i, " a. m.").replace(/\s?p\.\s?m\./i, " p. m.")
 
 export default function BookingCalendar({
-  source, topic, pageLabel, theme, prefill, defaultCountry = "Colombia", heading,
+  source, topic, pageLabel, theme, prefill, defaultCountry = "Colombia", heading, doneExtra,
 }: {
   /** CAMPAIGN_TAGS key in /api/appointments/book, e.g. "PARKSIDE". */
   source: string
@@ -79,6 +79,8 @@ export default function BookingCalendar({
   prefill?: CalendarPrefill
   defaultCountry?: string
   heading?: string
+  /** Shown under the confirmation, e.g. the guide promised for booking. */
+  doneExtra?: React.ReactNode
 }) {
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
@@ -207,6 +209,7 @@ export default function BookingCalendar({
             ? "Le enviamos el enlace de Zoom y le recordaremos la cita el día anterior y una hora antes."
             : "Catherine le llamará a la hora acordada. Le recordaremos la cita el día anterior y una hora antes."}
         </p>
+        {doneExtra}
       </div>
     )
   }

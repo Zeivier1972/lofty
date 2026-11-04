@@ -11,6 +11,9 @@ import { easternWallTime, formatEastern, AGENT_TZ } from "@/lib/eastern-time"
 import { sendCapiEvent, capiSignalsFromRequest } from "@/lib/facebook"
 import { sendAppointmentMessage, whenFor } from "@/lib/appointment-message"
 
+/** Promised to Parkside / Colombia bookings (app/parkside/colombia/trust.tsx). */
+const GUIDE_URL = "https://www.catherinegomezrealtor.com/guias/guia-comprador-colombiano-miami.pdf"
+
 export async function POST(req: Request) {
   try {
     const {
@@ -254,6 +257,11 @@ export async function POST(req: Request) {
         </div>`
       : `<p style="color:#374151">Catherine te llamará al número que proporcionaste el día de la cita.</p>`
     }
+    ${safeSource === "PARKSIDE" ? `<div style="background:#F6F3EC;border-left:3px solid #B59A6A;padding:16px;margin:16px 0">
+      <p style="margin:0 0 6px;font-weight:bold;color:#1E2B23">📘 Su guía del comprador colombiano en Miami</p>
+      <p style="margin:0 0 8px;color:#374151;font-size:14px">Cómo se protegen sus depósitos, cómo enviar los dólares, a nombre de quién comprar y qué declarar en Colombia.</p>
+      <a href="${GUIDE_URL}" style="color:#2E4236;font-weight:bold">Descargar la guía (PDF)</a>
+    </div>` : ""}
     <p style="color:#374151">Si necesitas cambiar o cancelar tu cita, por favor responde a este correo.</p>
     <hr style="border:none;border-top:1px solid #E5E7EB;margin:24px 0"/>
     <p style="color:#374151">Hi <strong>${firstName}</strong>, your appointment has been confirmed for ${formattedDate} at ${time}. ${meetingType === "ZOOM" ? `Join via Zoom: <a href="${zoomLink}">${zoomLink}</a>` : "Catherine will call you at the number you provided."}</p>
