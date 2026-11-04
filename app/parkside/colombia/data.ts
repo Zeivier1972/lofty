@@ -80,3 +80,69 @@ export function buildPlan(capital: number, pref: string, timing: string): Plan {
 
   return { unit: planUnit, wantedButShort, schedule, beforeClosing, tier }
 }
+
+/**
+ * Short-term-rental market data for Brickell (studios + 1 bedroom), from
+ * PriceLabs' market index: official Brickell boundary, ~1,000 active
+ * listings, November 2025 – October 2026. Refresh from PriceLabs
+ * (market_research) every few months and update MARKET_AS_OF.
+ *
+ * This is the MARKET, not Parkside: there is no operating history for a
+ * building under construction. The page says so next to every number.
+ */
+export const MARKET = {
+  asOf: "noviembre 2025 – octubre 2026",
+  source: "PriceLabs, índice de alquiler a corto plazo de Brickell (estudios y 1 habitación, ~1,000 anuncios activos)",
+  occupancy: 63.3,
+  adr: 229.57,
+  peak: "enero a marzo: 76–81% de ocupación y US$264–296 por noche",
+  low: "octubre: 34% de ocupación",
+}
+
+/** Square feet used for the HOA assumption, by type (middle of the developer's range). */
+export const SQFT: Record<UnitType, number> = { "Estudio": 460, "1 habitación": 590, "2 habitaciones": 920 }
+
+export type RentInputs = {
+  price: number
+  occupancy: number      // %
+  adr: number            // USD per night
+  mgmtPct: number        // % of gross rent (operator / platform / cleaning coordination)
+  hoaMonthly: number     // USD
+  taxPct: number         // property tax, % of price per year
+  insuranceYear: number  // USD
+}
+
+export type RentResult = {
+  gross: number
+  mgmt: number
+  hoa: number
+  tax: number
+  insurance: number
+  net: number
+  /** Net yearly income / price, %. */
+  netYield: number
+  /** Net yearly income / cash put in (all-cash purchase + ~3% closing), %. */
+  cashYield: number
+}
+
+export function rentScenario(i: RentInputs): RentResult {
+  const gross = 365 * (i.occupancy / 100) * i.adr
+  const mgmt = gross * (i.mgmtPct / 100)
+  const hoa = i.hoaMonthly * 12
+  const tax = i.price * (i.taxPct / 100)
+  const insurance = i.insuranceYear
+  const net = gross - mgmt - hoa - tax - insurance
+  return {
+    gross, mgmt, hoa, tax, insurance, net,
+    netYield: i.price ? (net / i.price) * 100 : 0,
+    cashYield: i.price ? (net / (i.price * 1.03)) * 100 : 0,
+  }
+}
+
+/** Starting assumptions — every one is editable on the page. */
+export const DEFAULTS = {
+  mgmtPct: 25,
+  hoaPerSqft: 0.95,
+  taxPct: 1.9,
+  insuranceYear: 1800,
+}

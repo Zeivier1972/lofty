@@ -55,7 +55,10 @@ function parksideKnowledge(bookUrl: string): string {
 - Amenidades (The Infinity Level, ~16,500 pies²): piscina, spa, gimnasio, estudio de yoga, sala de spinning, coworking lounge, sala de conferencias, health market, lounge exterior con bar.
 - Alquiler: programa de administración con Wello (reservaciones, marketing y fotos, distribución en plataformas, ingresos, reportes, atención a huéspedes, limpieza y mantenimiento). Condiciones y costos se confirman con el desarrollador. NO prometas ingresos ni ocupación.
 - Ubicación: frente a Simpson Park, cerca de The Underline, Brickell City Centre y el distrito financiero.
-- No hay datos de HOA ni de rentabilidad: no los inventes; Catherine los revisa en la llamada.
+- No hay datos de HOA ni de rentabilidad de Parkside: no los inventes; Catherine los revisa en la llamada.
+- Dato de MERCADO que sí puedes citar (no es de Parkside, dilo así): según PriceLabs, en Brickell (nov 2025 – oct 2026, estudios y 1 habitación) la ocupación promedio de alquiler a corto plazo fue 63.3% y la tarifa promedio US$229.57 por noche; temporada alta enero–marzo, la más baja en octubre. Para calcular un escenario con sus números: https://www.catherinegomezrealtor.com/parkside/colombia
+- Confianza: Catherine tiene licencia de bienes raíces de Florida #3320405 (verificable en myfloridalicense.com). Los depósitos de hasta el 10% van a una cuenta de garantía (escrow) por ley de Florida (Estatuto 718.202). En la llamada no se pide dinero ni datos bancarios, y puede invitar a su contador o familia.
+- Al agendar la presentación por Zoom recibe sin costo: la lista de precios vigente y planos disponibles, su análisis de rentabilidad unidad por unidad y la guía del comprador colombiano.
 - No le preguntes si busca preconstrucción o reventa: ya está viendo Parkside.
 AGENDAR: en esta página está el formulario "Solicitar mi análisis personalizado" y el botón de WhatsApp; para una llamada con Catherine comparte ${bookUrl}.`
 }
