@@ -9,6 +9,7 @@ import { sendSMS } from "@/lib/sms"
 import { handleAppointmentBooked } from "@/lib/lead-flow"
 import { easternWallTime, formatEastern, AGENT_TZ } from "@/lib/eastern-time"
 import { sendCapiEvent, capiSignalsFromRequest } from "@/lib/facebook"
+import { sendAppointmentMessage, whenFor } from "@/lib/appointment-message"
 
 export async function POST(req: Request) {
   try {
@@ -28,6 +29,7 @@ export async function POST(req: Request) {
       HOUSE_OF_WELLNESS: "House of Wellness",
       DOMUS: "Domus Brickell Center",
       PRIMERA_CASA: "Primera Casa",
+      PARKSIDE: "Parkside",
     }
 
     // Landing pages (e.g. /house-of-wellness) tag the lead with their own
@@ -198,13 +200,19 @@ export async function POST(req: Request) {
     // Text confirmation — a confirmed time in their messages is the single
     // best show-rate lever. Not automated: it answers their own booking.
     const when = formatEastern(startTime)
+    // International numbers (Colombia) get it on WhatsApp when the template
+    // is configured — see lib/appointment-message.ts.
     if (phone) {
-      sendSMS(
+      const how = meetingType === "ZOOM" ? `Zoom: ${zoomLink}` : "Ella te llamara a este numero."
+      sendAppointmentMessage({
+        kind: "confirm",
         phone,
-        `Hola ${firstName}, tu cita con ${cfg?.realtorName || "Catherine"} quedo confirmada para el ${when} (hora de Miami). ${meetingType === "ZOOM" ? `Zoom: ${zoomLink}` : "Ella te llamara a este numero."} Si necesitas cambiarla, responde a este mensaje.`,
-        undefined,
-        { contactId: contact.id },
-      ).catch(e => console.error("[BOOKING] SMS confirmation failed:", e))
+        contactId: contact.id,
+        firstName,
+        start: startTime,
+        how,
+        smsText: `Hola ${firstName}, tu cita con ${cfg?.realtorName || "Catherine"} quedo confirmada para el ${whenFor(startTime, phone)}. ${how} Si necesitas cambiarla, responde a este mensaje.`,
+      }).catch(e => console.error("[BOOKING] confirmation message failed:", e))
     }
     if (cfg?.realtorPhone) {
       sendSMS(cfg.realtorPhone, `📅 Nueva cita: ${firstName} ${lastName} — ${when}. ${topic || "Consulta"}${phone ? ` · ${phone}` : ""}`)
