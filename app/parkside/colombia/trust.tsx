@@ -22,7 +22,7 @@ export const LICENSE_LOOKUP = "https://www.myfloridalicense.com/wl11.asp"
 export const BOOKING_BONUS = [
   "La lista de precios vigente y los planos de las residencias disponibles (no se publican en internet)",
   "Su análisis de rentabilidad unidad por unidad, con datos reales de alquiler en Brickell",
-  "La guía del comprador colombiano: cómo enviar los dólares, abrir cuenta en EE. UU., comprar a su nombre o con una LLC y qué declarar ante la DIAN",
+  "La guía del comprador colombiano en PDF (al instante al agendar): cómo se protegen sus depósitos, cómo enviar los dólares, comprar a su nombre o con una LLC y qué declarar ante la DIAN",
 ]
 
 const WONT_HAPPEN = [

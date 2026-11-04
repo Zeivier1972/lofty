@@ -132,6 +132,17 @@ export default function Funnel({ waUrl, webinarUrl }: { waUrl: string; webinarUr
       <BookingCalendar
         source="PARKSIDE"
         topic="Parkside — presentación de plan de inversión"
+        doneExtra={
+          <a
+            href="/guias/guia-comprador-colombiano-miami.pdf"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-6 inline-block px-6 py-4 text-sm font-semibold uppercase tracking-[0.12em] text-white"
+            style={{ background: GREEN }}
+          >
+            Descargar mi guía del comprador colombiano (PDF)
+          </a>
+        }
         pageLabel="/parkside/colombia"
         theme={{ accent: GREEN, accentText: "#fff", ink: FOREST, muted: "#6B6A62", surface: "#fff", line: LINE }}
         prefill={{
