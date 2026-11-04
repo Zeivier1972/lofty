@@ -20,6 +20,9 @@ const PUBLIC_PREFIXES = [
   // First-time buyer calculator funnel.
   "/primera-casa",
 ]
+/** Funnel pages where the chat must not pop open on its own. */
+const NO_AUTO_OPEN = ["/primera-casa", "/parkside/colombia"]
+
 function isPublicPage(path: string): boolean {
   if (path === "/") return true
   return PUBLIC_PREFIXES.some(p => path === p || path.startsWith(p + "/"))
@@ -124,6 +127,9 @@ export default function SofiaChat() {
   // session, so it doesn't re-open on every page they browse).
   useEffect(() => {
     if (hidden) return
+    // Funnel pages: the quiz is the conversation. An auto-opened chat covers
+    // it on a phone, so there Sofía waits behind her bubble.
+    if (NO_AUTO_OPEN.some(p => pathname === p || pathname.startsWith(p + "/"))) return
     let seen = false
     try { seen = !!sessionStorage.getItem("sofia_seen") } catch { /* noop */ }
     if (seen) return

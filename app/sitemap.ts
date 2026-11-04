@@ -28,6 +28,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${base}/inversion/gz-tower`, lastModified: now, changeFrequency: "weekly", priority: 0.9 },
     { url: `${base}/house-of-wellness`, lastModified: now, changeFrequency: "weekly", priority: 0.9 },
     { url: `${base}/parkside`, lastModified: now, changeFrequency: "weekly", priority: 0.9 },
+    { url: `${base}/parkside/colombia`, lastModified: now, changeFrequency: "weekly", priority: 0.9 },
     { url: `${base}/domus`, lastModified: now, changeFrequency: "weekly", priority: 0.9 },
     { url: `${base}/primera-casa`, lastModified: now, changeFrequency: "monthly", priority: 0.9 },
     { url: `${base}/proyectos`, lastModified: now, changeFrequency: "weekly", priority: 0.8 },
