@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic"
 import { readdirSync } from "fs"
 import { join } from "path"
 import type { Metadata } from "next"
-import { Jost } from "next/font/google"
+import { jostDisplay } from "@/app/fonts"
 import { prisma } from "@/lib/prisma"
 import LeadForm from "./lead-form"
 import BookingForm from "./booking-form"
@@ -22,12 +22,7 @@ import { UNITS, UNITS_AS_OF, type DomusUnit } from "./units"
  * No ROI, occupancy or HOA figures — none were provided.
  */
 
-const display = Jost({
-  subsets: ["latin"],
-  weight: ["300", "400", "500"],
-  variable: "--font-display",
-  display: "swap",
-})
+const display = jostDisplay
 
 /** Domus palette: charcoal façade, warm white, the gold of the lit tower at night. */
 const INK = "#17191C"

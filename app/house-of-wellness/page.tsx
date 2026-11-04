@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic"
 import { readdirSync } from "fs"
 import { join } from "path"
 import type { Metadata } from "next"
-import { Cormorant_Garamond } from "next/font/google"
+import { cormorantDisplay } from "@/app/fonts"
 import { prisma } from "@/lib/prisma"
 import BookingForm from "./booking-form"
 
@@ -12,12 +12,7 @@ import BookingForm from "./booking-form"
  * light weights with open letter-spacing is what separates a luxury property
  * page from a SaaS landing page.
  */
-const display = Cormorant_Garamond({
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600"],
-  variable: "--font-display",
-  display: "swap",
-})
+const display = cormorantDisplay
 
 /** Palette: warm ink, ivory, champagne. No emoji, no saturated accent. */
 const INK = "#0C0B0A"
