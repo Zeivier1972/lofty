@@ -19,6 +19,7 @@ import {
 import { ingestLead, enrollContactInPlanByName } from "@/lib/lead-ingest"
 import { detectProject, projectReply, type Project } from "@/lib/projects"
 import { handleCommentKeyword, handleOtherComment, postContextFor } from "@/lib/comment-keywords"
+import { usableName, greetingFor } from "@/lib/known-name"
 import { getFacebookPostMessage } from "@/lib/facebook"
 import { isFormFollowup, findFormLead, contactCampaign, formFollowupReply, formFollowupNotification } from "@/lib/form-followup"
 import { generateSocialAIReply, getMatchingProperties, getMatchingPreConstruction, notifyCatherineAboutLead } from "@/lib/social-ai-chat"
@@ -386,8 +387,11 @@ export async function POST(req: Request) {
 
           // Try private reply first (works on regular posts, fails on Reels)
           // Private reply sends greeting directly to Messenger — best UX, no click needed
+          // Facebook sends the commenter's name with the comment: use it.
+          const g = greetingFor(greeting, usableName(val.from?.name))
+          greeting = g.greeting
           await prisma.facebookBotConversation.create({
-            data: { psid: commenterId, pageId, state: "ASKED_NAME", sourceCommentId: commentId, campaignKeyword: fbCampaignKeyword },
+            data: { psid: commenterId, pageId, state: g.state, firstName: g.firstName, sourceCommentId: commentId, campaignKeyword: fbCampaignKeyword },
           })
           // Ring the bell — someone started the Facebook bot from a comment.
           await prisma.aINotification.create({
@@ -768,13 +772,19 @@ export async function POST(req: Request) {
         const formFollowup = isFormFollowup(text)
 
         if (botOn && !convo && !formFollowup && !project && (matchedCampaign || matchesGeneral)) {
-          const greeting = matchedCampaign?.greeting
-            || `¡Hola! 🏠 Quiero enviarte más información. Solo necesito un par de datos rápidos. ¿Cuál es tu nombre?`
+          const fbProfile = await getFacebookUserProfile(psid).catch(() => null)
+          const g = greetingFor(
+            matchedCampaign?.greeting
+              || `¡Hola! 🏠 Quiero enviarte más información. Solo necesito un par de datos rápidos. ¿Cuál es tu nombre?`,
+            usableName([fbProfile?.firstName, fbProfile?.lastName].filter(Boolean).join(" ")),
+          )
+          const greeting = g.greeting
           await prisma.facebookBotConversation.create({
             data: {
               psid,
               pageId,
-              state: "ASKED_NAME",
+              state: g.state,
+              firstName: g.firstName,
               campaignKeyword: matchedCampaign?.keyword || null,
             },
           })

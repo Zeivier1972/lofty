@@ -10,6 +10,7 @@ import {
 } from "@/lib/instagram"
 import { detectProject, projectReply } from "@/lib/projects"
 import { handleCommentKeyword, handleOtherComment, postContextFor } from "@/lib/comment-keywords"
+import { usableName, greetingFor } from "@/lib/known-name"
 import { getInstagramMediaCaption } from "@/lib/instagram"
 import { isFormFollowup, findFormLead, contactCampaign, formFollowupReply, formFollowupNotification } from "@/lib/form-followup"
 import { ingestLead } from "@/lib/lead-ingest"
@@ -207,12 +208,17 @@ export async function POST(req: Request) {
           continue
         }
 
-        const { greeting, campaignKeyword } = await buildGreeting(commentText)
+        const built = await buildGreeting(commentText)
+        const campaignKeyword = built.campaignKeyword
+        // Their profile usually already has their name: don't ask for it.
+        const profileName = usableName((await getInstagramUserProfile(igUserId).catch(() => null))?.name)
+        const g = greetingFor(built.greeting, profileName)
+        const greeting = g.greeting
 
         // Created before the send so two deliveries of the same webhook cannot
         // both start a conversation. Rolled back just below if the DM fails.
         await prisma.instagramConversation.create({
-          data: { igUserId, igUsername, state: "ASKED_NAME", sourceCommentId: commentId, campaignKeyword },
+          data: { igUserId, igUsername, state: g.state, firstName: g.firstName, sourceCommentId: commentId, campaignKeyword },
         })
 
         if (!(await sendCommentGreeting(commentId, igUserId, greeting))) {
@@ -334,9 +340,13 @@ export async function POST(req: Request) {
         // No conversation — only start one if they used a keyword
         if (!convo) {
           if (!matchesKeyword(text)) continue
-          const { greeting, campaignKeyword } = await buildGreeting(text)
+          const built = await buildGreeting(text)
+          const campaignKeyword = built.campaignKeyword
+          const profile = await getInstagramUserProfile(igUserId).catch(() => null)
+          const g = greetingFor(built.greeting, usableName(profile?.name))
+          const greeting = g.greeting
           convo = await prisma.instagramConversation.create({
-            data: { igUserId, state: "ASKED_NAME", campaignKeyword },
+            data: { igUserId, igUsername: profile?.username || undefined, state: g.state, firstName: g.firstName, campaignKeyword },
           })
           if (!(await sendInstagramDM(igUserId, greeting))) {
             // Same rollback as the comment path: a row with no greeting behind
