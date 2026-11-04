@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk"
 import { prisma } from "@/lib/prisma"
-import { commentKeywordReply } from "@/lib/projects"
+import { commentKeywordReply, detectProject, projectReply } from "@/lib/projects"
 
 /**
  * A comment with one of the Auto-Pilot keywords (DOMUS, PARKSIDE, CASA,
@@ -50,33 +50,45 @@ const INTEREST = /precio|cu[aá]nto|cost|info|interes|detalle|disponib|cotiz|qui
 /** Links, spam and abuse get no answer. */
 const SKIP = /https?:\/\/|www\.|\bscam\b|estafa|fraude|bitcoin|crypto|forex|gana dinero|dm me|follow me|s[ií]gueme/i
 
-const PRAISE_FALLBACK = [
-  "¡Gracias por comentar! 🙌 Si quieres los números completos, comenta INVERTIR y te los envío.",
-  "¡Mil gracias! 😊 Cualquier duda sobre comprar en Miami, aquí estoy para ayudarte.",
-  "¡Qué bueno que te guste! 🏙️ Si estás pensando en invertir, comenta INVERTIR y te envío la info.",
-  "¡Gracias! 🙏 Todos los jueves explico esto en vivo — comenta INVERTIR y te mando el enlace.",
-]
+/** What the post under the comment is about, so the reply fits it. */
+export async function postContextFor(externalId: string | null | undefined, fetchCaption: () => Promise<string | null>): Promise<string> {
+  if (externalId) {
+    const own = await prisma.socialPost.findFirst({ where: { externalId }, select: { content: true } }).catch(() => null)
+    if (own?.content) return own.content
+  }
+  return (await fetchCaption().catch(() => null)) || ""
+}
 
-async function shortPublicReply(comment: string, kind: "praise" | "interest-sent" | "interest-failed"): Promise<string> {
+/** The "Comenta X" keyword the post itself asked for, if any. */
+function postKeyword(caption: string): string | null {
+  const m = caption.match(/coment[ae]\s+["“'«]?([A-ZÁÉÍÓÚÑ]{3,})/i)
+  return m ? m[1].toUpperCase() : null
+}
+
+function isLocalTopic(caption: string): boolean {
+  return /\bcasa(s)?\b|townhome|builder|lennar|horton|mudarte|primera casa|hipoteca|fha|south florida|homestead|kendall|doral/i.test(caption)
+}
+
+async function shortPublicReply(comment: string, caption: string, keyword: string | null, kind: "praise" | "interest-sent" | "interest-failed"): Promise<string> {
   const goal =
     kind === "praise"
-      ? `agradece de forma cálida y específica a lo que dijo, y termina invitando suavemente a comentar INVERTIR para recibir la información`
+      ? `agradece de forma cálida y específica a lo que dijo, conectándolo con el tema de la publicación${keyword ? `, y termina invitando suavemente a comentar ${keyword} para recibir la información` : ""}`
       : kind === "interest-sent"
-        ? `dile que ya le enviaste la información por mensaje privado`
-        : `dile que con gusto le ayuda y que agende una llamada de 15 minutos con Catherine en ${SITE}/book`
+        ? `responde a lo que preguntó en una frase si la publicación lo responde, y dile que ya le enviaste la información por mensaje privado`
+        : `responde a lo que preguntó en una frase si la publicación lo responde, y dile que con gusto le ayuda: puede agendar una llamada de 15 minutos con Catherine en ${SITE}/book`
   try {
     const m = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 120,
-      system: "Respondes comentarios en Facebook/Instagram de Catherine Gomez, Realtor en Miami. Español latino, tuteo, cálido y breve. Máximo 22 palabras, 1 emoji como mucho. Nunca prometas rentabilidad ni des precios. Devuelve SOLO el texto de la respuesta.",
-      messages: [{ role: "user", content: `Comentario: "${comment.slice(0, 300)}"\nObjetivo: ${goal}.` }],
+      max_tokens: 160,
+      system: "Respondes comentarios en Facebook/Instagram de Catherine Gomez, Realtor en Miami (inversionistas latinoamericanos que compran preconstrucción en Miami/Orlando, y familias que compran casas nuevas en South Florida). Español latino, tuteo, cálido y breve. Máximo 25 palabras, 1 emoji como mucho. La respuesta tiene que ser sobre el tema de ESA publicación y lo que la persona dijo — nunca genérica. Si la publicación no pide una palabra clave, no inventes una. Nunca prometas rentabilidad ni des precios que no estén en la publicación. Devuelve SOLO el texto de la respuesta.",
+      messages: [{ role: "user", content: `Publicación:\n"""${caption.slice(0, 1200) || "(sin texto)"}"""\n\nComentario: "${comment.slice(0, 300)}"\nObjetivo: ${goal}.` }],
     })
     const t = m.content[0]?.type === "text" ? m.content[0].text.trim().replace(/^["“]|["”]$/g, "") : ""
-    if (t && t.length <= 220) return t
+    if (t && t.length <= 240) return t
   } catch { /* template below */ }
   if (kind === "interest-sent") return "¡Hola! Te acabo de enviar la información por mensaje privado 📩"
   if (kind === "interest-failed") return `¡Con gusto te ayudo! Agenda 15 minutos con Catherine aquí: ${SITE}/book`
-  return PRAISE_FALLBACK[Math.floor(Math.random() * PRAISE_FALLBACK.length)]
+  return keyword ? `¡Gracias por comentar! 🙌 Si quieres más información, comenta ${keyword} y te la envío.` : "¡Mil gracias por comentar! 😊 Cualquier duda, aquí estoy para ayudarte."
 }
 
 /**
@@ -92,6 +104,8 @@ export async function handleOtherComment(opts: {
   text: string
   sendPrivate: (msg: string) => Promise<boolean>
   replyPublic: (msg: string) => Promise<unknown>
+  /** Caption of the post the comment is on. */
+  postContext?: string
 }): Promise<void> {
   const text = (opts.text || "").trim()
   if (!text || SKIP.test(text)) return
@@ -101,17 +115,24 @@ export async function handleOtherComment(opts: {
   const seen = await prisma.aINotification.findFirst({ where: { metadata: marker }, select: { id: true } }).catch(() => null)
   if (seen) return
 
+  const caption = opts.postContext || ""
+  const keyword = postKeyword(caption)
+  const local = keyword === "CASA" || (!keyword && isLocalTopic(caption))
+
   const interested = INTEREST.test(text)
   let sent = false
   if (interested) {
     const cfg = await prisma.aIConfig.findFirst({ select: { calendlyUrl: true } }).catch(() => null)
-    const reply = commentKeywordReply("INVERTIR", cfg?.calendlyUrl || `${SITE}/book`)
-    if (reply) {
-      const msg = `${reply.message}\n\n📅 Además, todos los jueves 7 PM (hora de Colombia) hay un webinar gratis en vivo: ${SITE}/webinar/serie/inversion-miami`
-      sent = await opts.sendPrivate(msg).catch(() => false)
-    }
+    const book = cfg?.calendlyUrl || `${SITE}/book`
+    // The private message matches the post: its project, its keyword, or its audience.
+    const project = detectProject(caption) || detectProject(text)
+    let msg = project
+      ? projectReply(project, null, book)
+      : (commentKeywordReply(keyword || (local ? "CASA" : "INVERTIR"), book)?.message || "")
+    if (msg && !local) msg += `\n\n📅 Además, todos los jueves 7 PM (hora de Colombia) hay un webinar gratis en vivo: ${SITE}/webinar/serie/inversion-miami`
+    if (msg) sent = await opts.sendPrivate(msg).catch(() => false)
   }
-  const publicMsg = await shortPublicReply(text, interested ? (sent ? "interest-sent" : "interest-failed") : "praise")
+  const publicMsg = await shortPublicReply(text, caption, keyword, interested ? (sent ? "interest-sent" : "interest-failed") : "praise")
   await Promise.resolve(opts.replyPublic(publicMsg)).catch(() => {})
 
   await prisma.aINotification.create({

@@ -611,3 +611,14 @@ export async function sendCapiEvent(
     console.error(`[CAPI] ${eventName} failed:`, err)
   }
 }
+
+/** Text of one of the Page's posts (for context-aware comment replies). */
+export async function getFacebookPostMessage(postId: string): Promise<string | null> {
+  if (!postId) return null
+  try {
+    const tok = await pageToken()
+    const res = await fetch(`${GRAPH}/${postId}?fields=message&access_token=${tok}`)
+    const d = await res.json()
+    return typeof d.message === "string" ? d.message : null
+  } catch { return null }
+}
