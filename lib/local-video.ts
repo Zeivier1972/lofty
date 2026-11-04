@@ -216,8 +216,12 @@ export async function renderShort(opts: {
     const filterFile = tf("graph.txt", graph)
     const out = join(dir, "short.mp4")
     await run(ff, ["-y", ...inputs, "-filter_complex_script", filterFile,
+      // Instagram Reels spec: H.264 High@4.1, yuv420p, constant 30 fps, capped
+      // bitrate, 2-second keyframes; AAC stereo 48 kHz (the TTS voice is 24 kHz
+      // mono, which left the first Reel stuck "IN_PROGRESS" on Instagram).
       "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
-      "-c:a", "aac", "-b:a", "160k", "-t", total.toFixed(2), "-movflags", "+faststart", out])
+      "-profile:v", "high", "-level", "4.1", "-r", String(FPS), "-g", String(FPS * 2), "-maxrate", "8M", "-bufsize", "16M",
+      "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2", "-t", total.toFixed(2), "-movflags", "+faststart", out])
     return readFileSync(out)
   } finally {
     rmSync(dir, { recursive: true, force: true })
