@@ -146,3 +146,18 @@ export const DEFAULTS = {
   taxPct: 1.9,
   insuranceYear: 1800,
 }
+
+/**
+ * Financing for foreign buyers, per Catherine: US banks lend to
+ * international investors; the buyer usually puts in about 50% of the
+ * price, and on some projects less. Used to show the "con financiamiento"
+ * version of the plan. Terms depend on the bank, project and profile.
+ */
+export const FINANCING = { ownPct: 50 }
+
+/** Catherine's Parkside interview (Cloudinary), exactly as uploaded. */
+export const VIDEO = {
+  src: "https://res.cloudinary.com/dhqolxzne/video/upload/v1793815172/park_side_interview_final_20261103_1707_hitfkj.mp4",
+  poster: "https://res.cloudinary.com/dhqolxzne/video/upload/so_2,q_auto,w_1280/v1793815172/park_side_interview_final_20261103_1707_hitfkj.jpg",
+  uploaded: "2026-11-04",
+}

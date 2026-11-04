@@ -18,7 +18,7 @@ import { ArrowLeft, ArrowRight, Loader2 } from "lucide-react"
 import BookingCalendar from "@/components/public/booking-calendar"
 import RentScenario from "./rent-scenario"
 import { BookingPromise } from "./trust"
-import { CAPITAL, GOALS, PREFS, CLOSING, TIMING, US_BEFORE, buildPlan, usd, PRICES_AS_OF } from "./data"
+import { CAPITAL, GOALS, PREFS, CLOSING, TIMING, US_BEFORE, buildPlan, usd, PRICES_AS_OF, FINANCING, VIDEO } from "./data"
 
 const FOREST = "#1E2B23"
 const GREEN = "#2E4236"
@@ -89,7 +89,7 @@ export default function Funnel({ waUrl, webinarUrl }: { waUrl: string; webinarUr
     { key: "goal", title: "¿Qué busca con una propiedad en Miami?", options: GOALS },
     { key: "pref", title: "¿Qué tipo de residencia le interesa?", hint: "Estudios desde US$490,000 · 1 habitación desde US$582,750 · 2 habitaciones desde US$1,160,250", options: PREFS },
     { key: "capital", title: "¿Con cuánto capital cuenta hoy para la inversión?", hint: "Al firmar el contrato se deposita el 20% del precio. Le mostramos su plan con estos números.", options: CAPITAL.map(x => x[0]) },
-    { key: "closing", title: "¿Cómo pensaría pagar el saldo al cierre (60%)?", hint: "El cierre es a la entrega, estimada para el primer trimestre de 2028.", options: CLOSING },
+    { key: "closing", title: "¿Cómo pensaría pagar el saldo al cierre (60%)?", hint: "El cierre es a la entrega (1er trimestre de 2028). Los bancos de EE. UU. financian a inversionistas extranjeros: normalmente usted aporta cerca del 50% del precio y el banco el resto.", options: CLOSING },
     { key: "timing", title: "¿Cuándo le gustaría tomar una decisión?", options: TIMING },
     { key: "usBefore", title: "¿Ha comprado antes una propiedad en Estados Unidos?", options: US_BEFORE },
   ]
@@ -186,6 +186,16 @@ export default function Funnel({ waUrl, webinarUrl }: { waUrl: string; webinarUr
             Capital antes de la entrega: <strong className="text-white">{usd(plan.beforeClosing)}</strong> (40%), repartido en
             tres pagos hasta abril de 2027.
           </p>
+          <div className="mt-6 p-4" style={{ background: "rgba(255,255,255,.08)" }}>
+            <p className="text-[11px] font-medium uppercase tracking-[0.25em]" style={{ color: "#D9C7A0" }}>Con financiamiento de un banco en EE. UU.</p>
+            <p className="mt-2 text-sm text-white/85">
+              Usted aporta cerca del {FINANCING.ownPct}% (<strong className="text-white">{usd(plan.unit.from * FINANCING.ownPct / 100)}</strong>):
+              los depósitos de {usd(plan.beforeClosing)} más unos {usd(plan.unit.from * (FINANCING.ownPct / 100) - plan.beforeClosing)} al cierre.
+              El banco financia el resto (<strong className="text-white">{usd(plan.unit.from * (100 - FINANCING.ownPct) / 100)}</strong>), y en
+              algunos proyectos el aporte es menor.
+            </p>
+            <p className="mt-2 text-[11px] text-white/50">Las condiciones dependen del banco y de su perfil; en la presentación revisamos las opciones para extranjeros.</p>
+          </div>
           <p className="mt-4 text-xs leading-relaxed text-white/45">
             Precios &quot;desde&quot; y calendario del desarrollador al {PRICES_AS_OF}; el precio final depende del piso, la vista y la
             disponibilidad. No incluye gastos de cierre ni cuotas de mantenimiento.
@@ -204,6 +214,15 @@ export default function Funnel({ waUrl, webinarUrl }: { waUrl: string; webinarUr
               nada{a.closing === "Financiamiento hipotecario" ? ", incluidas las opciones de financiamiento para compradores extranjeros" : ""}.
               Si Parkside no es para usted, se lo diremos.
             </p>
+            <video
+              className="mt-5 aspect-video w-full bg-black"
+              src={VIDEO.src}
+              poster={VIDEO.poster}
+              controls
+              playsInline
+              preload="none"
+              aria-label="Entrevista de Catherine Gomez sobre Parkside"
+            />
             <BookingPromise country={c.country || "Colombia"} />
             <div className="mt-6 shadow-sm">{calendar}</div>
           </div>
