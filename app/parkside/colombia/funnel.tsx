@@ -189,10 +189,10 @@ export default function Funnel({ waUrl, webinarUrl }: { waUrl: string; webinarUr
           <div className="mt-6 p-4" style={{ background: "rgba(255,255,255,.08)" }}>
             <p className="text-[11px] font-medium uppercase tracking-[0.25em]" style={{ color: "#D9C7A0" }}>Con financiamiento de un banco en EE. UU.</p>
             <p className="mt-2 text-sm text-white/85">
-              Usted aporta cerca del {FINANCING.ownPct}% (<strong className="text-white">{usd(plan.unit.from * FINANCING.ownPct / 100)}</strong>):
-              los depósitos de {usd(plan.beforeClosing)} más unos {usd(plan.unit.from * (FINANCING.ownPct / 100) - plan.beforeClosing)} al cierre.
-              El banco financia el resto (<strong className="text-white">{usd(plan.unit.from * (100 - FINANCING.ownPct) / 100)}</strong>), y en
-              algunos proyectos el aporte es menor.
+              En general los bancos de EE. UU. piden que el inversionista extranjero aporte cerca del {FINANCING.typicalPct}%; en Parkside
+              puede ser menos. Sus depósitos de <strong className="text-white">{usd(plan.beforeClosing)}</strong> ({FINANCING.ownPct}%) pueden ser
+              todo su aporte, y los bancos preferidos del desarrollador financian el {100 - FINANCING.ownPct}% al cierre
+              (<strong className="text-white">{usd(plan.unit.from * (100 - FINANCING.ownPct) / 100)}</strong>), más gastos de cierre.
             </p>
             <p className="mt-2 text-[11px] text-white/50">Las condiciones dependen del banco y de su perfil; en la presentación revisamos las opciones para extranjeros.</p>
           </div>
