@@ -1109,6 +1109,7 @@ export async function checkHeygenVideos(): Promise<{ checked: number; completed:
       const containerId = post.externalId!.slice(4)
       try {
         const st = await fetch(`https://graph.facebook.com/v19.0/${containerId}?fields=status_code,status&access_token=${token}`).then(r => r.json())
+        console.log(`[social-autopilot] Instagram container ${containerId} (post ${post.id}): ${st.status_code || "?"} ${st.status || st.error?.message || ""}`)
         if (st.status_code === "FINISHED") {
           const pub = await fetch(`https://graph.facebook.com/v19.0/${pageId}/media_publish`, {
             method: "POST", body: new URLSearchParams({ creation_id: containerId, access_token: token }),
@@ -1119,7 +1120,7 @@ export async function checkHeygenVideos(): Promise<{ checked: number; completed:
           postInstagramComment(pub.id, token, comment)
           console.log(`[social-autopilot] Instagram Reel published from container ${containerId} (post ${post.id})`)
           completed++
-        } else if (st.status_code === "ERROR" || st.status_code === "EXPIRED" || Date.now() - post.updatedAt.getTime() > 12 * 3600000) {
+        } else if (st.status_code === "ERROR" || st.status_code === "EXPIRED" || st.error || Date.now() - post.updatedAt.getTime() > 6 * 3600000) {
           await prisma.socialPost.update({ where: { id: post.id }, data: { status: "FAILED", errorMessage: `Instagram container ${st.status_code || "timeout"}: ${st.status || ""}`.slice(0, 500) } })
           completed++
         }
