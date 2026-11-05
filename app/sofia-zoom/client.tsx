@@ -152,7 +152,7 @@ export default function SofiaZoomClient({ projects, hostName }: { projects: Proj
               <ul className="mt-4 space-y-1 text-xs text-slate-500">
                 <li>• Inicia tu reunión primero. Si tienes sala de espera, admite a “Sofía”.</li>
                 <li>• Funciona en reuniones de Zoom (no en Zoom Webinars).</li>
-                <li>• Tus propios mensajes no los responde; si le escriben en privado, responde en privado.</li>
+                <li>• Tus mensajes no los responde, salvo que la nombres: “Sofía, ¿cuánto es el depósito?”. Si le escriben en privado, responde en privado.</li>
               </ul>
             </>
           )}

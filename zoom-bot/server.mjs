@@ -69,8 +69,10 @@ async function onChat(s, m) {
   s.recent.push(`${name}: ${m.text}`)
   if (s.recent.length > 12) s.recent.shift()
   event(s, `chat de ${name}${m.toAll ? "" : " (privado)"}${m.fromHost ? " (anfitriona)" : ""}: ${m.text}`)
-  // Catherine's own messages and paused mode: listen, don't answer.
-  if (m.fromHost || s.paused) return
+  if (s.paused) return
+  // Catherine's own messages are for her clients, not for Sofía — unless she
+  // calls her by name ("Sofía, ¿cuánto es el depósito?").
+  if (m.fromHost && !/\bsof[ií]a\b/i.test(m.text)) return
 
   let d
   try {
