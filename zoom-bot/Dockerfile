@@ -25,7 +25,8 @@ RUN test -n "$ZOOM_SDK_URL" \
 
 COPY CMakeLists.txt ./
 COPY src ./src
-RUN cmake -B build -S . && cmake --build build -j"$(nproc)" && ldd build/sofia-bot | grep "not found" || true
+RUN cmake -B build -S . && cmake --build build -j"$(nproc)" && test -x build/sofia-bot \
+    && (ldd build/sofia-bot | grep "not found" || echo "all libraries found")
 
 COPY server.mjs entry.sh ./
 RUN chmod +x entry.sh

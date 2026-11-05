@@ -26,9 +26,9 @@
 #include "zoom_sdk.h"
 #include "auth_service_interface.h"
 #include "meeting_service_interface.h"
+#include "meeting_service_components/meeting_audio_interface.h"
 #include "meeting_service_components/meeting_chat_interface.h"
 #include "meeting_service_components/meeting_participants_ctrl_interface.h"
-#include "meeting_service_components/meeting_audio_interface.h"
 
 using namespace std;
 using namespace ZOOMSDK;
@@ -196,9 +196,13 @@ class ChatEvent : public IMeetingChatCtrlEvent {
     string text = m->GetContent() ? m->GetContent() : (content ? content : "");
     string name = m->GetSenderDisplayName() ? m->GetSenderDisplayName() : "";
     bool toAll = m->IsChatToAll() || m->GetChatMessageType() == SDKChatMessageType_To_All;
+    bool fromHost = from == gHostId;
+    if (auto* p = participants()) {
+      if (IUserInfo* u = p->GetUserByUserID(from)) fromHost = fromHost || u->IsHost();
+    }
     emit("{\"type\":\"chat\",\"msgId\":\"" + jsonEscape(m->GetMessageID() ? m->GetMessageID() : "") +
          "\",\"senderId\":" + to_string(from) + ",\"senderName\":\"" + jsonEscape(name) +
-         "\",\"toAll\":" + (toAll ? "true" : "false") + ",\"text\":\"" + jsonEscape(text) + "\"}");
+         "\",\"toAll\":" + (toAll ? "true" : "false") + ",\"fromHost\":" + (fromHost ? "true" : "false") + ",\"text\":\"" + jsonEscape(text) + "\"}");
   }
   void onChatStatusChangedNotification(ChatStatus* status_) {}
   void onChatMsgDeleteNotification(const zchar_t* msgID, SDKChatMessageDeleteType deleteBy) {}
@@ -291,7 +295,6 @@ class MeetingEvent : public IMeetingServiceEvent {
   void onMeetingTopicChanged(const zchar_t* sTopic) {}
   void onMeetingFullToWatchLiveStream(const zchar_t* sLiveStreamUrl) {}
   void onUserNetworkStatusChanged(MeetingComponentType type, ConnectionQuality level, unsigned int userId, bool uplink) {}
-  void onAppSignalPanelUpdated(IMeetingAppSignalHandler* pHandler) {}
 };
 
 static MeetingEvent gMeetingEvent;
@@ -330,7 +333,6 @@ class AuthEvent : public IAuthServiceEvent {
   void onLogout() {}
   void onZoomIdentityExpired() {}
   void onZoomAuthIdentityExpired() {}
-  void onNotificationServiceStatus(SDKNotificationServiceStatus status, SDKNotificationServiceError error) {}
 };
 
 static AuthEvent gAuthEvent;

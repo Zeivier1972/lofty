@@ -34,6 +34,7 @@ function newSession(opts) {
     recent: [],
     events: [],
     reported: false,
+    paused: false,
   }
 }
 
@@ -67,7 +68,9 @@ async function onChat(s, m) {
   s.attendees.set(String(m.senderId), name)
   s.recent.push(`${name}: ${m.text}`)
   if (s.recent.length > 12) s.recent.shift()
-  event(s, `chat de ${name}${m.toAll ? "" : " (privado)"}: ${m.text}`)
+  event(s, `chat de ${name}${m.toAll ? "" : " (privado)"}${m.fromHost ? " (anfitriona)" : ""}: ${m.text}`)
+  // Catherine's own messages and paused mode: listen, don't answer.
+  if (m.fromHost || s.paused) return
 
   let d
   try {
@@ -174,6 +177,7 @@ function view(s) {
     startedAt: s.startedAt,
     attendees: Array.from(s.attendees.values()),
     questions: s.qa.length,
+    paused: s.paused,
     qa: s.qa.slice(-30),
     events: s.events.slice(-60),
   }
@@ -214,6 +218,11 @@ http.createServer(async (req, res) => {
 
   if (req.method === "POST" && req.url === "/leave") {
     stop(session)
+    return send(res, 200, view(session))
+  }
+
+  if (req.method === "POST" && req.url === "/pause") {
+    if (session) session.paused = Boolean(body.paused)
     return send(res, 200, view(session))
   }
 
