@@ -25,8 +25,23 @@ const LOCAL_TZ: [string, string, string][] = [
   ["+593", "America/Guayaquil", "Ecuador"],
   ["+51", "America/Lima", "Perú"],
   ["+507", "America/Panama", "Panamá"],
+  ["+506", "America/Costa_Rica", "Costa Rica"],
+  ["+502", "America/Guatemala", "Guatemala"],
+  ["+503", "America/El_Salvador", "El Salvador"],
+  ["+504", "America/Tegucigalpa", "Honduras"],
+  ["+54", "America/Argentina/Buenos_Aires", "Argentina"],
+  ["+56", "America/Santiago", "Chile"],
+  ["+598", "America/Montevideo", "Uruguay"],
+  ["+55", "America/Sao_Paulo", "Brasil"],
   ["+34", "Europe/Madrid", "España"],
 ]
+
+/** The time zone and country a phone number's owner reads times in; null for US/Canada or unknown. */
+export function localZoneFor(phone: string | null | undefined): { tz: string; country: string } | null {
+  const e164 = toE164(phone || "") || phone || ""
+  const hit = LOCAL_TZ.find(([code]) => e164.startsWith(code))
+  return hit ? { tz: hit[1], country: hit[2] } : null
+}
 
 export function isInternational(phone: string | null | undefined): boolean {
   const e164 = toE164(phone || "") || phone || ""
@@ -38,11 +53,14 @@ export function whenFor(start: Date, phone: string | null | undefined): string {
   const miami = start.toLocaleString("es-US", {
     timeZone: AGENT_TZ, weekday: "long", day: "numeric", month: "long", hour: "numeric", minute: "2-digit",
   })
-  const e164 = toE164(phone || "") || phone || ""
-  const local = LOCAL_TZ.find(([code]) => e164.startsWith(code))
+  const local = localZoneFor(phone)
   if (!local) return `${miami} (hora de Miami)`
-  const there = start.toLocaleTimeString("es-US", { timeZone: local[1], hour: "numeric", minute: "2-digit" })
-  return `${miami} hora de Miami (${there} en ${local[2]})`
+  // The day too when it differs (Spain is already "tomorrow" for a 7 p.m. Miami start).
+  const sameDay = start.toLocaleDateString("en-US", { timeZone: AGENT_TZ }) === start.toLocaleDateString("en-US", { timeZone: local.tz })
+  const there = sameDay
+    ? start.toLocaleTimeString("es-US", { timeZone: local.tz, hour: "numeric", minute: "2-digit" })
+    : start.toLocaleString("es-US", { timeZone: local.tz, weekday: "long", hour: "numeric", minute: "2-digit" })
+  return `${miami} hora de Miami (${there} en ${local.country})`
 }
 
 /**

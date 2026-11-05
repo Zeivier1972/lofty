@@ -6,6 +6,7 @@ import { watchedPercent } from "@/lib/zoom"
 import type { CapiBrowserSignals } from "@/lib/facebook"
 import { sendEmail } from "@/lib/email"
 import { sendSMS, toE164 } from "@/lib/sms"
+import { localZoneFor, whenFor } from "@/lib/appointment-message"
 
 /**
  * Webinar registration and attendance.
@@ -174,10 +175,13 @@ async function sendConfirmation(
   const joinUrl = w.zoomJoinUrl || pageUrl
 
   const local = whenIn(w.startsAt, w.timezone)
-  const bogota = whenIn(w.startsAt, "America/Bogota")
+  // Second line: the guest's own time when their phone says where they are;
+  // without a phone, Colombia, where most of this audience is.
+  const guest = localZoneFor(to.phone) || { tz: "America/Bogota", country: "Colombia" }
+  const bogota = whenIn(w.startsAt, guest.tz)
   const sameClock =
-    new Intl.DateTimeFormat("en-US", { timeZone: w.timezone, hour: "numeric", minute: "2-digit" }).format(w.startsAt) ===
-    new Intl.DateTimeFormat("en-US", { timeZone: "America/Bogota", hour: "numeric", minute: "2-digit" }).format(w.startsAt)
+    new Intl.DateTimeFormat("en-US", { timeZone: w.timezone, weekday: "short", hour: "numeric", minute: "2-digit" }).format(w.startsAt) ===
+    new Intl.DateTimeFormat("en-US", { timeZone: guest.tz, weekday: "short", hour: "numeric", minute: "2-digit" }).format(w.startsAt)
 
   const linkBlock = w.zoomJoinUrl
     ? `<p style="text-align:center;margin:24px 0"><a href="${joinUrl}" style="background:#0369a1;color:#fff;padding:14px 32px;border-radius:50px;text-decoration:none;font-weight:bold;display:inline-block">Entrar al webinar</a></p>
@@ -191,7 +195,7 @@ async function sendConfirmation(
       <tr><td style="color:#0f172a;font-weight:bold;text-transform:capitalize">${local}</td></tr>
       <tr><td style="color:#64748b;font-size:13px">hora de Miami</td></tr>
       ${sameClock ? "" : `<tr><td style="color:#0f172a;font-weight:bold;padding-top:8px;text-transform:capitalize">${bogota}</td></tr>
-      <tr><td style="color:#64748b;font-size:13px">hora de Colombia</td></tr>`}
+      <tr><td style="color:#64748b;font-size:13px">hora de ${guest.country}</td></tr>`}
     </table>
     ${linkBlock}
     <p style="text-align:center;margin:18px 0"><a href="${calendarUrl(w, joinUrl)}" style="color:#0369a1;font-weight:bold">Agregar a mi calendario</a></p>
@@ -213,7 +217,7 @@ async function sendConfirmation(
   if (to.phone && to.smsConsent) {
     await sendSMS(
       toE164(to.phone),
-      `${first}, quedaste registrado para "${w.title}". ${local} (hora de Miami). Enlace 👉 ${joinUrl}`,
+      `${first}, quedaste registrado para "${w.title}": ${whenFor(w.startsAt, to.phone)}. Enlace 👉 ${joinUrl}`,
       undefined,
       { automated: true, contactId: to.contactId || undefined },
     ).catch(() => {})

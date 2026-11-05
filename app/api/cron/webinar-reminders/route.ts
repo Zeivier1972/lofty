@@ -8,6 +8,7 @@ import { sendSMS, toE164 } from "@/lib/sms"
 import { createMeeting, zoomConfigured } from "@/lib/zoom"
 import { ATTENDED_PCT_THRESHOLD, replayWatchUrl } from "@/lib/webinar"
 import { ensureWeeklyWebinars } from "@/lib/webinar-recurrence"
+import { whenFor } from "@/lib/appointment-message"
 
 /**
  * The webinar reminder sequence, and the follow-up that is the actual point.
@@ -46,11 +47,6 @@ function alreadyPast(current: string | null, candidate: string): boolean {
   return STAGE_ORDER.indexOf(current) >= STAGE_ORDER.indexOf(candidate)
 }
 
-const miami = (d: Date) =>
-  new Intl.DateTimeFormat("es-US", {
-    timeZone: "America/New_York", weekday: "long", day: "numeric", month: "long",
-    hour: "numeric", minute: "2-digit", hour12: true,
-  }).format(d)
 
 function shell(body: string): string {
   return `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:8px 0">${body}
@@ -137,11 +133,12 @@ export async function GET(req: Request) {
     if (!stage) continue
 
     const joinUrl = w.zoomJoinUrl || `${BASE}/webinar/${w.slug}`
-    const when = miami(w.startsAt)
 
     for (const r of w.registrations) {
       if (alreadyPast(r.lastStage, stage)) continue
       const first = (r.firstName || "").split(" ")[0] || "Hola"
+      // Miami time, plus their own when the phone says they are abroad.
+      const when = whenFor(w.startsAt, r.phone)
 
       const copy =
         stage === "LIVE"
@@ -156,16 +153,16 @@ export async function GET(req: Request) {
           ? {
               subject: `⏰ En una hora: ${w.title}`,
               html: shell(`<h2 style="color:#0c4a6e">${first}, es en una hora</h2>
-                <p style="color:#334155;line-height:1.6">Te dejo el enlace a mano para que no tengas que buscarlo: ${when} (hora de Miami).</p>
+                <p style="color:#334155;line-height:1.6">Te dejo el enlace a mano para que no tengas que buscarlo: ${when}.</p>
                 <p><a href="${joinUrl}" style="background:#0369a1;color:#fff;padding:14px 30px;border-radius:50px;text-decoration:none;font-weight:bold;display:inline-block">Guardar el enlace →</a></p>`),
-              sms: `${first}, en 1 hora empieza "${w.title}". Enlace 👉 ${joinUrl}`,
+              sms: `${first}, en 1 hora empieza "${w.title}" (${when}). Enlace 👉 ${joinUrl}`,
             }
           : {
               subject: `Mañana: ${w.title}`,
               html: shell(`<h2 style="color:#0c4a6e">${first}, nos vemos mañana</h2>
-                <p style="color:#334155;line-height:1.6"><strong>${when}</strong> (hora de Miami). Vamos a ver los números reales del proyecto, y al final hay preguntas abiertas — esa parte no queda en la grabación.</p>
+                <p style="color:#334155;line-height:1.6"><strong>${when}</strong>. Vamos a ver los números reales del proyecto, y al final hay preguntas abiertas — esa parte no queda en la grabación.</p>
                 <p><a href="${joinUrl}" style="background:#0369a1;color:#fff;padding:14px 30px;border-radius:50px;text-decoration:none;font-weight:bold;display:inline-block">Ver el enlace →</a></p>`),
-              sms: `${first}, mañana es "${w.title}" (${when}, hora de Miami). Enlace 👉 ${joinUrl}`,
+              sms: `${first}, mañana es "${w.title}": ${when}. Enlace 👉 ${joinUrl}`,
             }
 
       let delivered = false
