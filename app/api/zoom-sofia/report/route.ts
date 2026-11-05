@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth"
+import { isSofiaBot } from "@/lib/sofia-bot"
 
 /**
  * End of a "Sofía en Zoom" session: saves who attended and every question
@@ -17,8 +18,7 @@ import { auth } from "@/lib/auth"
 type QA = { name: string; question: string; answer: string; action: string }
 
 export async function POST(req: Request) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 })
+  if (!isSofiaBot(req) && !(await auth())) return NextResponse.json({ error: "No autorizado" }, { status: 401 })
 
   const body = await req.json().catch(() => ({}))
   const project = String(body.projectName || "Presentación").slice(0, 120)
