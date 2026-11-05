@@ -32,6 +32,19 @@ function toTime(m: number): string {
   return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`
 }
 
+/**
+ * One-off hours for specific dates (Miami time), replacing the weekly
+ * schedule for that day — open even if that weekday is normally closed.
+ * Bookings and blocks still apply on top. Add a line for each date
+ * Catherine asks for; past dates can be deleted.
+ */
+const DATE_HOURS: Record<string, { startTime: string; endTime: string }> = {
+  // Catherine is out from 12 pm: phone / Zoom only 8:30–11:59 am.
+  "2026-11-06": { startTime: "08:30", endTime: "12:00" },
+  "2026-11-07": { startTime: "08:30", endTime: "12:00" },
+  "2026-11-08": { startTime: "08:30", endTime: "12:00" },
+}
+
 /** Open slots ("HH:MM", Miami time) on a date — the same rules as /api/appointments/slots. */
 export async function getOpenSlots(dateStr: string, userId?: string | null): Promise<{ slots: string[]; slotMinutes: number; message?: string }> {
   const dayOfWeek = new Date(dateStr + "T00:00:00Z").getUTCDay()
@@ -39,10 +52,14 @@ export async function getOpenSlots(dateStr: string, userId?: string | null): Pro
     ? await prisma.availability.findFirst({ where: { userId, dayOfWeek } })
     : await prisma.availability.findFirst({ where: { dayOfWeek } })
 
-  if (avail && avail.isAvailable === false) return { slots: [], slotMinutes: 30, message: "No disponible este día" }
-  // No record: Mon–Sat 9am–6pm; Sunday closed.
-  if (!avail && dayOfWeek === 0) return { slots: [], slotMinutes: 30, message: "No disponible este día" }
-  const eff = avail ?? { startTime: DEFAULT_START, endTime: DEFAULT_END, slotMinutes: 30 }
+  const override = DATE_HOURS[dateStr]
+  if (!override) {
+    if (avail && avail.isAvailable === false) return { slots: [], slotMinutes: 30, message: "No disponible este día" }
+    // No record: Mon–Sat 9am–6pm; Sunday closed.
+    if (!avail && dayOfWeek === 0) return { slots: [], slotMinutes: 30, message: "No disponible este día" }
+  }
+  const base = avail ?? { startTime: DEFAULT_START, endTime: DEFAULT_END, slotMinutes: 30 }
+  const eff = override ? { ...override, slotMinutes: base.slotMinutes || 30 } : base
 
   const blocks = await prisma.availabilityBlock.findMany({ where: { date: dateStr, ...(userId && { userId }) } })
   if (blocks.some(b => !b.startTime)) return { slots: [], slotMinutes: eff.slotMinutes || 30, message: "Día bloqueado" }
