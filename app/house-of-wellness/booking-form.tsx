@@ -22,6 +22,8 @@ import {
   getDay, isSameDay, isToday, isBefore, startOfDay,
 } from "date-fns"
 import { es } from "date-fns/locale"
+import PhoneCountrySelect from "@/components/public/phone-country-select"
+import { withCountry } from "@/lib/phone-country"
 
 const DAYS_ES = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"]
 
@@ -56,6 +58,7 @@ export default function BookingForm() {
   const [submitting, setSubmitting] = useState(false)
   const [done, setDone] = useState(false)
   const [meetingType, setMeetingType] = useState<"PHONE" | "ZOOM">("PHONE")
+  const [country, setCountry] = useState("+57")
   const [form, setForm] = useState({
     firstName: "", lastName: "", email: "", phone: "", interest: "", message: "",
   })
@@ -115,7 +118,7 @@ export default function BookingForm() {
           firstName: form.firstName,
           lastName: form.lastName,
           email: form.email,
-          phone: form.phone,
+          phone: withCountry(country, form.phone),
           topic: `House of Wellness Brickell${form.interest ? ` — ${form.interest}` : ""}`,
           message: form.message,
           type: "BUYER_CONSULTATION",
@@ -294,11 +297,19 @@ export default function BookingForm() {
           </div>
           <div>
             <label htmlFor="hw-phone" className="text-sm font-medium text-[#3D3831]">WhatsApp / Teléfono</label>
-            <input
-              id="hw-phone" type="tel" value={form.phone}
-              onChange={e => setForm({ ...form, phone: e.target.value })}
-              className="mt-1 w-full rounded-none border border-[#E2DBD0] px-4 py-3 outline-none focus:border-[#C5A572]"
-            />
+            <div className="mt-1 flex gap-2">
+              <PhoneCountrySelect
+                value={country}
+                onChange={setCountry}
+                className="rounded-none border border-[#E2DBD0] bg-white px-2 py-3 outline-none focus:border-[#C5A572]"
+              />
+              <input
+                id="hw-phone" type="tel" inputMode="tel" autoComplete="tel-national" value={form.phone}
+                placeholder={country === "+57" ? "300 000 0000" : ""}
+                onChange={e => setForm({ ...form, phone: e.target.value })}
+                className="min-w-0 flex-1 rounded-none border border-[#E2DBD0] px-4 py-3 outline-none focus:border-[#C5A572]"
+              />
+            </div>
           </div>
         </div>
         <div>
