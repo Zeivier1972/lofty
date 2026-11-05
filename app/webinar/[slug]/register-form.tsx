@@ -1,6 +1,8 @@
 "use client"
 
 import { useState } from "react"
+import PhoneCountrySelect from "@/components/public/phone-country-select"
+import { withCountry } from "@/lib/phone-country"
 
 /**
  * The signup form. Four fields, because every extra one costs registrations
@@ -16,6 +18,7 @@ export function RegisterForm({ slug, joinUrlKnown }: { slug: string; joinUrlKnow
   const [lastName, setLastName] = useState("")
   const [email, setEmail] = useState("")
   const [phone, setPhone] = useState("")
+  const [country, setCountry] = useState("+57")
   const [smsConsent, setSmsConsent] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -34,7 +37,7 @@ export function RegisterForm({ slug, joinUrlKnown }: { slug: string; joinUrlKnow
       const res = await fetch("/api/webinar/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug, firstName, lastName, email, phone, smsConsent, source }),
+        body: JSON.stringify({ slug, firstName, lastName, email, phone: withCountry(country, phone), smsConsent, source }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok || !data.ok) throw new Error(data.error || "No se pudo completar el registro.")
@@ -123,15 +126,23 @@ export function RegisterForm({ slug, joinUrlKnown }: { slug: string; joinUrlKnow
         <label htmlFor="wf-phone" className="mb-1 block text-xs font-semibold text-slate-600">
           WhatsApp / celular <span className="font-normal text-slate-400">— opcional</span>
         </label>
-        <input
-          id="wf-phone"
-          type="tel"
-          value={phone}
-          onChange={e => setPhone(e.target.value)}
-          autoComplete="tel"
-          placeholder="+57 300 000 0000"
-          className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-sky-500"
-        />
+        <div className="flex gap-2">
+          <PhoneCountrySelect
+            value={country}
+            onChange={setCountry}
+            className="rounded-xl border border-slate-300 bg-white px-2 py-2.5 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+          />
+          <input
+            id="wf-phone"
+            type="tel"
+            inputMode="tel"
+            value={phone}
+            onChange={e => setPhone(e.target.value)}
+            autoComplete="tel-national"
+            placeholder={country === "+57" ? "300 000 0000" : ""}
+            className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+          />
+        </div>
       </div>
 
       {phone.trim() && (
