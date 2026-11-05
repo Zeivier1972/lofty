@@ -88,6 +88,8 @@ export default function SofiaZoomClient({ projects, hostName }: { projects: Proj
   const lastSend = useRef(0)
   const answeringRef = useRef(true)
   const reported = useRef(false)
+  const joined = useRef(false)
+  const initStarted = useRef(false)
 
   const proj = projects.find(p => p.href === project)
   const bookUrl = project === "/parkside" ? `${BASE}/parkside/colombia` : `${BASE}${project}`
@@ -145,20 +147,34 @@ export default function SofiaZoomClient({ projects, hostName }: { projects: Proj
       .catch(() => setSaved("No se pudo guardar el resumen."))
   }
 
-  const onChat = async (data: any) => {
+  const onChat = async (raw: any) => {
+    // The SDK delivers { data: { sender: "<name>", senderId, receiverId,
+    // content: { text } } } (6.x); older builds pass the object directly.
+    const data = raw?.data ?? raw
     const content = pick(data?.content?.text, data?.content, data?.message, data?.text, data?.msg) || ""
-    const senderId = pickNum(data?.sender?.userId, data?.senderId, data?.sender?.id, data?.userId)
-    const receiverId = pickNum(data?.receiver?.userId, data?.receiverId, data?.receiver?.id)
-    let senderName = pick(data?.sender?.name, data?.senderName, data?.sender?.userName, data?.sender?.displayName) || ""
+    const toNum = (v: unknown) => {
+      const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN
+      return Number.isFinite(n) ? n : undefined
+    }
+    const senderId = toNum(data?.senderId ?? data?.sender?.userId ?? data?.sender?.id ?? data?.userId)
+    const receiverId = toNum(data?.receiverId ?? data?.receiver?.userId ?? data?.receiver?.id)
+    let senderName = (typeof data?.sender === "string" ? data.sender : "") ||
+      pick(data?.sender?.name, data?.senderName, data?.sender?.userName, data?.sender?.displayName) || ""
     if (!senderName && senderId !== undefined) senderName = people.current.get(senderId)?.name || ""
-    if (!content.trim()) return
+    if (!content.trim()) {
+      log({ name: senderName, question: "(mensaje sin texto)", answer: JSON.stringify(data).slice(0, 200), action: "info" })
+      return
+    }
 
-    if (senderId !== undefined && senderId === myId.current) return
-    if (senderName.startsWith("Sofía")) return
+    if ((senderId !== undefined && senderId === myId.current) || senderName.startsWith("Sofía")) return
     if (senderId === undefined || !people.current.has(senderId)) refreshPeople()
     const sender = senderId !== undefined ? people.current.get(senderId) : undefined
     recent.current = [...recent.current, `${senderName || "Alguien"}: ${content}`].slice(-10)
-    if (sender?.host) return // Catherine (or a co-host) talking — not a question for Sofía
+    if (sender?.host) {
+      // Catherine (or a co-host) talking — not a question for Sofía
+      log({ name: senderName, question: content, answer: "Mensaje de la anfitriona — Sofía no responde.", action: "info" })
+      return
+    }
     if (senderName) everyone.current.add(senderName)
     if (!answeringRef.current) {
       log({ name: senderName, question: content, answer: "(Sofía en pausa)", action: "info" })
@@ -174,7 +190,7 @@ export default function SofiaZoomClient({ projects, hostName }: { projects: Proj
       })
       const d = await res.json()
       if (d.action === "skip") {
-        log({ name: senderName, question: content, answer: "", action: "skip" })
+        log({ name: senderName, question: content, answer: "Saludo o comentario — no requiere respuesta.", action: "skip" })
         return
       }
       const replyTo = isPrivate && senderId !== undefined ? senderId : undefined
@@ -215,6 +231,8 @@ export default function SofiaZoomClient({ projects, hostName }: { projects: Proj
       ZoomMtg.prepareWebSDK()
       ZoomMtg.i18n.load("es-ES")
       ZoomMtg.i18n.onLoad(() => {
+        if (initStarted.current) return // onLoad can fire more than once
+        initStarted.current = true
         ZoomMtg.init({
           leaveUrl: "/sofia-zoom",
           patchJsMedia: true,
@@ -229,6 +247,8 @@ export default function SofiaZoomClient({ projects, hostName }: { projects: Proj
               userName: BOT_NAME,
               ...(passcode.trim() ? { passWord: passcode.trim() } : {}),
               success: () => {
+                if (joined.current) return // the SDK can call success twice
+                joined.current = true
                 setPhase("live")
                 ZoomMtg.getCurrentUser({
                   success: (res: any) => {
