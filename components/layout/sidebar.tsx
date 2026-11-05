@@ -67,6 +67,7 @@ const navGroups: NavGroup[] = [
     icon: Bot,
     items: [
       { href: "/ai-agent", icon: Bot, label: "AI Agent (Sofía & Aria)" },
+      { href: "/sofia-zoom", icon: Video, label: "Sofía en Zoom" },
       { href: "/dialer", icon: Phone, label: "Power Dialer" },
       { href: "/investment-advisor", icon: TrendingUp, label: "Investment Advisor" },
       { href: "/smart-plans", icon: Zap, label: "Smart Plans" },
