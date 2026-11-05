@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma"
 import { sendBulkEmail, wrapEmail } from "@/lib/email"
 import { sendSMS, toE164 } from "@/lib/sms"
+import { localZoneFor, whenFor } from "@/lib/appointment-message"
 
 /**
  * Inviting the CRM's own book to a webinar — everyone, or only the contacts
@@ -15,6 +16,13 @@ const whenMiami = (d: Date) =>
     timeZone: "America/New_York", weekday: "long", day: "numeric", month: "long",
     hour: "numeric", minute: "2-digit", hour12: true,
   }).format(d)
+
+/** "; jueves 6:00 p. m. en Colombia" for a contact abroad; "" otherwise. */
+function localNote(start: Date, phone: string | null): string {
+  const z = localZoneFor(phone)
+  if (!z) return ""
+  return `; ${start.toLocaleString("es-US", { timeZone: z.tz, weekday: "long", hour: "numeric", minute: "2-digit" })} en ${z.country}`
+}
 
 /** Tag names from a body/query/DB value; [] means "the whole list". */
 export function parseTags(raw: unknown): string[] {
@@ -81,7 +89,7 @@ export async function sendWebinarInvite(
     const html = wrapEmail(
       `<p style="color:#334155;line-height:1.7">Hola {first_name},</p>
        <p style="color:#334155;line-height:1.7">
-         <strong style="text-transform:capitalize">${when}</strong> (hora de Miami) voy a hacer algo que
+         <strong style="text-transform:capitalize">${when}</strong> (hora de Miami{local_note}) voy a hacer algo que
          normalmente solo hago en cita privada: abrir los números completos de un proyecto, en vivo,
          y responder lo que me pregunten.
        </p>
@@ -98,7 +106,7 @@ export async function sendWebinarInvite(
     const res = await sendBulkEmail(
       emailable.map(c => ({
         to: c.email!,
-        vars: { first_name: c.firstName, unsubscribe_url: `${BASE}/api/unsubscribe?id=${c.id}` },
+        vars: { first_name: c.firstName, local_note: localNote(webinar.startsAt, c.phone), unsubscribe_url: `${BASE}/api/unsubscribe?id=${c.id}` },
       })),
       { subject: `${webinar.title} — en vivo ${when}`, html },
       50,
@@ -112,7 +120,7 @@ export async function sendWebinarInvite(
     for (const c of textable) {
       const sid = await sendSMS(
         toE164(c.phone!),
-        `${c.firstName}, soy Catherine. ${when} (hora de Miami) presento en vivo un proyecto en Miami y respondo preguntas. Gratis, en espanol y sin compromiso: ${pageUrl}`,
+        `${c.firstName}, soy Catherine. El ${whenFor(webinar.startsAt, c.phone)} presento en vivo un proyecto en Miami y respondo preguntas. Gratis, en espanol y sin compromiso: ${pageUrl}`,
         undefined,
         { automated: true, contactId: c.id },
       ).catch(() => null)
