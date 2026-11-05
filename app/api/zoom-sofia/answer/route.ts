@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
 import { auth } from "@/lib/auth"
+import { isSofiaBot } from "@/lib/sofia-bot"
 import { projectKnowledgeFor } from "@/lib/project-knowledge"
 import { PROJECTS } from "@/lib/projects"
 
@@ -19,8 +20,7 @@ const BASE = process.env.NEXT_PUBLIC_APP_URL || "https://www.catherinegomezrealt
 type Decision = { action: "answer" | "escalate" | "skip"; reply: string; note: string }
 
 export async function POST(req: Request) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 })
+  if (!isSofiaBot(req) && !(await auth())) return NextResponse.json({ error: "No autorizado" }, { status: 401 })
 
   const body = await req.json().catch(() => ({}))
   const href = typeof body.project === "string" ? body.project : ""
