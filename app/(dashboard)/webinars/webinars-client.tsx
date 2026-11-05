@@ -37,6 +37,12 @@ const tagsOf = (raw: string | null | undefined): string[] => {
  * checkboxes; several can be chosen. None selected means everyone.
  * The list (with contact counts) is fetched once per page and shared.
  */
+type Registrant = {
+  id: string; firstName: string | null; lastName: string | null; email: string; phone: string | null
+  source: string | null; contactId: string | null; createdAt: string; attended: boolean
+  watchedPct: number; replayPct: number; lastStage: string | null
+}
+
 type TagOpt = { name: string; count: number }
 let tagCache: Promise<TagOpt[]> | null = null
 function loadTags(): Promise<TagOpt[]> {
@@ -607,6 +613,8 @@ function WebinarRow({
   })
   const seriesUrl = w.series ? `${SITE}/webinar/serie/${w.series}` : null
   const [copied, setCopied] = useState(false)
+  const [people, setPeople] = useState<Registrant[] | null>(null)
+  const [showPeople, setShowPeople] = useState(false)
   const dateChanged = canMove && edit.startsAt !== toMiamiLocal(w.startsAt)
 
   async function call(method: "PATCH" | "DELETE", body?: Record<string, unknown>) {
@@ -708,7 +716,18 @@ function WebinarRow({
       <div className="mt-3 flex flex-wrap items-center gap-4 text-sm">
         <span className="flex items-center gap-1.5 text-gray-700">
           <Users className="h-4 w-4 text-gray-400" />
-          <strong>{w.registrations}</strong> registrados
+          {w.registrations > 0 ? (
+            <button type="button"
+              onClick={() => {
+                setShowPeople(v => !v)
+                if (!people) fetch(`/api/webinars/${w.id}/registrations`).then(r => r.json()).then(d => setPeople(d.registrations || [])).catch(() => setPeople([]))
+              }}
+              className="font-semibold text-indigo-600 underline decoration-dotted underline-offset-2 hover:text-indigo-800">
+              {w.registrations} registrados {showPeople ? "▲" : "▼"}
+            </button>
+          ) : (
+            <><strong>0</strong> registrados</>
+          )}
           {past && <span className="text-gray-500">· {w.attendedCount} asistieron</span>}
           {/* Only once there is a recording — before that a zero here reads as
               a failure rather than as "nobody has been offered it yet". */}
@@ -736,6 +755,41 @@ function WebinarRow({
           <span className="text-xs text-amber-700">Zoom se crea 3 días antes</span>
         )}
       </div>
+
+      {showPeople && (
+        <div className="mt-3 overflow-hidden rounded-xl border border-gray-200">
+          {!people ? (
+            <p className="flex items-center gap-2 p-3 text-sm text-gray-500"><Loader2 className="h-4 w-4 animate-spin" /> Cargando…</p>
+          ) : people.length === 0 ? (
+            <p className="p-3 text-sm text-gray-500">Nadie registrado todavía.</p>
+          ) : (
+            <ul className="max-h-80 divide-y divide-gray-100 overflow-y-auto text-sm">
+              {people.map(p => {
+                const name = [p.firstName, p.lastName].filter(Boolean).join(" ") || p.email
+                return (
+                  <li key={p.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-3 py-2">
+                    <div className="min-w-0">
+                      {p.contactId
+                        ? <a href={`/contacts/${p.contactId}`} className="font-semibold text-indigo-700 hover:underline">{name}</a>
+                        : <span className="font-semibold text-gray-900">{name}</span>}
+                      <p className="truncate text-xs text-gray-500">
+                        {p.email}{p.phone ? ` · ${p.phone}` : ""}{p.source ? ` · ${p.source}` : ""}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                      {p.attended && <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-700">Asistió · {p.watchedPct}%</span>}
+                      {p.replayPct > 0 && <span className="rounded-full bg-sky-50 px-2 py-0.5 font-semibold text-sky-700">Grabación · {p.replayPct}%</span>}
+                      <span className="text-gray-400">
+                        {new Date(p.createdAt).toLocaleDateString("es-US", { timeZone: "America/New_York", day: "numeric", month: "short" })}
+                      </span>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </div>
+      )}
 
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
         <button onClick={() => { setEditing(e => !e); setMsg(null) }} disabled={busy}
