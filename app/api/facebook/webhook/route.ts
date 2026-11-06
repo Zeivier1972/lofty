@@ -23,6 +23,7 @@ import { usableName, greetingFor } from "@/lib/known-name"
 import { getFacebookPostMessage } from "@/lib/facebook"
 import { isFormFollowup, findFormLead, contactCampaign, formFollowupReply, formFollowupNotification } from "@/lib/form-followup"
 import { generateSocialAIReply, getMatchingProperties, getMatchingPreConstruction, notifyCatherineAboutLead } from "@/lib/social-ai-chat"
+import { stopOnAbuse } from "@/lib/abusive-message"
 
 /** See the Instagram webhook: how quiet a stranded ASKED_NAME conversation must
  *  be before a new comment re-sends the greeting. */
@@ -466,6 +467,18 @@ export async function POST(req: Request) {
           },
         }).catch(() => {})
         continue
+      }
+
+      // Insults or threats: no reply; pause Sofía for the contact and alert Catherine.
+      {
+        const known = await prisma.contact.findFirst({ where: { facebookPsid: psid }, select: { id: true, firstName: true, lastName: true } })
+        const who = known ? `${known.firstName} ${known.lastName || ""}`.trim() : `Messenger ${psid}`
+        if (await stopOnAbuse({ text, contactId: known?.id, who, channel: "Messenger" })) {
+          await prisma.facebookMessage.create({
+            data: { psid, pageId, body: text, direction: "INBOUND", status: "RECEIVED", messageId: fbMid, contactId: known?.id },
+          }).catch(() => {})
+          continue
+        }
       }
 
       // A DM that names one of our projects ("me interesa House of Wellness")

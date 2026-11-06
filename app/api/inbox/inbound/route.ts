@@ -9,6 +9,7 @@ import { appendEventLeadToSheet } from "@/lib/google-sheets"
 import { handleSlotReply, makeOffer } from "@/lib/slot-offer"
 import { detectProject, projectUrl, type Project } from "@/lib/projects"
 import Anthropic from "@anthropic-ai/sdk"
+import { stopOnAbuse } from "@/lib/abusive-message"
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -51,6 +52,8 @@ PARA AGENDAR CITA (la meta de cada conversación):
 
 REGLAS:
 - Responde SIEMPRE en español (inglés solo si el lead escribe en inglés)
+- Si el lead desconfía o dice que es estafa / "inversiones falsas": NO vendas ni insistas. Responde UNA vez, breve y tranquila: Catherine es Realtor con licencia de Florida #3320405 (verificable en myfloridalicense.com), los depósitos van a una cuenta escrow regulada por ley de Florida, y nunca se pide dinero por chat ni en la primera llamada. Ofrece que verifique la licencia y que, si no le interesa, no le escribimos más. No pidas datos ni ofrezcas propiedades en ese mensaje.
+- Si el lead dice que no le interesa o que dejen de escribirle: despídete amablemente en una frase y no insistas.
 - Sé cálida, entusiasta — como una amiga experta, no un robot
 - Nunca inventes propiedades o precios — solo usa datos reales del sistema
 - Para pre-construcción: NUNCA menciones el nombre del constructor ni la comunidad — solo área, precio, cuartos y entrega
@@ -509,6 +512,20 @@ export async function POST(req: Request) {
       return new Response(`<Response></Response>`, { headers: { "Content-Type": "text/xml" } })
     }
 
+    // Insults or threats: no reply, Sofía paused for this person, Catherine
+    // alerted. Answering abuse with a sales message only makes it worse.
+    {
+      const who = contact.firstName && contact.firstName !== "Lead"
+        ? `${contact.firstName} ${contact.lastName || ""}`.trim()
+        : (contact.phone || phone)
+      if (await stopOnAbuse({ text: body, contactId: contact.id, who, channel: isWhatsApp ? "WhatsApp" : "texto" })) {
+        await prisma.activity.create({
+          data: { type: isWhatsApp ? "WhatsApp" : "SMS", title: `${isWhatsApp ? "WhatsApp" : "SMS"} recibido — mensaje ofensivo, Sofía NO respondió`, description: `Escribió: "${body.slice(0, 160)}"`, contactId: contact.id },
+        }).catch(() => {})
+        return new Response(`<Response></Response>`, { headers: { "Content-Type": "text/xml" } })
+      }
+    }
+
     // Answering one of the two times Sofía offered ("1", "2", "a las 3")?
     // Book it now instead of handing the reply to the AI.
     const slotReply = await handleSlotReply(contact.id, body, isWhatsApp ? "WhatsApp" : "texto")
@@ -639,7 +656,9 @@ export async function POST(req: Request) {
     await Promise.all([
       prisma.contact.update({ where: { id: contact.id }, data: { lastContacted: new Date() } }),
       prisma.activity.create({
-        data: { type: channel, title: `${channel} recibido — Sofía respondió`, description: body.slice(0, 120), contactId: contact.id },
+        // Both sides, labelled: the old card showed only the lead's text under
+        // "Sofía respondió", which read as if Sofía had written it.
+        data: { type: channel, title: `${channel} recibido — Sofía respondió`, description: `Escribió: "${body.slice(0, 140)}"\nSofía: "${reply.slice(0, 200)}"`, contactId: contact.id },
       }),
     ])
 

@@ -15,6 +15,7 @@ import { getInstagramMediaCaption } from "@/lib/instagram"
 import { isFormFollowup, findFormLead, contactCampaign, formFollowupReply, formFollowupNotification } from "@/lib/form-followup"
 import { ingestLead } from "@/lib/lead-ingest"
 import { generateSocialAIReply, getMatchingProperties, getMatchingPreConstruction, notifyCatherineAboutLead } from "@/lib/social-ai-chat"
+import { stopOnAbuse } from "@/lib/abusive-message"
 
 /**
  * How quiet a stranded ASKED_NAME conversation must be before a new comment
@@ -274,6 +275,13 @@ export async function POST(req: Request) {
             },
           }).catch(() => {})
           continue
+        }
+
+        // Insults or threats: no reply; pause Sofía for the contact and alert Catherine.
+        {
+          const known = await prisma.contact.findFirst({ where: { instagramIgsid: igUserId }, select: { id: true, firstName: true, lastName: true } })
+          const who = known ? `${known.firstName} ${known.lastName || ""}`.trim() : `Instagram ${igUserId}`
+          if (await stopOnAbuse({ text, contactId: known?.id, who, channel: "Instagram" })) continue
         }
 
         let convo = await prisma.instagramConversation.findUnique({ where: { igUserId } })
