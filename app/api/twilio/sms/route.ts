@@ -9,6 +9,7 @@ import { scoreContact } from "@/lib/scoring"
 import { handleLeadEngaged, notifyAgentOfLeadReply } from "@/lib/lead-flow"
 import { detectKeyword, deliverLeadMagnet } from "@/lib/lead-magnet-delivery"
 import { extractBuyerPrefsFromNote, triggerMatchAlert, buildListingsReply } from "@/lib/trigger-match-alert"
+import { stopOnAbuse } from "@/lib/abusive-message"
 
 export async function POST(req: Request) {
   const formData = await req.formData()
@@ -73,6 +74,16 @@ export async function POST(req: Request) {
   if (contact?.sofiaPausedAt) {
     notifyAgentOfLeadReply(contact, "SMS", body).catch(() => {})
     return new NextResponse("", { status: 200 })
+  }
+
+  // Insults or threats: no reply; pause Sofía for the contact and alert Catherine.
+  if (await stopOnAbuse({
+    text: body,
+    contactId: contact?.id,
+    who: contact ? `${contact.firstName} ${contact.lastName || ""}`.trim() : from,
+    channel: "texto",
+  })) {
+    return new NextResponse("<Response></Response>", { status: 200, headers: { "Content-Type": "text/xml" } })
   }
 
   // ── Lead magnet keyword detection ─────────────────────────────────────────
