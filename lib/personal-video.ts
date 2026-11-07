@@ -74,7 +74,7 @@ function spokenMoney(text: string): string {
 }
 
 /**
- * About 40 seconds spoken. Only facts already published on the project page.
+ * About 35 seconds spoken. Only facts already published on the project page.
  * The invitation is to a short conversation about where they are, not a
  * presentation: leads who expect a sales call don't book.
  */
@@ -85,11 +85,9 @@ export function buildScript(firstName: string, project: Project | null): string 
   return [
     `Hola ${firstName}, soy Catherine Gomez, agente de bienes raíces en Miami.`,
     about,
-    "Pero más allá de un proyecto, me gustaría conocerte y entender en qué punto estás.",
-    "Tal vez apenas estás explorando, tienes preguntas sobre el proceso o sobre visas, o quieres saber qué puedes comprar con tu presupuesto.",
-    "Estés donde estés, es importante tener a alguien de confianza que te guíe.",
-    "A mí me encanta ayudar a las familias a lograr sus metas de inversión.",
-    "Agenda una conversación de 15 minutos conmigo, sin ningún compromiso. ¡Te espero!",
+    "Me encantaría conocerte y entender en qué punto estás: si apenas exploras, tienes dudas sobre el proceso o las visas, o quieres saber qué puedes comprar con tu presupuesto.",
+    "Estés donde estés, me encanta guiar a familias como la tuya con confianza.",
+    "Agenda una conversación de 15 minutos conmigo, sin compromiso. ¡Te espero!",
   ].join(" ")
 }
 
