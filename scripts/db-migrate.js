@@ -260,6 +260,35 @@ const STMTS = [
   `ALTER TABLE "WebinarRegistration" ADD COLUMN IF NOT EXISTS "replaySeconds" INTEGER NOT NULL DEFAULT 0`,
   `ALTER TABLE "WebinarRegistration" ADD COLUMN IF NOT EXISTS "replayPct" INTEGER NOT NULL DEFAULT 0`,
   `ALTER TABLE "WebinarRegistration" ADD COLUMN IF NOT EXISTS "replayFirstAt" TIMESTAMP(3)`,
+
+  // Personalized video page per lead (/v/[token]).
+  `CREATE TABLE IF NOT EXISTS "PersonalVideo" (
+    "id"            TEXT NOT NULL,
+    "token"         TEXT NOT NULL,
+    "contactId"     TEXT NOT NULL,
+    "projectHref"   TEXT,
+    "firstName"     TEXT NOT NULL,
+    "script"        TEXT NOT NULL,
+    "heygenVideoId" TEXT,
+    "status"        TEXT NOT NULL DEFAULT 'PENDING',
+    "videoUrl"      TEXT,
+    "error"         TEXT,
+    "sentAt"        TIMESTAMP(3),
+    "views"         INTEGER NOT NULL DEFAULT 0,
+    "firstViewedAt" TIMESTAMP(3),
+    "lastViewedAt"  TIMESTAMP(3),
+    "maxPct"        INTEGER NOT NULL DEFAULT 0,
+    "createdBy"     TEXT,
+    "createdAt"     TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt"     TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "PersonalVideo_pkey" PRIMARY KEY ("id")
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "PersonalVideo_token_key" ON "PersonalVideo"("token")`,
+  `CREATE INDEX IF NOT EXISTS "PersonalVideo_status_idx" ON "PersonalVideo"("status")`,
+  `CREATE INDEX IF NOT EXISTS "PersonalVideo_contactId_idx" ON "PersonalVideo"("contactId")`,
+  `ALTER TABLE "PersonalVideo" DROP CONSTRAINT IF EXISTS "PersonalVideo_contactId_fkey"`,
+  `ALTER TABLE "PersonalVideo" ADD CONSTRAINT "PersonalVideo_contactId_fkey"
+     FOREIGN KEY ("contactId") REFERENCES "Contact"("id") ON DELETE CASCADE ON UPDATE CASCADE`,
   `ALTER TABLE "WebinarRegistration" ADD COLUMN IF NOT EXISTS "replayLastAt" TIMESTAMP(3)`,
   `ALTER TABLE "WebinarRegistration" ADD COLUMN IF NOT EXISTS "replayEngagedAt" TIMESTAMP(3)`,
   // Nulls are fine under a unique index, so existing rows are filled afterwards

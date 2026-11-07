@@ -141,6 +141,7 @@ model Contact {
   leadMagnetDeliveries  LeadMagnetDelivery[]
   leadReferrals         LeadReferral[]
   webinarRegistrations  WebinarRegistration[]
+  personalVideos        PersonalVideo[]
   assignedTo            User?                 @relation(fields: [assignedToId], references: [id])
   assignedToId          String?
   customFields          String?
@@ -1348,4 +1349,37 @@ model GeneratedMedia {
   mimeType  String
   data      Bytes
   createdAt DateTime @default(now())
+}
+
+/// A short video of Catherine's avatar greeting one lead by name about the
+/// project they asked about, on a page of its own (/v/[token]) with the
+/// booking calendar. Rendered by HeyGen, copied to Cloudinary (HeyGen's links
+/// expire), then sent to the lead. Views are tracked so Catherine knows who
+/// watched before she calls.
+model PersonalVideo {
+  id            String    @id @default(cuid())
+  /// Opaque link token — the row id never goes in a URL.
+  token         String    @unique
+  contact       Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  contactId     String
+  projectHref   String?
+  firstName     String
+  script        String
+  heygenVideoId String?
+  /// PENDING → RENDERING → READY → SENT, or FAILED
+  status        String    @default("PENDING")
+  videoUrl      String?
+  error         String?
+  sentAt        DateTime?
+  views         Int       @default(0)
+  firstViewedAt DateTime?
+  lastViewedAt  DateTime?
+  /// Furthest point reached in the video, 0-100.
+  maxPct        Int       @default(0)
+  createdBy     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([status])
+  @@index([contactId])
 }
