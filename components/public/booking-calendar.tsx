@@ -69,6 +69,7 @@ const clock = (d: Date, tz: string) =>
 
 export default function BookingCalendar({
   source, topic, pageLabel, theme, prefill, defaultCountry = "Colombia", heading, doneExtra,
+  durationMinutes, meetingWord = "presentación",
 }: {
   /** CAMPAIGN_TAGS key in /api/appointments/book, e.g. "PARKSIDE". */
   source: string
@@ -81,6 +82,10 @@ export default function BookingCalendar({
   heading?: string
   /** Shown under the confirmation, e.g. the guide promised for booking. */
   doneExtra?: React.ReactNode
+  /** Booked length; start times stay on the regular grid. Default: the calendar's slot length (30). */
+  durationMinutes?: number
+  /** "presentación" (default) or e.g. "conversación" where a sales word would scare people off. */
+  meetingWord?: string
 }) {
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
@@ -145,7 +150,7 @@ export default function BookingCalendar({
 
   const submit = async () => {
     setError(null)
-    if (!selectedDate || !selectedTime) return setError("Elija el día y la hora de su presentación.")
+    if (!selectedDate || !selectedTime) return setError(`Elija el día y la hora de su ${meetingWord}.`)
     let phone = prefill?.phone || ""
     if (!hasPrefill) {
       if (!f.firstName.trim()) return setError("Escriba su nombre.")
@@ -162,7 +167,7 @@ export default function BookingCalendar({
         body: JSON.stringify({
           date: dateStr,
           time: selectedTime,
-          slotMinutes,
+          slotMinutes: durationMinutes || slotMinutes,
           firstName: f.firstName.trim(),
           // The booking endpoint requires a last name.
           lastName: f.lastName.trim() || "-",
@@ -199,7 +204,7 @@ export default function BookingCalendar({
     return (
       <div className="p-8 text-center" style={{ background: theme.surface, color: theme.ink }}>
         <CheckCircle2 className="mx-auto h-14 w-14" style={{ color: theme.accent }} aria-hidden="true" />
-        <h3 className="mt-4 text-2xl font-semibold">Listo, {f.firstName.split(" ")[0]}. Su presentación quedó agendada</h3>
+        <h3 className="mt-4 text-2xl font-semibold">Listo, {f.firstName.split(" ")[0]}. Su {meetingWord} quedó agendada</h3>
         <p className="mt-3" style={{ color: theme.muted }}>
           <strong className="capitalize">{format(selectedDate, "EEEE d 'de' MMMM", { locale: es })}</strong> a las{" "}
           <strong>{miami}</strong> hora de Miami{showLocal ? <> (<strong>{local}</strong> en {country.city})</> : null}.
@@ -370,10 +375,10 @@ export default function BookingCalendar({
           ? <><Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> Agendando…</>
           : selectedDate && selectedTime
             ? `Confirmar · ${showLocal ? label(selectedTime).local : label(selectedTime).miami}`
-            : "Confirmar mi presentación"}
+            : `Confirmar mi ${meetingWord}`}
       </button>
       <p className="mt-2 text-center text-xs" style={{ color: theme.muted }}>
-        30 minutos · Sin costo ni compromiso · En español
+        {durationMinutes || slotMinutes} minutos · Sin costo ni compromiso · En español
       </p>
     </div>
   )

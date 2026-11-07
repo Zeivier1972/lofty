@@ -96,10 +96,10 @@ export default function PersonalVideoClient({
 
         <section id="agendar" className="mt-10 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 sm:p-8">
           <h2 className="text-2xl font-bold" style={{ color: NAVY }}>
-            {started ? `${firstName}, ¿hablamos 30 minutos?` : "Agenda 30 minutos conmigo"}
+            {started ? `${firstName}, ¿hablamos 15 minutos?` : "Hablemos, sin compromiso"}
           </h2>
           <p className="mt-1 text-sm text-slate-600">
-            Por Zoom o por teléfono, sin compromiso. Te muestro los números y el plan de pagos según tu presupuesto.
+            15 minutos por Zoom o por teléfono para conocerte y resolver tus dudas: el proceso, visas, tu presupuesto o simplemente explorar. Tú decides el ritmo.
           </p>
           <div className="mt-6">
             <BookingCalendar
@@ -108,6 +108,8 @@ export default function PersonalVideoClient({
               pageLabel={`/v/${project ? project.href.replace(/^\//, "") : "inversion"}`}
               theme={{ accent: SKY, accentText: "#fff", ink: NAVY, muted: "#64748b", surface: "#fff", line: "#e2e8f0" }}
               prefill={prefill}
+              durationMinutes={15}
+              meetingWord="conversación"
             />
           </div>
         </section>
