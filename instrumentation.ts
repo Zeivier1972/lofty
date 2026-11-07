@@ -79,6 +79,13 @@ export async function register() {
       .catch(e => console.error("[cron] sofia-briefing error:", e))
   })
 
+  // Every 5 min: personalized lead videos — finished HeyGen renders are
+  // stored on Cloudinary and sent to the lead.
+  schedule("*/5 * * * *", () => {
+    fetch(`${base}/api/cron/personal-videos`, { headers })
+      .catch(e => console.error("[cron] personal-videos error:", e))
+  })
+
   // Every 15 min: appointment reminders (24 h and 1 h before).
   schedule("4,19,34,49 * * * *", () => {
     fetch(`${base}/api/cron/appointment-reminders`, { headers })

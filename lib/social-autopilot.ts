@@ -507,7 +507,7 @@ function pickCatherineAvatar(
   return null
 }
 
-async function getHeyGenAvatar(dayOfWeek: number): Promise<{ avatarId: string; voiceId: string } | null> {
+export async function getHeyGenAvatar(dayOfWeek: number): Promise<{ avatarId: string; voiceId: string } | null> {
   const apiKey = process.env.HEYGEN_API_KEY
   if (!apiKey) return null
 

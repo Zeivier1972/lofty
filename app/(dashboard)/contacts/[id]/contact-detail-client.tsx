@@ -31,6 +31,7 @@ import PreconstructionSendPanel from "./preconstruction-send-panel"
 import InvestorAdvisorPanel from "@/components/contact/investor-advisor-panel"
 import { PROPERTY_TYPE_GROUPS, normalizeBuyerTypeKeys, labelForKeys } from "@/lib/property-types"
 import ReferButton from "./refer-button"
+import PersonalVideoButton from "./personal-video-button"
 
 function generateInsight(contact: any): string | null {
   const emails = contact.emails || []
@@ -910,6 +911,10 @@ export default function ContactDetailClient({ contact, smsMessages = [], stages 
             <ReferButton contactId={contact.id} contactName={`${contact.firstName} ${contact.lastName || ""}`.trim()} />
           </div>
           <SendPortalInviteButton contactId={contact.id} email={contact.email} firstName={contact.firstName} />
+          <PersonalVideoButton
+            contactId={contact.id}
+            tags={Array.isArray((contact as any).tags) ? (contact as any).tags.map((t: any) => t?.tag?.name || t?.name || "").filter(Boolean) : []}
+          />
 
           {/* Insight metrics */}
           <div className="bg-gray-50 rounded-xl p-3 space-y-2">

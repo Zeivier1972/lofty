@@ -535,5 +535,11 @@ export async function ingestLead(data: LeadData): Promise<{ contactId: string; i
     console.log(`[INGEST] VAPI call skipped — phone=${!!phone} autoCall=${autoCall}`)
   }
 
+  // Personalized video page for a new project lead (when turned on in CASAi;
+  // capped per day). Dynamic import keeps HeyGen/Cloudinary out of this module.
+  import("@/lib/personal-video")
+    .then(m => m.maybeAutoPersonalVideo(contact.id, [...(tags || []), campaign, source]))
+    .catch(e => console.error("[INGEST] personal video skipped:", e))
+
   return { contactId: contact.id, isNew: true }
 }
