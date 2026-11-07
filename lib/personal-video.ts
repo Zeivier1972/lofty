@@ -101,6 +101,8 @@ export async function startPersonalVideo(opts: {
   createdBy: string
   /** Manual requests from Catherine skip the daily cap. */
   ignoreCap?: boolean
+  /** "Hacer de nuevo": retire the open video for this project and render a fresh one. */
+  replace?: boolean
 }): Promise<StartResult> {
   const contact = await prisma.contact.findUnique({
     where: { id: opts.contactId },
@@ -117,7 +119,10 @@ export async function startPersonalVideo(opts: {
     where: { contactId: contact.id, projectHref: project?.href ?? null, status: { in: ["PENDING", "RENDERING", "READY", "SENT"] } },
     select: { id: true, token: true },
   })
-  if (open) return { ok: true, id: open.id, token: open.token }
+  if (open && !opts.replace) return { ok: true, id: open.id, token: open.token }
+  if (open && opts.replace) {
+    await prisma.personalVideo.update({ where: { id: open.id }, data: { status: "REPLACED" } })
+  }
 
   if (!opts.ignoreCap && (await rendersToday()) >= DAILY_CAP) {
     return { ok: false, error: `Límite diario de videos alcanzado (${DAILY_CAP})` }
@@ -227,6 +232,11 @@ export async function processPersonalVideos(): Promise<string[]> {
         continue
       }
       // Give up on renders stuck for a day.
+      if (isFinished(st.status) && !st.videoUrl) {
+        notes.push(`? ${v.firstName}: HeyGen terminó pero sin URL — ${JSON.stringify(st.raw).slice(0, 400)}`)
+      } else if (!isFinished(st.status)) {
+        notes.push(`… ${v.firstName}: HeyGen ${st.status}`)
+      }
       if (!isFinished(st.status) || !st.videoUrl) {
         if (Date.now() - v.createdAt.getTime() > 24 * 3600 * 1000) {
           await prisma.personalVideo.update({ where: { id: v.id }, data: { status: "FAILED", error: "HeyGen no terminó en 24 h" } })

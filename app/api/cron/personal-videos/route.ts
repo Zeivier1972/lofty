@@ -14,5 +14,6 @@ export async function GET(req: Request) {
     if (!ok) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
   const notes = await processPersonalVideos()
+  if (notes.length) console.log("[personal-video]", notes.join(" | "))
   return NextResponse.json({ ok: true, notes })
 }

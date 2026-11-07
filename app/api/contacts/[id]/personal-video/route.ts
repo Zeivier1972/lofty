@@ -27,6 +27,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     projectHref: body.projectHref ? String(body.projectHref) : null,
     createdBy: session.user?.name || "Catherine",
     ignoreCap: true,
+    replace: !!body.replace,
   })
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 })
   return NextResponse.json({ ok: true, url: personalVideoUrl(r.token) })
