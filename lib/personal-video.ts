@@ -235,7 +235,7 @@ export async function processPersonalVideos(): Promise<string[]> {
       if (isFinished(st.status) && !st.videoUrl) {
         notes.push(`? ${v.firstName}: HeyGen terminó pero sin URL — ${JSON.stringify(st.raw).slice(0, 400)}`)
       } else if (!isFinished(st.status)) {
-        notes.push(`… ${v.firstName}: HeyGen ${st.status}`)
+        notes.push(`… ${v.firstName}: HeyGen ${st.status} — ${JSON.stringify(st.raw).slice(0, 600)}`)
       }
       if (!isFinished(st.status) || !st.videoUrl) {
         if (Date.now() - v.createdAt.getTime() > 24 * 3600 * 1000) {
