@@ -217,7 +217,9 @@ export async function getVideoStatus(videoId: string): Promise<VideoStatus> {
     ? `${BASE}/v3/videos/${encodeURIComponent(videoId)}`
     : `${BASE}/v1/video_status.get?video_id=${encodeURIComponent(videoId)}`
 
-  const res = await fetch(url, { headers: { "X-Api-Key": apiKey } })
+  // no-store: Next.js caches server fetches by default, and a cached
+  // "processing" answer would be replayed forever — the video never "finishes".
+  const res = await fetch(url, { headers: { "X-Api-Key": apiKey }, cache: "no-store" })
   const data: any = await res.json().catch(() => ({}))
   logLegacyWarning(url, data)
 
