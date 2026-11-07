@@ -8,10 +8,11 @@ import { withCountry } from "@/lib/phone-country"
  * The signup form. Four fields, because every extra one costs registrations
  * and the rest can be asked on the call.
  *
- * The phone field is optional but asked for, since the reminder sequence is
- * far more effective by SMS than email — and the consent line next to it is
- * what makes texting them lawful. It is a real checkbox rather than small
- * print: an unchecked box means email reminders only, not no reminders.
+ * Email and phone are both required: the join link goes by email and the
+ * reminders that actually get people into the room go by WhatsApp/SMS. The
+ * consent line next to the phone is what makes texting them lawful. It is a
+ * real checkbox rather than small print: an unchecked box means email
+ * reminders only, not no reminders.
  */
 export function RegisterForm({ slug, joinUrlKnown }: { slug: string; joinUrlKnown: boolean }) {
   const [firstName, setFirstName] = useState("")
@@ -26,8 +27,12 @@ export function RegisterForm({ slug, joinUrlKnown }: { slug: string; joinUrlKnow
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setBusy(true)
     setError(null)
+    if (phone.replace(/\D/g, "").length < 7) {
+      setError("Escribe tu WhatsApp o celular para enviarte los recordatorios.")
+      return
+    }
+    setBusy(true)
     try {
       // The referrer and any utm_source travel with the signup so the reporting
       // can tell an Instagram registration from a replay-page one.
@@ -124,7 +129,7 @@ export function RegisterForm({ slug, joinUrlKnown }: { slug: string; joinUrlKnow
 
       <div>
         <label htmlFor="wf-phone" className="mb-1 block text-xs font-semibold text-slate-600">
-          WhatsApp / celular <span className="font-normal text-slate-400">— opcional</span>
+          WhatsApp / celular * <span className="font-normal text-slate-400">— para recordarte antes de empezar</span>
         </label>
         <div className="flex gap-2">
           <PhoneCountrySelect
@@ -135,6 +140,8 @@ export function RegisterForm({ slug, joinUrlKnown }: { slug: string; joinUrlKnow
           <input
             id="wf-phone"
             type="tel"
+            required
+            minLength={7}
             inputMode="tel"
             value={phone}
             onChange={e => setPhone(e.target.value)}

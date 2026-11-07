@@ -21,6 +21,11 @@ export async function POST(req: Request) {
 
   const { slug, email, firstName, lastName, phone, source, smsConsent } = body || {}
   if (!slug) return NextResponse.json({ ok: false, error: "Falta el webinar." }, { status: 400 })
+  // Required on the public form: the reminders that get people into the room
+  // go by WhatsApp/SMS. Email is checked in registerForWebinar.
+  if (String(phone || "").replace(/\D/g, "").length < 7) {
+    return NextResponse.json({ ok: false, error: "Escribe tu WhatsApp o celular para enviarte los recordatorios." }, { status: 400 })
+  }
 
   const result = await registerForWebinar({
     slug: String(slug),
