@@ -78,7 +78,7 @@ export default function PersonalVideoButton({ contactId, tags }: { contactId: st
   // Her looks first; the search covers every avatar on the account.
   const term = q.trim().toLowerCase()
   const shown = (all || []).filter(a =>
-    term ? a.avatar_name.toLowerCase().includes(term) : MY_LOOKS.has(a.avatar_id) || /catherine|gomez/i.test(a.avatar_name),
+    term ? a.avatar_name.toLowerCase().includes(term) || a.avatar_id.toLowerCase() === term : MY_LOOKS.has(a.avatar_id) || /catherine|gomez/i.test(a.avatar_name),
   ).slice(0, 30)
 
   async function toggleAuto() {
@@ -140,7 +140,7 @@ export default function PersonalVideoButton({ contactId, tags }: { contactId: st
             </div>
             {picking && (
               <div className="mt-2 space-y-2">
-                <input value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar por nombre del avatar…"
+                <input value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar por nombre o pegar el ID del avatar…"
                   className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs" />
                 {!all ? (
                   <p className="flex items-center gap-1 text-xs text-gray-500"><Loader2 className="h-3 w-3 animate-spin" /> Cargando avatares…</p>
