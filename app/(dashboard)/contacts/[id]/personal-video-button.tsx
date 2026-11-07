@@ -17,7 +17,7 @@ const MY_LOOKS = new Set([
 type Video = { id: string; url: string; projectHref: string | null; status: string; error: string | null; views: number; maxPct: number; firstViewedAt: string | null; createdAt: string }
 
 const STATUS: Record<string, string> = {
-  PENDING: "Preparando…", RENDERING: "Generando video (≈5–10 min)…", READY: "Listo, enviando…", SENT: "Enviado", FAILED: "Falló",
+  PENDING: "Preparando…", RENDERING: "Generando video (≈5–15 min)…", READY: "Listo, enviando…", SENT: "Enviado", FAILED: "Falló", REPLACED: "Reemplazado",
 }
 
 /** "Video personal" on the contact page: make/send one, see if they watched, turn automatic videos on/off. */
@@ -46,10 +46,17 @@ export default function PersonalVideoButton({ contactId, tags }: { contactId: st
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
-  async function create() {
+  const openFor = (href: string) => (videos || []).find(v => v.projectHref === href && !["FAILED", "REPLACED"].includes(v.status))
+
+  async function create(replace = false, href = project) {
+    if (!replace && openFor(href)) {
+      setMsg("Ya hay un video de este proyecto para este contacto (abajo). Usa “Hacer de nuevo” si quieres uno nuevo.")
+      return
+    }
+    if (replace && !confirm("¿Hacer un video nuevo con el avatar actual? El anterior deja de usarse y se usan créditos de HeyGen.")) return
     setBusy(true); setMsg(null)
     const res = await fetch(`/api/contacts/${contactId}/personal-video`, {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ projectHref: project }),
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ projectHref: href, replace }),
     })
     const d = await res.json().catch(() => ({}))
     setBusy(false)
@@ -100,7 +107,7 @@ export default function PersonalVideoButton({ contactId, tags }: { contactId: st
               {projects.map(p => <option key={p.href} value={p.href}>{p.name}</option>)}
             </select>
           </label>
-          <button onClick={create} disabled={busy} className="flex w-full items-center justify-center gap-2 rounded-lg bg-sky-700 py-2 font-semibold text-white hover:bg-sky-800 disabled:opacity-60">
+          <button onClick={() => create()} disabled={busy} className="flex w-full items-center justify-center gap-2 rounded-lg bg-sky-700 py-2 font-semibold text-white hover:bg-sky-800 disabled:opacity-60">
             {busy && <Loader2 className="h-4 w-4 animate-spin" />} Crear y enviar video
           </button>
           {msg && <p className="text-xs text-gray-700">{msg}</p>}
@@ -118,7 +125,12 @@ export default function PersonalVideoButton({ contactId, tags }: { contactId: st
                       {v.views ? `👀 Lo vio${v.maxPct ? ` (${v.maxPct}%)` : ""}` : "Aún no lo abre"}
                     </p>
                   )}
-                  <a href={v.url} target="_blank" rel="noopener noreferrer" className="text-sky-700 hover:underline">Ver su página →</a>
+                  <div className="flex items-center gap-3">
+                    <a href={v.url} target="_blank" rel="noopener noreferrer" className="text-sky-700 hover:underline">Ver su página →</a>
+                    {v.status !== "REPLACED" && v.projectHref && (
+                      <button onClick={() => create(true, v.projectHref!)} disabled={busy} className="font-semibold text-gray-600 hover:underline">Hacer de nuevo</button>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>
