@@ -334,6 +334,11 @@ function ctwaTopic(...texts: (string | null | undefined)[]): CtwaTopic {
 
 function ctwaGreeting(firstName: string, ev?: EventInfo, topic: CtwaTopic = {}): string {
   const hi = firstName && firstName !== "Lead" ? `¡Hola ${firstName}! 👋` : "¡Hola! 👋"
+  if (!ev && topic.project?.href === "/parkside") {
+    // Parkside ads target Colombia: the Colombia page builds their plan in
+    // 2 minutes and books a no-pressure conversation with Catherine.
+    return `${hi} Soy Sofía, asistente de Catherine Gómez Realtor. Gracias por tu interés en ${topic.project.name} 🏙️\n\nAquí puedes ver precios, fotos y armar tu plan de inversión en 2 minutos: https://www.catherinegomezrealtor.com/parkside/colombia\n\nY si prefieres, cuéntame aquí en qué punto estás: ¿apenas explorando, con preguntas sobre el proceso, o ya pensando en comprar?`
+  }
   if (!ev && topic.project) {
     return `${hi} Soy Sofía, asistente de Catherine Gómez Realtor. Gracias por tu interés en ${topic.project.name} (${topic.project.place}) 🏙️\n\nAquí tienes precios, fotos y plan de pagos: ${projectUrl(topic.project)}\n\nPara orientarte mejor: ¿lo buscas para invertir y rentar, o para vivir?`
   }
