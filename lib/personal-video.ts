@@ -28,6 +28,19 @@ const BASE = (process.env.NEXT_PUBLIC_APP_URL || "https://www.catherinegomezreal
 const DAILY_CAP = Number(process.env.PERSONAL_VIDEO_DAILY_CAP || 15)
 /** Setting row that turns automatic videos for new project leads on/off. */
 export const AUTO_SETTING = "personal_video_auto"
+/** Setting row (JSON) with the avatar Catherine picked for these videos. */
+export const AVATAR_SETTING = "personal_video_avatar"
+
+export type ChosenAvatar = { id: string; name: string; preview: string | null; isTalkingPhoto: boolean }
+
+export async function chosenAvatar(): Promise<ChosenAvatar | null> {
+  const row = await prisma.setting.findUnique({ where: { key: AVATAR_SETTING } }).catch(() => null)
+  if (!row?.value) return null
+  try {
+    const a = JSON.parse(row.value)
+    return a?.id ? { id: String(a.id), name: String(a.name || ""), preview: a.preview || null, isTalkingPhoto: a.isTalkingPhoto !== false } : null
+  } catch { return null }
+}
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -122,7 +135,11 @@ export async function startPersonalVideo(opts: {
     },
   })
 
-  const avatar = await getHeyGenAvatar(new Date().getDay())
+  // Voice from the social autopilot's pick (Catherine's "Catalina" voice);
+  // avatar = the one chosen in the Video personal panel, else the day's look.
+  const auto = await getHeyGenAvatar(new Date().getDay())
+  const picked = await chosenAvatar()
+  const avatar = auto ? { avatarId: picked?.id || auto.avatarId, voiceId: auto.voiceId } : null
   if (!avatar) {
     await prisma.personalVideo.update({ where: { id: row.id }, data: { status: "FAILED", error: "HeyGen no disponible (avatar o voz)" } })
     return { ok: false, error: "HeyGen no disponible (avatar o voz)" }
@@ -137,7 +154,7 @@ export async function startPersonalVideo(opts: {
       caption: false,
       title: `Video personal — ${firstName}${project ? ` — ${project.name}` : ""}`,
     },
-    new Set([avatar.avatarId]),
+    picked && !picked.isTalkingPhoto ? new Set<string>() : new Set([avatar.avatarId]),
   )
   if (!res.videoId) {
     await prisma.personalVideo.update({ where: { id: row.id }, data: { status: "FAILED", error: (res.error || "HeyGen no aceptó el video").slice(0, 300) } })
