@@ -73,17 +73,23 @@ function spokenMoney(text: string): string {
   })
 }
 
-/** About 30-35 seconds spoken. Only facts already published on the project page. */
+/**
+ * About 40 seconds spoken. Only facts already published on the project page.
+ * The invitation is to a short conversation about where they are, not a
+ * presentation: leads who expect a sales call don't book.
+ */
 export function buildScript(firstName: string, project: Project | null): string {
   const about = project
     ? `Vi que te interesa ${project.name}, en ${project.place}. ${spokenMoney(project.highlight)}.`
     : "Vi que te interesa invertir en bienes raíces en Miami."
   return [
-    `Hola ${firstName}, soy Catherine Gomez, tu agente de bienes raíces en Miami.`,
+    `Hola ${firstName}, soy Catherine Gomez, agente de bienes raíces en Miami.`,
     about,
-    "Te preparé esta página con la información del proyecto y mi calendario.",
-    "Agenda una llamada de 30 minutos conmigo por Zoom, sin compromiso, y te muestro los números y el plan de pagos según tu presupuesto.",
-    "¡Te espero!",
+    "Pero más allá de un proyecto, me gustaría conocerte y entender en qué punto estás.",
+    "Tal vez apenas estás explorando, tienes preguntas sobre el proceso o sobre visas, o quieres saber qué puedes comprar con tu presupuesto.",
+    "Estés donde estés, es importante tener a alguien de confianza que te guíe.",
+    "A mí me encanta ayudar a las familias a lograr sus metas de inversión.",
+    "Agenda una conversación de 15 minutos conmigo, sin ningún compromiso. ¡Te espero!",
   ].join(" ")
 }
 
@@ -196,7 +202,7 @@ async function deliver(v: { id: string; token: string; contactId: string; firstN
   if (contact.email) {
     const html = `<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:8px 0">
       <h2 style="color:#0c4a6e;margin:0 0 10px">${v.firstName}, te preparé un video</h2>
-      <p style="color:#334155;line-height:1.6">Es corto (menos de un minuto) y es sobre ${about}. En la misma página tienes la información del proyecto y mi calendario para agendar 30 minutos por Zoom.</p>
+      <p style="color:#334155;line-height:1.6">Es corto (menos de un minuto) y es sobre ${about}. En la misma página tienes la información del proyecto y, si quieres, agendamos una conversación de 15 minutos, sin compromiso, para conocerte y resolver tus dudas.</p>
       <p style="text-align:center;margin:26px 0"><a href="${url}" style="background:#0369a1;color:#fff;padding:14px 32px;border-radius:50px;text-decoration:none;font-weight:bold;display:inline-block">▶ Ver mi video</a></p>
       <p style="color:#94a3b8;font-size:12px">Video creado con mi imagen y mi voz con ayuda de inteligencia artificial.</p>
       <p style="color:#64748b;font-size:12px;margin-top:22px;border-top:1px solid #e2e8f0;padding-top:12px">Catherine Gomez, Realtor · Licencia de Florida #3320405 · 305-283-0872</p>
