@@ -131,7 +131,9 @@ export default function Funnel({ waUrl, webinarUrl }: { waUrl: string; webinarUr
     const calendar = (
       <BookingCalendar
         source="PARKSIDE"
-        topic="Parkside — presentación de plan de inversión"
+        topic="Parkside — conversación de 15 minutos"
+        durationMinutes={15}
+        meetingWord="conversación"
         doneExtra={
           <a
             href="/guias/guia-comprador-colombiano-miami.pdf"
@@ -170,7 +172,7 @@ export default function Funnel({ waUrl, webinarUrl }: { waUrl: string; webinarUr
             <p className="mt-4 border-l-2 pl-4 text-sm text-white/80" style={{ borderColor: SAND }}>
               Nos dijo que le interesa {plan.wantedButShort === "Estudio" ? "un estudio" : `una residencia de ${plan.wantedButShort}`}.
               Con el capital de hoy, el 20% al contrato encaja mejor con {plan.unit.type === "Estudio" ? "un estudio" : `una de ${plan.unit.type}`}; en la
-              presentación Catherine revisa con usted las dos opciones.
+              conversación Catherine revisa con usted las dos opciones.
             </p>
           )}
 
@@ -194,7 +196,7 @@ export default function Funnel({ waUrl, webinarUrl }: { waUrl: string; webinarUr
               todo su aporte, y los bancos preferidos del desarrollador financian el {100 - FINANCING.ownPct}% al cierre
               (<strong className="text-white">{usd(plan.unit.from * (100 - FINANCING.ownPct) / 100)}</strong>), más gastos de cierre.
             </p>
-            <p className="mt-2 text-[11px] text-white/50">Las condiciones dependen del banco y de su perfil; en la presentación revisamos las opciones para extranjeros.</p>
+            <p className="mt-2 text-[11px] text-white/50">Las condiciones dependen del banco y de su perfil; en la conversación revisamos las opciones para extranjeros.</p>
           </div>
           <p className="mt-4 text-xs leading-relaxed text-white/45">
             Precios &quot;desde&quot; y calendario del desarrollador al {PRICES_AS_OF}; el precio final depende del piso, la vista y la
@@ -207,10 +209,11 @@ export default function Funnel({ waUrl, webinarUrl }: { waUrl: string; webinarUr
         {plan.tier !== "C" ? (
           <div>
             <h2 className="text-2xl font-light sm:text-3xl" style={{ fontFamily: serif }}>
-              Revisemos estos números juntos — 30 minutos, sin compromiso
+              Hablemos 15 minutos, sin compromiso
             </h2>
             <p className="mt-3 text-[#4F5A52]">
-              Una conversación por Zoom con Catherine Gomez, en español, para que entienda cómo funciona antes de decidir
+              Una conversación por Zoom o por teléfono con Catherine Gomez, en español, para conocerle y entender en qué
+              punto está, ya sea que apenas esté explorando o tenga preguntas sobre el proceso, visas o su presupuesto. Sin presión y antes de decidir
               nada{a.closing === "Financiamiento hipotecario" ? ", incluidas las opciones de financiamiento para compradores extranjeros" : ""}.
               Si Parkside no es para usted, se lo diremos.
             </p>
