@@ -36,7 +36,7 @@ const WEBINAR_URL = `${BASE}/webinar/serie/inversion-miami`
 const STUDIO = UNITS[0].from
 const TITLE = "Invertir en Brickell desde Colombia: su plan para Parkside Residences | Catherine Gomez"
 const DESCRIPTION =
-  `¿Cuánto necesita para invertir en Miami desde Colombia? Responda 6 preguntas y reciba su plan de inversión en Parkside Residences at Brickell: residencia que encaja con su capital, depósitos en dólares y fechas (20% al contrato, desde ${usd(STUDIO * 0.2)}), y una presentación privada por Zoom con Catherine Gomez, en español.`
+  `¿Cuánto necesita para invertir en Miami desde Colombia? Responda 6 preguntas y reciba su plan de inversión en Parkside Residences at Brickell: residencia que encaja con su capital, depósitos en dólares y fechas (20% al contrato, desde ${usd(STUDIO * 0.2)}), y una conversación de 15 minutos con Catherine Gomez, en español y sin compromiso.`
 
 export const metadata: Metadata = {
   metadataBase: new URL(BASE),
@@ -85,7 +85,7 @@ const FAQ: [string, string][] = [
   ],
   [
     "¿Un colombiano puede comprar una propiedad en Miami?",
-    "Sí. En Estados Unidos no se necesita ser residente ni tener visa para comprar una propiedad; muchos compradores de Parkside invierten desde el exterior. La firma y los pagos se pueden coordinar a distancia, y Catherine le explica cada paso en la presentación.",
+    "Sí. En Estados Unidos no se necesita ser residente ni tener visa para comprar una propiedad; muchos compradores de Parkside invierten desde el exterior. La firma y los pagos se pueden coordinar a distancia, y Catherine le explica cada paso en la conversación.",
   ],
   [
     "¿Cuánto necesito para invertir en Parkside?",
@@ -93,11 +93,11 @@ const FAQ: [string, string][] = [
   ],
   [
     "¿Cómo se paga el 60% al cierre?",
-    "Con fondos propios o con un crédito de un banco en Estados Unidos. Los bancos de EE. UU. financian a inversionistas extranjeros: normalmente el comprador aporta cerca del 50% del precio y el banco financia el resto, y en algunos proyectos el aporte es menor. En Parkside, los depósitos antes de la entrega suman el 40%, así que con financiamiento el aporte adicional al cierre suele ser pequeño. Las condiciones dependen del banco y de su perfil; Catherine le explica las opciones en la presentación.",
+    "Con fondos propios o con un crédito de un banco en Estados Unidos. Los bancos de EE. UU. financian a inversionistas extranjeros: normalmente el comprador aporta cerca del 50% del precio y el banco financia el resto, y en algunos proyectos el aporte es menor. En Parkside, los depósitos antes de la entrega suman el 40%, así que con financiamiento el aporte adicional al cierre suele ser pequeño. Las condiciones dependen del banco y de su perfil; Catherine le explica las opciones en la conversación.",
   ],
   [
-    "¿Qué incluye la presentación por Zoom?",
-    "Es una reunión privada de 30 minutos, en español y sin costo. Catherine le muestra las residencias disponibles que encajan con su plan, planos y precios vigentes, los gastos a considerar además del precio y cómo se compra desde Colombia, y responde sus preguntas en vivo. Los horarios aparecen en hora de Colombia.",
+    "¿De qué se trata la conversación de 15 minutos?",
+    "Es una conversación privada de 15 minutos por Zoom o por teléfono, en español, sin costo y sin compromiso. No es una presentación de ventas: Catherine quiere conocerle y entender en qué punto está, ya sea que apenas esté explorando, tenga preguntas sobre el proceso de compra, visas o financiamiento, o quiera saber qué puede comprar con su presupuesto. Si después quiere ver residencias, planos y precios vigentes, lo coordinan a su ritmo. Los horarios aparecen en hora de Colombia.",
   ],
   [
     "¿Qué es Parkside Residences at Brickell?",
@@ -189,7 +189,7 @@ export default async function ParksideColombiaPage() {
             </p>
             <p className="mt-5 hidden max-w-lg text-lg text-white/80 sm:block">
               Responda 6 preguntas y vea su plan de inversión en Parkside: la residencia que encaja con su capital y cada
-              pago en dólares, con fechas. Luego, si quiere, una presentación privada por Zoom con Catherine Gomez.
+              pago en dólares, con fechas. Luego, si quiere, una conversación de 15 minutos con Catherine Gomez, sin compromiso.
             </p>
             <p className="mt-4 text-sm text-white/70">Sin visa · Todo a distancia · Financiamiento con bancos de EE. UU. · Licencia de Florida #{LICENSE}</p>
             <div className="mt-5 flex flex-wrap gap-x-10 gap-y-4 sm:mt-7">

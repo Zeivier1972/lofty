@@ -71,7 +71,7 @@ export function TrustSection() {
     {
       Icon: ShieldCheck,
       title: "Sus depósitos tienen protección de ley",
-      body: "En Florida, la ley de condominios (Estatuto 718.202) obliga al desarrollador a mantener los depósitos de hasta el 10% del precio en una cuenta de garantía (escrow) independiente; lo que excede el 10% solo puede usarse en la construcción, según el contrato. En la presentación le mostramos dónde lo dice su contrato.",
+      body: "En Florida, la ley de condominios (Estatuto 718.202) obliga al desarrollador a mantener los depósitos de hasta el 10% del precio en una cuenta de garantía (escrow) independiente; lo que excede el 10% solo puede usarse en la construcción, según el contrato. Catherine le muestra dónde lo dice su contrato.",
       link: { href: "https://www.flsenate.gov/Laws/Statutes/2024/718.202", text: "Leer el estatuto 718.202" },
     },
     {
@@ -82,7 +82,7 @@ export function TrustSection() {
     {
       Icon: Users,
       title: "Decida acompañado",
-      body: "Invite a su contador, abogado o familia a la presentación. Preferimos que decida con toda la información y sin prisa.",
+      body: "Invite a su contador, abogado o familia a la conversación. Preferimos que decida con toda la información y sin prisa.",
     },
   ]
   return (
