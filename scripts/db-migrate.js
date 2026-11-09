@@ -1394,7 +1394,7 @@ async function convertWhatsAppStepsToSMS(db) {
     SET "type" = 'SMS'
     WHERE "type" = 'WHATSAPP'
       AND "planId" NOT IN (
-        SELECT "id" FROM "SmartPlan" WHERE "name" = 'Invierte en Florida desde Colombia'
+        SELECT "id" FROM "SmartPlan" WHERE "name" IN ('Invierte en Florida desde Colombia', '${PARKSIDE_PLAN}')
       )
   `)
   if (changed) console.log(`[db-migrate] Converted ${changed} WhatsApp step(s) to SMS (kept Colombia plan on WhatsApp)`)
@@ -1761,6 +1761,137 @@ async function seedDomusPlan(db) {
   console.log("[db-migrate] Domus smart plan created (tag Domus, 12 steps, 30 days)")
 }
 
+// ─── Parkside smart plan (tag "Parkside") ───────────────────────────────────
+// Leads from /parkside/colombia, the Parkside forms and the Parkside
+// click-to-WhatsApp ad. 21 days, 7 touches, low pressure: the ask is always a
+// 15-minute conversation, never a "presentación". Replying or booking pauses
+// it (lib/lead-flow). Text steps are WHATSAPP: inside an open WhatsApp
+// session they go by WhatsApp, otherwise as SMS (excluded from
+// convertWhatsAppStepsToSMS). Figures are the developer's (list of
+// 2026-10-27) and lib/project-knowledge.ts — change both together.
+
+const PARKSIDE_PLAN = "Parkside Residences — Inversionistas Colombia"
+
+async function seedParksidePlan(db) {
+  const tag = await db.tag.upsert({ where: { name: "Parkside" }, update: {}, create: { name: "Parkside", color: "#2E4236" } })
+  if (await db.smartPlan.findFirst({ where: { name: PARKSIDE_PLAN } })) return
+
+  const PAGE = "https://www.catherinegomezrealtor.com/parkside/colombia"
+  const BOOK = `${PAGE}/agendar?n={first_name}`
+  const GUIDE = "https://www.catherinegomezrealtor.com/guias/guia-comprador-colombiano-miami.pdf"
+  const shell = (title, inner) => `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;">
+<div style="background:#1E2B23;padding:28px;text-align:center;">
+  <p style="color:#D9C7A0;margin:0;font-size:24px;letter-spacing:3px;font-family:Georgia,serif;">Parkside Residences</p>
+  <p style="color:#fff;margin:4px 0 0;font-size:11px;letter-spacing:5px;opacity:.75;">AT BRICKELL</p>
+</div>
+<div style="padding:32px 30px;color:#374151;font-size:15px;line-height:1.6;">
+  <h2 style="color:#1E2B23;font-size:21px;margin:0 0 16px;font-weight:600;">${title}</h2>
+  ${inner}
+</div>
+<div style="background:#1E2B23;padding:20px 30px;text-align:center;">
+  <p style="color:#D9C7A0;margin:0 0 4px;font-weight:700;">Catherine Gomez, Realtor</p>
+  <p style="color:#fff;margin:0;font-size:12px;opacity:.85;">📞 {agent_phone} &bull; WhatsApp &bull; Licencia FL #3320405</p>
+  <p style="color:#9CA3AF;margin:10px 0 0;font-size:10px;">Información del desarrollador (lista del 27 de octubre de 2026); precios y disponibilidad sujetos a cambio. No constituye asesoría legal, tributaria ni financiera. No se garantizan ingresos ni aprobación de crédito.</p>
+</div>
+</div>`
+  const cta = (label) => `<div style="text-align:center;margin:26px 0;">
+    <a href="${BOOK}" style="background:#2E4236;color:#fff;padding:14px 30px;border-radius:4px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block;">${label}</a>
+    <p style="color:#888;font-size:11px;margin:8px 0 0;">15 minutos &bull; Zoom o teléfono &bull; En español &bull; Sin compromiso</p>
+  </div>`
+  const li = (items) => `<ul style="padding-left:18px;margin:0 0 16px;">${items.map(i => `<li style="margin:0 0 8px;">${i}</li>`).join("")}</ul>`
+
+  await db.smartPlan.create({
+    data: {
+      name: PARKSIDE_PLAN,
+      description: "Para leads de Parkside (tag \"Parkside\": página /parkside/colombia, formularios y anuncio de WhatsApp). 21 días, 7 mensajes, tono de confianza: cómo comprar desde Colombia, números reales y preguntas frecuentes, siempre invitando a una conversación de 15 minutos (no una venta). Se pausa si responde o si agenda.",
+      trigger: `CONTACT_TAGGED:${tag.id}`,
+      isActive: true,
+      steps: {
+        create: [
+          {
+            order: 0, type: "EMAIL", delay: 0,
+            subject: "{first_name}, gracias por tu interés en Parkside Residences",
+            content: shell("Hola {first_name}, gracias por escribirnos", `
+  <p>Soy Catherine Gomez, Realtor en Miami. Acompaño a familias colombianas a invertir en Florida de principio a fin, en español y a distancia. Te dejo lo esencial de Parkside:</p>
+  ${li([
+    "<strong>Edificio boutique de 8 pisos</strong> con 187 residencias <strong>amuebladas</strong>, frente a Simpson Park en Brickell.",
+    "<strong>Precios desde:</strong> estudios $490,000 · 1 habitación $582,750 · 2 habitaciones $1,160,250.",
+    "<strong>Depósitos:</strong> 20% al firmar ($98,000 en un estudio), 10% en enero de 2027, 10% en abril de 2027 y 60% al cierre. Entrega estimada: primer trimestre de 2028.",
+    "<strong>Alquiler:</strong> programa de administración con Wello (reservas, limpieza, mantenimiento y reportes).",
+  ])}
+  <p>Cada persona está en un punto distinto: algunos apenas exploran, otros tienen dudas sobre el proceso o las visas, y otros quieren saber qué pueden comprar con su presupuesto. Me encantaría conocerte y entender dónde estás tú — sin compromiso.</p>
+  ${cta("Agendar 15 minutos conmigo")}
+  <p style="font-size:13px;color:#6B7280;">¿Aún no armaste tu plan? En 60 segundos lo tienes aquí: <a href="${PAGE}" style="color:#2E4236;">${PAGE.replace("https://", "")}</a></p>`),
+          },
+          {
+            order: 1, type: "WHATSAPP", delay: 1,
+            content: "Hola {first_name}, soy Catherine, de Parkside Brickell. En que punto estas: explorando, con dudas o pensando en comprar? Respondeme con una palabra.",
+          },
+          {
+            order: 2, type: "EMAIL", delay: 2,
+            subject: "Cómo se compra en Miami desde Colombia (sin viajar)",
+            content: shell("Comprar desde Colombia es más sencillo de lo que parece", `
+  <p>{first_name}, estas son las dudas que más me preguntan, con respuestas claras:</p>
+  ${li([
+    "<strong>¿Necesito visa?</strong> No. Para comprar en EE. UU. no se necesita visa ni residencia. Todo se firma de forma electrónica y se paga a distancia.",
+    "<strong>¿Puedo financiar?</strong> Sí. Bancos de EE. UU. financian a inversionistas extranjeros; normalmente el comprador aporta cerca del 50%. En Parkside, los depósitos antes de la entrega ya suman el 40%. Las condiciones dependen del banco y de tu perfil.",
+    "<strong>¿Mi dinero está protegido?</strong> Los depósitos de hasta el 10% van a una cuenta de garantía (escrow) por ley de Florida (Estatuto 718.202), no al bolsillo de nadie.",
+    "<strong>¿Quién me acompaña?</strong> Yo, de principio a fin: contrato, depósitos, financiamiento, cierre y alquiler. Mi licencia de Florida es la #3320405 (verificable en myfloridalicense.com).",
+  ])}
+  <p>Si quieres, lo hablamos con calma y resuelvo tus dudas puntuales. Puedes invitar a tu pareja o a tu contador.</p>
+  ${cta("Hablemos 15 minutos")}`),
+          },
+          {
+            order: 3, type: "EMAIL", delay: 3,
+            subject: "{first_name}, los números reales de un estudio en Parkside",
+            content: shell("Los números, sin letra pequeña", `
+  <p>{first_name}, prefiero que tomes decisiones con números claros. Ejemplo con un <strong>estudio de $490,000</strong> (cifras aproximadas):</p>
+  ${li([
+    "<strong>Depósitos antes de la entrega:</strong> $98,000 al firmar, $49,000 en enero de 2027 y $49,000 en abril de 2027.",
+    "<strong>Al cierre (2028):</strong> el 60% restante, $294,000, con tus fondos o con financiamiento bancario.",
+    "<strong>Gastos de cierre:</strong> cerca del 4.5% (≈ $22,000).",
+    "<strong>Cuota de mantenimiento (HOA):</strong> $1.70 por pie² al mes (≈ $780 en un estudio de 460 pies²). Incluye agua, internet, cable, seguro del edificio y valet parking.",
+    "<strong>Impuesto predial:</strong> cerca del 1.7% del valor al año (≈ $8,300).",
+  ])}
+  <p><strong>¿Y el alquiler?</strong> Parkside está en construcción, así que no hay historial propio y no te voy a prometer ingresos. Como referencia de mercado, según PriceLabs, en Brickell (estudios y 1 habitación, nov 2025 – oct 2026) la ocupación promedio de alquiler a corto plazo fue del 63.3% con una tarifa promedio de $229.57 por noche.</p>
+  <p>En la conversación revisamos juntos los dos escenarios —alquiler por temporadas y alquiler a largo plazo— con tu presupuesto.</p>
+  ${cta("Revisar mis números contigo")}`),
+          },
+          {
+            order: 4, type: "WHATSAPP", delay: 3,
+            content: "{first_name}, te quedo alguna duda del proceso o las visas? Lo hablamos en 15 min, sin compromiso: https://www.catherinegomezrealtor.com/parkside/colombia/agendar",
+          },
+          {
+            order: 5, type: "EMAIL", delay: 5,
+            subject: "Preguntas de compradores colombianos: DIAN, LLC y envío de dólares",
+            content: shell("Lo que preguntan los compradores colombianos", `
+  <p>{first_name}, estas preguntas salen en casi todas mis conversaciones con familias colombianas:</p>
+  ${li([
+    "<strong>¿Debo reportar la compra ante la DIAN?</strong> Los activos en el exterior se declaran en Colombia. Tu contador te indica cómo y cuándo; con gusto hablo con él o ella.",
+    "<strong>¿Compro a mi nombre o con una LLC?</strong> Ambas opciones son comunes. Depende de tus planes (alquiler, herencia, impuestos); lo define tu contador o un abogado, y yo te conecto con profesionales que trabajan con colombianos.",
+    "<strong>¿Cómo envío los dólares?</strong> Por transferencia internacional desde tu cuenta a la cuenta de garantía (escrow), con el origen de los fondos documentado.",
+    "<strong>¿Puedo alquilar el apartamento?</strong> Sí, a través del programa de administración del edificio con Wello o a largo plazo. Las condiciones se confirman con el desarrollador.",
+  ])}
+  <p>Preparé una guía gratuita con todo el proceso paso a paso: <a href="${GUIDE}" style="color:#2E4236;font-weight:700;">Descargar la guía del comprador colombiano (PDF)</a>.</p>
+  ${cta("Agendar 15 minutos")}`),
+          },
+          {
+            order: 6, type: "EMAIL", delay: 7,
+            subject: "{first_name}, aquí sigo cuando lo necesites",
+            content: shell("Sin prisa, {first_name}", `
+  <p>No quiero llenarte el correo. Invertir en otro país es una decisión grande y cada familia tiene su tiempo.</p>
+  <p>Si en algún momento quieres resolver dudas, entender qué puedes comprar con tu presupuesto o simplemente conocer cómo funciona el proceso, aquí estoy. Una conversación de 15 minutos, en español y sin compromiso.</p>
+  ${cta("Hablemos cuando quieras")}
+  <p>También puedes responder este correo o escribirme por WhatsApp al {agent_phone}.</p>
+  <p>Un abrazo,<br/>Catherine</p>`),
+          },
+        ],
+      },
+    },
+  })
+  console.log("[db-migrate] Parkside smart plan created (tag Parkside, 7 steps, 21 days)")
+}
+
 // ─── Turn off the AI-avatar videos (once) ───────────────────────────────────
 // Catherine asked to stop the HeyGen avatar videos on Tue/Fri. Flip the
 // existing switch (Social → "Videos automáticos") off once; she can turn it
@@ -1792,6 +1923,7 @@ async function main() {
   await archiveValuationSpam(db).catch(e => console.warn("[db-migrate] valuation spam skip:", e.message))
   await startStuckEnrollments(db).catch(e => console.warn("[db-migrate] stuck enrollments skip:", e.message))
   await seedDomusPlan(db).catch(e => console.warn("[db-migrate] Domus plan skip:", e.message))
+  await seedParksidePlan(db).catch(e => console.warn("[db-migrate] Parkside plan skip:", e.message))
   await disableAvatarVideosOnce(db).catch(e => console.warn("[db-migrate] avatar videos skip:", e.message))
   await dedupPipelineLeads(db).catch(e => console.warn("[db-migrate] dedup pipeline leads skip:", e.message))
   await seedBrickellKeywords(db).catch(e => console.warn("[db-migrate] Brickell keywords skip:", e.message))

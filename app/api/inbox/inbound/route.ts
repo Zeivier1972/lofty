@@ -449,6 +449,10 @@ export async function POST(req: Request) {
       if (topicTag) {
         applyTagAndEnroll(contact.id, topicTag).catch(e => console.error("[CTWA] topic tag error:", e))
       }
+      // The Parkside smart plan (and the Parkside forms) use the short tag.
+      if (topic.project?.href === "/parkside") {
+        applyTagAndEnroll(contact.id, "Parkside").catch(e => console.error("[CTWA] Parkside tag error:", e))
+      }
 
       if (ctwaEvent) {
         applyTagAndEnroll(contact.id, ctwaEvent.tag).catch(e => console.error("[CTWA] tag error:", e))
