@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
   CheckSquare, Plus, Phone, Mail, ChevronDown, ChevronUp,
-  Calendar, Clock, MoreVertical, Check, Square, Filter, UserX, Loader2,
+  Calendar, Clock, MoreVertical, Check, Square, Filter, UserX, Loader2, XCircle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -32,6 +32,26 @@ export default function TasksClient({ tasks: initialTasks, counts, filters }: Ta
   const { toast } = useToast()
   const [tasks, setTasks] = useState(initialTasks)
   const [cleaning, setCleaning] = useState(false)
+  const [cancellingAll, setCancellingAll] = useState(false)
+
+  const isOpen = (t: any) => t.status === "PENDING" || t.status === "IN_PROGRESS"
+  const openCount = tasks.filter(isOpen).length
+
+  // "Cancelar todas": every open task at once (cancelled, not deleted).
+  const cancelAllTasks = async () => {
+    if (!confirm(`¿Cancelar TODAS las tareas abiertas${openCount ? ` (${openCount})` : ""}? Las completadas no se tocan. Las tareas canceladas quedan en el historial.`)) return
+    setCancellingAll(true)
+    try {
+      const res = await fetch("/api/tasks/cancel-all", { method: "POST" })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setTasks((prev) => prev.map((t) => (isOpen(t) ? { ...t, status: "CANCELLED" } : t)))
+      toast({ title: `✅ ${data.cancelled} tarea${data.cancelled !== 1 ? "s" : ""} cancelada${data.cancelled !== 1 ? "s" : ""}` })
+      router.refresh()
+    } catch (e: any) {
+      toast({ title: e.message || "No se pudieron cancelar", variant: "destructive" })
+    } finally { setCancellingAll(false) }
+  }
 
   const cleanupPartnerTasks = async () => {
     if (!confirm("¿Cancelar todas las tareas pendientes de leads asignados a un socio (otro realtor)?")) return
@@ -76,11 +96,12 @@ export default function TasksClient({ tasks: initialTasks, counts, filters }: Ta
   }
 
   const groupedTasks = {
-    overdue: tasks.filter((t) => t.status !== "COMPLETED" && t.dueDate && isPast(new Date(t.dueDate)) && !isToday(new Date(t.dueDate))),
-    today: tasks.filter((t) => t.status !== "COMPLETED" && t.dueDate && isToday(new Date(t.dueDate))),
-    tomorrow: tasks.filter((t) => t.status !== "COMPLETED" && t.dueDate && isTomorrow(new Date(t.dueDate))),
-    upcoming: tasks.filter((t) => t.status !== "COMPLETED" && (!t.dueDate || (!isPast(new Date(t.dueDate)) && !isToday(new Date(t.dueDate)) && !isTomorrow(new Date(t.dueDate))))),
+    overdue: tasks.filter((t) => isOpen(t) && t.dueDate && isPast(new Date(t.dueDate)) && !isToday(new Date(t.dueDate))),
+    today: tasks.filter((t) => isOpen(t) && t.dueDate && isToday(new Date(t.dueDate))),
+    tomorrow: tasks.filter((t) => isOpen(t) && t.dueDate && isTomorrow(new Date(t.dueDate))),
+    upcoming: tasks.filter((t) => isOpen(t) && (!t.dueDate || (!isPast(new Date(t.dueDate)) && !isToday(new Date(t.dueDate)) && !isTomorrow(new Date(t.dueDate))))),
     completed: tasks.filter((t) => t.status === "COMPLETED"),
+    cancelled: tasks.filter((t) => t.status === "CANCELLED"),
   }
 
   return (
@@ -103,6 +124,17 @@ export default function TasksClient({ tasks: initialTasks, counts, filters }: Ta
           >
             {cleaning ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserX className="w-4 h-4" />}
             Limpiar tareas de socios
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-2 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+            onClick={cancelAllTasks}
+            disabled={cancellingAll || openCount === 0}
+            title="Cancela todas las tareas abiertas de una vez"
+          >
+            {cancellingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
+            Cancelar todas
           </Button>
           <Button asChild size="sm" className="bg-lofty-600 hover:bg-lofty-700 gap-2">
             <Link href="/tasks/new"><Plus className="w-4 h-4" />New Task</Link>
@@ -159,6 +191,7 @@ export default function TasksClient({ tasks: initialTasks, counts, filters }: Ta
             tomorrow: { label: "Due Tomorrow", color: "text-blue-600" },
             upcoming: { label: "Upcoming", color: "text-gray-600" },
             completed: { label: "Completed", color: "text-gray-400" },
+            cancelled: { label: "Cancelled", color: "text-gray-400" },
           }
 
           const { label, color } = groupLabels[group]
