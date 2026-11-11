@@ -4,7 +4,7 @@ import { NextResponse } from "next/server"
 import { ingestLead } from "@/lib/lead-ingest"
 import { capiSignalsFromRequest } from "@/lib/facebook"
 import { isBotSubmission } from "@/lib/spam-guard"
-import { CAPITAL, GOALS, PREFS, CLOSING, TIMING, US_BEFORE, buildPlan, usd } from "@/app/parkside/colombia/data"
+import { CAPITAL, CAPITAL_LABELS, CAPITAL_PRIVATE, GOALS, PREFS, CLOSING, TIMING, US_BEFORE, buildPlan, usd } from "@/app/parkside/colombia/data"
 
 /**
  * The /parkside/colombia investment-plan funnel — public, no auth.
@@ -44,8 +44,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "El correo no parece válido" }, { status: 400 })
   }
 
-  const capitalLabel = pick(body.capital, CAPITAL.map(c => c[0]))
-  const capital = CAPITAL.find(c => c[0] === capitalLabel)?.[1] ?? 0
+  const capitalLabel = pick(body.capital, CAPITAL_LABELS)
+  const capital = capitalLabel === CAPITAL_PRIVATE ? null : (CAPITAL.find(c => c[0] === capitalLabel)?.[1] ?? 0)
   const goal = pick(body.goal, GOALS)
   const pref = pick(body.pref, PREFS)
   const closing = pick(body.closing, CLOSING)

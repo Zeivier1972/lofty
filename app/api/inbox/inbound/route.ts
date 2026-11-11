@@ -429,6 +429,14 @@ export async function POST(req: Request) {
       })
     }
 
+    // Someone who wrote from the "Hablemos por WhatsApp" link on
+    // /parkside/colombia (or just mentions Parkside) gets the Parkside tag,
+    // so the Parkside smart plan and Catherine's filters pick them up. Ad
+    // leads are tagged below from the ad itself.
+    if (!isCtwa && isWhatsApp && /\bpark\s?side\b/i.test(body) && !contact.tags.some((t: any) => t.tag?.name === "Parkside")) {
+      applyTagAndEnroll(contact.id, "Parkside").catch(e => console.error("[WA] Parkside tag error:", e))
+    }
+
     // A new click-to-WhatsApp lead needs the same follow-through a form lead gets:
     // the event tag (the reminder cron finds people by tag — untagged means no
     // 7/3/1/0-day countdown), a row on the event sheet, and the ad attribution so

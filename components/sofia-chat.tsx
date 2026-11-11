@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation"
 import { PROJECTS } from "@/lib/projects"
 import { X, Send, Loader2, CalendarDays, Building2, Mic, Square } from "lucide-react"
 import SofiaAvatar from "@/components/sofia-avatar"
+import { cn } from "@/lib/utils"
 import { useSpeechRecognition, speechErrorMessage } from "@/lib/use-speech-recognition"
 
 // Sofía is the LEAD-facing assistant, so she appears ONLY on the public website.
@@ -75,6 +76,7 @@ function pageContextFrom(path: string): string {
 export default function SofiaChat() {
   const pathname = usePathname() || "/"
   const hidden = !isPublicPage(pathname)
+  const compactLauncher = NO_AUTO_OPEN.some(p => pathname === p || pathname.startsWith(p + "/"))
 
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState<Msg[]>([])
@@ -185,13 +187,15 @@ export default function SofiaChat() {
         <button
           onClick={openChat}
           aria-label="Chatear con Sofía"
-          className="fixed bottom-5 right-5 z-[60] flex items-center gap-2.5 rounded-full bg-[#12315c] pl-1.5 pr-5 py-1.5 text-white shadow-xl hover:bg-[#0b1f3a] transition-colors"
+          className={cn("fixed bottom-5 right-5 z-[60] flex items-center gap-2.5 rounded-full bg-[#12315c] pl-1.5 py-1.5 text-white shadow-xl hover:bg-[#0b1f3a] transition-colors", compactLauncher ? "pr-1.5 sm:pr-5" : "pr-5")}
         >
           <span className="relative">
             <SofiaAvatar size={40} className="rounded-full ring-2 ring-white/70" />
             <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-green-400 ring-2 ring-[#12315c]" />
           </span>
-          <span className="font-semibold text-sm">Chatea con Sofía</span>
+          {/* On funnel pages the label hides on phones: the full pill covered
+              the quiz's answers. The avatar alone stays tappable. */}
+          <span className={cn("font-semibold text-sm", compactLauncher && "hidden sm:inline")}>Chatea con Sofía</span>
         </button>
       )}
 
