@@ -35,6 +35,10 @@ export const CAPITAL: [string, number][] = [
   ["Más de US$250,000", 300000],
 ]
 
+/** Lets people keep going without telling a stranger their capital. */
+export const CAPITAL_PRIVATE = "Prefiero hablarlo en la conversación"
+export const CAPITAL_LABELS = [...CAPITAL.map(c => c[0]), CAPITAL_PRIVATE]
+
 export const GOALS = ["Renta / inversión", "Vivienda propia o vacacional", "Ambas", "Diversificar patrimonio en dólares"]
 export const PREFS = ["Estudio", "1 habitación", "2 habitaciones", "Aún no lo sé"]
 export const CLOSING = ["Contado", "Financiamiento hipotecario", "Venta de otro activo", "Aún no lo sé"]
@@ -60,8 +64,9 @@ export type Plan = {
   tier: Tier
 }
 
-export function buildPlan(capital: number, pref: string, timing: string): Plan {
-  const affordable = UNITS.filter(u => u.from * CONTRACT_PCT <= capital)
+/** capital null = they preferred not to say: show what they asked for, tier B (capital to confirm on the call). */
+export function buildPlan(capital: number | null, pref: string, timing: string): Plan {
+  const affordable = capital === null ? UNITS : UNITS.filter(u => u.from * CONTRACT_PCT <= capital)
   const wanted = UNITS.find(u => u.type === pref)
   const fits = !!wanted && affordable.includes(wanted)
   // What they asked for if it fits; otherwise the best that fits (or a studio).
@@ -74,6 +79,7 @@ export function buildPlan(capital: number, pref: string, timing: string): Plan {
   const studioDeposit = UNITS[0].from * CONTRACT_PCT
   const exploring = timing === "Solo estoy explorando"
   const tier: Tier =
+    capital === null ? "B" :
     capital >= studioDeposit && !exploring ? "A" :
     capital >= studioDeposit * 0.6 ? "B" :
     "C"

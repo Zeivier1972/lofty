@@ -36,7 +36,7 @@ const WEBINAR_URL = `${BASE}/webinar/serie/inversion-miami`
 const STUDIO = UNITS[0].from
 const TITLE = "Invertir en Brickell desde Colombia: su plan para Parkside Residences | Catherine Gomez"
 const DESCRIPTION =
-  `¿Cuánto necesita para invertir en Miami desde Colombia? Responda 6 preguntas y reciba su plan de inversión en Parkside Residences at Brickell: residencia que encaja con su capital, depósitos en dólares y fechas (20% al contrato, desde ${usd(STUDIO * 0.2)}), y una conversación de 15 minutos con Catherine Gomez, en español y sin compromiso.`
+  `¿Cuánto necesita para invertir en Miami desde Colombia? Responda 4 preguntas y reciba su plan de inversión en Parkside Residences at Brickell: residencia que encaja con su capital, depósitos en dólares y fechas (20% al contrato, desde ${usd(STUDIO * 0.2)}), y una conversación de 15 minutos con Catherine Gomez, en español y sin compromiso.`
 
 export const metadata: Metadata = {
   metadataBase: new URL(BASE),
@@ -107,7 +107,9 @@ const FAQ: [string, string][] = [
 
 export default async function ParksideColombiaPage() {
   const config = await prisma.aIConfig.findFirst().catch(() => null)
-  const phone = config?.realtorPhone || "305-283-0872"
+  // WhatsApp goes to the CRM's WhatsApp line, where Sofía answers right away
+  // and tags the person Parkside; Catherine's phone only if it is not set.
+  const phone = process.env.TWILIO_WHATSAPP_NUMBER || process.env.TWILIO_PHONE_NUMBER || config?.realtorPhone || "305-283-0872"
   const waDigits = phone.replace(/\D/g, "")
   const waUrl = `https://wa.me/${waDigits.length === 10 ? `1${waDigits}` : waDigits}?text=${encodeURIComponent(
     "Hola, quiero información para invertir en Parkside Brickell desde Colombia.",
@@ -185,10 +187,10 @@ export default async function ParksideColombiaPage() {
               ¿Cuánto necesita para invertir en Brickell desde Colombia?
             </h1>
             <p className="mt-4 text-base text-white/80 sm:hidden">
-              Responda 6 preguntas y vea su plan: cada pago en dólares, con fechas.
+              Responda 4 preguntas y vea su plan: cada pago en dólares, con fechas.
             </p>
             <p className="mt-5 hidden max-w-lg text-lg text-white/80 sm:block">
-              Responda 6 preguntas y vea su plan de inversión en Parkside: la residencia que encaja con su capital y cada
+              Responda 4 preguntas y vea su plan de inversión en Parkside: la residencia que encaja con su capital y cada
               pago en dólares, con fechas. Luego, si quiere, una conversación de 15 minutos con Catherine Gomez, sin compromiso.
             </p>
             <p className="mt-4 text-sm text-white/70">Sin visa · Todo a distancia · Financiamiento con bancos de EE. UU. · Licencia de Florida #{LICENSE}</p>

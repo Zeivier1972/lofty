@@ -13,12 +13,12 @@
  * so Catherine's calendar fills with buyers, not browsers.
  */
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { ArrowLeft, ArrowRight, Loader2 } from "lucide-react"
 import BookingCalendar from "@/components/public/booking-calendar"
 import RentScenario from "./rent-scenario"
 import { BookingPromise } from "./trust"
-import { CAPITAL, GOALS, PREFS, CLOSING, TIMING, US_BEFORE, buildPlan, usd, PRICES_AS_OF, FINANCING, VIDEO } from "./data"
+import { CAPITAL, CAPITAL_LABELS, CAPITAL_PRIVATE, GOALS, PREFS, TIMING, buildPlan, usd, PRICES_AS_OF, FINANCING, VIDEO } from "./data"
 
 const FOREST = "#1E2B23"
 const GREEN = "#2E4236"
@@ -49,6 +49,17 @@ function campaign(): { detail: string; utmCampaign: string } {
   return { detail: ["pagina=/parkside/colombia", ...parts].join(" · "), utmCampaign: q.get("utm_campaign") || "" }
 }
 
+/** Quiz analytics: a server log line ([parkside-funnel]) + a Meta custom event. */
+function track(sid: string, event: string, extra: { step?: number; key?: string } = {}) {
+  try {
+    const ad = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("fbclid")
+    const payload = JSON.stringify({ sid, event, ad, ...extra })
+    if (navigator.sendBeacon) navigator.sendBeacon("/api/parkside/funnel-event", payload)
+    else void fetch("/api/parkside/funnel-event", { method: "POST", body: payload, keepalive: true })
+    ;(window as any).fbq?.("trackCustom", "ParksideQuiz", { event, ...extra })
+  } catch { /* analytics never blocks the quiz */ }
+}
+
 function Option({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
     <button
@@ -77,10 +88,13 @@ export default function Funnel({ waUrl, webinarUrl }: { waUrl: string; webinarUr
   const [showPlan, setShowPlan] = useState(false)
   const [showCalendarC, setShowCalendarC] = useState(false)
 
-  const capital = CAPITAL.find(x => x[0] === a.capital)?.[1] ?? 0
+  const [sid] = useState(() => Math.random().toString(36).slice(2, 12))
+  // "Prefiero hablarlo" → null: the plan shows what they asked for.
+  const capital = a.capital === CAPITAL_PRIVATE ? null : (CAPITAL.find(x => x[0] === a.capital)?.[1] ?? 0)
   const plan = useMemo(() => buildPlan(capital, a.pref, a.timing), [capital, a.pref, a.timing])
 
   const choose = (k: keyof Answers, v: string) => {
+    track(sid, "answer", { step: step + 1, key: k })
     setA(p => ({ ...p, [k]: v }))
     setStep(s => s + 1)
   }
@@ -88,12 +102,13 @@ export default function Funnel({ waUrl, webinarUrl }: { waUrl: string; webinarUr
   const QUESTIONS: { title: string; hint?: string; key: keyof Answers; options: string[] }[] = [
     { key: "goal", title: "¿Qué busca con una propiedad en Miami?", options: GOALS },
     { key: "pref", title: "¿Qué tipo de residencia le interesa?", hint: "Estudios desde US$490,000 · 1 habitación desde US$582,750 · 2 habitaciones desde US$1,160,250", options: PREFS },
-    { key: "capital", title: "¿Con cuánto capital cuenta hoy para la inversión?", hint: "Al firmar el contrato se deposita el 20% del precio. Le mostramos su plan con estos números.", options: CAPITAL.map(x => x[0]) },
-    { key: "closing", title: "¿Cómo pensaría pagar el saldo al cierre (60%)?", hint: "El cierre es a la entrega (1er trimestre de 2028). Los bancos de EE. UU. financian a inversionistas extranjeros: normalmente usted aporta cerca del 50% del precio y el banco el resto.", options: CLOSING },
     { key: "timing", title: "¿Cuándo le gustaría tomar una decisión?", options: TIMING },
-    { key: "usBefore", title: "¿Ha comprado antes una propiedad en Estados Unidos?", options: US_BEFORE },
+    { key: "capital", title: "¿Con cuánto capital cuenta hoy para la inversión?", hint: "Al firmar el contrato se deposita el 20% del precio. Es solo para armar su plan; si prefiere, lo hablamos en la conversación.", options: CAPITAL_LABELS },
   ]
   const CONTACT = QUESTIONS.length
+
+  useEffect(() => { track(sid, "view") }, [sid])
+  useEffect(() => { if (step === CONTACT) track(sid, "contact_view", { step: step + 1 }) }, [step, CONTACT, sid])
   const total = QUESTIONS.length + 1
   const country = COUNTRIES.find(x => x.label === c.country) || COUNTRIES[0]
 
@@ -115,10 +130,12 @@ export default function Funnel({ waUrl, webinarUrl }: { waUrl: string; webinarUr
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || "No pudimos guardar su plan.")
       try { (window as any).fbq?.("track", "Lead", { content_name: "Parkside — plan Colombia" }) } catch {}
+      track(sid, "submit_ok", { step: CONTACT + 1 })
       setFullPhone(phone)
       setShowPlan(true)
       setTimeout(() => document.getElementById("su-plan")?.scrollIntoView({ behavior: "smooth" }), 50)
     } catch (err: any) {
+      track(sid, "submit_error", { step: CONTACT + 1 })
       setError(err.message)
     } finally {
       setSaving(false)
@@ -153,7 +170,7 @@ export default function Funnel({ waUrl, webinarUrl }: { waUrl: string; webinarUr
           email: c.email.trim(),
           phone: fullPhone,
           country: c.country,
-          summary: `Plan Colombia (${plan.tier}) — ${plan.unit.type} desde ${usd(plan.unit.from)} · Capital: ${a.capital} · Cierre: ${a.closing} · Plazo: ${a.timing}`,
+          summary: `Plan Colombia (${plan.tier}) — ${plan.unit.type} desde ${usd(plan.unit.from)} · Capital: ${a.capital} · Plazo: ${a.timing}`,
         }}
       />
     )
@@ -344,6 +361,23 @@ export default function Funnel({ waUrl, webinarUrl }: { waUrl: string; webinarUr
           <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Atrás
         </button>
       )}
+
+      {/* The easy way in for people who will not fill out a form: Sofía
+          answers on WhatsApp right away and tags them Parkside. */}
+      <div className="mt-6 border-t pt-5 text-center text-sm text-[#57534B]" style={{ borderColor: LINE }}>
+        ¿Prefiere escribirnos?
+        <br />
+        <a
+          href={waUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={() => track(sid, "whatsapp_click", { step: step + 1 })}
+          className="font-semibold underline"
+          style={{ color: GREEN }}
+        >
+          Hablemos por WhatsApp
+        </a>
+      </div>
     </div>
   )
 }
