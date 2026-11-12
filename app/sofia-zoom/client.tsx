@@ -63,7 +63,7 @@ export default function SofiaZoomClient({ projects, hostName }: { projects: Proj
 
   const proj = projects.find(p => p.href === (st.project || project))
   const first = hostName.split(" ")[0] || "Catherine"
-  const bookUrl = proj?.href === "/parkside" ? `${BASE}/parkside/colombia` : `${BASE}${proj?.href || "/book"}`
+  const bookUrl = proj?.href === "/parkside" ? `${BASE}/parkside/colombia/agendar` : `${BASE}${proj?.href || "/book"}`
   const active = !["idle", "ended", "failed"].includes(st.status)
 
   const refresh = useCallback(async () => {
@@ -167,7 +167,7 @@ export default function SofiaZoomClient({ projects, hostName }: { projects: Proj
                 {st.paused ? "En pausa — reanudar" : "Respondiendo ✓ (pausar)"}
               </button>
               <button
-                onClick={() => call({ action: "say", text: `📅 ¿Quieren su plan personalizado y una reunión privada de 30 minutos con ${first}? Agenden aquí: ${bookUrl}` })}
+                onClick={() => call({ action: "say", text: `📅 ¿Quieren hablar a solas con ${first}? Agenden una conversación privada de 15 minutos, sin compromiso: ${bookUrl}` })}
                 disabled={busy || st.status !== "in_meeting"}
                 className="rounded-lg bg-indigo-600 px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
               >

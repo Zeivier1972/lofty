@@ -30,7 +30,8 @@ export async function POST(req: Request) {
   const recent: string[] = Array.isArray(body.recent) ? body.recent.slice(-8).map((m: unknown) => String(m).slice(0, 300)) : []
   if (!project || !question.trim()) return NextResponse.json({ action: "skip", reply: "", note: "" })
 
-  const bookUrl = `${BASE}${project.href === "/parkside" ? "/parkside/colombia" : "/book"}`
+  // Parkside: straight to the 15-minute calendar (the quiz page shows it only after the quiz).
+  const bookUrl = `${BASE}${project.href === "/parkside" ? "/parkside/colombia/agendar" : "/book"}`
   const knowledge = projectKnowledgeFor(project.href, bookUrl)
 
   const system = `Eres Sofía, la asistente de Catherine Gomez (Realtor en Miami, licencia de Florida #3320405). Estás en el CHAT de una presentación EN VIVO por Zoom sobre ${project.name} (${project.place}). Catherine está presentando; tú respondes las preguntas del chat para que ella no tenga que parar.
@@ -47,7 +48,7 @@ REGLAS DEL CHAT:
 - Llama a la persona por su primer nombre si lo tienes.
 - NUNCA inventes precios, fechas, rentabilidad, ocupación ni condiciones. No prometas ingresos ni aprobación de crédito.
 - No repitas lo que Catherine está explicando en ese momento; si la pregunta se respondió en el chat reciente, di que sí brevemente.
-- Si encaja, invita a ver su plan o agendar: ${bookUrl}
+- Si encaja, invita a agendar una conversación privada de 15 minutos con Catherine, sin compromiso: ${bookUrl}
 
 Formato exacto: {"action":"answer|escalate|skip","reply":"...","note":"..."}`
 
