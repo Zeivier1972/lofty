@@ -173,8 +173,12 @@ export async function GET(req: Request) {
       }
       if (r.phone) {
         // Automated path, so the do-not-text guard, the content dedupe and the
-        // monthly cap all apply.
-        await sendSMS(toE164(r.phone), copy.sms, undefined, { automated: true, contactId: r.contactId || undefined })
+        // monthly cap all apply. The usual one-text-per-20h cooldown does not:
+        // the 1-hour and live texts are an hour apart by design, and the
+        // registration confirmation usually went out hours before the 1-day
+        // reminder — under 20h they were silently dropped. These are times the
+        // person signed up for, so only a 30-minute gap is kept.
+        await sendSMS(toE164(r.phone), copy.sms, undefined, { automated: true, contactId: r.contactId || undefined, minGapHours: 0.5 })
           .then(sid => { if (sid) delivered = true })
           .catch(() => {})
       }
