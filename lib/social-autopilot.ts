@@ -507,15 +507,54 @@ function pickCatherineAvatar(
   return null
 }
 
+/**
+ * Setting `social_video_avatar`: {"id": "..."} or {"name": "..."}. A name
+ * (e.g. "yellow dress professional in office", as it appears in HeyGen) is
+ * looked up once in the account's avatars and looks, and the id is saved back.
+ */
+const SOCIAL_AVATAR_SETTING = "social_video_avatar"
+
+async function socialVideoAvatarId(apiKey: string): Promise<string | null> {
+  const row = await prisma.setting.findUnique({ where: { key: SOCIAL_AVATAR_SETTING } }).catch(() => null)
+  if (!row?.value) return null
+  let cfg: { id?: string; name?: string } = {}
+  try { cfg = JSON.parse(row.value) } catch { return null }
+  if (cfg.id) return cfg.id
+  if (!cfg.name) return null
+
+  const want = cfg.name.toLowerCase().replace(/\s+/g, " ").trim()
+  const words = want.split(" ").filter(w => w.length > 2)
+  const named: { id: string; name: string }[] = []
+  try {
+    const d = await fetch("https://api.heygen.com/v2/avatars", { headers: { "X-Api-Key": apiKey }, cache: "no-store" }).then(r => r.json())
+    for (const tp of d?.data?.talking_photos ?? []) named.push({ id: tp.talking_photo_id || tp.id, name: String(tp.talking_photo_name || tp.name || "") })
+    for (const a of d?.data?.avatars ?? []) named.push({ id: a.avatar_id, name: String(a.avatar_name || "") })
+  } catch (e) {
+    console.error("[social-autopilot] avatar lookup failed:", e)
+    return null
+  }
+  const norm = (n: string) => n.toLowerCase().replace(/\s+/g, " ").trim()
+  const hit = named.find(a => norm(a.name) === want)
+    || named.find(a => words.length > 0 && words.every(w => norm(a.name).includes(w)))
+  if (!hit?.id) {
+    console.warn(`[social-autopilot] social_video_avatar "${cfg.name}" not found in HeyGen — using the rotation`)
+    await prisma.aINotification.create({ data: { type: "SOCIAL", title: "Avatar de video no encontrado", body: `No encontré "${cfg.name}" en tu cuenta de HeyGen; los videos usan tus otros looks. Envíale a Claude el ID del avatar.`, priority: "MEDIUM", metadata: `avatar-missing:${want}` } }).catch(() => {})
+    return null
+  }
+  await prisma.setting.update({ where: { key: SOCIAL_AVATAR_SETTING }, data: { value: JSON.stringify({ id: hit.id, name: hit.name }) } }).catch(() => {})
+  console.log(`[social-autopilot] social_video_avatar "${cfg.name}" → ${hit.name} (${hit.id})`)
+  return hit.id
+}
+
 export async function getHeyGenAvatar(dayOfWeek: number): Promise<{ avatarId: string; voiceId: string } | null> {
   const apiKey = process.env.HEYGEN_API_KEY
   if (!apiKey) return null
 
   try {
-    // Pick Catherine's avatar directly — hardcoded IDs rotate by day of week
-    // (HeyGen API doesn't return these photo avatars in /v2/avatars, so skip the API lookup)
-    const avatarId = CATHERINE_TALKING_PHOTO_IDS[dayOfWeek % CATHERINE_TALKING_PHOTO_IDS.length]
-    console.log(`[social-autopilot] Catherine avatar: look ${(dayOfWeek % CATHERINE_TALKING_PHOTO_IDS.length) + 1} → ${avatarId}`)
+    // The look Catherine picked for social videos (Setting social_video_avatar);
+    // otherwise her looks rotate by day of week.
+    const avatarId = (await socialVideoAvatarId(apiKey)) || CATHERINE_TALKING_PHOTO_IDS[dayOfWeek % CATHERINE_TALKING_PHOTO_IDS.length]
+    console.log(`[social-autopilot] Catherine avatar → ${avatarId}`)
 
     // Fetch voices to find Catalina (Catherine's preferred voice in HeyGen)
     const voicesRes = await fetch("https://api.heygen.com/v2/voices", {
@@ -1467,12 +1506,15 @@ async function publishToYouTube(account: AccountLike, post: PostLike): Promise<s
   let youtubeTitle = `Mercado Inmobiliario Miami ${new Date().getFullYear()} — Catherine Gomez Realtor`
   let youtubeDescription = post.content
   let youtubeTags: string[] = ["miami real estate", "catherine gomez realtor", "brickell miami", "south florida real estate"]
+  let privacyStatus: "public" | "unlisted" = "public"
 
   try {
     const meta = JSON.parse(post.prompt ?? "{}")
     if (meta.youtubeTitle) youtubeTitle = meta.youtubeTitle
     if (meta.youtubeDescription) youtubeDescription = meta.youtubeDescription
     if (Array.isArray(meta.youtubeTags) && meta.youtubeTags.length > 0) youtubeTags = meta.youtubeTags
+    // The test video from /social goes up unlisted: only people with the link see it.
+    if (meta.test) privacyStatus = "unlisted"
   } catch {
     // prompt not JSON — use defaults
   }
@@ -1485,6 +1527,7 @@ async function publishToYouTube(account: AccountLike, post: PostLike): Promise<s
     description: youtubeDescription,
     tags: youtubeTags,
     refreshToken: account.refreshToken,
+    privacyStatus,
   })
 
   return youtubeUrl
@@ -1576,9 +1619,13 @@ export interface AutopilotResult {
   heygenError?: string
 }
 
-export async function triggerVideoOnly(): Promise<{ videoId: string | null; error?: string }> {
+/** test: only YouTube, uploaded unlisted (the "Video de prueba" button on /social). */
+export async function triggerVideoOnly(opts: { test?: boolean } = {}): Promise<{ videoId: string | null; error?: string }> {
   const apiKey = process.env.HEYGEN_API_KEY
   if (!apiKey) return { videoId: null, error: "HEYGEN_API_KEY not set" }
+  if (opts.test && !(await prisma.socialAccount.findFirst({ where: { platform: "YOUTUBE", isConnected: true } }))) {
+    return { videoId: null, error: "YouTube no está conectado: conéctalo en Social → Cuentas" }
+  }
 
   try {
     const now = new Date()
@@ -1593,8 +1640,10 @@ export async function triggerVideoOnly(): Promise<{ videoId: string | null; erro
     if (!videoId) return { videoId: null, error: "HeyGen returned no video_id — check Railway logs" }
 
     // Store a pending SocialPost record for each connected account so checkHeygenVideos can publish it later
-    const accounts = await prisma.socialAccount.findMany({ where: { isConnected: true } })
-    const promptMeta = research ? JSON.stringify({ theme: research.trendingTopic, youtubeTitle: research.youtubeTitle, youtubeDescription: research.youtubeDescription, youtubeTags: research.youtubeTags }) : "manual video trigger"
+    const accounts = await prisma.socialAccount.findMany({ where: { isConnected: true, ...(opts.test ? { platform: "YOUTUBE" } : {}) } })
+    const promptMeta = research || opts.test
+      ? JSON.stringify({ theme: research?.trendingTopic, youtubeTitle: research?.youtubeTitle, youtubeDescription: research?.youtubeDescription, youtubeTags: research?.youtubeTags, ...(opts.test ? { test: true } : {}) })
+      : "manual video trigger"
 
     for (const account of accounts) {
       const content = await generateContent(account.platform, dayOfWeek, research)
