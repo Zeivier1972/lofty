@@ -4,6 +4,7 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { sendEmail } from "@/lib/email"
 import { sendSMS } from "@/lib/sms"
+import { parseMiamiWallTime } from "@/lib/miami-time"
 
 export async function POST(req: Request) {
   try {
@@ -16,8 +17,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "title, startTime, and endTime are required" }, { status: 400 })
     }
 
-    const start = new Date(startTime)
-    const end = new Date(endTime)
+    // The CRM forms send Miami wall time without a zone ("…T10:00").
+    const start = parseMiamiWallTime(startTime)
+    const end = parseMiamiWallTime(endTime)
 
     if (isNaN(start.getTime()) || isNaN(end.getTime())) {
       return NextResponse.json({ error: "Invalid date/time" }, { status: 400 })
