@@ -11,6 +11,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import HelpPanel from "@/components/help-panel"
+import YouTubeCommentTest from "./youtube-comment-test"
 
 interface SocialAccount {
   id: string
@@ -890,6 +891,8 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
               </div>
             )}
 
+            <YouTubeCommentTest />
+
             {/* Token error warnings — only when the LATEST post for that platform failed with an auth error */}
             {accounts.filter(a => a.isConnected).map(a => {
               const platformPosts = posts.filter(p => p.platform === a.platform)
@@ -1043,7 +1046,7 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
                           Clicking below will redirect you to Google&apos;s consent screen. Grant access to upload videos on your behalf. Make sure <strong>YOUTUBE_CLIENT_ID</strong> and <strong>YOUTUBE_CLIENT_SECRET</strong> are set in Railway env vars.
                         </p>
                         <ul className="mt-2 text-xs text-red-600 list-disc list-inside space-y-0.5">
-                          <li>Permissions requested: <code>youtube.upload</code> + <code>youtube.readonly</code></li>
+                          <li>Permissions requested: <code>youtube.upload</code>, <code>youtube.readonly</code> and <code>youtube.force-ssl</code> (so Sofía can answer comments)</li>
                           <li>Videos will be published as public YouTube Shorts</li>
                           <li>Titles, descriptions &amp; tags are AI-generated in Spanish, SEO-optimized</li>
                         </ul>
