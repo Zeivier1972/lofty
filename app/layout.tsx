@@ -60,7 +60,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {children}
         <Toaster />
         <PwaRegister />
-        <SofiaChat />
+        {/* WhatsApp line Sofía answers on (number only, not a secret). */}
+        <SofiaChat waNumber={(process.env.TWILIO_WHATSAPP_NUMBER || process.env.TWILIO_PHONE_NUMBER || "+13052830872").replace(/\D/g, "")} />
       </body>
     </html>
   )
