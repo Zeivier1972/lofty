@@ -10,7 +10,7 @@ import { NextResponse } from "next/server"
  * and short values are logged.
  */
 
-const EVENTS = new Set(["view", "answer", "contact_view", "submit_ok", "submit_error", "whatsapp_click"])
+const EVENTS = new Set(["view", "answer", "contact_view", "submit_ok", "submit_error", "whatsapp_click", "video_play"])
 const short = (v: unknown, n: number) => (typeof v === "string" ? v.replace(/[^\w\-áéíóúñ ]/gi, "").slice(0, n) : "")
 
 export async function POST(req: Request) {

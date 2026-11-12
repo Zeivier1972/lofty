@@ -4,7 +4,8 @@ import type { Metadata } from "next"
 import { cormorantDisplay } from "@/app/fonts"
 import { prisma } from "@/lib/prisma"
 import Funnel from "./funnel"
-import { UNITS, DEPOSITS, PRICES_AS_OF, MARKET, VIDEO, usd } from "./data"
+import { UNITS, DEPOSITS, PRICES_AS_OF, MARKET, VIDEO, TOUR_VIDEO, usd } from "./data"
+import TourVideo from "./tour-video"
 import { TrustSection, LICENSE } from "./trust"
 
 /**
@@ -159,6 +160,15 @@ export default async function ParksideColombiaPage() {
         inLanguage: "es",
       },
       {
+        "@type": "VideoObject",
+        name: "Recorrido 3D de Parkside Residences at Brickell",
+        description: "Recorrido en 3D del edificio Parkside Residences at Brickell, frente a Simpson Park en Miami: fachada, residencias amuebladas y amenidades.",
+        thumbnailUrl: TOUR_VIDEO.poster,
+        contentUrl: TOUR_VIDEO.src,
+        uploadDate: TOUR_VIDEO.uploaded,
+        inLanguage: "es",
+      },
+      {
         "@type": "FAQPage",
         mainEntity: FAQ.map(([q, ans]) => ({ "@type": "Question", name: q, acceptedAnswer: { "@type": "Answer", text: ans } })),
       },
@@ -209,6 +219,20 @@ export default async function ParksideColombiaPage() {
             <Funnel waUrl={waUrl} webinarUrl={WEBINAR_URL} />
           </div>
         </div>
+      </section>
+
+      {/* The 3D tour, below the quiz: people who scroll past it want to see
+          the building before deciding. Not above it — that pushed the quiz
+          off the first screen on phones. */}
+      <section className="mx-auto max-w-4xl px-4 pt-12 text-center sm:px-6" aria-labelledby="recorrido">
+        <p className={EYEBROW} style={{ color: SAND }}>Recorra el edificio</p>
+        <h2 id="recorrido" className="mt-4 text-[2rem] font-light leading-tight sm:text-[2.6rem]" style={{ fontFamily: serif }}>
+          Parkside en 3D
+        </h2>
+        <TourVideo src={TOUR_VIDEO.src} poster={TOUR_VIDEO.poster} label="Recorrido 3D de Parkside Residences at Brickell, frente a Simpson Park en Miami" />
+        <a href="#plan" className="mt-6 inline-block px-7 py-4 text-sm font-semibold uppercase tracking-[0.14em] text-white" style={{ background: FOREST }}>
+          Ver mi plan de inversión
+        </a>
       </section>
 
       {/* Catherine on video — the strongest trust signal for a distrustful buyer */}
