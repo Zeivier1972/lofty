@@ -209,6 +209,13 @@ export const SCENARIOS = {
 export const FINANCING = { ownPct: 40, typicalPct: 50 }
 
 /** Catherine's Parkside interview (Cloudinary), exactly as uploaded. */
+/** Vertical 3D tour of the building (developer render), shown under the quiz. */
+export const TOUR_VIDEO = {
+  src: "https://res.cloudinary.com/dhqolxzne/video/upload/v1794501735/Parkside07._VideoParkside_3D_Video_Vertical_1_qjamb6.mp4",
+  poster: "https://res.cloudinary.com/dhqolxzne/video/upload/so_2,q_auto,w_720/v1794501735/Parkside07._VideoParkside_3D_Video_Vertical_1_qjamb6.jpg",
+  uploaded: "2026-11-12",
+}
+
 export const VIDEO = {
   src: "https://res.cloudinary.com/dhqolxzne/video/upload/v1793815172/park_side_interview_final_20261103_1707_hitfkj.mp4",
   poster: "https://res.cloudinary.com/dhqolxzne/video/upload/so_2,q_auto,w_1280/v1793815172/park_side_interview_final_20261103_1707_hitfkj.jpg",
