@@ -19,6 +19,25 @@ const ERRORS: Record<string, string> = {
 export default function YouTubeCommentTest() {
   const [busy, setBusy] = useState(false)
   const [r, setR] = useState<Result | null>(null)
+  const [vBusy, setVBusy] = useState(false)
+  const [vMsg, setVMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  async function testVideo() {
+    if (!confirm("¿Crear un video de prueba con tu avatar y subirlo a YouTube como OCULTO (solo con el enlace)? Usa créditos de HeyGen (~$1–2).")) return
+    setVBusy(true)
+    setVMsg(null)
+    try {
+      const res = await fetch("/api/social/youtube-test-video", { method: "POST" })
+      const d = await res.json()
+      setVMsg(res.ok
+        ? { ok: true, text: "Video en preparación. HeyGen tarda unos 10–20 minutos; luego se sube a YouTube como oculto y lo verás en la pestaña de publicaciones con su enlace." }
+        : { ok: false, text: d.error || "No se pudo crear el video" })
+    } catch {
+      setVMsg({ ok: false, text: "No hubo respuesta del servidor" })
+    } finally {
+      setVBusy(false)
+    }
+  }
 
   async function run() {
     setBusy(true)
@@ -44,6 +63,17 @@ export default function YouTubeCommentTest() {
           {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Probando…</> : "Probar Sofía en YouTube"}
         </button>
       </div>
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-4">
+        <div>
+          <p className="text-sm font-semibold text-gray-900">Video de prueba con tu avatar</p>
+          <p className="mt-0.5 text-xs text-gray-500">Se sube como oculto: nadie lo ve sin el enlace. Úsalo para revisar avatar, voz, título y descripción.</p>
+        </div>
+        <button onClick={testVideo} disabled={vBusy} className="flex items-center gap-2 rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60">
+          {vBusy ? <><Loader2 className="h-4 w-4 animate-spin" /> Creando…</> : "Crear video de prueba"}
+        </button>
+      </div>
+      {vMsg && <p className={`mt-3 rounded-lg px-3 py-2 text-sm ${vMsg.ok ? "bg-green-50 text-green-800" : "bg-red-50 text-red-700"}`}>{vMsg.text}</p>}
 
       {r && (
         <div className="mt-4 space-y-3">

@@ -1897,6 +1897,16 @@ async function seedParksidePlan(db) {
 // existing switch (Social → "Videos automáticos") off once; she can turn it
 // back on there, and this will not override her.
 
+// Catherine picked her HeyGen look "yellow dress professional in office" for
+// the social/YouTube videos. Stored by name; lib/social-autopilot resolves it
+// to the HeyGen id on first use. Only set when there is no choice yet.
+async function seedSocialVideoAvatar(db) {
+  const KEY = "social_video_avatar"
+  if (await db.setting.findUnique({ where: { key: KEY } })) return
+  await db.setting.create({ data: { key: KEY, value: JSON.stringify({ name: "yellow dress professional in office" }) } })
+  console.log("[db-migrate] social video avatar set: yellow dress professional in office")
+}
+
 async function disableAvatarVideosOnce(db) {
   const MARKER = "migration_disable_avatar_videos"
   if (await db.setting.findUnique({ where: { key: MARKER } })) return
@@ -1925,6 +1935,7 @@ async function main() {
   await seedDomusPlan(db).catch(e => console.warn("[db-migrate] Domus plan skip:", e.message))
   await seedParksidePlan(db).catch(e => console.warn("[db-migrate] Parkside plan skip:", e.message))
   await disableAvatarVideosOnce(db).catch(e => console.warn("[db-migrate] avatar videos skip:", e.message))
+  await seedSocialVideoAvatar(db).catch(e => console.warn("[db-migrate] social video avatar skip:", e.message))
   await dedupPipelineLeads(db).catch(e => console.warn("[db-migrate] dedup pipeline leads skip:", e.message))
   await seedBrickellKeywords(db).catch(e => console.warn("[db-migrate] Brickell keywords skip:", e.message))
   await backfillPartnerTokens(db).catch(e => console.warn("[db-migrate] partner tokens skip:", e.message))

@@ -11,6 +11,8 @@ export interface YouTubeUploadOptions {
   description: string
   tags: string[]
   refreshToken: string
+  /** "unlisted" for the test video on /social; default "public". */
+  privacyStatus?: "public" | "unlisted" | "private"
 }
 
 export async function refreshAccessToken(refreshToken: string): Promise<string> {
@@ -44,7 +46,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<string> 
 }
 
 export async function uploadVideoToYouTube(opts: YouTubeUploadOptions): Promise<string> {
-  const { videoUrl, title, description, tags, refreshToken } = opts
+  const { videoUrl, title, description, tags, refreshToken, privacyStatus = "public" } = opts
 
   const accessToken = await refreshAccessToken(refreshToken)
 
@@ -66,7 +68,7 @@ export async function uploadVideoToYouTube(opts: YouTubeUploadOptions): Promise<
         defaultAudioLanguage: "es",
       },
       status: {
-        privacyStatus: "public",
+        privacyStatus,
         selfDeclaredMadeForKids: false,
       },
     }
