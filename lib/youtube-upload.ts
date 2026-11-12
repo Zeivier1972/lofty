@@ -13,7 +13,7 @@ export interface YouTubeUploadOptions {
   refreshToken: string
 }
 
-async function refreshAccessToken(refreshToken: string): Promise<string> {
+export async function refreshAccessToken(refreshToken: string): Promise<string> {
   const clientId = process.env.YOUTUBE_CLIENT_ID
   const clientSecret = process.env.YOUTUBE_CLIENT_SECRET
   if (!clientId || !clientSecret) {
