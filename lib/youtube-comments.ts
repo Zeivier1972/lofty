@@ -53,7 +53,11 @@ type Thread = {
   replies?: { comments: { snippet: { authorChannelId?: { value: string } } }[] }
 }
 
-export type YouTubeCommentResult = { checked: number; replied: number; skipped: number; error?: string }
+export type YouTubePreview = { author: string; comment: string; video: string; link: string; action: "reply" | "skip"; reason?: string; reply?: string }
+export type YouTubeCommentResult = { checked: number; replied: number; skipped: number; error?: string; channel?: string; canReply?: boolean; preview?: YouTubePreview[] }
+
+/** dryRun: read and write the replies but post nothing and record nothing — the "Probar" button on /social. */
+export type YouTubeCommentOptions = { dryRun?: boolean; maxAgeDays?: number; maxReplies?: number }
 
 async function yt(path: string, token: string, init?: RequestInit) {
   const res = await fetch(`${API}${path}`, {
@@ -98,20 +102,33 @@ async function writeReply(opts: { comment: string; who: string; videoTitle: stri
     : `¡Mil gracias por tu comentario${first ? `, ${first}` : ""}! 🙌`
 }
 
-export async function answerYouTubeComments(): Promise<YouTubeCommentResult> {
-  const result: YouTubeCommentResult = { checked: 0, replied: 0, skipped: 0 }
+export async function answerYouTubeComments(opts: YouTubeCommentOptions = {}): Promise<YouTubeCommentResult> {
+  const dry = !!opts.dryRun
+  const maxAge = (opts.maxAgeDays ?? MAX_AGE_MS / 86400000) * 86400000
+  const maxReplies = opts.maxReplies ?? MAX_PER_RUN
+  const result: YouTubeCommentResult = { checked: 0, replied: 0, skipped: 0, ...(dry ? { preview: [] } : {}) }
+  const preview = (p: YouTubePreview) => { result.preview?.push(p) }
 
   const off = await prisma.setting.findUnique({ where: { key: "youtube_comment_replies" } }).catch(() => null)
-  if (off?.value === "off") return { ...result, error: "turned off" }
+  if (off?.value === "off" && !dry) return { ...result, error: "turned off" }
 
   const account = await prisma.socialAccount.findFirst({ where: { platform: "YOUTUBE", isConnected: true } })
   if (!account?.refreshToken || !account.accountId) return { ...result, error: "YouTube not connected" }
   const channelId = account.accountId
+  result.channel = account.accountName || channelId
 
   let token: string
   try { token = await refreshAccessToken(account.refreshToken) } catch (e: any) {
+    if (dry) return { ...result, error: e.message }
     await notifyOnce(`yt-auth:${new Date().toISOString().slice(0, 10)}`, "⚠️ Reconecta YouTube", `Sofía no puede leer los comentarios de YouTube: ${e.message}. Ve a Social → Cuentas y conecta YouTube otra vez.`)
     return { ...result, error: e.message }
+  }
+
+  if (dry) {
+    // Whether the saved connection includes the permission to reply.
+    const info = await fetch(`https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(token)}`, { cache: "no-store" })
+      .then(r => r.json()).catch(() => ({}))
+    result.canReply = String(info?.scope || "").includes("youtube.force-ssl")
   }
 
   const list = await yt(`/commentThreads?part=snippet,replies&allThreadsRelatedToChannelId=${channelId}&order=time&maxResults=50&textFormat=plainText`, token)
@@ -125,7 +142,7 @@ export async function answerYouTubeComments(): Promise<YouTubeCommentResult> {
   const videoCache = new Map<string, { title: string; description: string }>()
 
   for (const t of threads) {
-    if (result.replied >= MAX_PER_RUN) break
+    if (result.replied >= maxReplies) break
     const top = t.snippet.topLevelComment
     const s = top.snippet
     result.checked++
@@ -133,12 +150,17 @@ export async function answerYouTubeComments(): Promise<YouTubeCommentResult> {
     const marker = `yt-cmt:${top.id}`
     const authorId = s.authorChannelId?.value
     const ownerAnswered = (t.replies?.comments || []).some(r => r.snippet.authorChannelId?.value === channelId)
-    const tooOld = Date.now() - new Date(s.publishedAt).getTime() > MAX_AGE_MS
-    if (authorId === channelId || ownerAnswered || tooOld) { result.skipped++; continue }
-    if (await prisma.aINotification.findFirst({ where: { metadata: marker }, select: { id: true } }).catch(() => null)) { result.skipped++; continue }
-
+    const tooOld = Date.now() - new Date(s.publishedAt).getTime() > maxAge
     const text = (s.textOriginal || "").trim()
     const link = `https://www.youtube.com/watch?v=${t.snippet.videoId}&lc=${top.id}`
+    const skip = (reason: string) => { result.skipped++; preview({ author: s.authorDisplayName, comment: text.slice(0, 300), video: "", link, action: "skip", reason }) }
+    if (authorId === channelId) { skip("es tu propio comentario"); continue }
+    if (ownerAnswered) { skip("ya lo respondiste tú"); continue }
+    if (tooOld) { skip("es un comentario antiguo"); continue }
+    if (await prisma.aINotification.findFirst({ where: { metadata: marker }, select: { id: true } }).catch(() => null)) { skip("Sofía ya lo respondió"); continue }
+
+    if (dry && (!text || SPAM.test(text))) { skip("parece spam o trae un enlace"); continue }
+    if (dry && isAbusive(text)) { skip("es ofensivo — te avisaría para que lo ocultes"); continue }
     if (!text || SPAM.test(text)) {
       await prisma.aINotification.create({ data: { type: "YOUTUBE_COMMENT", title: "YouTube: comentario ignorado (spam)", body: `${s.authorDisplayName}: "${text.slice(0, 100)}"`, priority: "LOW", metadata: marker } }).catch(() => {})
       result.skipped++
@@ -162,6 +184,12 @@ export async function answerYouTubeComments(): Promise<YouTubeCommentResult> {
     const project = detectProject(`${video.title} ${video.description}`) || detectProject(text)
     const bookUrl = project?.href === "/parkside" ? `${SITE}/parkside/colombia/agendar` : cfg?.calendlyUrl || `${SITE}/book`
     const reply = await writeReply({ comment: text, who: s.authorDisplayName, videoTitle: video.title, videoDescription: video.description, interested, bookUrl })
+
+    if (dry) {
+      result.replied++
+      preview({ author: s.authorDisplayName, comment: text.slice(0, 300), video: video.title, link, action: "reply", reply })
+      continue
+    }
 
     const posted = await yt(`/comments?part=snippet`, token, {
       method: "POST",
@@ -190,6 +218,6 @@ export async function answerYouTubeComments(): Promise<YouTubeCommentResult> {
     }).catch(() => {})
   }
 
-  console.log(`[youtube-comments] checked=${result.checked} replied=${result.replied} skipped=${result.skipped}`)
+  if (!dry) console.log(`[youtube-comments] checked=${result.checked} replied=${result.replied} skipped=${result.skipped}`)
   return result
 }
