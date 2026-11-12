@@ -79,6 +79,13 @@ export async function register() {
       .catch(e => console.error("[cron] sofia-briefing error:", e))
   })
 
+  // Every 30 min: Sofía answers new comments on the YouTube channel (YouTube
+  // has no comment webhook, so it is polled).
+  schedule("11,41 * * * *", () => {
+    fetch(`${base}/api/cron/youtube-comments`, { headers })
+      .catch(e => console.error("[cron] youtube-comments error:", e))
+  })
+
   // Every 5 min: personalized lead videos — finished HeyGen renders are
   // stored on Cloudinary and sent to the lead.
   schedule("*/5 * * * *", () => {
