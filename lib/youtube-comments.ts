@@ -31,6 +31,8 @@ const SITE = process.env.NEXT_PUBLIC_APP_URL || "https://www.catherinegomezrealt
 const API = "https://www.googleapis.com/youtube/v3"
 const MAX_PER_RUN = 10
 const MAX_AGE_MS = 3 * 86400000
+/** How many of the newest uploads are checked each run. */
+const RECENT_VIDEOS = 15
 
 const SPAM = /https?:\/\/|www\.|\bscam\b|bitcoin|crypto|forex|telegram|whats\s?app\s*\+|gana dinero|dm me|follow me|s[ií]gueme|check my channel/i
 const INTEREST = /precio|cu[aá]nto|cost|info|interes|detalle|disponib|cotiz|quiero|me gustar[ií]a|c[oó]mo (se )?(compr|invier|hag|pued)|requisit|financ|cr[eé]dito|enganche|cuota|visa|contact|llam|price|how much|interested|\?/i
@@ -54,7 +56,7 @@ type Thread = {
 }
 
 export type YouTubePreview = { author: string; comment: string; video: string; link: string; action: "reply" | "skip"; reason?: string; reply?: string }
-export type YouTubeCommentResult = { checked: number; replied: number; skipped: number; error?: string; channel?: string; canReply?: boolean; preview?: YouTubePreview[] }
+export type YouTubeCommentResult = { checked: number; replied: number; skipped: number; error?: string; channel?: string; canReply?: boolean; videos?: number; commentsClosed?: number; preview?: YouTubePreview[] }
 
 /** dryRun: read and write the replies but post nothing and record nothing — the "Probar" button on /social. */
 export type YouTubeCommentOptions = { dryRun?: boolean; maxAgeDays?: number; maxReplies?: number }
@@ -131,14 +133,38 @@ export async function answerYouTubeComments(opts: YouTubeCommentOptions = {}): P
     result.canReply = String(info?.scope || "").includes("youtube.force-ssl")
   }
 
-  const list = await yt(`/commentThreads?part=snippet,replies&allThreadsRelatedToChannelId=${channelId}&order=time&maxResults=50&textFormat=plainText`, token)
-  if (!list.ok) {
-    const reason = list.data?.error?.errors?.[0]?.reason || list.data?.error?.message || `HTTP ${list.status}`
-    return { ...result, error: `commentThreads: ${reason}` }
+  // Video by video, newest uploads first. The channel-wide query
+  // (allThreadsRelatedToChannelId) fails with "commentsDisabled" as soon as
+  // one video has comments turned off; per video, those are just skipped.
+  const ch = await yt(`/channels?part=contentDetails&id=${channelId}`, token)
+  const uploads = ch.data?.items?.[0]?.contentDetails?.relatedPlaylists?.uploads
+  if (!ch.ok || !uploads) {
+    const reason = ch.data?.error?.errors?.[0]?.reason || ch.data?.error?.message || (ch.ok ? "no uploads playlist" : `HTTP ${ch.status}`)
+    return { ...result, error: `channels: ${reason}` }
   }
+  const pl = await yt(`/playlistItems?part=contentDetails&playlistId=${uploads}&maxResults=${RECENT_VIDEOS}`, token)
+  if (!pl.ok) {
+    const reason = pl.data?.error?.errors?.[0]?.reason || pl.data?.error?.message || `HTTP ${pl.status}`
+    return { ...result, error: `playlistItems: ${reason}` }
+  }
+  const videoIds: string[] = (pl.data?.items || []).map((i: any) => i.contentDetails?.videoId).filter(Boolean)
+  const threads: Thread[] = []
+  let closed = 0
+  for (const vid of videoIds) {
+    const r = await yt(`/commentThreads?part=snippet,replies&videoId=${vid}&order=time&maxResults=20&textFormat=plainText`, token)
+    if (!r.ok) {
+      const reason = r.data?.error?.errors?.[0]?.reason || ""
+      if (reason === "commentsDisabled") { closed++; continue }
+      console.error(`[youtube-comments] commentThreads ${vid}: ${reason || r.status}`)
+      continue
+    }
+    threads.push(...(r.data.items || []))
+  }
+  threads.sort((a, b) => b.snippet.topLevelComment.snippet.publishedAt.localeCompare(a.snippet.topLevelComment.snippet.publishedAt))
+  result.videos = videoIds.length
+  result.commentsClosed = closed
 
   const cfg = await prisma.aIConfig.findFirst({ select: { calendlyUrl: true } }).catch(() => null)
-  const threads: Thread[] = list.data.items || []
   const videoCache = new Map<string, { title: string; description: string }>()
 
   for (const t of threads) {

@@ -10,7 +10,7 @@ import { useState } from "react"
 import { Loader2, Youtube, CheckCircle2, AlertCircle } from "lucide-react"
 
 type Item = { author: string; comment: string; video: string; link: string; action: "reply" | "skip"; reason?: string; reply?: string }
-type Result = { checked: number; replied: number; skipped: number; error?: string; channel?: string; canReply?: boolean; preview?: Item[] }
+type Result = { checked: number; replied: number; skipped: number; error?: string; channel?: string; canReply?: boolean; videos?: number; commentsClosed?: number; preview?: Item[] }
 
 const ERRORS: Record<string, string> = {
   "YouTube not connected": "YouTube no está conectado. Haz clic en “Connect” en la tarjeta de YouTube de arriba.",
@@ -21,9 +21,10 @@ export default function YouTubeCommentTest() {
   const [r, setR] = useState<Result | null>(null)
   const [vBusy, setVBusy] = useState(false)
   const [vMsg, setVMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [confirming, setConfirming] = useState(false)
 
   async function testVideo() {
-    if (!confirm("¿Crear un video de prueba con tu avatar y subirlo a YouTube como OCULTO (solo con el enlace)? Usa créditos de HeyGen (~$1–2).")) return
+    setConfirming(false)
     setVBusy(true)
     setVMsg(null)
     try {
@@ -69,9 +70,17 @@ export default function YouTubeCommentTest() {
           <p className="text-sm font-semibold text-gray-900">Video de prueba con tu avatar</p>
           <p className="mt-0.5 text-xs text-gray-500">Se sube como oculto: nadie lo ve sin el enlace. Úsalo para revisar avatar, voz, título y descripción.</p>
         </div>
-        <button onClick={testVideo} disabled={vBusy} className="flex items-center gap-2 rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60">
-          {vBusy ? <><Loader2 className="h-4 w-4 animate-spin" /> Creando…</> : "Crear video de prueba"}
-        </button>
+        {confirming ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-gray-600">Usa ~$1–2 de crédito de HeyGen.</span>
+            <button onClick={testVideo} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">Sí, crear video</button>
+            <button onClick={() => setConfirming(false)} className="rounded-lg px-3 py-2 text-sm text-gray-600 hover:bg-gray-100">Cancelar</button>
+          </div>
+        ) : (
+          <button onClick={() => { setVMsg(null); setConfirming(true) }} disabled={vBusy} className="flex items-center gap-2 rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60">
+            {vBusy ? <><Loader2 className="h-4 w-4 animate-spin" /> Creando…</> : "Crear video de prueba"}
+          </button>
+        )}
       </div>
       {vMsg && <p className={`mt-3 rounded-lg px-3 py-2 text-sm ${vMsg.ok ? "bg-green-50 text-green-800" : "bg-red-50 text-red-700"}`}>{vMsg.text}</p>}
 
@@ -82,6 +91,14 @@ export default function YouTubeCommentTest() {
           ) : (
             <p className="text-sm text-gray-700">
               Canal <strong>{r.channel}</strong>: {r.checked} comentario{r.checked === 1 ? "" : "s"} revisado{r.checked === 1 ? "" : "s"} · {r.replied} respuesta{r.replied === 1 ? "" : "s"} de ejemplo
+            </p>
+          )}
+          {!r.error && (r.commentsClosed || 0) > 0 && (
+            <p className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              {r.commentsClosed === r.videos
+                ? `Tus ${r.videos} videos más recientes tienen los comentarios desactivados, así que nadie puede comentar. Actívalos en YouTube Studio → Configuración → Comunidad → Configuración predeterminada, y en cada video (Detalles → Comentarios).`
+                : `${r.commentsClosed} de tus ${r.videos} videos más recientes tienen los comentarios desactivados; Sofía revisa los demás.`}
             </p>
           )}
           {r.canReply === false && (
