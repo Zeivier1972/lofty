@@ -18,7 +18,8 @@ import { uploadVideoToYouTube } from "./youtube-upload"
 import { publishGoogleBusinessPost } from "./google-business"
 import { createVideo, getVideoStatus, isFinished, isFailed, type HeyGenScene } from "./heygen"
 import { startFacelessRender, facelessConfigured, takeWeeklyScript, getRenderStatus, WEBINAR_SERIES_URL } from "./faceless-video"
-import { fetchSceneVideoUrl, getFallbackBackground, fetchPexelsPhoto } from "./pexels-video"
+import { fetchSceneVideoUrl, fetchVideoByQuery, getFallbackBackground, fetchPexelsPhoto } from "./pexels-video"
+import { brollQueriesFor } from "./broll-queries"
 import { generateGuideFromScript } from "./generate-guide"
 import { contentPlanFor, type ContentPlan } from "./content-plan"
 import { getVoiceSamples, voiceBlock } from "./voice-samples"
@@ -630,12 +631,14 @@ async function triggerHeyGenVideo(script: string, dayOfWeek: number): Promise<st
 
     // Structure: avatar intro → b-roll scenes → avatar outro
     const parts = splitScriptForBRoll(script)
+    // Each B-roll clip is searched for what that scene says (Miami footage).
+    const queries = await brollQueriesFor(parts)
     const videoUrls = await Promise.all(
-      parts.map((sceneText, i) =>
-        i === 0 || i === parts.length - 1
-          ? Promise.resolve(null)
-          : fetchSceneVideoUrl(sceneText, "portrait")
-      )
+      parts.map(async (sceneText, i) => {
+        if (i === 0 || i === parts.length - 1) return null
+        console.log(`[social-autopilot] B-roll ${i}: "${queries[i]}"`)
+        return (await fetchVideoByQuery(queries[i], "portrait")) || fetchSceneVideoUrl(sceneText, "portrait")
+      })
     )
 
     // The avatar/talking-photo split is gone on v3: one avatar_id covers both,

@@ -7,6 +7,7 @@ import type { ContentPlan } from "@/lib/content-plan"
 import { projectKnowledgeFor } from "@/lib/project-knowledge"
 import { PROJECTS } from "@/lib/projects"
 import { fetchVideoByQuery } from "@/lib/pexels-video"
+import { brollQueriesFor, splitNarration } from "@/lib/broll-queries"
 import { randomUUID } from "crypto"
 import { ffmpegPath, renderShort, buildCaptions, estimateWords } from "@/lib/local-video"
 
@@ -216,15 +217,18 @@ function shuffle<T>(a: T[]): T[] {
   return b
 }
 
-async function pickVisuals(plan: ContentPlan, count: number): Promise<Visual[]> {
+async function pickVisuals(plan: ContentPlan, count: number, narration = ""): Promise<Visual[]> {
   const intl = plan.audience === "INTERNACIONAL"
-  // Real footage first: an aerial Miami opener stops the scroll better than a still.
-  const queries = intl
+  // Real footage first: an aerial Miami opener stops the scroll better than a
+  // still. The clips follow what the voice says, segment by segment.
+  const fixed = intl
     ? ["Miami aerial skyline", "Brickell Miami", "Miami ocean drone"]
     : ["new homes neighborhood aerial", "modern house exterior", "family new home keys", "luxury kitchen interior", "Florida suburb houses", "Miami aerial"]
+  const fromScript = narration ? await brollQueriesFor(splitNarration(narration, intl ? 3 : 6), plan.project?.name || "").catch(() => []) : []
+  const queries = fromScript.length ? fromScript : fixed
   const clips: Visual[] = []
   // Local (new-construction) videos have no project renders, so they lean on footage.
-  for (const q of queries.slice(0, intl ? 2 : 6)) {
+  for (const q of queries.slice(0, intl ? 3 : 6)) {
     const url = await fetchVideoByQuery(q, "portrait").catch(() => null)
     if (url) clips.push({ type: "video", source: url })
   }
@@ -268,7 +272,7 @@ export async function startFacelessRender(
   const voice = await synthesizeVoice(script.voice)
   const total = Math.round((voice.seconds + 1.2) * 10) / 10
   const slots = Math.max(5, Math.min(9, Math.round(total / 5)))
-  const visuals = await pickVisuals(plan, slots)
+  const visuals = await pickVisuals(plan, slots, script.voice)
   if (!visuals.length) throw new Error("no visuals available")
 
   if (!useCreatomate()) {
