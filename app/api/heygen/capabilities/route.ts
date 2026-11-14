@@ -74,5 +74,7 @@ export async function POST() {
   }))
 
   console.log(`[heygen-capabilities] ${results.map(r => `${r.request}=${r.status}`).join(" ")}`)
+  // Full replies in the logs too (the screen truncates them on a phone).
+  for (const r of results) console.log(`[heygen-capabilities] ${r.name} | ${r.request} | ${r.status} | ${r.summary}`)
   return NextResponse.json({ results })
 }
