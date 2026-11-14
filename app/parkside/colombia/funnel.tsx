@@ -18,7 +18,7 @@ import { ArrowLeft, ArrowRight, Loader2 } from "lucide-react"
 import BookingCalendar from "@/components/public/booking-calendar"
 import RentScenario from "./rent-scenario"
 import { BookingPromise } from "./trust"
-import { CAPITAL, CAPITAL_LABELS, CAPITAL_PRIVATE, GOALS, PREFS, TIMING, buildPlan, usd, PRICES_AS_OF, FINANCING, VIDEO } from "./data"
+import { CAPITAL, CAPITAL_LABELS, CAPITAL_PRIVATE, CONTRACT_PCT, UNITS, GOALS, PREFS, TIMING, buildPlan, usd, PRICES_AS_OF, FINANCING, VIDEO } from "./data"
 
 const FOREST = "#1E2B23"
 const GREEN = "#2E4236"
@@ -101,7 +101,7 @@ export default function Funnel({ waUrl, webinarUrl }: { waUrl: string; webinarUr
 
   const QUESTIONS: { title: string; hint?: string; key: keyof Answers; options: string[] }[] = [
     { key: "goal", title: "¿Qué busca con una propiedad en Miami?", options: GOALS },
-    { key: "pref", title: "¿Qué tipo de residencia le interesa?", hint: "Estudios desde US$490,000 · 1 habitación desde US$582,750 · 2 habitaciones desde US$1,160,250", options: PREFS },
+    { key: "pref", title: "¿Qué tipo de residencia le interesa?", hint: `Se separa con el 20%: desde ${usd(UNITS[0].from * CONTRACT_PCT)} en un estudio. El resto se paga por etapas hasta la entrega en 2028. Los precios completos los verá en su plan.`, options: PREFS },
     { key: "timing", title: "¿Cuándo le gustaría tomar una decisión?", options: TIMING },
     { key: "capital", title: "¿Con cuánto capital cuenta hoy para la inversión?", hint: "Al firmar el contrato se deposita el 20% del precio. Es solo para armar su plan; si prefiere, lo hablamos en la conversación.", options: CAPITAL_LABELS },
   ]
