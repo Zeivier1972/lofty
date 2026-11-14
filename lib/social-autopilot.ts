@@ -17,7 +17,8 @@ import { researchViralContent, buildAIOSystemPrompt, ResearchBrief } from "./con
 import { uploadVideoToYouTube } from "./youtube-upload"
 import { publishGoogleBusinessPost } from "./google-business"
 import { createVideo, getVideoStatus, isFinished, isFailed, type HeyGenScene } from "./heygen"
-import { startFacelessRender, facelessConfigured, takeWeeklyScript, getRenderStatus, WEBINAR_SERIES_URL } from "./faceless-video"
+import { startFacelessRender, facelessConfigured, takeWeeklyScript, getRenderStatus, startCaptionJob, WEBINAR_SERIES_URL } from "./faceless-video"
+import { ffmpegPath } from "./local-video"
 import { fetchSceneVideoUrl, fetchVideoByQuery, getFallbackBackground, fetchPexelsPhoto } from "./pexels-video"
 import { brollQueriesFor } from "./broll-queries"
 import { generateGuideFromScript } from "./generate-guide"
@@ -1039,7 +1040,15 @@ export async function checkHeygenVideos(): Promise<{ checked: number; completed:
       const { status: heygenStatus, videoUrl } = await getVideoStatus(post.externalId as string)
 
       if (isFinished(heygenStatus) && videoUrl) {
-        if (creatomateKey) {
+        // Captions on our own server (free) unless Creatomate is chosen.
+        if (ffmpegPath() && process.env.VIDEO_RENDERER !== "creatomate") {
+          const renderId = await startCaptionJob(videoUrl, String(post.externalId))
+          await prisma.socialPost.update({
+            where: { id: post.id },
+            data: { status: "CAPTIONS_PENDING", externalId: `cm_${renderId}`, mediaUrl: videoUrl },
+          })
+          console.log(`[social-autopilot] HeyGen done → captions on our server (${renderId}) for post ${post.id}`)
+        } else if (creatomateKey) {
           // Pipe through Creatomate for kinetic captions before publishing
           const ctRes = await fetch("https://api.creatomate.com/v1/renders", {
             method: "POST",

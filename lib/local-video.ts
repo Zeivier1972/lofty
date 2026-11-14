@@ -227,3 +227,53 @@ export async function renderShort(opts: {
     rmSync(dir, { recursive: true, force: true })
   }
 }
+
+/**
+ * Burns word captions (and the brand line) onto an existing vertical video —
+ * the HeyGen avatar videos — keeping its own audio. Replaces the paid
+ * Creatomate caption pass. Same caption look as renderShort.
+ */
+export async function captionVideo(opts: { video: Buffer; captions: Caption[]; label?: string }): Promise<Buffer> {
+  const ff = ffmpegPath()
+  if (!ff) throw new Error("ffmpeg not available")
+  const dir = mkdtempSync(join(tmpdir(), "cap-"))
+  try {
+    const src = join(dir, "in.mp4")
+    writeFileSync(src, opts.video)
+    const clean = (t: string) => t.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]|[☀-➿️‍]/g, "").replace(/\s+/g, " ").trim()
+    const tf = (name: string, text: string) => { const p = join(dir, name); writeFileSync(p, text.split("\n").map(clean).join("\n"), "utf8"); return p }
+    const shadow = "shadowcolor=black@0.6:shadowx=3:shadowy=3"
+    const filters = [`scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},fps=${FPS},setsar=1`]
+    opts.captions.forEach((c, i) => {
+      filters.push(`drawtext=fontfile='${FONT_SERIF_TEXT}':textfile='${tf(`c${i}.txt`, wrap(c.text, 24))}':fontsize=66:fontcolor=white:line_spacing=10:${shadow}:` +
+        `box=1:boxcolor=black@0.25:boxborderw=18:x=(w-text_w)/2:y=h*0.70:enable='between(t,${c.start.toFixed(2)},${c.end.toFixed(2)})'`)
+    })
+    filters.push(`drawtext=fontfile='${FONT_SEMI}':textfile='${tf("label.txt", opts.label || "Catherine Gomez Realtor")}':fontsize=46:fontcolor=white:${shadow}:` +
+      `x=(w-text_w)/2:y=h*0.885`)
+    const filterFile = tf("graph.txt", `[0:v]${filters.join(",\n")}[v]`)
+    const out = join(dir, "out.mp4")
+    await run(ff, ["-y", "-i", src, "-filter_complex_script", filterFile,
+      "-map", "[v]", "-map", "0:a?", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
+      "-profile:v", "high", "-level", "4.1", "-r", String(FPS), "-g", String(FPS * 2), "-maxrate", "8M", "-bufsize", "16M",
+      "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2", "-movflags", "+faststart", out])
+    return readFileSync(out)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+/** The audio track of a video as a small mono mp3 (for word timings). */
+export async function extractAudio(video: Buffer): Promise<Buffer> {
+  const ff = ffmpegPath()
+  if (!ff) throw new Error("ffmpeg not available")
+  const dir = mkdtempSync(join(tmpdir(), "aud-"))
+  try {
+    const src = join(dir, "in.mp4")
+    writeFileSync(src, video)
+    const out = join(dir, "a.mp3")
+    await run(ff, ["-y", "-i", src, "-vn", "-ac", "1", "-ar", "16000", "-b:a", "64k", out])
+    return readFileSync(out)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}

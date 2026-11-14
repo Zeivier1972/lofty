@@ -9,7 +9,7 @@ import { PROJECTS } from "@/lib/projects"
 import { fetchVideoByQuery } from "@/lib/pexels-video"
 import { brollQueriesFor, splitNarration } from "@/lib/broll-queries"
 import { randomUUID } from "crypto"
-import { ffmpegPath, renderShort, buildCaptions, estimateWords } from "@/lib/local-video"
+import { ffmpegPath, renderShort, buildCaptions, estimateWords, captionVideo, extractAudio } from "@/lib/local-video"
 
 /**
  * Faceless short-form video (YouTube Shorts / Reels / TikTok) — no AI avatar.
@@ -392,6 +392,37 @@ async function wordTimings(audio: Buffer, ext: "mp3" | "wav"): Promise<{ word: s
   if (!res.ok) return null
   const d = await res.json()
   return Array.isArray(d.words) ? d.words.map((w: any) => ({ word: String(w.word).trim(), start: Number(w.start), end: Number(w.end) })) : null
+}
+
+/**
+ * Free caption pass for a finished HeyGen avatar video, on our own server:
+ * Whisper word timings from the video's audio → captions burned in with
+ * ffmpeg. One job per HeyGen video (several platforms' posts share it).
+ * Returns the render id for getRenderStatus ("ff_<id>").
+ */
+export async function startCaptionJob(videoUrl: string, key: string, label?: string): Promise<string> {
+  const id = `cap${key.replace(/[^a-zA-Z0-9]/g, "").slice(0, 32)}`
+  const existing = await prisma.setting.findUnique({ where: { key: `videojob:${id}` } }).catch(() => null)
+  if (existing) return `ff_${id}`
+  await setJob(id, { status: "rendering", startedAt: new Date().toISOString() })
+  void (async () => {
+    try {
+      const res = await fetch(videoUrl, { signal: AbortSignal.timeout(120000) })
+      if (!res.ok) throw new Error(`download ${res.status}`)
+      const video = Buffer.from(await res.arrayBuffer())
+      const words = await wordTimings(await extractAudio(video), "mp3").catch(() => null)
+      if (!words?.length) throw new Error("no word timings (OPENAI_API_KEY?)")
+      const mp4 = await captionVideo({ video, captions: buildCaptions(words), label })
+      const row = await prisma.generatedMedia.create({ data: { mimeType: "video/mp4", data: mp4 } })
+      await setJob(id, { status: "succeeded", url: `${BASE}/api/media/${row.id}.mp4` })
+      console.log(`[faceless-video] captions ${id} done — ${(mp4.length / 1e6).toFixed(1)} MB`)
+    } catch (e: any) {
+      console.error(`[faceless-video] captions ${id} failed:`, e)
+      await setJob(id, { status: "failed", error: String(e?.message || e).slice(0, 300) })
+    }
+  })()
+  console.log(`[faceless-video] captions ${id} started`)
+  return `ff_${id}`
 }
 
 export async function getRenderStatus(renderId: string): Promise<{ status: string; url?: string; error?: string }> {
