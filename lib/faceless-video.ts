@@ -6,8 +6,6 @@ import type { ResearchBrief } from "@/lib/content-research"
 import type { ContentPlan } from "@/lib/content-plan"
 import { projectKnowledgeFor } from "@/lib/project-knowledge"
 import { PROJECTS } from "@/lib/projects"
-import { fetchVideoByQuery } from "@/lib/pexels-video"
-import { brollQueriesFor, splitNarration } from "@/lib/broll-queries"
 import { randomUUID } from "crypto"
 import { ffmpegPath, renderShort, buildCaptions, estimateWords, captionVideo, extractAudio } from "@/lib/local-video"
 
@@ -217,22 +215,12 @@ function shuffle<T>(a: T[]): T[] {
   return b
 }
 
-async function pickVisuals(plan: ContentPlan, count: number, narration = ""): Promise<Visual[]> {
+async function pickVisuals(plan: ContentPlan, count: number, _narration = ""): Promise<Visual[]> {
+  // Only real project material. Free stock clips searched by keyword never
+  // matched what the voice said (Catherine, Nov 2026: "the b-rolls don't make
+  // sense"), so they are gone. A topic with no project renders gets no faceless
+  // video that day rather than unrelated footage.
   const intl = plan.audience === "INTERNACIONAL"
-  // Real footage first: an aerial Miami opener stops the scroll better than a
-  // still. The clips follow what the voice says, segment by segment.
-  const fixed = intl
-    ? ["Miami aerial skyline", "Brickell Miami", "Miami ocean drone"]
-    : ["new homes neighborhood aerial", "modern house exterior", "family new home keys", "luxury kitchen interior", "Florida suburb houses", "Miami aerial"]
-  const fromScript = narration ? await brollQueriesFor(splitNarration(narration, intl ? 3 : 6), plan.project?.name || "").catch(() => []) : []
-  const queries = fromScript.length ? fromScript : fixed
-  const clips: Visual[] = []
-  // Local (new-construction) videos have no project renders, so they lean on footage.
-  for (const q of queries.slice(0, intl ? 3 : 6)) {
-    const url = await fetchVideoByQuery(q, "portrait").catch(() => null)
-    if (url) clips.push({ type: "video", source: url })
-  }
-
   let stills: string[] = []
   if (plan.project) stills = projectImages(plan.project.img)
   if (stills.length < count && intl) {
@@ -241,15 +229,9 @@ async function pickVisuals(plan: ContentPlan, count: number, narration = ""): Pr
       if (stills.length >= count * 2) break
     }
   }
+  if (!stills.length) console.warn(`[faceless-video] no project renders for "${plan.theme.slice(0, 60)}" — skipping (no stock footage)`)
   const images: Visual[] = shuffle(stills).map(s => ({ type: "image" as const, source: s }))
-
-  // Opener clip, then stills, with the second clip in the middle for rhythm.
-  const out: Visual[] = []
-  if (clips[0]) out.push(clips[0])
-  out.push(...images.slice(0, Math.max(0, count - out.length - (clips[1] ? 1 : 0))))
-  if (clips[1]) out.splice(Math.ceil(out.length / 2), 0, clips[1])
-  while (out.length < count && clips.length) out.push(clips[out.length % clips.length])
-  return out.slice(0, count)
+  return images.slice(0, count)
 }
 
 // ─── Render ──────────────────────────────────────────────────────────────────
