@@ -12,6 +12,7 @@ import {
 import { cn } from "@/lib/utils"
 import HelpPanel from "@/components/help-panel"
 import YouTubeCommentTest from "./youtube-comment-test"
+import PilotVideo from "./pilot-video"
 
 interface SocialAccount {
   id: string
@@ -890,6 +891,8 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
                 <button onClick={() => setYoutubeBanner(null)} className="ml-auto text-xs underline">Dismiss</button>
               </div>
             )}
+
+            <PilotVideo />
 
             <YouTubeCommentTest />
 

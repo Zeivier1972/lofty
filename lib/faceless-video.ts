@@ -378,7 +378,7 @@ async function setJob(id: string, patch: Job) {
 }
 
 /** Word-level timings for the captions (OpenAI Whisper); null when unavailable. */
-async function wordTimings(audio: Buffer, ext: "mp3" | "wav"): Promise<{ word: string; start: number; end: number }[] | null> {
+export async function wordTimings(audio: Buffer, ext: "mp3" | "wav"): Promise<{ word: string; start: number; end: number }[] | null> {
   if (!process.env.OPENAI_API_KEY) return null
   const form = new FormData()
   form.append("file", new Blob([new Uint8Array(audio)], { type: ext === "wav" ? "audio/wav" : "audio/mpeg" }), `voice.${ext}`)
