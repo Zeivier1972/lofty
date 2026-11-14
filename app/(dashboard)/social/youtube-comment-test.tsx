@@ -22,6 +22,21 @@ export default function YouTubeCommentTest() {
   const [vBusy, setVBusy] = useState(false)
   const [vMsg, setVMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [confirming, setConfirming] = useState(false)
+  const [hgBusy, setHgBusy] = useState(false)
+  const [hg, setHg] = useState<{ results?: { name: string; request: string; status: number; verdict: string; summary: string }[]; error?: string } | null>(null)
+
+  async function probeHeyGen() {
+    setHgBusy(true)
+    setHg(null)
+    try {
+      const res = await fetch("/api/heygen/capabilities", { method: "POST" })
+      setHg(await res.json())
+    } catch {
+      setHg({ error: "No hubo respuesta del servidor" })
+    } finally {
+      setHgBusy(false)
+    }
+  }
 
   async function testVideo() {
     setConfirming(false)
@@ -82,6 +97,30 @@ export default function YouTubeCommentTest() {
           </button>
         )}
       </div>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-4">
+        <div>
+          <p className="text-sm font-semibold text-gray-900">¿Qué puede hacer tu cuenta de HeyGen?</p>
+          <p className="mt-0.5 text-xs text-gray-500">Revisa qué funciones tiene tu clave de API (Video Agent, 16:9, 4K, plantillas). No crea videos ni gasta créditos.</p>
+        </div>
+        <button onClick={probeHeyGen} disabled={hgBusy} className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60">
+          {hgBusy ? <><Loader2 className="h-4 w-4 animate-spin" /> Revisando…</> : "Probar HeyGen"}
+        </button>
+      </div>
+      {hg?.error && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{hg.error}</p>}
+      {hg?.results && (
+        <ul className="mt-3 space-y-2">
+          {hg.results.map((x, i) => (
+            <li key={i} className="rounded-lg border border-gray-200 p-3 text-sm">
+              <p className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-semibold text-gray-900">{x.name}</span>
+                <span className={x.verdict.startsWith("Disponible") ? "text-green-700" : "text-amber-700"}>{x.verdict}</span>
+              </p>
+              <p className="mt-1 break-words font-mono text-[11px] text-gray-500">{x.request} → {x.status} · {x.summary}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+
       {vMsg && <p className={`mt-3 rounded-lg px-3 py-2 text-sm ${vMsg.ok ? "bg-green-50 text-green-800" : "bg-red-50 text-red-700"}`}>{vMsg.text}</p>}
 
       {r && (
