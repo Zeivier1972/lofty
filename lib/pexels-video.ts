@@ -161,6 +161,31 @@ export async function fetchPexelsPhoto(
   }
 }
 
+
+/**
+ * The best file of a Pexels video for our renders: full HD at least on the
+ * short edge (1080), the smallest such file (no 4K downloads to resize), and
+ * null when the clip has no HD file — those were the blurry 720p clips that
+ * got stretched to 1080×1920. Clips under 5 s are skipped (too short to cut).
+ */
+function hdFile(video: any): string | null {
+  if (typeof video?.duration === "number" && video.duration < 5) return null
+  const files: any[] = (video?.video_files ?? []).filter((f: any) => f.file_type === "video/mp4" && f.width && f.height)
+  const hd = files.filter(f => Math.min(f.width, f.height) >= 1080).sort((a, b) => a.width * a.height - b.width * b.height)
+  return hd[0]?.link ?? null
+}
+
+/** First HD clip among the top results (randomised a little so scenes differ). */
+function pickHd(videos: any[]): string | null {
+  const top = videos.slice(0, 10)
+  const start = Math.floor(Math.random() * Math.min(top.length, 4))
+  for (let k = 0; k < top.length; k++) {
+    const link = hdFile(top[(start + k) % top.length])
+    if (link) return link
+  }
+  return null
+}
+
 export async function fetchVideoByQuery(
   query: string,
   orientation: "portrait" | "landscape" = "portrait"
@@ -168,11 +193,9 @@ export async function fetchVideoByQuery(
   const apiKey = process.env.PEXELS_API_KEY
   if (!apiKey) return null
 
-  const targetWidth = orientation === "portrait" ? 720 : 1280
-
   try {
     const res = await fetch(
-      `https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=8&orientation=${orientation}&size=medium`,
+      `https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=15&orientation=${orientation}&size=large`,
       {
         headers: { Authorization: apiKey },
         signal: AbortSignal.timeout(6000),
@@ -184,11 +207,7 @@ export async function fetchVideoByQuery(
     const videos: any[] = data?.videos ?? []
     if (!videos.length) return null
 
-    const video = videos[Math.floor(Math.random() * Math.min(videos.length, 5))]
-    const files: any[] = (video.video_files ?? []).filter((f: any) => f.file_type === "video/mp4")
-    const sorted = files.sort((a: any, b: any) => Math.abs(a.width - targetWidth) - Math.abs(b.width - targetWidth))
-
-    return sorted[0]?.link ?? null
+    return pickHd(videos)
   } catch {
     return null
   }
@@ -202,11 +221,10 @@ export async function fetchSceneVideoUrl(
   if (!apiKey) return null
 
   const query = getSceneQuery(sceneText)
-  const targetWidth = orientation === "portrait" ? 720 : 1280
 
   try {
     const res = await fetch(
-      `https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=8&orientation=${orientation}&size=medium`,
+      `https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=15&orientation=${orientation}&size=large`,
       {
         headers: { Authorization: apiKey },
         signal: AbortSignal.timeout(6000),
@@ -218,12 +236,7 @@ export async function fetchSceneVideoUrl(
     const videos: any[] = data?.videos ?? []
     if (!videos.length) return null
 
-    // Pick randomly from first 5 results so different scenes get different clips
-    const video = videos[Math.floor(Math.random() * Math.min(videos.length, 5))]
-    const files: any[] = (video.video_files ?? []).filter((f: any) => f.file_type === "video/mp4")
-    const sorted = files.sort((a: any, b: any) => Math.abs(a.width - targetWidth) - Math.abs(b.width - targetWidth))
-
-    return sorted[0]?.link ?? null
+    return pickHd(videos)
   } catch {
     return null
   }
