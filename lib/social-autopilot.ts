@@ -630,36 +630,17 @@ async function triggerHeyGenVideo(script: string, dayOfWeek: number): Promise<st
 
     const talkingPhotoIds = new Set(CATHERINE_TALKING_PHOTO_IDS)
 
-    // Structure: avatar intro → b-roll scenes → avatar outro
+    // Avatar only, over the avatar's own background. The old B-roll came
+    // from free stock searched by keyword and never matched what Catherine
+    // says; real-material editing lives in lib/pilot-render.ts and will
+    // replace this once she approves the pilot's look.
     const parts = splitScriptForBRoll(script)
-    // Each B-roll clip is searched for what that scene says (Miami footage).
-    const queries = await brollQueriesFor(parts)
-    const videoUrls = await Promise.all(
-      parts.map(async (sceneText, i) => {
-        if (i === 0 || i === parts.length - 1) return null
-        console.log(`[social-autopilot] B-roll ${i}: "${queries[i]}"`)
-        return (await fetchVideoByQuery(queries[i], "portrait")) || fetchSceneVideoUrl(sceneText, "portrait")
-      })
-    )
-
-    // The avatar/talking-photo split is gone on v3: one avatar_id covers both,
-    // and a photo avatar's look id is what produces a talking photo. The set is
-    // still passed through so the v2 escape hatch can rebuild the old shape.
-    const scenes: HeyGenScene[] = parts.map((sceneText, i) => {
-      const isEdge = i === 0 || i === parts.length - 1
-      const videoUrl = videoUrls[i]
-      if (!isEdge && videoUrl) {
-        return { kind: "broll", videoUrl, script: sceneText, voiceId: avatarInfo.voiceId }
-      }
-      const bg = getFallbackBackground(sceneText, i) as { type: string; url: string }
-      return {
-        kind: "avatar",
-        avatarId: avatarInfo.avatarId,
-        script: sceneText,
-        voiceId: avatarInfo.voiceId,
-        background: { type: "image", url: bg.url },
-      }
-    })
+    const scenes: HeyGenScene[] = parts.map(sceneText => ({
+      kind: "avatar",
+      avatarId: avatarInfo.avatarId,
+      script: sceneText,
+      voiceId: avatarInfo.voiceId,
+    }))
 
     const brollCount = scenes.filter(sc => sc.kind === "broll").length
     console.log(`[social-autopilot] HeyGen — ${scenes.length} scenes, ${brollCount} B-roll, avatar: ${avatarInfo.avatarId.slice(0, 8)}`)
