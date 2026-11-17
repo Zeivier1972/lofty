@@ -51,6 +51,7 @@ PARA AGENDAR CITA (la meta de cada conversación):
 - Antes de los horarios, una frase de por qué vale la pena: "Catherine te explica en 15 minutos [lo que busca] con tus números."
 
 REGLAS:
+- Tono siempre amable y profesional. NUNCA regañes, corrijas ni te burles de cómo escribe la persona (emojis, audios, mensajes cortos). No uses "mi amor" ni comentes su vida personal (boda, bebé, pareja).
 - Responde SIEMPRE en español (inglés solo si el lead escribe en inglés)
 - Si el lead desconfía o dice que es estafa / "inversiones falsas": NO vendas ni insistas. Responde UNA vez, breve y tranquila: Catherine es Realtor con licencia de Florida #3320405 (verificable en myfloridalicense.com), los depósitos van a una cuenta escrow regulada por ley de Florida, y nunca se pide dinero por chat ni en la primera llamada. Ofrece que verifique la licencia y que, si no le interesa, no le escribimos más. No pidas datos ni ofrezcas propiedades en ese mensaje.
 - Si el lead dice que no le interesa o que dejen de escribirle: despídete amablemente en una frase y no insistas.
@@ -551,6 +552,26 @@ export async function POST(req: Request) {
       if (isWhatsApp) await sendWhatsApp(toE164(phone), slotReply, undefined, { contactId: contact.id })
       else await sendSMS(toE164(phone), sanitizeSmsBody(slotReply), undefined, { contactId: contact.id })
       return new Response(`<Response></Response>`, { headers: { "Content-Type": "text/xml" } })
+    }
+
+    // Nothing to answer: only emojis/reactions, or a bare "ok"/"gracias"/"jaja".
+    // Sofía used to reply to every one of these (and to scold people for
+    // writing in emojis). A new ad lead still gets the greeting.
+    // Also a cap: at most 4 automatic replies per person per hour, so a burst
+    // of messages can't turn into a burst of AI answers.
+    if (!isNewCtwaLead) {
+      const t = body.trim()
+      const noWords = !new RegExp("[\\p{L}\\p{N}]", "u").test(t)
+      const filler = /^(ok(ay|ey)?|oki|vale|listo|gracias|muchas gracias|mil gracias|thanks|thank you|thx|jaja+|jeje+|jaja(ja)*|ja+|haha+|lol|bien|perfecto|genial|👍)[\s.!¡]*$/i.test(t.replace(new RegExp("[^\\p{L}\\p{N}\\s.!¡]", "gu"), "").trim())
+      const since = new Date(Date.now() - 60 * 60000)
+      const recentReplies = await prisma.activity.count({ where: { contactId: contact.id, createdAt: { gte: since }, title: { contains: "Sofía respondió" } } }).catch(() => 0)
+      const reason = noWords ? "solo emojis" : filler ? "mensaje sin pregunta" : recentReplies >= 4 ? "límite de 4 respuestas por hora" : null
+      if (reason) {
+        await prisma.activity.create({
+          data: { type: isWhatsApp ? "WhatsApp" : "SMS", title: `${isWhatsApp ? "WhatsApp" : "SMS"} recibido — Sofía no respondió (${reason})`, description: `Escribió: "${body.slice(0, 160)}"`, contactId: contact.id },
+        }).catch(() => {})
+        return new Response(`<Response></Response>`, { headers: { "Content-Type": "text/xml" } })
+      }
     }
 
     // Build contact context for Claude
