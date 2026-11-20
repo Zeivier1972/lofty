@@ -581,31 +581,26 @@ export async function getHeyGenAvatar(dayOfWeek: number): Promise<{ avatarId: st
     const avatarId = (await socialVideoAvatarId(apiKey)) || CATHERINE_TALKING_PHOTO_IDS[dayOfWeek % CATHERINE_TALKING_PHOTO_IDS.length]
     console.log(`[social-autopilot] Catherine avatar → ${avatarId}`)
 
-    // Fetch voices to find Catalina (Catherine's preferred voice in HeyGen)
-    const voicesRes = await fetch("https://api.heygen.com/v2/voices", {
-      headers: { "X-Api-Key": apiKey },
-    })
-    const voicesData = await voicesRes.json()
-    const voices: Array<{ voice_id: string; language?: string; locale?: string; gender?: string; name?: string }> =
-      voicesData?.data?.voices ?? []
-
-    if (voices.length === 0) {
-      console.error("[social-autopilot] HeyGen voices empty:", JSON.stringify(voicesData))
-      return null
+    // Catherine's own cloned voice in HeyGen ("Catherine Gomez"). HeyGen
+    // retired GET /v2/voices (Nov 2026), which made every video fail with
+    // "voices empty"; v3 is tried for a fresh lookup, and this id is the
+    // fallback so a listing change can never stop the videos again.
+    const CATHERINE_VOICE_ID = "6fe3d0a0925c4a5db8d4f85b914730c6"
+    type V = { voice_id?: string; id?: string; language?: string; locale?: string; gender?: string; name?: string; display_name?: string }
+    let voices: V[] = []
+    try {
+      const voicesData: any = await fetch("https://api.heygen.com/v3/voices", { headers: { "X-Api-Key": apiKey } }).then(r => r.json())
+      const list = voicesData?.data?.voices ?? voicesData?.data?.items ?? voicesData?.data ?? voicesData?.voices ?? []
+      voices = Array.isArray(list) ? list : []
+      if (!voices.length) console.warn("[social-autopilot] HeyGen v3 voices empty — using Catherine's voice id:", JSON.stringify(voicesData).slice(0, 300))
+    } catch (e) {
+      console.warn("[social-autopilot] HeyGen v3 voices failed — using Catherine's voice id:", e)
     }
-
-    const isSpanish = (v: { language?: string; locale?: string }) =>
-      v.language === "es" || v.locale?.startsWith("es-") || v.locale === "es"
-
-    const catalina = voices.find(v =>
-      v.name?.toLowerCase().includes("catalina") ||
-      v.name?.toLowerCase().includes("catherine")
-    )
-    const spanishFemale = voices.find(v => isSpanish(v) && v.gender?.toLowerCase() === "female")
-    const spanishAny = voices.find(v => isSpanish(v))
-    const selectedVoice = catalina ?? spanishFemale ?? spanishAny ?? voices[0]
-    const voiceId = selectedVoice?.voice_id
-    if (!voiceId) return null
+    const vid = (v: V) => v.voice_id || v.id || ""
+    const vname = (v: V) => (v.name || v.display_name || "").toLowerCase()
+    const catherine = voices.find(v => vid(v) === CATHERINE_VOICE_ID) || voices.find(v => vname(v).includes("catherine"))
+    const selectedVoice = { name: catherine ? (catherine.name || catherine.display_name) : "Catherine Gomez (fallback)" }
+    const voiceId = (catherine && vid(catherine)) || CATHERINE_VOICE_ID
 
     console.log(`[social-autopilot] Voice: "${selectedVoice?.name}" (${voiceId})`)
     return { avatarId, voiceId }
