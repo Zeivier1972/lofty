@@ -1276,14 +1276,35 @@ async function publishToInstagram(account: AccountLike, post: PostLike): Promise
     throw new Error("Instagram: media URL required")
   }
 
-  const containerRes = await fetch(
-    `https://graph.facebook.com/v19.0/${account.pageId}/media`,
-    {
-      method: "POST",
-      body: new URLSearchParams(containerParams),
+  // Trial Reels: Instagram shows the video ONLY to non-followers first, and
+  // shares it with followers if it performs well (SS_PERFORMANCE). Catherine
+  // asked for this (Nov 2026) to reach new people. Setting
+  // "instagram_trial_reels" = "off" turns it off. If Instagram rejects the
+  // trial parameters, the video is posted as a normal Reel and she is told.
+  const trialSetting = isVideo
+    ? await prisma.setting.findUnique({ where: { key: "instagram_trial_reels" } }).catch(() => null)
+    : null
+  const tryTrial = isVideo && trialSetting?.value !== "off"
+  const createContainer = (params: Record<string, string>, version: string) =>
+    fetch(`https://graph.facebook.com/${version}/${account.pageId}/media`, { method: "POST", body: new URLSearchParams(params) })
+      .then(r => r.json())
+
+  let container: any
+  if (tryTrial) {
+    const trialParams = { ...containerParams, trial_params: JSON.stringify({ graduation_strategy: "SS_PERFORMANCE" }) }
+    delete (trialParams as Record<string, string>).share_to_feed
+    container = await createContainer(trialParams, "v23.0")
+    if (container.error) {
+      const why = `${container.error.message} (code ${container.error.code})`
+      console.warn(`[instagram] Trial Reel rejected — posting as a normal Reel: ${why}`)
+      await prisma.aINotification.create({ data: { type: "SOCIAL", title: "Instagram no aceptó el Trial Reel", body: `El video se publicó como Reel normal (lo ven tus seguidores). Motivo de Instagram: ${why.slice(0, 200)}`, priority: "LOW", metadata: "ig-trial-reel-rejected" } }).catch(() => {})
+      container = await createContainer(containerParams, "v19.0")
+    } else {
+      console.log(`[instagram] Trial Reel container ${container.id} (non-followers first)`)
     }
-  )
-  const container = await containerRes.json()
+  } else {
+    container = await createContainer(containerParams, "v19.0")
+  }
   if (container.error) {
     throw new Error(`Instagram API: ${container.error.message} (code ${container.error.code}, subcode ${container.error.error_subcode ?? "n/a"})`)
   }
