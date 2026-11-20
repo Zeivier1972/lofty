@@ -11,7 +11,6 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import HelpPanel from "@/components/help-panel"
-import YouTubeCommentTest from "./youtube-comment-test"
 import PilotVideo from "./pilot-video"
 
 interface SocialAccount {
@@ -904,7 +903,9 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
 
             <PilotVideo />
 
-            <YouTubeCommentTest />
+            {/* Test tools (Sofía YouTube preview, test video, HeyGen probe) live in
+                ./youtube-comment-test.tsx, hidden at Catherine's request; re-add
+                <YouTubeCommentTest /> here to bring them back. */}
 
             {/* Token error warnings — only when the LATEST post for that platform failed with an auth error */}
             {accounts.filter(a => a.isConnected).map(a => {
