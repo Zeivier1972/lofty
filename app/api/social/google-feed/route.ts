@@ -23,6 +23,30 @@ const esc = (s: string) =>
 
 const isVideo = (url: string) => /\.(mp4|mov|m4v)(\?|$)/i.test(url) || /\/video\//.test(url)
 
+const BLOG_LINK = /https?:\/\/(?:www\.)?catherinegomezrealtor\.com\/site\/blog\/([A-Za-z0-9_-]+)/g
+
+/**
+ * Older posts carry blog links whose slug the model cut short (404). Point each
+ * one at the real article: exact slug if it exists, else the newest published
+ * slug starting with the same words; drop the link line if there is none.
+ */
+async function repairBlogLinks(text: string): Promise<string> {
+  let out = text
+  for (const m of Array.from(text.matchAll(BLOG_LINK))) {
+    const slug = m[1]
+    const exact = await prisma.blogPost.findFirst({ where: { slug, published: true }, select: { slug: true } })
+    if (exact) continue
+    const prefix = slug.replace(/-\d*$/, "")
+    const match = prefix.length > 10
+      ? await prisma.blogPost.findFirst({ where: { slug: { startsWith: `${prefix}-` }, published: true }, orderBy: { publishedAt: "desc" }, select: { slug: true } })
+      : null
+    out = match
+      ? out.split(m[0]).join(`${BASE}/site/blog/${match.slug}`)
+      : out.split("\n").filter(l => !l.includes(m[0])).join("\n")
+  }
+  return out
+}
+
 export async function GET() {
   const posts = await prisma.socialPost.findMany({
     where: { platform: "FACEBOOK", status: "PUBLISHED", mediaUrl: { not: null } },
@@ -42,6 +66,9 @@ export async function GET() {
       return true
     })
     .slice(0, 10)
+
+  const repaired = await Promise.all(items.map(async p => ({ ...p, content: await repairBlogLinks(p.content) })))
+  const rendered = repaired
     .map(p => {
       const text = sanitizeForGoogle(p.content)
       const title = (text.split("\n").find(l => l.trim()) || "Catherine Gomez Realtor").slice(0, 90)
@@ -63,7 +90,7 @@ export async function GET() {
     <link>${BASE}</link>
     <description>Publicaciones del CRM para el perfil de Google Business</description>
     <language>es</language>
-${items.join("\n")}
+${rendered.join("\n")}
   </channel>
 </rss>`
 
