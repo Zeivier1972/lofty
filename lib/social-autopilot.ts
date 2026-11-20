@@ -228,6 +228,22 @@ Escribe SOLO el contenido del post, listo para publicar. Sin explicaciones, sin 
   return cleaned.trim()
 }
 
+/** Is the article about the same topic as the post? Errs on "no" (no link beats a wrong link). */
+async function sameTopic(articleTitle: string, postTopic: string): Promise<boolean> {
+  if (!postTopic.trim()) return false
+  try {
+    const r = await anthropic.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 5,
+      messages: [{ role: "user", content: `¿El artículo "${articleTitle}" trata del mismo tema que un post sobre "${postTopic}"? Mismo tema = mismo tipo de propiedad/comprador y misma zona o proyecto, o el artículo responde directamente lo que el post promete. Responde solo SI o NO.` }],
+    })
+    const t = r.content[0]?.type === "text" ? r.content[0].text : ""
+    return /^\s*s[ií]/i.test(t)
+  } catch {
+    return false
+  }
+}
+
 // ─── Image deduplication helpers ─────────────────────────────────────────────
 
 // 20-image fallback pool covering diverse Miami property types
@@ -1726,12 +1742,14 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
 
   // 3. Morning slot: publish one blog post and capture its URL for social posts
   let morningBlogUrl: string | null = null
+  let morningBlogTitle: string | null = null
   if (slot === "morning") {
     try {
       const blogResult = await publishBlogPost(dayOfWeek, research)
       if (blogResult) {
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://catherinegomezrealtor.com"
         morningBlogUrl = `${appUrl}/site/blog/${blogResult.slug}`
+        morningBlogTitle = blogResult.title
         console.log(`[social-autopilot] Blog post published: "${blogResult.title}" → ${morningBlogUrl}`)
       } else {
         console.warn("[social-autopilot] Blog post publish returned null — check logs")
@@ -1792,6 +1810,15 @@ export async function runAutopilot(slot: "morning" | "evening"): Promise<Autopil
   const usedMediaUrls = await getRecentlyUsedMediaUrls()
 
   // 7. Process each connected account independently
+  // Link the day's article only when it is about the same thing as the post
+  // (Catherine, Nov 2026: a "casas nuevas" post linked a Coral Gables article).
+  if (morningBlogUrl && morningBlogTitle) {
+    const postTopic = plan?.theme ?? research?.trendingTopic ?? ""
+    const same = await sameTopic(morningBlogTitle, postTopic)
+    console.log(`[social-autopilot] Blog link ${same ? "kept" : "left out"} — article "${morningBlogTitle}" vs post "${postTopic.slice(0, 80)}"`)
+    if (!same) morningBlogUrl = null
+  }
+
   for (const account of accounts) {
     try {
       // YouTube only gets real HeyGen MP4 videos — skip it on non-video slots
