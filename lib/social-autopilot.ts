@@ -218,6 +218,13 @@ Escribe SOLO el contenido del post, listo para publicar. Sin explicaciones, sin 
   const cleaned = content
     .replace(/[([]\s*(tu|su|your)\s+(n[uú]mero|number)[^)\]]*[)\]]/gi, realtorPhone)
     .replace(/[([]\s*(tel[eé]fono|phone)[^)\]]*[)\]]/gi, realtorPhone)
+  // The model copies the blog link but sometimes cuts the slug's timestamp
+  // ("…-en-miami-1" instead of "…-en-miami-1763…"), which 404s. Put the exact
+  // link back wherever it wrote one, or append it if it dropped it.
+  if (blogUrl) {
+    const fixed = cleaned.replace(/https?:\/\/(www\.)?catherinegomezrealtor\.com\/site\/blog\/[A-Za-z0-9_-]*/g, blogUrl)
+    return (fixed.includes(blogUrl) ? fixed : `${fixed.trim()}\n\n👉 Lee el artículo completo aquí: ${blogUrl}`).trim()
+  }
   return cleaned.trim()
 }
 
