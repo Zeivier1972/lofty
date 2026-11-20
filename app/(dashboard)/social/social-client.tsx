@@ -938,6 +938,9 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
               const account = accounts.find(a => a.platform === platform.id)
               const isConnected = account?.isConnected
               const isConnecting = connectingPlatform === platform.id
+              // Google Business posts through Zapier (RSS feed → Create Post),
+              // because Google declined the Business Profile API request.
+              const viaZapier = platform.id === "GOOGLE_BUSINESS"
 
               return (
                 <div key={platform.id} className="bg-white rounded-xl border p-5">
@@ -952,14 +955,36 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
                           <span className="flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
                             <CheckCircle2 className="w-3 h-3" /> Connected as {account.accountName}
                           </span>
+                        ) : viaZapier ? (
+                          <span className="flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+                            <CheckCircle2 className="w-3 h-3" /> Conectado vía Zapier
+                          </span>
                         ) : (
                           <span className="text-xs text-gray-400">Not connected</span>
                         )}
                       </div>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-xs text-gray-500">Posts: {posts.filter(p => p.platform === platform.id).length}</span>
+                        {viaZapier ? (
+                          <span className="text-xs text-gray-500">
+                            Publica automáticamente con Zapier: cada post diario con foto de Facebook se copia al perfil de Google (sin hashtags ni teléfono, con botón “Más información”). Se administra en Zapier → Zap “RSS by Zapier to Google Business Profile post”.
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-500">Posts: {posts.filter(p => p.platform === platform.id).length}</span>
+                        )}
                       </div>
                     </div>
+                    {viaZapier && !isConnected ? (
+                    <div className="flex items-center gap-2">
+                      <a
+                        href="https://zapier.com/app/zaps"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 px-3 py-1.5 border rounded-lg text-xs font-medium text-gray-700 hover:bg-gray-50"
+                      >
+                        <ExternalLink className="w-3 h-3" /> Abrir Zapier
+                      </a>
+                    </div>
+                    ) : (
                     <div className="flex items-center gap-2">
                       <a
                         href={platform.connectUrl}
@@ -985,6 +1010,7 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
                         </button>
                       )}
                     </div>
+                    )}
                   </div>
 
                   {isConnecting && platform.id !== "YOUTUBE" && platform.id !== "FACEBOOK" && platform.id !== "INSTAGRAM" && (
