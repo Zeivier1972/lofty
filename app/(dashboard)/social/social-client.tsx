@@ -162,6 +162,16 @@ export default function SocialClient({ accounts: initialAccounts, posts: initial
     const fbConnected = params.get("fb_connected")
     const igConnected = params.get("ig_connected")
     const fbError = params.get("fb_error")
+    const gConnected = params.get("google_connected")
+    const gError = params.get("google_error")
+    if (gConnected === "1" || gError) {
+      setActiveTab("accounts")
+      setYoutubeBanner(gConnected === "1"
+        ? { type: "success", msg: `Google Business conectado.${params.get("google_note") ? " " + params.get("google_note") : ""}` }
+        : { type: "error", msg: `Google Business no se conectó: ${gError}` })
+      window.history.replaceState({}, "", window.location.pathname)
+      return
+    }
 
     if (connected === "1") {
       setActiveTab("accounts")

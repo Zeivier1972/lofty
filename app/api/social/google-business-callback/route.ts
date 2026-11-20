@@ -6,7 +6,10 @@ import { googleOAuthClient, listLocations } from "@/lib/google-business"
 
 export async function GET(req: NextRequest) {
   const appUrl = process.env.NEXTAUTH_URL || process.env.APP_URL || "http://localhost:3000"
-  const back = (q: string) => NextResponse.redirect(`${appUrl}/social?tab=accounts&${q}`)
+  const back = (q: string) => {
+    if (q.startsWith("google_error=")) console.warn(`[google-business] connect failed: ${decodeURIComponent(q.slice(13))}`)
+    return NextResponse.redirect(`${appUrl}/social?tab=accounts&${q}`)
+  }
 
   const { searchParams } = new URL(req.url)
   const code = searchParams.get("code")
