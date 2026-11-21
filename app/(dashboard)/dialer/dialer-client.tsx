@@ -8,7 +8,7 @@ import {
   BarChart3, Users, Target, TrendingUp,
   ChevronDown, ChevronUp, Search, User, Zap, ExternalLink, Mail, Loader2, RotateCcw,
 } from "lucide-react"
-import { cn, formatPhone } from "@/lib/utils"
+import { cn, formatPhone, normalizePhone } from "@/lib/utils"
 import HelpPanel from "@/components/help-panel"
 
 interface Contact {
@@ -644,8 +644,9 @@ export default function DialerClient({ contacts, sessions: initialSessions, pipe
       callFinishedRef.current = false // arm the finish-guard for this new call
       wasConnectedRef.current = false // reset per call — set true once it connects
 
-      const digits = (leadPhone(contact) || "").replace(/\D/g, "")
-      const e164 = digits.length === 10 ? `+1${digits}` : `+${digits}`
+      // E.164 with the contact's location deciding +57 vs +1 for a bare
+      // 10-digit number (a Colombian mobile saved as 3001234567 was dialed as +1).
+      const e164 = normalizePhone(leadPhone(contact) || "", contact as any)
       const call = await deviceRef.current.connect({ params: { To: e164 } })
       activeBrowserCallRef.current = call
 

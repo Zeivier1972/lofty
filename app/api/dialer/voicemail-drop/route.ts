@@ -36,7 +36,8 @@ export async function POST(req: Request) {
     if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER) {
       return NextResponse.json({ error: "Twilio not configured" }, { status: 500 })
     }
-    const to = normalizePhone(phone)
+    const hint = contactId ? await prisma.contact.findUnique({ where: { id: contactId }, select: { country: true, city: true, state: true } }).catch(() => null) : null
+    const to = normalizePhone(phone, hint)
     const twiml = `<?xml version="1.0" encoding="UTF-8"?><Response><Play>${audioUrl}</Play></Response>`
     try {
       const client = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
