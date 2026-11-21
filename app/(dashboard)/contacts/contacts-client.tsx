@@ -19,7 +19,7 @@ import {
   DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { cn, formatPhone, getInitials } from "@/lib/utils"
+import { cn, formatPhone, getInitials, normalizePhone, type PhoneHint } from "@/lib/utils"
 import { useToast } from "@/components/ui/use-toast"
 import HelpPanel from "@/components/help-panel"
 
@@ -1020,12 +1020,11 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
     releaseLine()
   }, [manualIndex])
 
-  const startBrowserCall = async (phone: string) => {
+  const startBrowserCall = async (phone: string, hint?: PhoneHint) => {
     if (!twilioDevice) return
     setCallStatus("connecting")
     try {
-      const digits = phone.replace(/\D/g, "")
-      const e164 = digits.length === 10 ? `+1${digits}` : `+${digits}`
+      const e164 = normalizePhone(phone, hint)
       const call = await twilioDevice.connect({ params: { To: e164 } })
       setActiveCall(call)
       call.on("accept", () => setCallStatus("connected"))
@@ -1443,7 +1442,7 @@ function PowerDialerModal({ contactIds, contacts: contactList, contactCount, onC
                   </div>
                 ) : callStatus === "idle" ? (
                   <button
-                    onClick={() => startBrowserCall(contact.phone)}
+                    onClick={() => startBrowserCall(contact.phone, contact as any)}
                     disabled={!deviceReady}
                     className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white font-semibold transition-colors"
                   >

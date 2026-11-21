@@ -19,7 +19,7 @@ export async function POST(req: Request) {
     const contact = await prisma.contact.findUnique({ where: { id: contactId } })
     if (!contact) return NextResponse.json({ error: "Contact not found" }, { status: 404 })
 
-    const toPhone = normalizePhone(phone)
+    const toPhone = normalizePhone(phone, contact)
 
     const callId = await triggerOutboundCall({
       toPhone,

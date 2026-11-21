@@ -19,6 +19,7 @@ export default async function DialerPage({ searchParams }: { searchParams?: { co
           id: true, firstName: true, lastName: true, phone: true, phone2: true, status: true, leadScore: true,
           buyerPropertyType: true, buyerLocation: true, buyerBedroomsMin: true, buyerBathroomsMin: true,
           buyerBudgetMin: true, buyerBudgetMax: true, buyerTimelineMonths: true, buyerPurpose: true,
+          country: true, city: true, state: true, tags: { select: { tag: { select: { name: true } } } },
           leadReferrals: { select: { status: true, partner: { select: { name: true } } }, orderBy: { sentAt: "desc" }, take: 1 },
         },
         where: { phone: { not: null } },
@@ -52,7 +53,8 @@ export default async function DialerPage({ searchParams }: { searchParams?: { co
                     id: true, firstName: true, lastName: true, phone: true, phone2: true, status: true, leadScore: true,
                     buyerPropertyType: true, buyerLocation: true, buyerBedroomsMin: true, buyerBathroomsMin: true,
                     buyerBudgetMin: true, buyerBudgetMax: true, buyerTimelineMonths: true, buyerPurpose: true,
-                    leadReferrals: { select: { status: true, partner: { select: { name: true } } }, orderBy: { sentAt: "desc" }, take: 1 },
+                    country: true, city: true, state: true, tags: { select: { tag: { select: { name: true } } } },
+          leadReferrals: { select: { status: true, partner: { select: { name: true } } }, orderBy: { sentAt: "desc" }, take: 1 },
                   },
                 },
               },
@@ -80,6 +82,7 @@ export default async function DialerPage({ searchParams }: { searchParams?: { co
           id: true, firstName: true, lastName: true, phone: true, phone2: true, status: true, leadScore: true,
           buyerPropertyType: true, buyerLocation: true, buyerBedroomsMin: true, buyerBathroomsMin: true,
           buyerBudgetMin: true, buyerBudgetMax: true, buyerTimelineMonths: true, buyerPurpose: true,
+          country: true, city: true, state: true, tags: { select: { tag: { select: { name: true } } } },
           leadReferrals: { select: { status: true, partner: { select: { name: true } } }, orderBy: { sentAt: "desc" }, take: 1 },
         },
       })
@@ -97,7 +100,8 @@ export default async function DialerPage({ searchParams }: { searchParams?: { co
             id: true, firstName: true, lastName: true, phone: true, phone2: true, email: true, status: true, leadScore: true,
             buyerPropertyType: true, buyerLocation: true, buyerBedroomsMin: true, buyerBathroomsMin: true,
             buyerBudgetMin: true, buyerBudgetMax: true, buyerTimelineMonths: true, buyerPurpose: true,
-            leadReferrals: { select: { status: true, partner: { select: { name: true } } }, orderBy: { sentAt: "desc" }, take: 1 },
+            country: true, city: true, state: true, tags: { select: { tag: { select: { name: true } } } },
+          leadReferrals: { select: { status: true, partner: { select: { name: true } } }, orderBy: { sentAt: "desc" }, take: 1 },
           },
         })
         // Preserve the order the caller passed them in.

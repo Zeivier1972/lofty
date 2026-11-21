@@ -55,7 +55,8 @@ export async function POST(req: Request) {
 
   try {
     const twimlUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/dialer/twiml?callId=${call.id}`
-    const twilioSid = await initiateCall(normalizePhone(phoneNumber), twimlUrl)
+    const hint = contactId ? await prisma.contact.findUnique({ where: { id: contactId }, select: { country: true, city: true, state: true } }).catch(() => null) : null
+    const twilioSid = await initiateCall(normalizePhone(phoneNumber, hint), twimlUrl)
 
     await prisma.dialerCall.update({
       where: { id: call.id },

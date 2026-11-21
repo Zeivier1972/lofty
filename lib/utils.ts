@@ -38,23 +38,47 @@ export function formatPhone(phone: string | null | undefined): string {
   return phone
 }
 
+/** What we know about where a contact is, to read a number saved without a country code. */
+export type PhoneHint = {
+  country?: string | null
+  city?: string | null
+  state?: string | null
+  /** Tag names, or the CRM's {tag:{name}} rows. */
+  tags?: unknown[] | null
+}
+
+const COLOMBIA_RE = /colomb|bogot|medell|antioquia|cundinamarca|\bcali\b|valle del cauca|barranquilla|cartagena|bucaramanga|pereira|manizales|santa marta|c[uú]cuta|ibagu|villavicencio|monter[ií]a|armenia|pasto|neiva|\bco\b/i
+
+/** Does anything on the contact say Colombia? */
+export function looksColombian(hint?: PhoneHint | null): boolean {
+  if (!hint) return false
+  const tagNames = (hint.tags || []).map((t: any) => (typeof t === "string" ? t : t?.tag?.name || t?.name || "")).join(" ")
+  return COLOMBIA_RE.test([hint.country, hint.city, hint.state, tagNames].filter(Boolean).join(" "))
+}
+
 /**
- * Normalizes any phone number to E.164 format.
- * Handles Colombia (+57) and US (+1) numbers correctly.
- * - Already E.164 (starts with +): strip formatting, return +digits
- * - 12 digits starting with 57: Colombian number → +57XXXXXXXXXX
- * - 10 digits starting with 3: Colombian mobile → +57XXXXXXXXXX
- * - 11 digits starting with 1: US with country code → +1XXXXXXXXXX
- * - 10 digits: US 10-digit → +1XXXXXXXXXX
+ * The number to dial, in E.164.
+ * - Starts with + or 00 → kept as written (country code included).
+ * - 12 digits starting with 57 → Colombia.
+ * - 11 digits starting with 1 → US.
+ * - 10 digits starting with 60 → Colombian landline (601 Bogotá, 604 Medellín…);
+ *   no US area code starts with 0, so this is never ambiguous.
+ * - 10 digits starting with 3 → ambiguous: Colombian mobiles (300–351) and US
+ *   area codes (305 Miami, 312, 321…) overlap. Colombia only when the contact
+ *   says so (country/city/state/tags); otherwise US. Guessing Colombia used to
+ *   send Miami 305 numbers to +57, and the browser dialer did the opposite.
+ * - Other 10 digits → US.
  */
-export function normalizePhone(phone: string): string {
+export function normalizePhone(phone: string, hint?: PhoneHint | null): string {
   if (!phone) return phone
-  const digits = phone.replace(/\D/g, "")
-  // If original had a + prefix (e.g. "+57 301 234 5678"), strip formatting but keep country code
-  if (phone.trim().startsWith("+")) return `+${digits}`
+  const raw = phone.trim()
+  const digits = raw.replace(/\D/g, "")
+  if (raw.startsWith("+")) return `+${digits}`
+  if (digits.startsWith("00") && digits.length > 11) return `+${digits.slice(2)}`
   if (digits.length === 12 && digits.startsWith("57")) return `+${digits}`
-  if (digits.length === 10 && digits.startsWith("3")) return `+57${digits}`
   if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`
+  if (digits.length === 10 && digits.startsWith("60")) return `+57${digits}`
+  if (digits.length === 10 && digits.startsWith("3") && looksColombian(hint)) return `+57${digits}`
   if (digits.length === 10) return `+1${digits}`
   return `+${digits}`
 }

@@ -77,7 +77,7 @@ export async function POST(req: Request) {
     })
 
     let twilioSid: string
-    const normalizedPhone = normalizePhone(phone)
+    const normalizedPhone = normalizePhone(phone, contact)
 
     if (!client) {
       // Mock mode
