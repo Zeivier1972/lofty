@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { ingestLead } from "@/lib/lead-ingest"
+import { tagsForFormLead } from "@/lib/facebook-form-tags"
 
 const GRAPH = "https://graph.facebook.com/v25.0"
 
@@ -64,6 +65,7 @@ export async function POST(req: Request) {
       if (hiddenTag) autoTags.push(hiddenTag)
       // Always tag with formName so campaign-triggered smart plans can fire
       if (formName) autoTags.push(formName)
+      for (const t of tagsForFormLead(formId, [formName, utmCampaign])) if (!autoTags.includes(t)) autoTags.push(t)
 
       try {
         await ingestLead({
