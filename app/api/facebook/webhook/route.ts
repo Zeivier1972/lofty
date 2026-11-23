@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic"
 
+import { tagsForFormLead } from "@/lib/facebook-form-tags"
 import { NextResponse } from "next/server"
 import { readMetaWebhook } from "@/lib/meta-webhook"
 import { prisma } from "@/lib/prisma"
@@ -130,7 +131,7 @@ export async function POST(req: Request) {
 
       // ── Lead Ad form submissions ─────────────────────────────────────────────
       if (change.field === "leadgen") {
-        const { leadgen_id, campaign_name, ad_name } = change.value || {}
+        const { leadgen_id, campaign_name, ad_name, form_id } = change.value || {}
         if (!leadgen_id) continue
         console.log(`[FB webhook leadgen] received leadgen_id=${leadgen_id} campaign=${campaign_name || ad_name || "?"}`)
 
@@ -198,6 +199,10 @@ export async function POST(req: Request) {
           if (utmCampaign) tags.push(utmCampaign)
           if (utmContent) tags.push(utmContent)
           if (hiddenTag) tags.push(hiddenTag)
+          // Tags from the form itself (e.g. the Parkside form → "Parkside").
+          for (const t of tagsForFormLead(form_id, [campaign_name, ad_name, utmCampaign, utmContent])) {
+            if (!tags.includes(t)) tags.push(t)
+          }
 
           // Append UTM data to notes for visibility in the contact timeline
           const utmNote = [
