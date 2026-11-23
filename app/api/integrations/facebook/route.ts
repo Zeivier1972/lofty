@@ -26,7 +26,12 @@ export async function GET() {
             )
             const data = await res.json()
             forms = data.data || []
-          } catch {}
+            // One line per refresh so "I don't see my form" can be checked against what Facebook returned.
+            if (data.error) console.warn(`[integrations/facebook] leadgen_forms error for page ${account.pageId}: ${JSON.stringify(data.error).slice(0, 300)}`)
+            else console.log(`[integrations/facebook] page ${account.pageId}: ${forms.length} forms — ${forms.map((f: any) => `${f.name} (${f.status}, ${f.leads_count ?? "?"})`).join("; ").slice(0, 900)}`)
+          } catch (e) {
+            console.warn("[integrations/facebook] leadgen_forms fetch failed:", e)
+          }
         }
       }
       return { ...account, forms }
